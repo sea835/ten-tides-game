@@ -3,4 +3,5 @@ export * from "./stats.ts";
 export * from "./dice.ts";
 export * from "./weather.ts";
 export * from "./cards.ts";
-export * from "./game.ts";
+export * from "./game/index.ts";
+export * from "./bot.ts";

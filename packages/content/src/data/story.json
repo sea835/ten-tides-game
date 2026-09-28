@@ -1,0 +1,1110 @@
+[
+ {
+  "id": "hac_trieu",
+  "category": "hider",
+  "name": "thuyền trưởng Hắc Triều",
+  "lines": [
+   "Người ta đồn {hider} từng cướp sạch ba đoàn thuyền buôn rồi biến mất khỏi mọi hải trình.",
+   "Tên {hider} vẫn còn khắc trên mạn những con thuyền đắm quanh đảo."
+  ],
+  "tags": [
+   "pirate",
+   "sea"
+  ]
+ },
+ {
+  "id": "bach_lan",
+  "category": "hider",
+  "name": "nữ hải tặc Bạch Lan",
+  "lines": [
+   "{hider} nổi tiếng vì chưa từng giết ai, chỉ lấy đi thứ quý nhất của mỗi con thuyền.",
+   "Có người nói {hider} bỏ nghề cướp biển sau một mối tình dang dở."
+  ],
+  "tags": [
+   "pirate",
+   "love",
+   "sea"
+  ]
+ },
+ {
+  "id": "exiled_monk",
+  "category": "hider",
+  "name": "vị tu sĩ bị lưu đày",
+  "lines": [
+   "{hider} bị đày ra đảo vì dám can gián nhà vua, và không bao giờ trở về.",
+   "Trong chùa làng ven biển vẫn còn bài vị của {hider}, không ghi ngày mất."
+  ],
+  "tags": [
+   "religion",
+   "solitude"
+  ]
+ },
+ {
+  "id": "portuguese_trader",
+  "category": "hider",
+  "name": "thương nhân Bồ Đào Nha Diogo",
+  "lines": [
+   "{hider} từng buôn hồ tiêu và súng hỏa mai khắp vùng biển này.",
+   "Tàu của {hider} mắc cạn ở đây trong một mùa bão, và hàng hóa không bao giờ được tìm thấy."
+  ],
+  "tags": [
+   "trade",
+   "foreign",
+   "sea"
+  ]
+ },
+ {
+  "id": "fisher_family",
+  "category": "hider",
+  "name": "gia đình ngư dân họ Trần",
+  "lines": [
+   "Ba đời nhà {hider} sống nhờ biển, và cũng giữ một bí mật truyền từ đời ông cố.",
+   "Người cuối cùng của {hider} bỏ đảo đi trong một đêm không trăng."
+  ],
+  "tags": [
+   "family",
+   "local"
+  ]
+ },
+ {
+  "id": "explorer_1932",
+  "category": "hider",
+  "name": "nhà thám hiểm mất tích năm 1932",
+  "lines": [
+   "{hider} để lại một bức điện cuối cùng: đã tìm thấy, sẽ quay về.",
+   "Cả đoàn tìm kiếm hồi ấy chỉ nhặt được chiếc mũ cối của {hider} trên bãi cát."
+  ],
+  "tags": [
+   "science",
+   "foreign"
+  ]
+ },
+ {
+  "id": "corrupt_mandarin",
+  "category": "hider",
+  "name": "viên tri phủ tham ô",
+  "lines": [
+   "{hider} vơ vét thuế của ba huyện rồi lặng lẽ chở ra đảo trong những thùng cá muối.",
+   "Bản án dành cho {hider} vẫn còn đó, nhưng chưa ai bắt được người."
+  ],
+  "tags": [
+   "greed",
+   "law",
+   "local"
+  ]
+ },
+ {
+  "id": "ancient_tribe",
+  "category": "hider",
+  "name": "bộ lạc cổ từng sống dưới chân núi lửa",
+  "lines": [
+   "Trước khi có người Kinh ra biển, {hider} đã sống ở đây và thờ ngọn núi như một vị thần.",
+   "Dấu vết của {hider} chỉ còn lại trong những hình khắc trên vách hang."
+  ],
+  "tags": [
+   "ancient",
+   "volcano",
+   "religion"
+  ]
+ },
+ {
+  "id": "fled_bounty",
+  "category": "motive",
+  "name": "vì bị truy nã khắp các cảng",
+  "lines": [
+   "Không cảng nào còn dám cho {hider} cập bến, nên kho báu phải nằm lại nơi không ai tìm tới."
+  ],
+  "tags": [],
+  "requiresAnyTag": [
+   "pirate",
+   "greed",
+   "trade"
+  ]
+ },
+ {
+  "id": "revenge",
+  "category": "motive",
+  "name": "để trả thù kẻ đã phản bội mình",
+  "lines": [
+   "{hider} muốn kẻ phản bội mình cả đời đi tìm mà không bao giờ thấy."
+  ],
+  "tags": []
+ },
+ {
+  "id": "oath",
+  "category": "motive",
+  "name": "để giữ một lời thề với người đã khuất",
+  "lines": [
+   "Lời thề ấy nặng đến mức {hider} thà chôn vàng xuống đất còn hơn thất hứa."
+  ],
+  "tags": []
+ },
+ {
+  "id": "war",
+  "category": "motive",
+  "name": "để kho báu không rơi vào tay quân giặc",
+  "lines": [
+   "Chiến tranh tràn tới bờ biển, và {hider} chỉ kịp giấu kho báu trước khi thuyền giặc cập bến."
+  ],
+  "tags": []
+ },
+ {
+  "id": "lover",
+  "category": "motive",
+  "name": "để chôn cùng người mình yêu",
+  "lines": [
+   "Người {hider} yêu đã chết trên hòn đảo này, và kho báu được chôn cạnh mộ người ấy."
+  ],
+  "tags": [],
+  "requiresAnyTag": [
+   "love",
+   "pirate",
+   "family"
+  ]
+ },
+ {
+  "id": "curse_seal",
+  "category": "motive",
+  "name": "để phong ấn một lời nguyền",
+  "lines": [
+   "Kho báu mang lời nguyền, và {hider} tin rằng chỉ ngọn núi lửa mới giữ được nó."
+  ],
+  "tags": [],
+  "requiresAnyTag": [
+   "religion",
+   "ancient"
+  ]
+ },
+ {
+  "id": "heirs",
+  "category": "motive",
+  "name": "để dành cho con cháu đời sau",
+  "lines": [
+   "{hider} để lại dấu hiệu cho con cháu, nhưng dòng họ ấy đã tản mát hết."
+  ],
+  "tags": [],
+  "requiresAnyTag": [
+   "family",
+   "local",
+   "trade"
+  ]
+ },
+ {
+  "id": "betrayed",
+  "category": "motive",
+  "name": "vì bị chính thuộc hạ phản bội",
+  "lines": [
+   "Đám thuộc hạ nổi loạn, và {hider} giấu kho báu đi ngay trong đêm cuối cùng còn làm chủ con tàu."
+  ],
+  "tags": [],
+  "requiresAnyTag": [
+   "pirate",
+   "greed"
+  ]
+ },
+ {
+  "id": "gold_chest",
+  "category": "treasure",
+  "name": "một rương vàng thỏi",
+  "lines": [
+   "Người ta nói rương nặng tới mức bốn người khiêng mới nổi."
+  ],
+  "tags": []
+ },
+ {
+  "id": "jade_statue",
+  "category": "treasure",
+  "name": "pho tượng ngọc bích",
+  "lines": [
+   "Pho tượng được tạc từ một khối ngọc duy nhất, xanh như nước hồ."
+  ],
+  "tags": []
+ },
+ {
+  "id": "bigger_map",
+  "category": "treasure",
+  "name": "tấm bản đồ dẫn tới một kho báu lớn hơn",
+  "lines": [
+   "Có người tin rằng thứ nằm trong rương chỉ là chìa khóa cho một hành trình khác."
+  ],
+  "tags": []
+ },
+ {
+  "id": "love_letters",
+  "category": "treasure",
+  "name": "một hộp thư tình lót đầy đồng vàng",
+  "lines": [
+   "Mỗi đồng vàng được gói trong một lá thư chưa từng gửi."
+  ],
+  "tags": []
+ },
+ {
+  "id": "royal_seal",
+  "category": "treasure",
+  "name": "chiếc ấn tín của một triều đại đã mất",
+  "lines": [
+   "Ai giữ chiếc ấn ấy từng có quyền sai khiến cả một vùng."
+  ],
+  "tags": []
+ },
+ {
+  "id": "black_pearls",
+  "category": "treasure",
+  "name": "một túi ngọc trai đen",
+  "lines": [
+   "Ngọc trai đen hiếm tới mức một viên đủ mua cả một làng chài."
+  ],
+  "tags": []
+ },
+ {
+  "id": "old_coins",
+  "category": "treasure",
+  "name": "hàng nghìn đồng tiền cổ",
+  "lines": [
+   "Tiền đúc từ nhiều triều đại, xâu thành từng chuỗi dài."
+  ],
+  "tags": []
+ },
+ {
+  "id": "golden_compass",
+  "category": "treasure",
+  "name": "chiếc la bàn bằng vàng ròng",
+  "lines": [
+   "Kim la bàn không chỉ về phương bắc mà chỉ về một nơi không ai biết."
+  ],
+  "tags": []
+ },
+ {
+  "id": "prison_island",
+  "category": "secret",
+  "name": "Hòn đảo từng là trại giam",
+  "lines": [
+   "Những vòng sắt gỉ trên vách hang là dấu vết của trại giam năm xưa."
+  ],
+  "tags": [
+   "cave"
+  ]
+ },
+ {
+  "id": "volcano_god",
+  "category": "secret",
+  "name": "Người xưa thờ ngọn núi lửa như một vị thần",
+  "lines": [
+   "Mỗi lần núi rung, người xưa lại ném đồ quý xuống miệng núi để tạ lỗi."
+  ],
+  "tags": [
+   "volcano"
+  ]
+ },
+ {
+  "id": "underground_river",
+  "category": "secret",
+  "name": "Dưới hang có một dòng sông ngầm chảy ra biển",
+  "lines": [
+   "Nghe kỹ trong hang sẽ thấy tiếng nước chảy xiết ở đâu đó dưới chân."
+  ],
+  "tags": [
+   "cave",
+   "lake"
+  ]
+ },
+ {
+  "id": "drowned_village",
+  "category": "secret",
+  "name": "Đáy hồ là một ngôi làng bị nhấn chìm",
+  "lines": [
+   "Những ngày nước trong, người ta thấy cả mái ngói dưới đáy hồ."
+  ],
+  "tags": [
+   "lake"
+  ]
+ },
+ {
+  "id": "half_sunk",
+  "category": "secret",
+  "name": "Nửa hòn đảo đã chìm sau một trận động đất trăm năm trước",
+  "lines": [
+   "Có những bậc đá dẫn thẳng xuống biển rồi biến mất dưới làn nước."
+  ],
+  "tags": [
+   "beach"
+  ]
+ },
+ {
+  "id": "lake_ghost",
+  "category": "secret",
+  "name": "Dân chài kể về một bóng người đi trên mặt hồ lúc sương mù",
+  "lines": [
+   "Không ai dám câu cá ở hồ vào những sáng sương dày."
+  ],
+  "tags": [
+   "lake"
+  ]
+ },
+ {
+  "id": "talking_banyan",
+  "category": "secret",
+  "name": "Có một cây đa cổ mà ai đứng dưới gốc cũng nghe tiếng thì thầm",
+  "lines": [
+   "Rễ cây đa trùm lên cả một tảng đá có khắc chữ không ai đọc được."
+  ],
+  "tags": [
+   "beach"
+  ]
+ },
+ {
+  "id": "last_tribe",
+  "category": "secret",
+  "name": "Người cuối cùng của bộ lạc cổ vẫn sống ẩn trong hang",
+  "lines": [
+   "Đôi khi có những bó hoa rừng tươi đặt trước cửa hang, không rõ ai mang tới."
+  ],
+  "tags": [
+   "cave"
+  ]
+ },
+ {
+  "id": "hermit",
+  "category": "npc",
+  "name": "ông lão ẩn cư râu tóc bạc trắng",
+  "lines": [
+   "{npc} chỉ nói đúng một câu rồi quay lưng: đừng tin những gì mình thấy dưới trăng."
+  ],
+  "tags": []
+ },
+ {
+  "id": "fisher_girl",
+  "category": "npc",
+  "name": "cô bé câu cá không ai biết từ đâu tới",
+  "lines": [
+   "{npc} ngồi vắt vẻo trên mỏm đá, cười khúc khích mỗi khi có người nhắc tới kho báu."
+  ],
+  "tags": []
+ },
+ {
+  "id": "bottle_writer",
+  "category": "npc",
+  "name": "người viết những lá thư trong chai",
+  "lines": [
+   "Những lá thư của {npc} trôi dạt vào bờ, lần nào cũng ký cùng một cái tên."
+  ],
+  "tags": []
+ },
+ {
+  "id": "blind_seer",
+  "category": "npc",
+  "name": "bà thầy bói mù",
+  "lines": [
+   "{npc} sờ tay từng người rồi nói: trong các người có kẻ mang hai trái tim."
+  ],
+  "tags": []
+ },
+ {
+  "id": "parrot",
+  "category": "npc",
+  "name": "một con vẹt biết nói tiếng người",
+  "lines": [
+   "{npc} cứ lặp đi lặp lại một cái tên mà không ai trong đoàn nhận ra."
+  ],
+  "tags": []
+ },
+ {
+  "id": "wild_dog",
+  "category": "npc",
+  "name": "một con chó hoang lông vàng",
+  "lines": [
+   "{npc} lẽo đẽo đi theo cả đoàn, và cứ tới gần núi lửa là sủa không ngớt."
+  ],
+  "tags": []
+ },
+ {
+  "id": "smuggler",
+  "category": "npc",
+  "name": "gã buôn lậu mặt sẹo",
+  "lines": [
+   "{npc} đề nghị đổi tin tức lấy một chai rượu, rồi biến mất trước khi trời tối."
+  ],
+  "tags": []
+ },
+ {
+  "id": "sailor_ghost",
+  "category": "npc",
+  "name": "linh hồn một thủy thủ chết đuối",
+  "lines": [
+   "Có người thề đã thấy {npc} đứng ở mép nước, người ướt sũng, nhìn về phía thuyền."
+  ],
+  "tags": []
+ },
+ {
+  "id": "hermit_monk",
+  "category": "npc",
+  "name": "một nhà sư ẩn tu trên sườn núi",
+  "lines": [
+   "{npc} mời cả đoàn uống trà và kể về những người đã tới đây trước."
+  ],
+  "tags": []
+ },
+ {
+  "id": "lighthouse_keeper",
+  "category": "npc",
+  "name": "người canh ngọn hải đăng đã tắt từ lâu",
+  "lines": [
+   "{npc} vẫn leo lên ngọn hải đăng mỗi tối, dù đèn đã tắt từ mấy chục năm."
+  ],
+  "tags": []
+ },
+ {
+  "id": "gulls_reverse",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Đàn hải âu bay ngược vào đất liền, kêu inh ỏi."
+  ],
+  "tags": [],
+  "act": 1
+ },
+ {
+  "id": "red_moon",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Đêm qua trăng đỏ như máu treo trên đỉnh núi."
+  ],
+  "tags": [],
+  "act": 2
+ },
+ {
+  "id": "dead_fish",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Cá chết nổi trắng một góc hồ."
+  ],
+  "tags": [],
+  "act": 2
+ },
+ {
+  "id": "still_wind",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Gió lặng hẳn, không một chiếc lá nào lay."
+  ],
+  "tags": [],
+  "act": 1
+ },
+ {
+  "id": "drums",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Có tiếng như trống vọng từ phía núi lửa, dồn dập rồi tắt lịm."
+  ],
+  "tags": [],
+  "act": 3
+ },
+ {
+  "id": "black_smoke",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Một cột khói đen bốc thẳng lên từ miệng núi."
+  ],
+  "tags": [],
+  "act": 3
+ },
+ {
+  "id": "warm_stones",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Đá trên bãi biển ấm lên dù trời chưa có nắng."
+  ],
+  "tags": [],
+  "act": 2
+ },
+ {
+  "id": "undertow",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Sóng ngầm kéo mạnh bất thường ở mép nước."
+  ],
+  "tags": [],
+  "act": 1
+ },
+ {
+  "id": "shooting_star",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Một ngôi sao băng rạch ngang bầu trời lúc gần sáng."
+  ],
+  "tags": [],
+  "act": 1
+ },
+ {
+  "id": "red_crabs",
+  "category": "omen",
+  "name": null,
+  "lines": [
+   "Cua đỏ bò kín bãi cát như đang chạy trốn điều gì."
+  ],
+  "tags": [],
+  "act": 3
+ },
+ {
+  "id": "half_taken",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "Có người đã tới trước: một nửa kho báu đã bị lấy đi từ lâu, chỉ còn lại dấu đào cũ."
+  ],
+  "tags": []
+ },
+ {
+  "id": "map_reversed",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "Hóa ra những ký hiệu phải đọc theo chiều ngược lại, và mọi phỏng đoán trước giờ đều lệch hướng."
+  ],
+  "tags": []
+ },
+ {
+  "id": "hider_alive",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "Một chi tiết khiến cả đoàn lạnh gáy: {hider} có lẽ vẫn còn sống, đâu đó trên đảo."
+  ],
+  "tags": []
+ },
+ {
+  "id": "other_party",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "Cả đoàn phát hiện dấu lửa trại còn ấm của một đoàn thám hiểm khác."
+  ],
+  "tags": []
+ },
+ {
+  "id": "volcano_early",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "Núi lửa tỉnh giấc sớm hơn mọi dự tính, và mặt đất bắt đầu nứt."
+  ],
+  "tags": []
+ },
+ {
+  "id": "treasure_trap",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "Những dòng chữ mới đọc được cảnh báo: kho báu là cái bẫy dành cho kẻ tham lam."
+  ],
+  "tags": []
+ },
+ {
+  "id": "oars_missing",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "Sáng nay mái chèo dự phòng biến mất khỏi thuyền, không để lại dấu vết."
+  ],
+  "tags": []
+ },
+ {
+  "id": "blood_relation",
+  "category": "twist",
+  "name": null,
+  "lines": [
+   "{player} lặng người khi nhận ra cái tên trên vật chứng chính là tên một người trong họ mình."
+  ],
+  "tags": []
+ },
+ {
+  "id": "torn_diary",
+  "category": "relic",
+  "name": "cuốn nhật ký rách",
+  "lines": [
+   "Trang cuối của {relic} chỉ có một câu: đừng quay lại hang khi trời mưa."
+  ],
+  "tags": []
+ },
+ {
+  "id": "message_bottle",
+  "category": "relic",
+  "name": "một chai thư",
+  "lines": [
+   "Lá thư trong {relic} viết bằng mực đã phai, nhắc tới một cái cây mọc ngược."
+  ],
+  "tags": []
+ },
+ {
+  "id": "broken_compass",
+  "category": "relic",
+  "name": "chiếc la bàn vỡ kính",
+  "lines": [
+   "Kim của {relic} vẫn run run chỉ về phía núi lửa."
+  ],
+  "tags": []
+ },
+ {
+  "id": "engraved_coin",
+  "category": "relic",
+  "name": "đồng xu khắc hình con rắn",
+  "lines": [
+   "Mặt sau {relic} có khắc một con số không ai hiểu."
+  ],
+  "tags": []
+ },
+ {
+  "id": "wooden_mask",
+  "category": "relic",
+  "name": "chiếc mặt nạ gỗ",
+  "lines": [
+   "{relic} có đôi mắt khoét sâu, nhìn lâu thấy như đang cười."
+  ],
+  "tags": []
+ },
+ {
+  "id": "rusty_knife",
+  "category": "relic",
+  "name": "con dao gỉ khắc tên",
+  "lines": [
+   "Cái tên khắc trên {relic} đã mòn gần hết, chỉ còn đọc được hai chữ cái."
+  ],
+  "tags": []
+ },
+ {
+  "id": "bronze_bell",
+  "category": "relic",
+  "name": "chiếc chuông đồng nhỏ",
+  "lines": [
+   "Lắc {relic} không nghe tiếng, nhưng chim trên cây đồng loạt bay đi."
+  ],
+  "tags": []
+ },
+ {
+  "id": "old_photo",
+  "category": "relic",
+  "name": "tấm ảnh cũ đã ố vàng",
+  "lines": [
+   "Trong {relic} là một nhóm người đứng trước chính cửa hang này."
+  ],
+  "tags": []
+ },
+ {
+  "id": "beach_1",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Sóng vỗ đều như tiếng thở của hòn đảo."
+  ],
+  "tags": [],
+  "zone": "beach"
+ },
+ {
+  "id": "beach_2",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Cát nóng rát dưới chân, gió mặn chát trên môi."
+  ],
+  "tags": [],
+  "zone": "beach"
+ },
+ {
+  "id": "beach_3",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Những tàu dừa xào xạc như đang thì thầm với nhau."
+  ],
+  "tags": [],
+  "zone": "beach"
+ },
+ {
+  "id": "beach_4",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Vỏ ốc vỡ lấp lánh dọc mép nước."
+  ],
+  "tags": [],
+  "zone": "beach"
+ },
+ {
+  "id": "lake_1",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Mặt hồ phẳng như gương, soi cả mây trời."
+  ],
+  "tags": [],
+  "zone": "lake"
+ },
+ {
+  "id": "lake_2",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Muỗi vo ve dày đặc quanh bờ lau."
+  ],
+  "tags": [],
+  "zone": "lake"
+ },
+ {
+  "id": "lake_3",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Nước hồ lạnh buốt dù trời đang nắng."
+  ],
+  "tags": [],
+  "zone": "lake"
+ },
+ {
+  "id": "lake_4",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Một con cò trắng đứng im như tượng giữa hồ."
+  ],
+  "tags": [],
+  "zone": "lake"
+ },
+ {
+  "id": "cave_1",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Tiếng nước nhỏ giọt vang đều trong bóng tối."
+  ],
+  "tags": [],
+  "zone": "cave"
+ },
+ {
+  "id": "cave_2",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Không khí trong hang ẩm và nồng mùi phân dơi."
+  ],
+  "tags": [],
+  "zone": "cave"
+ },
+ {
+  "id": "cave_3",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Những hình khắc mờ hiện ra dưới ánh sáng yếu ớt."
+  ],
+  "tags": [],
+  "zone": "cave"
+ },
+ {
+  "id": "cave_4",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Gió lùa qua khe đá nghe như tiếng người rên."
+  ],
+  "tags": [],
+  "zone": "cave"
+ },
+ {
+  "id": "volcano_1",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Mặt đất ấm lên dưới từng bước chân."
+  ],
+  "tags": [],
+  "zone": "volcano"
+ },
+ {
+  "id": "volcano_2",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Mùi lưu huỳnh xộc thẳng vào mũi."
+  ],
+  "tags": [],
+  "zone": "volcano"
+ },
+ {
+  "id": "volcano_3",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Đá đen sắc cạnh lạo xạo dưới đế giày."
+  ],
+  "tags": [],
+  "zone": "volcano"
+ },
+ {
+  "id": "volcano_4",
+  "category": "atmosphere",
+  "name": null,
+  "lines": [
+   "Từ miệng núi, khói trắng cuộn lên không ngớt."
+  ],
+  "tags": [],
+  "zone": "volcano"
+ },
+ {
+  "id": "weather_sunny",
+  "category": "weather",
+  "name": null,
+  "lines": [
+   "Nắng lên sớm, trời xanh không một gợn mây."
+  ],
+  "tags": [],
+  "weather": "sunny"
+ },
+ {
+  "id": "weather_cloudy",
+  "category": "weather",
+  "name": null,
+  "lines": [
+   "Mây xám kéo kín trời, ánh sáng nhợt nhạt như chiều."
+  ],
+  "tags": [],
+  "weather": "cloudy"
+ },
+ {
+  "id": "weather_rain",
+  "category": "weather",
+  "name": null,
+  "lines": [
+   "Mưa rơi lộp độp trên mái lều từ trước khi trời sáng."
+  ],
+  "tags": [],
+  "weather": "rain"
+ },
+ {
+  "id": "weather_fog",
+  "category": "weather",
+  "name": null,
+  "lines": [
+   "Sương mù dày đặc, đứng cách mười bước đã không thấy mặt nhau."
+  ],
+  "tags": [],
+  "weather": "fog"
+ },
+ {
+  "id": "weather_storm",
+  "category": "weather",
+  "name": null,
+  "lines": [
+   "Gió rít từng cơn, sóng bạc đầu đập vào bờ."
+  ],
+  "tags": [],
+  "weather": "storm"
+ },
+ {
+  "id": "weather_quake",
+  "category": "weather",
+  "name": null,
+  "lines": [
+   "Cả đoàn tỉnh giấc vì mặt đất rung lên từng đợt."
+  ],
+  "tags": [],
+  "weather": "quake"
+ },
+ {
+  "id": "epilogue_treasure_home",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Con thuyền rời bến khi núi lửa bắt đầu gầm lên. Trên boong, cả đoàn ngồi quanh {treasure}, không ai nói gì, chỉ cười."
+  ],
+  "tags": [],
+  "ending": "treasure_home"
+ },
+ {
+  "id": "epilogue_bloody_treasure",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "{treasure} nằm yên dưới khoang thuyền, nhưng không ai dám nhìn nó quá lâu. Có những cái giá không đong được bằng vàng."
+  ],
+  "tags": [],
+  "ending": "bloody_treasure"
+ },
+ {
+  "id": "epilogue_traitor_exposed",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Kẻ phản bội ngồi ở mũi thuyền, tay vẫn còn vết dây trói. Cả đoàn mang {treasure} về, và mang theo cả một câu chuyện để kể."
+  ],
+  "tags": [],
+  "ending": "traitor_exposed"
+ },
+ {
+  "id": "epilogue_sole_survivor",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Chỉ một người đứng trên thuyền nhìn hòn đảo chìm dần trong khói. {treasure} giờ là của riêng người ấy, cùng mọi ký ức."
+  ],
+  "tags": [],
+  "ending": "sole_survivor"
+ },
+ {
+  "id": "epilogue_empty_handed",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Thuyền rời đảo trong im lặng. {treasure} vẫn nằm đâu đó dưới lớp đất, chờ một đoàn khác, một lần khác."
+  ],
+  "tags": [],
+  "ending": "empty_handed"
+ },
+ {
+  "id": "epilogue_buried",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Núi lửa nuốt trọn hòn đảo trong một đêm đỏ rực. Câu chuyện về {hider} lại có thêm một chương, và không ai còn để kể."
+  ],
+  "tags": [],
+  "ending": "buried"
+ },
+ {
+  "id": "epilogue_pirates_win",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Cánh buồm đen hiện ra ở chân trời đúng lúc cả đoàn định nhổ neo. Băng cướp Hắc Triều đã nhận được tín hiệu."
+  ],
+  "tags": [],
+  "ending": "pirates_win"
+ },
+ {
+  "id": "epilogue_sold_out",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Vịnh giao dịch lặng như tờ khi cả đoàn tới nơi. Người mà họ tin nhất đã bán họ cho băng Hắc Triều từ đảo bên kia."
+  ],
+  "tags": [],
+  "ending": "sold_out"
+ },
+ {
+  "id": "coda_legend",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Ở các cảng ven biển, người ta bắt đầu kể về đoàn {crew} như kể một truyền thuyết."
+  ],
+  "tags": [],
+  "ending": "*"
+ },
+ {
+  "id": "coda_return",
+  "category": "epilogue",
+  "name": null,
+  "lines": [
+   "Một năm sau, có người lại mua một tấm bản đồ cũ ở chợ trời, và câu chuyện bắt đầu lại từ đầu."
+  ],
+  "tags": [],
+  "ending": "*"
+ },
+ {
+  "id": "debt",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} vẫn còn nợ {b} một khoản tiền chưa trả."
+  ],
+  "tags": []
+ },
+ {
+  "id": "cousins",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} và {b} là anh em họ xa, dù ít khi nhắc tới."
+  ],
+  "tags": []
+ },
+ {
+  "id": "old_flame",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} và {b} từng yêu nhau; chuyện đã cũ nhưng chưa ai quên."
+  ],
+  "tags": []
+ },
+ {
+  "id": "rivals",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} và {b} từng tranh nhau một tấm bản đồ ở chợ trời."
+  ],
+  "tags": []
+ },
+ {
+  "id": "saved_life",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{b} từng cứu {a} khỏi chết đuối, và {a} chưa trả được ơn."
+  ],
+  "tags": []
+ },
+ {
+  "id": "same_ship",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} và {b} từng làm chung trên một con tàu buôn."
+  ],
+  "tags": []
+ },
+ {
+  "id": "secret_pact",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} và {b} có một giao ước riêng từ trước chuyến đi."
+  ],
+  "tags": []
+ },
+ {
+  "id": "grudge",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} vẫn nghi {b} từng nói dối mình trong một chuyện cũ."
+  ],
+  "tags": []
+ },
+ {
+  "id": "classmates",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} và {b} học chung một lớp thuở nhỏ."
+  ],
+  "tags": []
+ },
+ {
+  "id": "same_dream",
+  "category": "bond",
+  "name": null,
+  "lines": [
+   "{a} và {b} kể rằng họ từng mơ cùng một giấc mơ về hòn đảo này."
+  ],
+  "tags": []
+ }
+]

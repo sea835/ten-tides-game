@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CapsuleCollider, RigidBody, useRapier, type RapierCollider, type RapierRigidBody } from "@react-three/rapier";
 import { Vector3, type Group } from "three";
-import { ANCHORS, ANCHOR_TRIGGER_RADIUS, CAMP, CAMP_RADIUS, heightAt, zoneAt } from "@tentides/content";
+import { ANCHORS, ANCHOR_TRIGGER_RADIUS, CAMP, CAMP_RADIUS, DIG_RADIUS, TREASURE_SITES, heightAt, zoneAt } from "@tentides/content";
 import { MAX_RUN_SPEED, Messages, type CorrectMessage, type MoveMessage } from "@tentides/protocol";
-import type { IslandRoom } from "../net.ts";
+import { myId, type IslandRoom } from "../net.ts";
 import { Character } from "./Character.tsx";
 import { getHud, setHud } from "./hudStore.ts";
 import { isTyping, keys, look } from "./input.ts";
 import { localPosition } from "./shared.ts";
-import { isBusy } from "./useRoomSnapshot.ts";
+import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 const WALK_SPEED = 4.5;
 const GRAVITY = 25;
@@ -17,6 +17,12 @@ const JUMP_SPEED = 8;
 /** Nước sâu hơn mức này thì chưa lội qua được (bơi sẽ làm sau, gắn với sức bền). */
 const MAX_WADE_DEPTH = 1.2;
 const CAMERA_DISTANCE = 7;
+/** Sức bền tốn mỗi giây khi chạy: 22 − 2,5 × Thể lực (Thể lực 1 chạy được khoảng 5 giây, Thể lực 5 khoảng 10 giây). */
+const SPRINT_DRAIN_BASE = 22;
+const SPRINT_DRAIN_PER_STRENGTH = 2.5;
+const SPRINT_REGEN = 12;
+const SPRINT_RECOVER_AT = 25;
+const OVERWEIGHT_SPEED = 0.8;
 const CAMERA_MIN_DISTANCE = 1.2;
 const SEND_INTERVAL = 1 / 15;
 const CAPSULE_HALF_HEIGHT = 0.5;
@@ -26,7 +32,7 @@ const FEET_OFFSET = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS;
 type CharacterController = ReturnType<ReturnType<typeof useRapier>["world"]["createCharacterController"]>;
 
 export function LocalPlayer({ room }: { room: IslandRoom }) {
-  const me = room.state.players.get(room.sessionId)!;
+  const me = room.state.players.get(myId(room))!;
   const spawn = useMemo(() => new Vector3(me.x, me.y, me.z), [me]);
 
   const body = useRef<RapierRigidBody>(null);
@@ -50,7 +56,7 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
     };
   }, [world]);
 
-  const sim = useRef({ vy: 0, grounded: false, facing: me.rotY, sendTimer: 0, lastSent: "", started: false });
+  const sim = useRef({ vy: 0, grounded: false, facing: me.rotY, sendTimer: 0, lastSent: "", started: false, energy: 100, exhausted: false });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
   const camDir = useMemo(() => new Vector3(), []);
@@ -68,8 +74,10 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
   // Nhấn E khi đứng cạnh một điểm sự kiện để mở thẻ. Server kiểm tra lại khoảng cách.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const anchorId = getHud().nearAnchor;
-      if (e.code === "KeyE" && !e.repeat && !isTyping(e) && anchorId) room.send(Messages.trigger, { anchorId });
+      if (e.code !== "KeyE" || e.repeat || isTyping(e)) return;
+      const { nearAnchor, atDigSite } = getHud();
+      if (atDigSite) room.send(Messages.dig);
+      else if (nearAnchor) room.send(Messages.trigger, { anchorId: nearAnchor });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -88,14 +96,29 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
       s.started = true;
       look.yaw = me.rotY + Math.PI;
     }
-    // Đang trong sự kiện thì đứng yên tại chỗ, người khác vẫn đi tiếp.
-    const frozen = isBusy(room.state, room.sessionId);
+    // Tạm dừng thì đứng yên; đang trong sự kiện thì đứng yên tại chỗ, người khác vẫn đi tiếp.
+    const sheet = room.state.players.get(myId(room));
+    const frozen = room.state.paused || isBusy(room.state, myId(room));
 
     const forward = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const strafe = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
-    const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
     const inputScale = frozen ? 0 : 1;
-    const speed = running ? MAX_RUN_SPEED : WALK_SPEED;
+
+    // Chạy nhanh tốn sức bền; Thể lực càng cao càng tốn ít. Cạn sức thì phải hồi lại một đoạn mới chạy tiếp.
+    // Thanh hồi tối đa tới mức sức bền trong ngày (các sự kiện làm mệt sẽ kéo mức này xuống).
+    const wantsRun = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && (forward !== 0 || strafe !== 0) && !frozen;
+    const running = wantsRun && !s.exhausted && s.energy > 0;
+    const strength = sheet?.stats.get("strength") ?? 3;
+    if (running) {
+      s.energy = Math.max(0, s.energy - (SPRINT_DRAIN_BASE - SPRINT_DRAIN_PER_STRENGTH * strength) * dt);
+      if (s.energy === 0) s.exhausted = true;
+    } else {
+      s.energy += SPRINT_REGEN * dt;
+      if (s.exhausted && s.energy >= SPRINT_RECOVER_AT) s.exhausted = false;
+    }
+    s.energy = Math.min(s.energy, sheet?.stamina ?? 100);
+    // Quá tải thì đi chậm hơn.
+    const speed = (running ? MAX_RUN_SPEED : WALK_SPEED) * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
     let mx = -Math.sin(look.yaw) * forward + Math.cos(look.yaw) * strafe;
@@ -114,7 +137,7 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
     const depth = -heightAt(pos.x + mx, pos.z + mz);
     const blockedByWater = depth > MAX_WADE_DEPTH && depth > -heightAt(pos.x, pos.z);
     // Bị trói thì chỉ quanh quẩn trong trại (server cũng chặn).
-    const tied = room.state.players.get(room.sessionId)?.tied ?? false;
+    const tied = room.state.players.get(myId(room))?.tied ?? false;
     const campDist = (x: number, z: number) => Math.hypot(x - CAMP.x, z - CAMP.z);
     const leavingCamp = tied && campDist(pos.x + mx, pos.z + mz) > CAMP_RADIUS - 0.5 && campDist(pos.x + mx, pos.z + mz) > campDist(pos.x, pos.z);
     if (blockedByWater || leavingCamp) {
@@ -173,6 +196,8 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
       zone: zoneAt(next.x, next.z),
       deepWater: blockedByWater,
       nearAnchor: frozen ? null : nearestOpenAnchor(room, next.x, next.z),
+      sprint: Math.round(s.energy),
+      atDigSite: !frozen && atDigSite(room, next.x, next.z),
     });
 
     s.sendTimer += dt;
@@ -191,7 +216,7 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
     <RigidBody ref={body} type="kinematicPosition" colliders={false} position={[spawn.x, spawn.y + FEET_OFFSET, spawn.z]}>
       <CapsuleCollider ref={collider} args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
       <group position-y={-FEET_OFFSET}>
-        <Character ref={avatar} color={me.color} />
+        <Carrier room={room}>{(carrying) => <Character ref={avatar} color={me.color} carrying={carrying} />}</Carrier>
       </group>
     </RigidBody>
   );
@@ -212,4 +237,17 @@ function nearestOpenAnchor(room: IslandRoom, x: number, z: number): string | nul
     }
   }
   return best;
+}
+
+function atDigSite(room: IslandRoom, x: number, z: number): boolean {
+  const state = room.state;
+  if (state.phase !== "explore" || !state.treasureSite || state.treasureDug) return false;
+  const site = TREASURE_SITES.find((t) => t.id === state.treasureSite);
+  return !!site && Math.hypot(site.x - x, site.z - z) <= DIG_RADIUS;
+}
+
+/** Vẽ lại nhân vật khi mình bắt đầu hay thôi vác rương. */
+function Carrier({ room, children }: { room: IslandRoom; children: (carrying: boolean) => ReactNode }) {
+  const carrying = useRoomSnapshot(room, (s) => s.treasureCarrier === myId(room) && !s.treasureSafe);
+  return <>{children(carrying)}</>;
 }

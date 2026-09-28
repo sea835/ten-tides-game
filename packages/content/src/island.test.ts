@@ -43,3 +43,15 @@ describe("anchors", () => {
     expect(new Set(ANCHORS.map((a) => a.id)).size).toBe(ANCHORS.length);
   });
 });
+
+describe("treasure sites", () => {
+  it("mọi chỗ giấu kho báu đều trên cạn, trong đảo, và không trùng id", async () => {
+    const { TREASURE_SITES, zoneAt, heightAt } = await import("./island.ts");
+    expect(TREASURE_SITES.length).toBeGreaterThanOrEqual(6);
+    for (const s of TREASURE_SITES) {
+      expect(heightAt(s.x, s.z), s.id).toBeGreaterThan(0.3);
+      expect(zoneAt(s.x, s.z), s.id).toBeTruthy();
+    }
+    expect(new Set(TREASURE_SITES.map((s) => s.id)).size).toBe(TREASURE_SITES.length);
+  });
+});

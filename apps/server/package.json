@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "sim": "tsx src/tools/simulate.ts",
+    "replay": "tsx src/tools/replay.ts"
   },
   "dependencies": {
     "@colyseus/core": "^0.18.17",
@@ -14,7 +16,8 @@
     "@colyseus/ws-transport": "^0.18.4",
     "@tentides/content": "workspace:*",
     "@tentides/protocol": "workspace:*",
-    "@tentides/rules": "workspace:*"
+    "@tentides/rules": "workspace:*",
+    "@tentides/story": "workspace:*"
   },
   "devDependencies": {
     "@colyseus/sdk": "^0.18.4",

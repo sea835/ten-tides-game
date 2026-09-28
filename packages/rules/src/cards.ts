@@ -67,4 +67,9 @@ export interface AnchorDef {
 export interface ItemDef {
   id: string;
   name: string;
+  /** Kích thước khối trên lưới balo (chưa xoay). */
+  size: { w: number; h: number };
+  weightKg: number;
+  price: number;
+  tags: string[];
 }

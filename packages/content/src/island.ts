@@ -157,3 +157,29 @@ export const ANCHORS: readonly Anchor[] = [
   anchor("slope_west", "volcano_slope", { x: VOLCANO.x - 25, z: VOLCANO.z }),
   anchor("crater_rim", "crater_rim", { x: VOLCANO.x, z: VOLCANO.z + 9 }),
 ];
+
+/** Bán kính đứng đào quanh chỗ giấu kho báu. */
+export const DIG_RADIUS = 3;
+
+export interface TreasureSite {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+function site(id: string, label: string, at: { x: number; z: number }): TreasureSite {
+  return { id, label, x: at.x, y: heightAt(at.x, at.z), z: at.z };
+}
+
+/** Các chỗ kho báu có thể nằm. Mỗi ván chọn một theo seed; tiến độ đủ 100 mới lộ ra là chỗ nào. */
+export const TREASURE_SITES: readonly TreasureSite[] = [
+  site("under_old_palm", "Gốc dừa già phía đông", beachPoint(5, 30)),
+  site("north_shore_rocks", "Bãi đá phía bắc", beachPoint(-80, 14)),
+  site("lake_island_edge", "Bờ tây hồ", { x: LAKE.x - 10, z: LAKE.z + 17 }),
+  site("behind_cave", "Sau lưng hang", { x: CAVE.x + 14, z: CAVE.z + 2 }),
+  site("volcano_foot", "Chân núi lửa phía đông", { x: VOLCANO.x + 34, z: VOLCANO.z + 10 }),
+  site("west_cove", "Vịnh nhỏ phía tây", beachPoint(185, 12)),
+  site("south_dunes", "Đụn cát phía nam", beachPoint(110, 10)),
+];

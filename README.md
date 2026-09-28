@@ -2,14 +2,16 @@
 
 Game co-op 3D sống sót 10 ngày trên đảo, chạy trên trình duyệt. Mô tả thiết kế đầy đủ ở [PROJECT.md](PROJECT.md).
 
-Hiện tại: **graybox giai đoạn 1**.
+Hiện tại: **graybox giai đoạn 1** với phần lớn tính năng của MVP.
 
-- Đảo có 4 vùng dựng bằng khối. Nhiều người vào chung phòng bằng mã 4 ký tự, di chuyển góc nhìn thứ ba và thấy nhau theo thời gian thực.
-- Vòng 10 ngày chạy đủ: bình minh, khám phá có đồng hồ mặt trời, hoàng hôn, đêm.
-- Đêm quanh đống lửa: chat, bỏ phiếu chia khẩu phần, bỏ phiếu trói người bị nghi. Người ngủ ngoài không nghe được cả trại bàn gì và không được ăn.
-- Mỗi sáng, 12 thẻ sự kiện được xếp vào các điểm trên map. Tới cột sáng nhấn E để mở thẻ; xúc xắc hiện công khai kèm các khoản cộng.
+- **Chuẩn bị:** tạo nhân vật (chia điểm, 8 xuất thân, 6 tật xấu, dòng tự mô tả, màu áo), rồi mua đồ và xếp balo 16x16 (xoay, ngăn bí mật, đồ đặt cạnh nhau tạo hiệu ứng, giới hạn ô, trọng lượng và ngân sách).
+- **Ban ngày:** khám phá đảo 4 vùng theo thời gian thực. Mỗi sáng 12 thẻ sự kiện được xếp vào các điểm trên map; xúc xắc công khai kèm các khoản cộng, tỷ lệ % trước khi chọn, và "vì sao thua" sau khi trượt. Có bản đồ nhỏ và cảnh báo không kịp về trại.
+- **Ban đêm:** chat quanh đống lửa, bầu khẩu phần khi thiếu, đề cử và bỏ phiếu kín để trói, và mỗi người một hành động đêm bí mật.
+- **Vai ẩn:** từ 4 người có thể có một kẻ phản bội (cướp biển nằm vùng hoặc kẻ lừa đảo), có thể có y tá. Sự cố tự nhiên mỗi đêm trông giống hệt phá hoại.
+- **Kết thúc:** đào kho báu ở chỗ bí mật (cần xẻng), giữ thuyền đủ tốt, rời đảo tối ngày 10; 8 kết thúc, màn lật bài và biên niên sử.
+- **Kể chuyện:** không dùng mô hình AI. Bộ sinh truyện chọn cốt truyện theo seed từ thư viện 110 yếu tố viết sẵn, rồi kể bình minh, hoàng hôn, lời kể riêng từng người và biên niên sử từ sự thật trong ván.
 
-Chưa có: tạo nhân vật (thuộc tính được chia ngẫu nhiên), balo 16x16 (mỗi người được phát tạm 3 món), AI kể chuyện (đang dùng lời văn mẫu gắn theo thẻ), sự kiện đêm riêng cho người ngủ ngoài, thuyền, đào kho báu, vai ẩn.
+Chưa có: thẻ sự kiện ở mức MVP (mới 12 trên 60), sự kiện đêm riêng cho người ngủ ngoài, trao đổi đồ, lục soát, đảo low-poly thật, easter egg, lưu ván xuống database.
 
 ## Chạy thử
 
@@ -24,11 +26,11 @@ pnpm dev
 - Client: http://localhost:5180
 - Server Colyseus: ws://localhost:2567
 
-Mở hai tab, tab đầu bấm **Tạo phòng mới**, tab sau nhập mã phòng (hoặc dán link mời). Bạn bè cùng mạng LAN mở `http://<IP-máy-bạn>:5180`.
+Mở hai tab (mỗi tab là một người chơi riêng), tab đầu bấm **Tạo phòng mới**, tab sau nhập mã phòng (hoặc dán link mời). Bạn bè cùng mạng LAN mở `http://<IP-máy-bạn>:5180`.
 
 Chủ phòng bấm **Bắt đầu ván** khi đủ người. Ván đã bắt đầu thì không ai vào thêm được.
 
-Điều khiển: bấm vào màn hình để khoá chuột, di chuột để xoay camera, WASD di chuyển, Shift chạy, Space nhảy, E mở điểm sự kiện, phím 1–4 chọn trong thẻ, Enter để chat (ở sảnh chờ và ban đêm), Esc thả chuột.
+Điều khiển: bấm vào màn hình để khoá chuột, di chuột để xoay camera, WASD di chuyển, Shift chạy (tốn sức bền), Space nhảy, E mở điểm sự kiện hoặc đào kho báu, phím 1–4 chọn trong thẻ, B xem balo, J mở sổ truyện, Enter để chat, Esc thả chuột. Lúc xếp balo: kéo thả, R hoặc chuột phải để xoay, nhấp đúp để nhấc ra khay.
 
 Test nhanh cả ván: `PHASE_SCALE=0.1 pnpm dev` thu mỗi ngày từ 5 phút xuống còn khoảng 30 giây. Ở chế độ dev, `window.__tentides` trong console trình duyệt cho xem room, vị trí và camera.
 
@@ -40,11 +42,14 @@ Test nhanh cả ván: `PHASE_SCALE=0.1 pnpm dev` thu mỗi ngày từ 5 phút xu
 | `pnpm test` | Chạy test (Vitest) cho engine luật, nội dung và server |
 | `pnpm typecheck` | Kiểm tra kiểu cho mọi package |
 | `pnpm --filter @tentides/client build` | Build client tĩnh ra `apps/client/dist` |
+| `pnpm --filter @tentides/server sim --games 3000 --players 4-6` | Bot chơi N ván, in phân phối kết thúc và các chỉ số cân bằng |
+| `pnpm --filter @tentides/server replay logs/<file>.json --verbose` | Phát lại một ván từ file log |
 
 Biến môi trường:
 
 - `PORT`: cổng của server, mặc định 2567.
 - `PHASE_SCALE`: co giãn thời lượng các pha, mặc định 1.
+- `GAME_LOG_DIR`: thư mục ghi log ván (seed + chuỗi hành động + chat), mặc định `logs/`.
 - `VITE_SERVER_URL`: địa chỉ server cho client, dùng khi server không nằm cùng máy (vd. `wss://tentides.fly.dev`).
 
 ## Cấu trúc
@@ -57,6 +62,7 @@ packages/
   rules/      Engine luật thuần: vòng ngày, thẻ sự kiện, xúc xắc, PRNG có seed
   content/    Dữ liệu game kiểm tra bằng zod: đồ vật, thẻ sự kiện, bản đồ đảo
   protocol/   Hợp đồng mạng dùng chung: state đồng bộ, message, hằng số
+  story/      Bộ sinh cốt truyện theo seed: không gọi AI, ghép lời kể từ thư viện yếu tố
 ```
 
 Các package trỏ thẳng vào mã nguồn TypeScript (`exports: ./src/index.ts`), không cần bước build riêng.
@@ -66,7 +72,8 @@ Một số quy ước:
 - Luật chơi nằm trong `reduce(state, action, config)` ở `packages/rules/src/game.ts`: hàm thuần, có tính xác định. Server chỉ đưa hành động vào, rồi chép kết quả sang state của Colyseus (`apps/server/src/sync.ts`). Dữ liệu thời gian thực (ai đang đứng ở đâu) nằm ngay trong hành động, nên seed + chuỗi hành động là đủ để phát lại cả ván.
 - `rules` không phụ thuộc 3D, mạng hay AI. `simulate.test.ts` cho bot chơi 500 ván để bắt lỗi luật.
 - Mọi thứ ngẫu nhiên có ảnh hưởng tới ván chơi đều đi qua PRNG trong `rules`, không dùng `Math.random()`. Chỉ mã phòng và hiệu ứng xúc xắc đang lăn trên client là dùng random thường.
-- Thêm đồ hoặc thẻ sự kiện mới chỉ cần sửa `items.json` hoặc `cards.json` trong `packages/content/src/data/`. Điểm sự kiện trên map nằm trong `ANCHORS` ở `island.ts`. `loadContent()` sẽ báo lỗi nếu sai schema hoặc tham chiếu tới id không tồn tại.
+- Thêm đồ, thẻ sự kiện, yếu tố truyện hay mẫu câu chỉ cần sửa `items.json`, `cards.json`, `story.json` hoặc `story_templates.json` trong `packages/content/src/data/`. Điểm sự kiện trên map nằm trong `ANCHORS` ở `island.ts`. `loadContent()` sẽ báo lỗi nếu sai schema hoặc tham chiếu tới id không tồn tại.
 - Client tự tính di chuyển (Rapier) rồi báo vị trí lên server. Server không chạy vật lý, nhưng kéo người chơi về chỗ cũ nếu vị trí vượt tốc độ chạy, ra ngoài map hoặc chui xuống đất (`apps/server/src/movement.ts`).
+- Thông tin riêng (vai, hành động đêm, ghi chú, balo đầy đủ, lời kể riêng) không nằm trong state chung: server tính `privateView` cho từng người và chỉ gửi cho đúng người đó. Trong state chung, `items` chỉ gồm đồ ngoài ngăn bí mật.
 - Chat không nằm trong state: server chỉ gửi tin cho đúng người được nghe (`chatAudience` trong `IslandRoom.ts`) và giữ biên bản từng đêm để sau này AI dùng làm dữ liệu kể chuyện.
-- State trong `protocol` chỉ chứa thứ công khai. Bí mật như vai ẩn hay ngăn bí mật sẽ gắn `.view()` và chỉ gửi cho đúng người qua `StateView`. Phiếu bầu ban đêm hiện vẫn nằm trong state công khai (giao diện chỉ hiện cho người trong trại); sẽ chuyển sang `StateView` cùng lúc với vai ẩn.
+- State trong `protocol` chỉ chứa thứ công khai. Phiếu trói là phiếu kín: engine giữ phiếu thật, state chỉ công khai ai đã bầu cho tới khi lật. Vai của mọi người và hành động từng đêm chỉ được chép vào state khi ván kết thúc (màn lật bài).

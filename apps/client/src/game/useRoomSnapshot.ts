@@ -29,9 +29,9 @@ export function useRoomSnapshot<T>(room: IslandRoom, select: (state: IslandState
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-export function isBusy(state: IslandState, sessionId: string): boolean {
+export function isBusy(state: IslandState, playerId: string): boolean {
   for (const anchor of state.anchors.values()) {
-    if (anchor.status === "active" && [...anchor.participants].includes(sessionId)) return true;
+    if (anchor.status === "active" && [...anchor.participants].includes(playerId)) return true;
   }
   return false;
 }

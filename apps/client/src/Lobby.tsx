@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { ROOM_CODE_LENGTH } from "@tentides/protocol";
-import { createRoom, describeJoinError, joinRoom, type IslandRoom } from "./net.ts";
+import { createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
 
 const NAME_KEY = "tentides.name";
 
@@ -20,9 +20,11 @@ function saveName(name: string) {
   }
 }
 
-export function Lobby({ onJoined }: { onJoined: (room: IslandRoom) => void }) {
+export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => void; notice: string | null }) {
   const [name, setName] = useState(loadName);
   const [code, setCode] = useState(() => new URLSearchParams(location.search).get("room") ?? "");
+  // Tải lại trang giữa ván: mời vào lại đúng phòng cũ, server nhận ra nhân vật nhờ token của tab này.
+  const [previous] = useState(lastRoom);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +59,15 @@ export function Lobby({ onJoined }: { onJoined: (room: IslandRoom) => void }) {
         <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="vd. Hải" autoFocus />
       </label>
 
-      <button className="primary" disabled={busy} onClick={() => void run(() => createRoom(name))}>
+      {notice && <p className="notice">{notice}</p>}
+
+      {previous && (
+        <button className="primary" disabled={busy} onClick={() => void run(() => joinRoom(previous, name))}>
+          Vào lại phòng {previous}
+        </button>
+      )}
+
+      <button className={previous ? "" : "primary"} disabled={busy} onClick={() => void run(() => createRoom(name))}>
         Tạo phòng mới
       </button>
 

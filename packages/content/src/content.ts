@@ -1,9 +1,11 @@
 import { z } from "zod";
 import type { GameConfig } from "@tentides/rules";
-import { EventCardSchema, ItemSchema, type EventCard, type Item } from "./schema.ts";
-import { ANCHORS } from "./island.ts";
+import { EventCardSchema, ItemSchema, STORY_CATEGORIES, StoryElementSchema, StoryTemplatesSchema, type EventCard, type Item, type StoryElement, type StoryTemplates } from "./schema.ts";
+import { ANCHORS, TREASURE_SITES } from "./island.ts";
 import itemsJson from "./data/items.json" with { type: "json" };
 import cardsJson from "./data/cards.json" with { type: "json" };
+import storyJson from "./data/story.json" with { type: "json" };
+import storyTemplatesJson from "./data/story_templates.json" with { type: "json" };
 
 export interface Content {
   items: ReadonlyMap<string, Item>;
@@ -49,5 +51,22 @@ export const content: Content = loadContent({ items: itemsJson, cards: cardsJson
 export const gameConfig: GameConfig = {
   cards: [...content.cards.values()],
   anchors: ANCHORS,
-  items: [...content.items.values()].map(({ id, name }) => ({ id, name })),
+  items: [...content.items.values()].map(({ id, name, size, weightKg, price, tags }) => ({ id, name, size, weightKg, price, tags })),
+  treasureSites: TREASURE_SITES,
 };
+
+export interface StoryLibrary {
+  elements: readonly StoryElement[];
+  templates: StoryTemplates;
+}
+
+/** Thư viện yếu tố truyện và mẫu câu, đã kiểm tra: id không trùng, nhóm nào cũng có đủ yếu tố. */
+export function loadStoryLibrary(raw: { elements: unknown; templates: unknown }): StoryLibrary {
+  const elements = [...indexById("Yếu tố truyện", z.array(StoryElementSchema).parse(raw.elements)).values()];
+  for (const category of STORY_CATEGORIES) {
+    if (!elements.some((e) => e.category === category)) throw new Error(`Thư viện truyện thiếu nhóm "${category}"`);
+  }
+  return { elements, templates: StoryTemplatesSchema.parse(raw.templates) };
+}
+
+export const storyLibrary: StoryLibrary = loadStoryLibrary({ elements: storyJson, templates: storyTemplatesJson });

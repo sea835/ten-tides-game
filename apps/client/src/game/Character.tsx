@@ -2,7 +2,18 @@ import type { Ref } from "react";
 import type { Group } from "three";
 
 /** Nhân vật graybox: thân viên nhộng, balo sau lưng, mũi nhỏ phía trước để thấy hướng nhìn. */
-export function Character({ color, opacity = 1, ref }: { color: string; opacity?: number; ref?: Ref<Group> }) {
+export function Character({
+  color,
+  opacity = 1,
+  carrying = false,
+  ref,
+}: {
+  color: string;
+  opacity?: number;
+  /** Đang vác rương kho báu: ai nhìn cũng thấy. */
+  carrying?: boolean;
+  ref?: Ref<Group>;
+}) {
   const transparent = opacity < 1;
   return (
     <group ref={ref}>
@@ -14,6 +25,12 @@ export function Character({ color, opacity = 1, ref }: { color: string; opacity?
         <boxGeometry args={[0.55, 0.65, 0.3]} />
         <meshStandardMaterial color="#6b4f2a" flatShading transparent={transparent} opacity={opacity} />
       </mesh>
+      {carrying && (
+        <mesh castShadow position={[0, 1.75, -0.45]}>
+          <boxGeometry args={[0.7, 0.45, 0.45]} />
+          <meshStandardMaterial color="#d4a017" emissive="#8a6100" emissiveIntensity={0.4} flatShading />
+        </mesh>
+      )}
       <mesh position={[0, 1.45, 0.38]}>
         <boxGeometry args={[0.18, 0.12, 0.12]} />
         <meshStandardMaterial color="#222" transparent={transparent} opacity={opacity} />

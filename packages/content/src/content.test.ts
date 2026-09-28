@@ -8,7 +8,7 @@ const caveCollapse = () => structuredClone(cardsJson.find((c) => c.id === "cave_
 
 describe("content", () => {
   it("nạp được đủ đồ và thẻ, có thẻ mẫu trong PROJECT.md", () => {
-    expect(content.items.size).toBe(11);
+    expect(content.items.size).toBe(20);
     expect(content.items.get("shovel")?.size).toEqual({ w: 1, h: 6 });
     expect(content.cards.size).toBeGreaterThanOrEqual(12);
     expect(content.cards.get("cave_collapse_01")?.requires?.weather).toEqual(["storm", "quake"]);

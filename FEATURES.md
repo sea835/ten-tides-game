@@ -1,7 +1,7 @@
 # Feature Research
 
 **Domain:** Game co-op 3D sinh tồn + suy luận xã hội (có thể có kẻ phản bội), chơi trên trình duyệt qua link, đồ hoạ low-poly nhẹ. Ban ngày khám phá đảo theo thời gian thực, có AI Game Master (LLM) kể chuyện. Người chơi: nhóm bạn Việt Nam 2–6 người; vai ẩn chỉ có từ 4 người.
-**Researched:** 2026-09-25 · **Cập nhật:** 2026-09-28. Bản đầu nhắm prototype chữ trên C#/SignalR; bản này chỉnh theo hướng đã chốt trong PROJECT.md (3D trên web, TypeScript + Colyseus) và đối chiếu với code graybox hiện có.
+**Researched:** 2026-09-25 · **Cập nhật:** 2026-09-28 (hai lần). Lần hai: dự án bỏ hẳn mô hình AI, thay bằng bộ sinh cốt truyện theo seed từ thư viện hơn 100 yếu tố (xem mục Bộ sinh cốt truyện trong PROJECT.md), nên các mã A1–A7 được hiểu lại theo hướng đó. Bản đầu nhắm prototype chữ trên C#/SignalR; bản này chỉnh theo hướng đã chốt trong PROJECT.md (3D trên web, TypeScript + Colyseus) và đối chiếu với code graybox hiện có.
 **Confidence:** MEDIUM. Số liệu về luật, số thẻ của board game và cơ chế game số lấy từ nguồn chính thức hoặc nhiều nguồn khớp nhau (HIGH/MEDIUM). Ước lượng khối lượng nội dung và mục tiêu tỷ lệ kết thúc là suy luận từ các game tương tự (MEDIUM/LOW), phải kiểm chứng bằng bot sim và playtest.
 
 ## Cách đọc tài liệu này
@@ -11,54 +11,67 @@
 - **Trạng thái** của từng mã so với code hiện tại nằm ở bảng ngay dưới. Các bảng tính năng phía sau là khuyến nghị, không phải mô tả code.
 - **Mã ID** (L1, H3, B5…) để REQUIREMENTS.md và roadmap tham chiếu: L = Lobby & session, H = Hidden roles, S = Survival loop, B = Backpack, R = Randomness, A = AI narration, C = Content, T = Balance tooling & telemetry, D = Differentiator.
 
-## Trạng thái hiện tại (graybox, 2026-09-28)
+## Trạng thái hiện tại (2026-09-28)
 
-**Xong** là chạy được và có test hoặc đã thử trên trình duyệt; **Một phần** là có bản tối thiểu, còn thiếu như ghi chú; mã không có trong bảng là **chưa làm**.
+**Xong** là chạy được, có test hoặc đã thử trên trình duyệt; **Một phần** là có bản tối thiểu, còn thiếu như ghi chú; mã không có trong bảng là **chưa làm**.
 
 | ID | Trạng thái | Đang có / còn thiếu |
 |----|-----------|---------------------|
-| L1 | Xong | Mã 4 ký tự, link `?room=ABCD`, không cần tài khoản. Bảng chữ bỏ O/0 và I/1 nhưng còn chữ L |
-| L2 | Một phần | Nhập tên, không đăng ký; định danh là `sessionId` của Colyseus chứ không phải tên. Chưa lưu token ở trình duyệt, nên tải lại trang là mất chỗ |
-| L3 | Một phần | Rớt mạng được giữ chỗ 30 giây (`allowReconnection`), SDK tự nối lại. Chưa có trạng thái riêng để gửi lại |
-| L4 | Một phần | Người rời sau khi bắt đầu thì nhân vật ở lại và được tính là đã về trại lúc hoàng hôn. Bot chưa tự hành động |
-| L5 | Một phần | Chủ phòng bắt đầu ván; chủ phòng rời thì chuyển cho người khác. Chưa có độ khó, kick, tạm dừng |
-| L7 | Một phần | Server giữ seed + chuỗi hành động trong bộ nhớ (`IslandRoom.actions`); phát lại ra đúng ván đã có test. Chưa lưu xuống PostgreSQL nên restart vẫn mất ván |
-| L8 | Xong | Danh sách người chơi hiện "mất kết nối" và "đã gục" |
-| H4 | Một phần | Phiếu trói công khai và cập nhật trực tiếp, cần quá nửa số người ở trại, có "Không trói ai". Chưa có đề cử, chưa khoá-rồi-lật |
-| H5 | Một phần | Đêm 60 giây; mọi người có mặt đã bầu xong thì rút còn 5 giây. Chủ phòng chưa chỉnh được |
-| H6 | Một phần | Bị trói chỉ kéo dài một ngày: đi lại được trong trại nhưng không mở được sự kiện, tới hoàng hôn thì được thả nên đêm đó vẫn chat và bỏ phiếu. Người chết đi lại như hồn ma nhưng không chat được |
-| S1 | Một phần | Máu / No / Tinh thần, cộng thêm Sức bền do thẻ dùng. Thẻ kết quả hiện các thay đổi, nhưng chưa có nhật ký thay đổi của từng người |
-| S2 | Xong | Bảng trạng thái hiện thời tiết, núi lửa, lương thực, kho báu, thuyền |
-| S4 | Xong | Có sẵn nhờ 3D thời gian thực: mọi người đi cùng lúc, sự kiện của các nhóm chạy song song |
-| S5 | Xong | Người đứng trong bán kính 7 m được tham gia và bị giữ đứng yên; kết quả xúc xắc vào nhật ký công khai của cả phòng |
-| S6 | Một phần | Một dòng tổng kết hoàng hôn trong nhật ký; chưa có lời kể |
-| S7 | Xong | Banner hoàng hôn báo trước; ngủ ngoài −10 Máu, −15 Tinh thần, không được ăn, không được ngồi quanh đống lửa |
-| S8 | Một phần | Không ai bầu thì chia đều, nhưng bảng bầu khẩu phần hiện mọi đêm |
-| R1 | Một phần | Trước khi chọn đã thấy thuộc tính, DC, đồ nào cộng điểm và mình có đồ đó không. Chưa hiện tỷ lệ % |
-| R2 | Xong | Xúc xắc lăn khoảng 1 giây rồi hiện phân rã: d20 + thuộc tính + đồ + trạng thái, so với DC |
-| R3 | Một phần | Nhật ký chỉ hiện 6 dòng gần nhất |
-| R4 | Xong | Mọi random của luật đi qua PRNG có seed trong `packages/rules` |
-| A2 | Một phần | Mỗi thẻ đã có lời văn mẫu, là phần dự phòng khi AI lỗi. Chưa gọi AI |
-| C1 | Một phần | Engine ưu tiên thẻ chưa gặp, nhưng kho mới có 12 thẻ nên sẽ lặp |
-| C3 | Xong | `loadContent()` kiểm tra schema zod và mọi tham chiếu (đồ, loại điểm) |
-| T1 | Một phần | Bot chơi 500 ván trong `simulate.test.ts` để bắt lỗi luật. Chưa xuất báo cáo phân phối |
-| T2 | Một phần | Phát lại theo seed có tính xác định (đã test); chưa có công cụ phát lại ván từ log đã lưu |
+| L1 | Xong | Mã 4 ký tự bỏ O/0, I/1/L; link `?room=ABCD`; không cần tài khoản |
+| L2 | Xong | Tên + token ngẫu nhiên lưu theo tab; id người chơi suy ra một chiều từ token, không phải từ tên |
+| L3 | Một phần | Rớt mạng giữ chỗ 60 giây; tải lại trang thì nút "Vào lại phòng" đưa về đúng nhân vật; thông tin riêng (vai, balo, lời kể riêng) được gửi lại. Đóng hẳn tab thì mất token |
+| L4 | Một phần | Người rời giữa ván được giữ nhân vật, tính là ở trại. Bot chưa tự hành động (chính sách bot đã có trong `packages/rules/src/bot.ts`) |
+| L5 | Xong | Chủ phòng chọn độ khó và độ dài đêm, mời người ra (người bị mời không vào lại được), tạm dừng |
+| L6 | Xong | Nút sẵn sàng ở pha tạo nhân vật, xếp balo, bình minh và đêm; chỉ công khai con số, không công khai là ai |
+| L7 | Một phần | Log ván (seed + chuỗi hành động + chat) ghi ra file mỗi lần đổi pha; `pnpm --filter @tentides/server replay` phát lại. Server khởi động lại chưa tự khôi phục phòng |
+| L8 | Xong | Danh sách người chơi hiện mất kết nối, đã gục, bị trói |
+| H1 | Xong | Thẻ vai che mặc định, giữ để xem, xem lại được bất cứ lúc nào |
+| H2 | Xong | Vai, hành động đêm, ghi chú, balo đầy đủ và lời kể riêng chỉ gửi cho đúng người (`privateView`); khung "Chỉ mình bạn thấy" màu khác |
+| H3 | Một phần | Ai cũng có hành động đêm bí mật (sửa thuyền, ngủ bù, canh gác, cộng năng lực của vai). Đêm vẫn rút ngắn khi mọi người bấm "Đi ngủ", nhưng chỉ công khai con số |
+| H4 | Xong | Đề cử, bỏ phiếu kín, lật cùng lúc khi mọi người có mặt đã bầu; quá nửa đồng ý mới trói |
+| H5 | Xong | Đêm 60/90/120 giây do chủ phòng chọn; mọi người đi ngủ thì rút ngắn |
+| H6 | Một phần | Người bị trói vẫn ở trại; hồn ma nghe được đống lửa và chat với nhau. Hồn ma chưa có hành động nhỏ mỗi đêm |
+| H7 | Xong | Màn lật bài: vai thật, trói đúng hay oan, hành động từng đêm, đồ kẻ lừa đảo bỏ túi, tiến độ bí mật |
+| H8 | Xong | Trói không báo đúng hay sai; chỉ lộ ở màn lật bài |
+| S1 | Một phần | Máu / No / Tinh thần; Sức bền là thanh chạy (giới hạn theo mệt trong ngày). Chưa có nhật ký thay đổi của từng người |
+| S2 | Xong | Thời tiết, núi lửa, lương thực, kho báu (và chỗ đào khi đã biết), thuyền (và mức tối thiểu để rời đảo) |
+| S3 | Xong | Bản đồ nhỏ (người, điểm sự kiện, chỗ đào) và cảnh báo khi không còn kịp chạy về trại |
+| S4, S5, S7 | Xong | Như lần cập nhật trước |
+| S6 | Xong | Bộ sinh truyện kể lại cả ngày lúc hoàng hôn |
+| S8 | Xong | Đủ lương thực thì chia đều, chỉ bầu khi thiếu |
+| B1–B4 | Xong | Lưới 16x16 kéo thả, bóng xem trước xanh/đỏ, xoay bằng R/chuột phải, khay tạm (còn trong khay khi hết giờ thì bị bỏ lại, có báo trước), thanh trọng lượng và ngân sách, mô tả khi trỏ chuột |
+| B5 | Xong | 4 cặp hiệu ứng (đèn dầu + bản đồ, la bàn + bản đồ, thuốc súng + diêm, búa + dây thừng); trỏ chuột thì món đi cặp sáng lên |
+| B6 | Xong | Ngăn bí mật 4x4: đồ nằm trọn trong ngăn không lộ với đồng đội |
+| B7 | Xong | Đồng hồ 4 phút, nút "Xong, lên đảo" |
+| B8 | Xong | Đồng đội thấy đồ ngoài ngăn bí mật (rê chuột lên tên trong danh sách) |
+| R1–R4 | Xong | Tỷ lệ % trước khi chọn (tính cả đồ, xuất thân, tật xấu, vùng, quá tải); phân rã xúc xắc; nhật ký đầy đủ; PRNG có seed |
+| A1–A7 | Xong (theo hướng mới) | Bộ sinh truyện theo seed: kể sau khi engine đã chốt kết quả, không bao giờ treo hay chậm, lời kể ngắn, tách chung/riêng, chỉ đọc nhật ký của engine nên không mâu thuẫn; sổ truyện (phím J) để đọc lại |
+| C1 | Một phần | Ưu tiên thẻ chưa gặp; kho mới 12 thẻ nên vẫn lặp |
+| C2 | Xong | 8 xuất thân, 6 tật xấu |
+| C3 | Xong | zod kiểm tra thẻ, đồ, yếu tố truyện, mẫu câu và mọi tham chiếu |
+| T1 | Xong | `pnpm --filter @tentides/server sim` in phân phối kết thúc kèm khoảng tin cậy, nhịp, đường cong theo ngày, tần suất thẻ, tỷ lệ thành công từng lựa chọn |
+| T2 | Xong | Phát lại theo seed; công cụ `replay` đọc log ván |
+| T3 | Chưa | |
+| D1 | Một phần | Thẻ cộng điểm theo đồ trong balo; lời kể hoàng hôn nhắc món đồ đã giúp. Chưa lọc thẻ theo đồ |
+| D2 | Xong | "Thiếu N điểm; nếu có Xẻng (+3) đã qua" |
+| D3 | Xong | Sự cố tự nhiên mỗi đêm trông giống hệt phá hoại |
+| D4, D5, D6 | Xong | Lời kể riêng mỗi sáng, lời kể hoàng hôn, biên niên sử có nút sao chép |
+| D7 | Xong | Dòng thời gian "đêm đó thật ra đã xảy ra gì" ở màn lật bài |
 
-Đã có mà các bảng dưới chưa nói tới: chat quanh đống lửa (chỉ người ở trại nghe được), bỏ phiếu chia khẩu phần 4 mức, người bị trói không ra khỏi trại được suốt ngày hôm sau.
+Cân bằng hiện tại (bot, 3.000 ván 4–6 người): phe đội thắng 57,6%, không ai thắng 22,5%, phản bội thắng 32,9% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%.
 
-## Quyết định cần chốt
+## Quyết định đã chốt
 
-Những chỗ code graybox đang làm khác khuyến nghị trong tài liệu này. Graybox chọn cách đơn giản để chơi thử được; cần chốt trước khi làm vai ẩn.
-
-| # | Khuyến nghị | Code hiện tại | Khi nào phải chốt |
-|---|-------------|---------------|-------------------|
-| 1 | H3: đêm dài cố định, không kết thúc sớm | Đêm rút còn 5 giây khi mọi người đã bầu xong | Trước khi thêm hành động đêm bí mật. Ít nhất không được hiện ai đã xong hành động |
-| 2 | H4: chỉ bỏ phiếu khi có đề cử; khoá phiếu rồi lật cùng lúc | Phiếu trói mở sẵn mỗi đêm, ai bầu gì thấy ngay | Trước playtest có vai ẩn. Phiếu thấy ngay dễ thành "bầu theo số đông" |
-| 3 | S8: chỉ bỏ phiếu khẩu phần khi thiếu | Bảng bầu hiện mọi đêm, mặc định chia đều | Sau playtest graybox: đo xem nhóm có thấy bầu mỗi đêm là nhàm không |
-| 4 | H5: đêm 90–150 giây nếu chat bằng chữ | 60 giây theo PROJECT.md | Sau playtest: nhóm dùng voice ngoài game thì 60 giây có thể đủ |
-| 5 | S1: chỉ 3 chỉ số | Có thêm Sức bền vì thẻ mẫu `cave_collapse_01` dùng `stamina` | Nên để Sức bền chỉ là thanh chạy thời gian thực (PROJECT.md: Thể lực quyết định thanh sức bền), bỏ khỏi chỉ số ngày |
-| 6 | H6: hồn ma chat với nhau | Người chết không chat được | Khi làm H6 |
-| 7 | L1: bỏ cả chữ L | Bảng chữ còn L | Đổi được bất cứ lúc nào, một dòng trong `packages/protocol` |
+| # | Chủ đề | Đã chốt |
+|---|--------|---------|
+| 1 | Đêm dài cố định hay rút ngắn (H3) | Rút ngắn khi mọi người bấm "Đi ngủ", nhưng chỉ công khai con số, không lộ ai đã xong |
+| 2 | Phiếu trói (H4) | Theo khuyến nghị: đề cử, bỏ phiếu kín, lật cùng lúc |
+| 3 | Bầu khẩu phần (S8) | Theo khuyến nghị: chỉ bầu khi thiếu |
+| 4 | Độ dài đêm (H5) | Chủ phòng chọn 60/90/120 giây |
+| 5 | Sức bền (S1) | Chỉ là thanh chạy thời gian thực; sự kiện làm mệt thì thanh ngắn lại trong ngày |
+| 6 | Hồn ma (H6) | Hồn ma nghe đống lửa và chat với nhau |
+| 7 | Mã phòng (L1) | Bỏ cả chữ L |
+| 8 | Kể chuyện | Bỏ mô hình AI; dùng bộ sinh cốt truyện theo seed từ thư viện yếu tố viết sẵn |
 
 ## Feature Landscape
 
@@ -132,7 +145,9 @@ Thiếu thì người chơi thấy game hỏng hoặc "chơi ép". Có thì khô
 | R4 | Mọi random đi qua PRNG có seed trên server | Nền tảng cho replay, bot sim và kiểm thử | MEDIUM | |
 | R5 | Thất bại vẫn đẩy câu chuyện đi tiếp (fail forward), không "không có gì xảy ra" | Sid Meier (GDC 2010): người chơi mặc định thắng khi tỷ lệ 3:1 và rất ghét thua, nên thua phải có hệ quả thú vị | LOW | Là quy tắc viết thẻ, không phải code |
 
-#### 6. AI narration
+#### 6. Kể chuyện (bộ sinh truyện theo seed, không dùng mô hình AI)
+
+Các mã A1–A7 giữ nguyên để roadmap tham chiếu; phần "Why Expected" vẫn đúng, cách làm đổi thành bộ sinh truyện (xem PROJECT.md, mục Bộ sinh cốt truyện).
 
 | ID | Feature | Why Expected | Complexity | Notes |
 |----|---------|--------------|------------|-------|
@@ -222,7 +237,7 @@ Luồng một ván (phase sau phụ thuộc phase trước):
 
 [Bot policies] ──enables──> [Zombie bot L4] và [Headless sim T1]   (D11)
 [Grid placement logic B1] ──reused by──> [Trading] [Loot pickup] [Item loss]
-[AI adapter + timeout + fallback A2] ──required by──> [Shared/private narration] ──> [Dusk recap D5] ──> [Chronicle D6]
+[Story library + seeded generator A1–A7] ──required by──> [Shared/private narration] ──> [Dusk recap D5] ──> [Chronicle D6]
 [Card tags + difficulty tiers] ──required by──> [Tension director D9] ──verified by──> [T1/T3]
 [Item tags] ──required by──> [Bag-as-testimony D1] [Counterfactual D2]
 ["Unexplained incident" cards] ──required by──> [Suspicion noise D3]
@@ -258,7 +273,7 @@ Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản t�
 - [ ] **Xúc xắc:** R1–R5 + D2 (phản thực tế "nếu có X đã qua"), vì nó rẻ và đánh thẳng vào rủi ro "random bất công"
 - [ ] **Vai ẩn:** H1–H8, 4 vai, xác suất có kẻ phản bội cấu hình được; mọi người đều có hành động đêm; bỏ phiếu chỉ khi có đề cử
 - [ ] **Nhiễu nghi ngờ D3** ở mức tối thiểu: 4–6 thẻ sự cố không rõ nguyên nhân
-- [ ] **AI:** A1–A7 + lời kể riêng D4 + lời kể hoàng hôn D5; lời văn mẫu dạng template có slot
+- [ ] **Kể chuyện:** bộ sinh truyện theo seed (A1–A7) + lời kể riêng D4 + lời kể hoàng hôn D5; mở rộng thư viện yếu tố để không lặp sau 3 ván
 - [ ] **8 kết thúc + màn lật bài H7 + biên niên sử chữ D6 có nút sao chép**
 - [ ] **Nội dung:** mức "tối thiểu cho 1 ván không lặp" ở bảng Content Volume Estimate
 - [ ] **Bot sim T1 + replay T2 + telemetry và khảo sát T3**
@@ -370,7 +385,8 @@ Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản t�
 | Tật xấu | 5 hiện có → **tối thiểu 6, khuyến nghị 8** | 8–10 | 5 tật xấu với 6 người là buộc trùng |
 | Vai | 4 | 4 (đừng thêm) | Nhóm nhỏ: đơn giản hơn bạn nghĩ |
 | Lời kết | 8 kết thúc × biến thể theo vai phản bội | | |
-| Lời văn mẫu dự phòng | Template có slot (tên, đồ, kết quả) cho mỗi thẻ | Mẫu viết tay cho thẻ quan trọng | 60 thẻ × khoảng 2,5 lựa chọn × 2 kết quả ≈ 300 đoạn nếu viết tay từng đoạn. Dùng template để giảm tải |
+| Lời văn của thẻ | Mỗi lựa chọn một câu thành công và một câu thất bại | Nhiều biến thể cho thẻ quan trọng | 60 thẻ × khoảng 2,5 lựa chọn × 2 kết quả ≈ 300 câu |
+| Yếu tố truyện cho bộ sinh | **110** (hiện có) | 200+ | Nhóm dễ lặp nhất là không khí từng vùng và điềm báo; nên có ≥8 mỗi vùng |
 
 ## Balance Targets & Playtest Telemetry
 
@@ -419,7 +435,7 @@ Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản t�
 2. Tỷ lệ chơi hết ván; ván bỏ dở thì bỏ ở ngày nào, pha nào.
 3. Thời lượng từng pha và từng ngày so với mục tiêu (4–5 phút/ngày, 45–60 phút/ván).
 4. **Thời gian chờ** của từng người: chờ AI, chờ người khác, chờ timer. Đây là sát thủ số một của nhịp co-op.
-5. AI: độ trễ p50/p95 theo loại lời gọi, tỷ lệ dùng lời văn mẫu, tỷ lệ JSON sai schema, tỷ lệ bị kiểm tra nhất quán chặn.
+5. Kể chuyện: yếu tố truyện nào hay lặp giữa các ván của cùng một nhóm, người chơi có mở sổ truyện không, có đọc hết bản kể bình minh không.
 6. Chat: số tin mỗi đêm và phân bố theo người (ai im lặng), số đề cử, số phiếu, trói đúng/sai, ngày đầu tiên có người nghi đúng.
 7. Kiểu chia nhóm mỗi ngày: số lần đi một mình, số lần ngủ ngoài (chủ động hay vì hết giờ).
 8. Số lần trao đổi đồ, lục soát, dùng reroll.
@@ -433,7 +449,7 @@ Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản t�
 - Vui không (1–10); muốn chơi lại không (1–10). Hai câu mặc định mà các dịch vụ playtest như PlaytestCloud dùng.
 - Khoảnh khắc đáng nhớ nhất (tự do, một dòng).
 - Có lúc nào thấy xúc xắc hoặc AI bất công không? Lúc nào?
-- Lời kể của AI: hay / nhạt / sai sự thật (1–5).
+- Lời kể: hay / nhạt / lặp lại (1–5).
 - Bạn nghi ai, từ ngày nào? So với sự thật ở màn lật bài.
 
 ## Sources

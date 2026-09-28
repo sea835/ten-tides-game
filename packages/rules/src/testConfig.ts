@@ -1,13 +1,23 @@
-import type { GameConfig } from "./game.ts";
+import type { GameConfig } from "./game/index.ts";
 
 /** Bộ nội dung tối thiểu cho test của rules, độc lập với @tentides/content. */
 export const testConfig: GameConfig = {
+  incidentChance: 0,
   items: [
-    { id: "rope", name: "Dây thừng" },
-    { id: "shovel", name: "Xẻng" },
-    { id: "lantern", name: "Đèn dầu" },
-    { id: "rum", name: "Rượu rum" },
+    { id: "rope", name: "Dây thừng", size: { w: 2, h: 3 }, weightKg: 2, price: 12, tags: ["tool"] },
+    { id: "shovel", name: "Xẻng", size: { w: 1, h: 6 }, weightKg: 2.5, price: 12, tags: ["tool", "dig"] },
+    { id: "lantern", name: "Đèn dầu", size: { w: 2, h: 2 }, weightKg: 1, price: 14, tags: ["light"] },
+    { id: "rum", name: "Rượu rum", size: { w: 1, h: 3 }, weightKg: 1, price: 8, tags: ["luxury"] },
+    { id: "old_map", name: "Bản đồ cũ", size: { w: 2, h: 2 }, weightKg: 0.2, price: 18, tags: ["clue"] },
+    { id: "hardtack", name: "Lương khô", size: { w: 1, h: 2 }, weightKg: 0.5, price: 4, tags: ["food"] },
+    { id: "first_aid_kit", name: "Bộ sơ cứu", size: { w: 3, h: 2 }, weightKg: 1, price: 16, tags: ["medical"] },
+    { id: "flintlock", name: "Súng kíp", size: { w: 1, h: 5 }, weightKg: 3, price: 30, tags: ["weapon"] },
+    { id: "amulet", name: "Bùa hộ mệnh", size: { w: 1, h: 1 }, weightKg: 0.1, price: 5, tags: ["mystery"] },
+    { id: "hammer", name: "Búa", size: { w: 1, h: 3 }, weightKg: 1.5, price: 10, tags: ["tool"] },
+    { id: "gunpowder", name: "Thuốc súng", size: { w: 2, h: 2 }, weightKg: 1, price: 12, tags: ["explosive"] },
+    { id: "matches", name: "Diêm", size: { w: 1, h: 1 }, weightKg: 0.1, price: 3, tags: ["fire"] },
   ],
+  treasureSites: [{ id: "site_a" }, { id: "site_b" }],
   anchors: [
     { id: "grove_1", type: "grove", zone: "beach" },
     { id: "grove_2", type: "grove", zone: "beach" },

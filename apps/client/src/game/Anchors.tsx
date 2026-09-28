@@ -1,21 +1,21 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { AdditiveBlending, type Group } from "three";
-import { ANCHORS } from "@tentides/content";
+import { ANCHORS, TREASURE_SITES } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 const OPEN_COLOR = "#ffd166";
 const ACTIVE_COLOR = "#ff6b35";
 
-function Marker({ x, y, z, active }: { x: number; y: number; z: number; active: boolean }) {
+function Marker({ x, y, z, active, color: override }: { x: number; y: number; z: number; active: boolean; color?: string }) {
   const gem = useRef<Group>(null);
   useFrame(({ clock }) => {
     if (!gem.current) return;
     gem.current.rotation.y = clock.elapsedTime * 1.5;
     gem.current.position.y = 2.2 + Math.sin(clock.elapsedTime * 2) * 0.25;
   });
-  const color = active ? ACTIVE_COLOR : OPEN_COLOR;
+  const color = override ?? (active ? ACTIVE_COLOR : OPEN_COLOR);
   return (
     <group position={[x, y, z]}>
       {/* Cột sáng không bị sương mù che, để thấy từ xa mà tìm đường. */}
@@ -40,8 +40,12 @@ export function Anchors({ room }: { room: IslandRoom }) {
     return [...s.anchors.entries()].filter(([, a]) => a.status !== "resolved").map(([id, a]) => [id, a.status] as const);
   });
 
+  const site = useRoomSnapshot(room, (s) => (s.treasureSite && !s.treasureDug ? s.treasureSite : ""));
+  const treasure = TREASURE_SITES.find((t) => t.id === site);
+
   return (
     <>
+      {treasure && <Marker x={treasure.x} y={treasure.y} z={treasure.z} active={false} color="#e63946" />}
       {visible.map(([id, status]) => {
         const anchor = ANCHORS.find((a) => a.id === id);
         return anchor ? <Marker key={id} x={anchor.x} y={anchor.y} z={anchor.z} active={status === "active"} /> : null;

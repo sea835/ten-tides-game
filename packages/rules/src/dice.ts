@@ -21,6 +21,8 @@ export interface CheckResult {
   total: number;
   dc: number;
   success: boolean;
+  /** Mặt xúc xắc lần đầu, nếu được tung lại (Tay cờ bạc). */
+  rerolledFrom?: number;
 }
 
 /** Tung d20 + thuộc tính + các khoản cộng, so với độ khó (DC). */

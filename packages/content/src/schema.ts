@@ -77,3 +77,41 @@ export type EventCard = z.infer<typeof EventCardSchema>;
 // Bảo đảm dữ liệu đã kiểm tra khớp với kiểu mà engine luật dùng.
 type Assignable<T extends U, U> = T;
 export type _CardMatchesRules = Assignable<EventCard, RulesEventCard>;
+
+export const STORY_CATEGORIES = [
+  "hider",
+  "motive",
+  "treasure",
+  "secret",
+  "npc",
+  "omen",
+  "twist",
+  "relic",
+  "atmosphere",
+  "weather",
+  "epilogue",
+  "bond",
+] as const;
+export type StoryCategory = (typeof STORY_CATEGORIES)[number];
+
+/** Một yếu tố truyện: bộ sinh chọn theo seed rồi trộn với sự thật trong ván. */
+export const StoryElementSchema = z.object({
+  id,
+  category: z.enum(STORY_CATEGORIES),
+  /** Cụm danh từ để chèn vào câu, vd. "thuyền trưởng Hắc Triều". */
+  name: z.string().min(1).nullable(),
+  lines: z.array(z.string().min(1)).min(1),
+  tags: z.array(id),
+  /** Chỉ chọn được nếu một yếu tố đã chọn trước (người giấu) có ít nhất một thẻ trong đây. */
+  requiresAnyTag: z.array(id).optional(),
+  act: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  zone: z.enum(ZONE_IDS).optional(),
+  weather: z.enum(WEATHER_IDS).optional(),
+  /** Lời kết dành cho kết thúc nào ("*" là dùng cho mọi kết thúc). */
+  ending: z.string().optional(),
+});
+export type StoryElement = z.infer<typeof StoryElementSchema>;
+
+/** Mẫu câu ghép truyện: mỗi khóa có nhiều biến thể, bộ sinh chọn theo seed. */
+export const StoryTemplatesSchema = z.record(z.string(), z.array(z.string().min(1)).min(1));
+export type StoryTemplates = z.infer<typeof StoryTemplatesSchema>;
