@@ -35,6 +35,8 @@ interface HudState {
   climbing: boolean;
   /** Đang chìm khi bơi: hết hơi, kiệt sức hay mang quá nặng. */
   sinking: "" | "breath" | "tired" | "heavy";
+  /** Đang cầm đồ và đứng cạnh ai đó: nhấn G để đưa cho người đó. */
+  giveTo: { id: string; name: string } | null;
   /** Kẻ phản bội đứng sát sau lưng ai đó: nhấn F để kết liễu. */
   victim: { id: string; name: string } | null;
   /** Chế độ dựng nhà: đang chọn công trình nào (rỗng là không dựng). */
@@ -56,6 +58,7 @@ let state: HudState = {
   hidden: false,
   climbing: false,
   sinking: "",
+  giveTo: null,
   victim: null,
   build: "",
   buildOk: false,
@@ -71,7 +74,8 @@ export function setHud(patch: Partial<HudState>) {
   const same = (k: keyof HudState) =>
     next[k] === state[k] ||
     (k === "nearTarget" && next.nearTarget?.id === state.nearTarget?.id && next.nearTarget?.label === state.nearTarget?.label) ||
-    (k === "victim" && next.victim?.id === state.victim?.id);
+    (k === "victim" && next.victim?.id === state.victim?.id) ||
+    (k === "giveTo" && next.giveTo?.id === state.giveTo?.id);
   if ((Object.keys(next) as (keyof HudState)[]).every(same)) return;
   state = next;
   listeners.forEach((l) => l());

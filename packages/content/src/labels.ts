@@ -5,6 +5,7 @@ import {
   type Difficulty,
   type EndingId,
   type FlawId,
+  type GhostActionId,
   type NightActionId,
   type Phase,
   type RationId,
@@ -88,11 +89,19 @@ export const NIGHT_ACTION_LABELS: Record<NightActionId, { title: string; detail:
   repair: { title: "Sửa thuyền", detail: "Góp tay vá thuyền cho chuyến về" },
   sleep: { title: "Ngủ bù", detail: "Hồi Tinh thần" },
   guard: { title: "Canh gác", detail: "Thức canh trại, mệt hơn; có thể thấy ai lén lút" },
+  search: { title: "Lục soát", detail: "Lén lục balo một người, thấy cả ngăn bí mật; mệt và áy náy, người đó sẽ biết có người lục" },
   protect: { title: "Che chở", detail: "Chọn một người, giữ họ khỏi gục tới hết đêm mai" },
   sabotage: { title: "Phá thuyền", detail: "Làm hỏng thuyền; nhẹ tay hơn nếu có người canh" },
   signal: { title: "Gửi tín hiệu", detail: "Đốt lửa báo cho băng cướp; đôi khi có người thấy ánh lửa" },
   forge: { title: "Làm giả manh mối", detail: "Tiến độ kho báu sụt, thêm một lần lừa" },
   pocket: { title: "Bỏ túi đồ", detail: "Lấy trộm một món của người khác, thêm một lần lừa" },
+};
+
+/** Việc hồn ma làm được mỗi đêm. */
+export const GHOST_ACTION_LABELS: Record<GhostActionId, { title: string; detail: string }> = {
+  whisper: { title: "Thì thầm", detail: "Để lại một câu ngắn trong giấc mơ của một người (không ai biết là ai nói)" },
+  chill: { title: "Làm lạnh gáy", detail: "Một người thấy rợn người suốt đêm, mất chút Tinh thần" },
+  guide: { title: "Dẫn lối", detail: "Khẽ đẩy cả đoàn tới gần kho báu hơn một chút" },
 };
 
 export const RATION_LABELS: Record<RationId, { title: string; detail: string }> = {

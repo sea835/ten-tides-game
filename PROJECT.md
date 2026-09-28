@@ -206,6 +206,8 @@ Balo là lưới 16x16 (256 ô); mỗi món đồ là một khối hình chiếm
 
 **Ngủ ngoài trại là một sự kiện.** Ai không kịp về trại gặp một chuyện trong đêm hợp với thời tiết (thú rình, mưa dầm, thủy triều lên, tiếng thì thầm, trời đầy sao...), có phép kiểm tra như thẻ sự kiện; lều, đuốc, súng, la bàn giúp được. Sáng ra cả đoàn nghe kể, riêng người đó được kể kỹ hơn.
 
+**Nghi ngờ có công cụ.** Ai cũng lục soát được balo một người ban đêm (thấy cả ngăn bí mật, nhưng người bị lục sẽ biết có người lục), trao tay đồ cho nhau ban ngày, và mỗi đêm ghi kín mình đang nghi ai; màn lật bài cho thấy cả đoàn nghi đúng từ đêm nào. Người đã gục vẫn chơi: hồn ma mỗi đêm thì thầm một câu vào giấc mơ ai đó, làm ai đó lạnh gáy, hoặc dẫn lối manh mối. Xui mãi thì được "Quyết tâm" cộng điểm công khai, để random không thành bất công.
+
 **Đạo diễn độ căng.** Engine giữ một đường cong độ căng mục tiêu theo ngày, có nhịp nghỉ xen kẽ. Đội đang quá khỏe thì rút thẻ khó hơn; đội sắp chết cả loạt ở hồi 1 thì rút thẻ hồi phục — cùng ý tưởng với AI Director trong Left 4 Dead.
 
 **Tài nguyên chung của đội:** Tiến độ kho báu (0–100), Mức hoạt động núi lửa, Độ bền thuyền, Lương thực chung. Tiến độ tăng nhờ manh mối, đọc đúng bản đồ và khám phá đúng vùng, và nó thu hẹp dần các điểm ứng viên trên map. Đạt 100 là biết chính xác chỗ đào, nhưng vẫn cần người mang xẻng tới đó và một chiếc thuyền đủ tốt để rời đảo.

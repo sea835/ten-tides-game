@@ -78,6 +78,8 @@ const INSIDE: ReadonlySet<Habitat> = new Set(["cave", "cave_deep", "mine", "mine
 const LEASH = 26;
 /** Bị đánh thì nhớ mặt người đánh chừng này giây. */
 const GRUDGE_SECONDS = 12;
+/** Thú dữ còn dưới chừng này phần Máu thì bỏ chạy thay vì đánh tiếp. */
+const WOUNDED_FLEE = 0.3;
 const SHARK_SPECIES = "blackfin_shark";
 
 export class Wildlife {
@@ -161,7 +163,12 @@ export class Wildlife {
       const drops = c.def.drops.filter((d) => this.rand() < d.chance).map((d) => d.item);
       return { creature: c, drops };
     }
-    if (c.def.temper === "hostile") {
+    // Thú dữ bị thương nặng thì cụp đuôi bỏ chạy (tay không vẫn có cửa thắng nếu đánh đủ nhanh).
+    if (c.def.temper === "hostile" && c.hp <= c.def.hp * WOUNDED_FLEE) {
+      c.grudge = null;
+      c.grudgeTime = 0;
+      this.fleeFrom(c, from, 9);
+    } else if (c.def.temper === "hostile") {
       c.grudge = from.id;
       c.grudgeTime = GRUDGE_SECONDS;
       c.mode = "chase";
@@ -211,7 +218,10 @@ export class Wildlife {
       const grudge = c.grudge ? prey.find((p) => p.id === c.grudge && p.alive) : undefined;
       const foe = grudge ? this.measure(c, grudge) : target;
 
-      if (def.temper === "hostile" && hunting && foe && (foe.dist <= (def.aggro ?? 6) || grudge) && c.mode !== "flee" && this.canReach(c, foe.p)) {
+      const wounded = def.temper === "hostile" && c.hp <= def.hp * WOUNDED_FLEE;
+      if (wounded && foe && foe.dist <= (def.aggro ?? 6) && c.mode !== "flee") {
+        this.fleeFrom(c, foe.p, 4);
+      } else if (def.temper === "hostile" && hunting && foe && (foe.dist <= (def.aggro ?? 6) || grudge) && c.mode !== "flee" && this.canReach(c, foe.p)) {
         const reach = 0.9 + 0.5 * def.size;
         if (foe.dist3 <= reach + 0.6 && c.cooldown === 0) {
           const deterred = (def.deterredBy ?? []).some((item) => foe.p.items.includes(item));

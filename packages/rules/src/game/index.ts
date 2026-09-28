@@ -6,11 +6,11 @@
 import { advance } from "./day.ts";
 import { choose, dig, trigger } from "./events.ts";
 import { encounter } from "./encounters.ts";
-import { assassinate, build, consume, cook, drop, pickup, stash } from "./interactions.ts";
+import { assassinate, build, consume, cook, drop, give, pickup, stash } from "./interactions.ts";
 import { join, leave, start } from "./lobby.ts";
 import { buy, createCharacter, finishCreation, finishPacking, place, sell, unplace } from "./prep.ts";
-import { castBallot, chooseNightAction, emptyVotes, nominate, revealBallot, voteRation } from "./night.ts";
-import type { GameAction, GameConfig, GameState } from "./types.ts";
+import { castBallot, chooseGhostAction, chooseNightAction, emptyVotes, nominate, revealBallot, star, suspect, voteRation } from "./night.ts";
+import { STAT_LOG_SIZE, type GameAction, type GameConfig, type GameState, type StatChange } from "./types.ts";
 
 export * from "./types.ts";
 export * from "./backpack.ts";
@@ -57,6 +57,11 @@ export function createGame(seed: number): GameState {
     discovered: [],
     kills: [],
     shelter: 0,
+    statLog: {},
+    ghostChoices: {},
+    ghostHistory: [],
+    suspicions: [],
+    stars: [],
     twist: "",
     twistPlayer: null,
     shop: [],
@@ -69,7 +74,56 @@ export function createGame(seed: number): GameState {
 }
 
 export function reduce(prev: GameState, action: GameAction, config: GameConfig): GameState {
-  const state = structuredClone(prev);
+  const next = apply(structuredClone(prev), action, config);
+  recordStatChanges(prev, next, action);
+  return next;
+}
+
+/** Vì sao chỉ số đổi, suy từ hành động (client dịch mã này ra lời). */
+function statReason(prev: GameState, action: GameAction): string {
+  switch (action.type) {
+    case "choose":
+      return `card:${prev.anchors[action.anchorId]?.cardId ?? ""}`;
+    case "encounter":
+      return `encounter:${action.source}:${action.defId}`;
+    case "consume":
+      return `eat:${prev.players[action.playerId]?.bag.find((b) => b.uid === action.uid)?.itemId ?? ""}`;
+    case "assassinate":
+      return "sudden";
+    case "advance":
+      // Hết hoàng hôn là đói thêm một ngày, ngủ ngoài; hết đêm là ăn uống, ngủ, và có khi là biến cố ngày 5.
+      return prev.phase === "dusk" ? "dusk" : prev.phase === "night" ? "night" : prev.phase;
+    default:
+      return action.type;
+  }
+}
+
+/** Ghi nhật ký chỉ số riêng: ai được, mất bao nhiêu Máu, No, Tinh thần, Sức bền và vì sao. */
+function recordStatChanges(prev: GameState, next: GameState, action: GameAction) {
+  if (prev.phase === "lobby" || prev.phase === "create" || prev.phase === "pack") return;
+  const reason = statReason(prev, action);
+  for (const [id, after] of Object.entries(next.players)) {
+    const before = prev.players[id];
+    if (!before) continue;
+    const change: StatChange = { day: next.day, reason };
+    let any = false;
+    for (const key of ["hp", "hunger", "morale", "stamina"] as const) {
+      // Sức bền hồi đầy mỗi sáng là chuyện thường ngày, không ghi.
+      if (key === "stamina" && reason === "night") continue;
+      const delta = after[key] - before[key];
+      if (delta !== 0) {
+        change[key] = delta;
+        any = true;
+      }
+    }
+    if (!any) continue;
+    const log = (next.statLog[id] ??= []);
+    log.push(change);
+    if (log.length > STAT_LOG_SIZE) log.splice(0, log.length - STAT_LOG_SIZE);
+  }
+}
+
+function apply(state: GameState, action: GameAction, config: GameConfig): GameState {
   switch (action.type) {
     case "join":
       return join(state, action.playerId, action.name);
@@ -107,6 +161,12 @@ export function reduce(prev: GameState, action: GameAction, config: GameConfig):
       return revealBallot(state);
     case "nightAction":
       return chooseNightAction(state, action.playerId, action.action, action.target);
+    case "ghostAction":
+      return chooseGhostAction(state, action.playerId, action.action, action.target, action.text);
+    case "suspect":
+      return suspect(state, action.playerId, action.target);
+    case "star":
+      return star(state, action.playerId);
     case "dig":
       return dig(state, action.playerId);
     case "encounter":
@@ -123,6 +183,8 @@ export function reduce(prev: GameState, action: GameAction, config: GameConfig):
       return build(state, action.playerId, action.building, action.cost, action.shelter);
     case "stash":
       return stash(state, action.playerId, action.uid, config);
+    case "give":
+      return give(state, action.playerId, action.target, action.uid, config);
     case "cook":
       return cook(state, action.playerId, action.uid, config);
   }

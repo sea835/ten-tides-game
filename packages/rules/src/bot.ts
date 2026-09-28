@@ -37,6 +37,10 @@ export interface BotPolicy {
    * nên đây là tham số quét để xem cân bằng đứng vững ở mức nghi ngờ của một nhóm bạn bình thường.
    */
   suspicionAccuracy: number;
+  /** Mỗi ngày, xác suất một người tranh thủ hái dừa, bắt cá rồi mang về góp vào kho lương thực. */
+  forageChance: number;
+  /** Mỗi ngày, xác suất cả đoàn tìm thấy trang nhật ký của hôm đó. */
+  pageChance: number;
 }
 
 export const DEFAULT_BOT_POLICY: BotPolicy = {
@@ -47,7 +51,12 @@ export const DEFAULT_BOT_POLICY: BotPolicy = {
   tieYesChance: 0.5,
   nominateChance: 0.35,
   suspicionAccuracy: 0.4,
+  forageChance: 0.3,
+  pageChance: 0.5,
 };
+
+/** Tiến độ kho báu mỗi trang nhật ký (khớp với server). */
+const PAGE_TREASURE = 4;
 
 export interface BotGame {
   state: GameState;
@@ -116,6 +125,23 @@ export function playBotGame(
     }
 
     if (state.phase === "explore") {
+      // Kiếm ăn ngoài thẻ sự kiện: hái được gì thì mang về góp vào kho (món nào góp được, lấy món đầu tiên).
+      const forage = config.items.find((i) => i.loot && i.ration);
+      for (const id of state.playerOrder) {
+        if (!forage || isOver(state) || !canAct(state, id) || !chance(policy.forageChance)) continue;
+        const before = state.players[id]!.bag.length;
+        try {
+          act({ type: "pickup", playerId: id, itemId: forage.id });
+        } catch {
+          continue; // Balo đầy.
+        }
+        const placed = state.players[id]!.bag.length > before ? state.players[id]!.bag.at(-1) : undefined;
+        if (placed) act({ type: "stash", playerId: id, uid: placed.uid });
+      }
+      const reader = state.playerOrder.find((id) => canAct(state, id));
+      if (reader && !isOver(state) && chance(policy.pageChance)) {
+        act({ type: "encounter", playerId: reader, source: "page", refId: `page${state.day}`, defId: "diary_page", effects: { treasure: PAGE_TREASURE }, once: true });
+      }
       for (const placed of Object.values(state.anchors)) {
         if (isOver(state)) break;
         const actor = state.playerOrder.find((id) => canAct(state, id));

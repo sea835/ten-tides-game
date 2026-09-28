@@ -1,10 +1,10 @@
 import type { AnchorDef, EventCard } from "../cards.ts";
-import { nextInt, shuffle } from "../rng.ts";
+import { nextFloat, shuffle } from "../rng.ts";
 import { autoResolve } from "./events.ts";
 import { departure } from "./endings.ts";
 import { nightfall, resolveNight } from "./night.ts";
 import { TWIST_DAY, applyTwist, twistVolcano } from "./twists.ts";
-import { MAX_CARDS_PER_DAY, TOTAL_DAYS, actOf, fail, isOver, weatherOf, type GameConfig, type GameState } from "./types.ts";
+import { ITEM_CARD_WEIGHT, MAX_CARDS_PER_DAY, TOTAL_DAYS, actOf, fail, isOver, weatherOf, type GameConfig, type GameState } from "./types.ts";
 
 export function beginDay(state: GameState, config: GameConfig): GameState {
   state.day++;
@@ -37,6 +37,7 @@ function dealCards(state: GameState, config: GameConfig): GameState {
   const order = shuffle(state.rng, config.anchors);
   state.rng = order.rng;
   const dealtToday = new Set<string>();
+  const carried = new Set(Object.values(state.players).filter((p) => p.alive).flatMap((p) => p.items));
 
   for (const anchor of order.value) {
     if (dealtToday.size >= MAX_CARDS_PER_DAY) break;
@@ -44,9 +45,15 @@ function dealCards(state: GameState, config: GameConfig): GameState {
     if (candidates.length === 0) continue;
     const fresh = candidates.filter((c) => !state.usedCards.includes(c.id));
     const pool = fresh.length > 0 ? fresh : candidates;
-    const pick = nextInt(state.rng, 0, pool.length - 1);
-    state.rng = pick.rng;
-    const card = pool[pick.value]!;
+    // Balo là lời khai: thẻ có lựa chọn được cộng điểm nhờ đồ cả đội đang mang thì dễ xuất hiện hơn.
+    const weights = pool.map((c) => (c.choices.some((ch) => Object.keys(ch.check.itemBonus ?? {}).some((id) => carried.has(id))) ? ITEM_CARD_WEIGHT : 1));
+    const total = weights.reduce((a, b) => a + b, 0);
+    const roll = nextFloat(state.rng);
+    state.rng = roll.rng;
+    let left = roll.value * total;
+    let index = 0;
+    while (index < pool.length - 1 && left >= weights[index]!) left -= weights[index++]!;
+    const card = pool[index]!;
     dealtToday.add(card.id);
     state.anchors[anchor.id] = { anchorId: anchor.id, cardId: card.id, status: "open", participants: [] };
   }

@@ -1,4 +1,4 @@
-import { content } from "@tentides/content";
+import { content, worldCatalog } from "@tentides/content";
 import { STAT_LABELS, type Check, type Outcome } from "@tentides/rules";
 
 export function itemName(id: string): string {
@@ -33,4 +33,40 @@ export function describeOutcome(outcome: Outcome): string[] {
   if (outcome.lostUntilDusk) parts.push("lạc tới hoàng hôn");
   if (outcome.setFlag) parts.push("mở ra điều gì đó mới");
   return parts;
+}
+
+const ENCOUNTER_WORDS: Record<string, string> = {
+  egg: "Tìm thấy",
+  anomaly: "Chạm vào",
+  trap: "Sập bẫy",
+  creature: "Bị tấn công",
+  friend: "Làm quen",
+  drowning: "Đuối nước",
+  attack: "Bị đánh",
+  fall: "Té từ trên cây",
+  hunt: "Giết thú hiền",
+  page: "Trang nhật ký",
+  lava: "Dung nham",
+  burn: "Bỏng lửa trại",
+};
+
+const REASONS: Record<string, string> = {
+  dusk: "Hết ngày (đói thêm, ngủ ngoài)",
+  night: "Qua đêm (ăn uống, ngủ)",
+  sudden: "Gục ngã đột ngột",
+  build: "Dựng nhà",
+  stash: "Góp vào kho",
+};
+
+/** Dịch mã lý do trong nhật ký chỉ số ra lời, vd. "card:cave_mouth_01" → "Thẻ: Bức vẽ trên vách". */
+export function statReason(reason: string): string {
+  const [kind, a = "", b = ""] = reason.split(":");
+  if (kind === "card") return `Thẻ: ${content.cards.get(a)?.title ?? a}`;
+  if (kind === "eat") return `Ăn uống: ${itemName(a)}`;
+  if (kind === "encounter") {
+    const thing =
+      worldCatalog.creatures.get(b)?.name ?? worldCatalog.pois.get(b)?.name ?? worldCatalog.traps.get(b)?.name ?? (b === "fists" ? "" : content.items.get(b)?.name ?? "");
+    return [ENCOUNTER_WORDS[a] ?? a, thing].filter(Boolean).join(": ");
+  }
+  return REASONS[kind ?? ""] ?? reason;
 }

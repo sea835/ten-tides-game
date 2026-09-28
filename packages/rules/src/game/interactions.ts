@@ -108,3 +108,17 @@ export function cook(state: GameState, playerId: string, uid: string, config: Ga
   syncItems(p);
   return state;
 }
+
+/** Trao tay một món cho người đứng cạnh (server đã kiểm tra khoảng cách). Balo người nhận đầy thì không đưa được. */
+export function give(state: GameState, playerId: string, target: string, uid: string, config: GameConfig): GameState {
+  const p = actor(state, playerId, HANDS_PHASES);
+  if (target === playerId) fail("Không tự đưa cho mình được");
+  const receiver = state.players[target] ?? fail("Không có người này");
+  if (!receiver.alive) fail("Người này đã gục rồi");
+  const itemId = p.bag.find((b) => b.uid === uid)?.itemId ?? fail("Món này không có trong balo");
+  // Giữ nguyên mã món đồ khi trao tay, để món đang cầm vẫn là món đó.
+  if (!gainItem(state, receiver, itemId, config, uid)) fail(`Balo của ${receiver.name} đầy rồi`);
+  takeFromBag(p, uid);
+  state.log.push({ kind: "give", day: state.day, playerId, target, itemId });
+  return state;
+}

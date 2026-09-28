@@ -8,7 +8,7 @@ import type { TreeKind } from "./worldgen.ts";
 export type HitStats = NonNullable<Item["melee"]>;
 
 /** Tay không: đấm nhẹ, nhanh, vui là chính. */
-export const FISTS: HitStats = { damage: 4, reach: 1.6, cooldown: 0.5, word: "BỤP!" };
+export const FISTS: HitStats = { damage: 5, reach: 1.6, cooldown: 0.5, word: "BỤP!" };
 
 /** Đòn đánh gần khi cầm món này (không cầm gì, hoặc món không dùng để đánh được, thì là tay không). */
 export function meleeOf(itemId: string | null | undefined): HitStats {

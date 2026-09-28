@@ -49,6 +49,16 @@ describe("sinh vật", () => {
     }
   });
 
+  it("thú dữ bị đánh tới dưới 30% Máu thì bỏ chạy, không cắn nữa", () => {
+    const wildlife = new Wildlife(world, 7);
+    const c = wildlife.active(5).find((x) => x.def.temper === "hostile" && !x.spawn.structure && x.def.hp >= 20)!;
+    const prey: Prey[] = [{ id: "p", x: c.x + 0.8, y: c.y, z: c.z, alive: true, items: [] }];
+    expect(wildlife.damage(c.id, Math.ceil(c.def.hp * 0.75), { id: "p", x: prey[0]!.x, z: prey[0]!.z })).toBeNull();
+    expect(c.mode).toBe("flee");
+    expect(c.grudge).toBeNull();
+    expect(run(wildlife, 3, prey)).toHaveLength(0);
+  });
+
   it("con vật trung tính bỏ chạy khi người lại gần", () => {
     const wildlife = new Wildlife(world, 3);
     const shy = wildlife.active(1).find((c) => c.def.temper === "neutral" && !c.def.fly)!;

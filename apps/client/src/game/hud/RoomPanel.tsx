@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Check, Crown, Link, Lock, LogOut, Music, Pause, Play, Skull, Volume2, VolumeX, WifiOff, X } from "lucide-react";
+import { Check, Crown, Link, Lock, LogOut, Music, Pause, Play, Skull, Star, Volume2, VolumeX, WifiOff, X } from "lucide-react";
 import { audio } from "../sound/engine.ts";
 import { BACKGROUND_LABELS } from "@tentides/content";
 import { MAX_PLAYERS, Messages } from "@tentides/protocol";
@@ -140,6 +140,11 @@ export function RoomPanel({ room, onLeave }: { room: IslandRoom; onLeave: () => 
           {s.isHost && s.running && (
             <button className="icon-btn" title={s.paused ? "Chơi tiếp" : "Tạm dừng"} onClick={() => room.send(Messages.pause)}>
               {s.paused ? <Play size={16} aria-hidden /> : <Pause size={16} aria-hidden />}
+            </button>
+          )}
+          {s.running && (
+            <button className="icon-btn" title="Đánh dấu khoảnh khắc này (K)" onClick={() => room.send(Messages.star)}>
+              <Star size={15} aria-hidden />
             </button>
           )}
           <SoundButtons />

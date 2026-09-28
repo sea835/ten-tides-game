@@ -167,6 +167,8 @@ function fxSound(fx: FxMessage) {
       return play("punch", { at, volume: 0.5 });
     case "drown":
       return play("bubbles", { at });
+    case "give":
+      return play("pickup", { at });
   }
 }
 
@@ -212,6 +214,7 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
       play(m.tone === "good" ? "chime_good" : m.tone === "bad" ? "chime_bad" : "chime_neutral", { bus: "ui" }),
     );
     const offReject = room.onMessage(Messages.rejected, () => play("buzz", { bus: "ui" }));
+    const offStar = room.onMessage(Messages.starred, () => play("chime_neutral", { bus: "ui" }));
     // Bấm nút trên giao diện: tiếng tách nhỏ.
     const onClick = (e: MouseEvent) => {
       if ((e.target as HTMLElement | null)?.closest("button")) play("click", { bus: "ui" });
@@ -220,6 +223,7 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     return () => {
       offEncounter();
       offReject();
+      offStar();
       window.removeEventListener("click", onClick);
     };
   }, [room]);

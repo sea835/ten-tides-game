@@ -15,7 +15,7 @@ import {
 } from "./character.ts";
 import { gainItem, removeItemAt } from "./inventory.ts";
 import { checkDeaths } from "./endings.ts";
-import { DIFFICULTIES, DIG_ITEM, TREASURE_REVEAL, clamp, fail, type Difficulty, type GameConfig, type GameState, type PlayerSheet } from "./types.ts";
+import { DIFFICULTIES, DIG_ITEM, FAIL_STREAK_BONUS, TREASURE_REVEAL, clamp, fail, type Difficulty, type GameConfig, type GameState, type PlayerSheet } from "./types.ts";
 
 export function isBusy(state: GameState, playerId: string): boolean {
   return Object.values(state.anchors).some((a) => a.status === "active" && a.participants.includes(playerId));
@@ -34,7 +34,7 @@ export function effectiveDc(dc: number, difficulty: Difficulty): number {
   return dc + DIFFICULTIES[difficulty].dcOffset;
 }
 
-export type CheckingPlayer = Pick<PlayerSheet, "stats" | "items" | "hunger" | "morale" | "background" | "flaw" | "bag">;
+export type CheckingPlayer = Pick<PlayerSheet, "stats" | "items" | "hunger" | "morale" | "background" | "flaw" | "bag"> & { failStreak?: number };
 
 export function isOverweight(player: Pick<PlayerSheet, "stats" | "bag">, config: GameConfig): boolean {
   return bagWeight(player.bag, lookupFrom(config.items)) > capacityKg(player.stats.strength);
@@ -64,6 +64,9 @@ export function checkModifiers(player: CheckingPlayer, choice: Pick<CardChoice, 
     modifiers.push({ label: "Bản đồ soi đèn", value: 2 });
   }
   if ((stat === "strength" || stat === "dexterity") && isOverweight(player, config)) modifiers.push({ label: "Quá tải", value: -2 });
+  // Bù xui công khai: trượt mấy lần liền thì lần sau quyết tâm hơn.
+  const streak = player.failStreak ?? 0;
+  if (streak >= FAIL_STREAK_BONUS) modifiers.push({ label: "Quyết tâm", value: streak >= FAIL_STREAK_BONUS * 2 ? 2 : 1 });
   if (player.hunger === 0) modifiers.push({ label: "Kiệt sức", value: -2 });
   if (player.morale === 0) modifiers.push({ label: "Hoảng loạn", value: -2 });
   return modifiers;
@@ -121,6 +124,7 @@ export function choose(state: GameState, playerId: string, anchorId: string, cho
     rolled.result.rerolledFrom = first;
   }
   const result = rolled.result;
+  chooser.failStreak = result.success ? 0 : (chooser.failStreak ?? 0) + 1;
   const chance = () => {
     const r = nextFloat(state.rng);
     state.rng = r.rng;

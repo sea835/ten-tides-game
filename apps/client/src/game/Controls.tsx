@@ -14,6 +14,11 @@ import { play } from "./sound/sfx.ts";
 // (giữ càng lâu ném càng xa), lăn chuột hoặc Q để đổi món cầm, X đặt món đang cầm xuống đất, V dựng nhà,
 // F kết liễu (chỉ kẻ phản bội).
 
+/** Sự kiện riêng mà điều khiển cảm ứng phát ra: đánh/dùng, ném (kèm lực 0–1), đổi món cầm. */
+export const TOUCH_PRIMARY = "tentides:primary";
+export const TOUCH_THROW = "tentides:throw";
+export const TOUCH_CYCLE = "tentides:cycle";
+
 /** Công trình chọn lần lượt khi bấm V (rỗng là thôi dựng). */
 const BUILD_CYCLE = ["", ...worldCatalog.buildings.keys()];
 
@@ -61,6 +66,18 @@ export function Controls({ room }: { room: IslandRoom }) {
       room.send(Messages.attack, { yaw: look.yaw, pitch: aimPitch() });
     };
 
+    // Điều khiển cảm ứng (không khoá chuột được) gửi lệnh qua sự kiện riêng.
+    const onTouchPrimary = () => primary();
+    const onTouchThrow = (e: Event) => {
+      if (!getHands()) return;
+      const power = Math.min(1, Math.max(0, (e as CustomEvent<number>).detail ?? 0.5));
+      localAim.yaw = look.yaw;
+      localAim.at = performance.now();
+      room.send(Messages.throw, { yaw: look.yaw, pitch: aimPitch(), power: 0.35 + power * 0.65 });
+      play("throw", { volume: 0.5 + power * 0.5 });
+    };
+    const onTouchCycle = () => cycle(1);
+
     const onDown = (e: MouseEvent) => {
       if (!locked()) return;
       if (e.button === 0) primary();
@@ -101,6 +118,14 @@ export function Controls({ room }: { room: IslandRoom }) {
           setHud({ build: BUILD_CYCLE[(i + 1) % BUILD_CYCLE.length]! });
           break;
         }
+        case "KeyG": {
+          const to = getHud().giveTo;
+          if (to && getHands()) room.send(Messages.give, { target: to.id });
+          break;
+        }
+        case "KeyK":
+          room.send(Messages.star);
+          break;
         case "KeyF": {
           const victim = getHud().victim;
           if (victim) room.send(Messages.assassinate, { target: victim.id });
@@ -116,7 +141,13 @@ export function Controls({ room }: { room: IslandRoom }) {
     window.addEventListener("wheel", onWheel, { passive: true });
     window.addEventListener("contextmenu", onMenu);
     window.addEventListener("keydown", onKey);
+    window.addEventListener(TOUCH_PRIMARY, onTouchPrimary);
+    window.addEventListener(TOUCH_THROW, onTouchThrow);
+    window.addEventListener(TOUCH_CYCLE, onTouchCycle);
     return () => {
+      window.removeEventListener(TOUCH_PRIMARY, onTouchPrimary);
+      window.removeEventListener(TOUCH_THROW, onTouchThrow);
+      window.removeEventListener(TOUCH_CYCLE, onTouchCycle);
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("wheel", onWheel);

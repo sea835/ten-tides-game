@@ -10,6 +10,7 @@ import {
   Gem,
   Hammer,
   Hand,
+  HandHeart,
   Keyboard,
   LogOut,
   Package,
@@ -19,14 +20,16 @@ import {
   Shovel,
   Skull,
   Sparkles,
+  Star,
   Trophy,
   TreePalm,
   TriangleAlert,
   UtensilsCrossed,
 } from "lucide-react";
-import { ENDING_LABELS, NIGHT_ACTION_LABELS, ROLE_LABELS, content, worldCatalog } from "@tentides/content";
+import { ENDING_LABELS, GHOST_ACTION_LABELS, NIGHT_ACTION_LABELS, ROLE_LABELS, content, worldCatalog } from "@tentides/content";
 import { Messages, type EncounterMessage, type RejectedMessage } from "@tentides/protocol";
-import { DIG_ITEM, type EndingId, type NightActionId, type RoleId, type Winner } from "@tentides/rules";
+import { DIG_ITEM, type EndingId, type GhostActionId, type NightActionId, type RoleId, type Winner } from "@tentides/rules";
+import { describe } from "./Feed.tsx";
 import { itemName } from "./format.ts";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useQuality } from "../graphics.ts";
@@ -35,6 +38,7 @@ import { isTyping } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { localEnv } from "../shared.ts";
 import { usePrivate } from "../privateStore.ts";
+import { useHands } from "../handsStore.ts";
 import { Avatar } from "./ui.tsx";
 
 const TARGET_ICON = { poi: Search, creature: Hand, item: Package, tree: TreePalm, camp: Flame, page: ScrollText, campfire: UtensilsCrossed } as const;
@@ -65,7 +69,9 @@ function BuildPrompt({ kind, ok }: { kind: string; ok: boolean }) {
 }
 
 export function InteractPrompt({ room }: { room: IslandRoom }) {
-  const { nearAnchor, atDigSite, nearTarget, climbing, victim, build, buildOk } = useHud();
+  const { nearAnchor, atDigSite, nearTarget, climbing, victim, build, buildOk, giveTo } = useHud();
+  const held = useHands();
+  const heldName = usePrivate()?.bag.find((b) => b.uid === held)?.itemId;
   const cardId = useRoomSnapshot(room, (s) => (nearAnchor ? (s.anchors.get(nearAnchor)?.cardId ?? null) : null));
   const hasShovel = useRoomSnapshot(room, (s) => [...(s.players.get(myId(room))?.items ?? [])].includes(DIG_ITEM));
   if (build) return <BuildPrompt kind={build} ok={buildOk} />;
@@ -88,6 +94,15 @@ export function InteractPrompt({ room }: { room: IslandRoom }) {
         <Skull size={16} aria-hidden />
         Kết liễu {victim.name}
         <span className="hint"> · một lần mỗi ngày, không ai biết là bạn</span>
+      </div>
+    );
+  }
+  if (giveTo && heldName && !nearTarget && !nearAnchor) {
+    return (
+      <div className="prompt">
+        <kbd>G</kbd>
+        <HandHeart size={16} aria-hidden />
+        Đưa {itemName(heldName).toLowerCase()} cho {giveTo.name}
       </div>
     );
   }
@@ -234,22 +249,25 @@ export function PostureBadge() {
 }
 
 export function Toast({ room }: { room: IslandRoom }) {
-  const [message, setMessage] = useState<{ text: string; key: number } | null>(null);
+  const [message, setMessage] = useState<{ text: string; key: number; star?: boolean } | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
-    const off = room.onMessage(Messages.rejected, (m: RejectedMessage) => {
-      setMessage({ text: m.reason, key: Date.now() });
+    const show = (text: string, star = false) => {
+      setMessage({ text, key: Date.now(), star });
       clearTimeout(timer);
       timer = setTimeout(() => setMessage(null), 3000);
-    });
+    };
+    const off = room.onMessage(Messages.rejected, (m: RejectedMessage) => show(m.reason));
+    const offStar = room.onMessage(Messages.starred, (m: { count: number }) => show(`Đã đánh dấu khoảnh khắc (${m.count}). Xem lại ở màn lật bài.`, true));
     return () => {
       off();
+      offStar();
       clearTimeout(timer);
     };
   }, [room]);
   return message ? (
-    <div key={message.key} className="toast" role="status">
-      <Ban size={16} aria-hidden />
+    <div key={message.key} className={message.star ? "toast star" : "toast"} role="status">
+      {message.star ? <Star size={16} aria-hidden /> : <Ban size={16} aria-hidden />}
       {message.text}
     </div>
   ) : null;
@@ -280,6 +298,8 @@ const KEYS: [string, string][] = [
   ["Q · lăn chuột", "Đổi món cầm"],
   ["X", "Đặt đồ xuống"],
   ["V", "Dựng nhà"],
+  ["G", "Đưa món đang cầm cho người bên cạnh"],
+  ["K", "Đánh dấu ⭐ khoảnh khắc"],
   ["B", "Xem balo"],
   ["J", "Sổ truyện"],
   ["Enter", "Chat"],
@@ -352,6 +372,13 @@ const WINNER_TEXT: Record<Winner, string> = {
 
 const TRAITOR_ACTIONS = new Set(["sabotage", "signal", "forge", "pocket", "assassinate"]);
 
+/** Tên việc làm trong dòng thời gian đêm: hành động đêm, kết liễu, hay việc của hồn ma. */
+function actionLabel(action: string): string {
+  if (action === "assassinate") return "Kết liễu giữa ban ngày";
+  if (action.startsWith("ghost_")) return `Hồn ma ${GHOST_ACTION_LABELS[action.slice(6) as GhostActionId]?.title.toLowerCase() ?? ""}`;
+  return NIGHT_ACTION_LABELS[action as NightActionId]?.title ?? action;
+}
+
 /** Màn lật bài: kết thúc, vai của mọi người, hành động từng đêm, đồ bỏ túi. Khoảnh khắc "hoá ra là mày!". */
 export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const end = useRoomSnapshot(room, (s) => {
@@ -371,7 +398,24 @@ export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => 
         role: (s.reveal.roles.get(id) ?? "villager") as RoleId,
         tied: [...s.reveal.tied].filter((t) => t === id).length,
       })),
-      nights: [...s.reveal.nights].map((n) => ({ day: n.day, who: n.playerId, action: n.action as NightActionId, target: n.target ? name(n.target) : "" })),
+      nights: [...s.reveal.nights].map((n) => ({ day: n.day, who: n.playerId, action: n.action as NightActionId, target: n.target ? name(n.target) : "", text: n.text })),
+      // Khảo sát kín: mỗi đêm bao nhiêu người nghi đúng kẻ phản bội.
+      suspicionDays: (() => {
+        const traitors = new Set([...s.reveal.roles.entries()].filter(([, r]) => r === "pirate" || r === "con").map(([id]) => id));
+        const byDay = new Map<number, { right: number; total: number; guesses: string[] }>();
+        for (const x of s.reveal.suspicions) {
+          const d = byDay.get(x.day) ?? { right: 0, total: 0, guesses: [] };
+          d.total++;
+          if (x.target && traitors.has(x.target)) d.right++;
+          d.guesses.push(`${name(x.playerId)} → ${x.target ? name(x.target) : "không ai"}`);
+          byDay.set(x.day, d);
+        }
+        return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([day, d]) => ({ day, ...d, anyTraitor: traitors.size > 0 }));
+      })(),
+      moments: [...s.reveal.stars].map((st) => {
+        const entry = s.log[Number(st.target)];
+        return { who: name(st.playerId), day: st.day, text: entry ? describe(entry, s).text : "Lúc ván vừa bắt đầu" };
+      }),
       loot: [...s.reveal.loot].map((l) => `${name(l.playerId)}: ${itemName(l.itemId)}`),
       signals: s.reveal.signals,
       deceit: s.reveal.deceit,
@@ -452,8 +496,9 @@ export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => 
                       .filter((n) => n.day === d)
                       .map((n, i) => (
                         <div key={i} className={TRAITOR_ACTIONS.has(n.action) ? "traitor-act" : ""}>
-                          {end.players.find((p) => p.id === n.who)?.name}: {n.action === ("assassinate" as NightActionId) ? "Kết liễu giữa ban ngày" : (NIGHT_ACTION_LABELS[n.action]?.title ?? n.action)}
+                          {end.players.find((p) => p.id === n.who)?.name}: {actionLabel(n.action)}
                           {n.target && ` → ${n.target}`}
+                          {n.text && ` · “${n.text}”`}
                         </div>
                       ))}
                   </div>
@@ -461,6 +506,34 @@ export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => 
               </details>
             )}
             {end.loot.length > 0 && <p className="hint">Đồ kẻ lừa đảo bỏ túi: {end.loot.join(" · ")}</p>}
+            {end.suspicionDays.length > 0 && (
+              <details className="timeline">
+                <summary>
+                  <ChevronDown size={14} aria-hidden /> Mỗi đêm cả đoàn nghi ai
+                </summary>
+                {end.suspicionDays.map((d) => (
+                  <div key={d.day} className="timeline-night">
+                    <strong>
+                      Đêm {d.day}
+                      {d.anyTraitor ? ` · ${d.right}/${d.total} người nghi đúng` : ""}
+                    </strong>
+                    <div className="hint">{d.guesses.join(" · ")}</div>
+                  </div>
+                ))}
+              </details>
+            )}
+            {end.moments.length > 0 && (
+              <div className="moments">
+                <div className="label">
+                  <Star size={13} aria-hidden /> Khoảnh khắc được đánh dấu
+                </div>
+                {end.moments.map((m, i) => (
+                  <div key={i} className="moment">
+                    <span className="feed-day">N{m.day}</span> <strong>{m.who}</strong>: {m.text}
+                  </div>
+                ))}
+              </div>
+            )}
             {end.awards.length > 0 && (
               <div className="awards">
                 <div className="label">

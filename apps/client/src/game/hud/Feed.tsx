@@ -6,6 +6,7 @@ import {
   Flame,
   Gem,
   Hammer,
+  HandHeart,
   Moon,
   PawPrint,
   ScrollText,
@@ -47,6 +48,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   twist: Zap,
   outside: Tent,
   stash: UtensilsCrossed,
+  give: HandHeart,
 };
 
 const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
@@ -119,7 +121,8 @@ function encounterLine(e: LogEntryState, name: (id: string) => string): Line {
   }
 }
 
-function describe(e: LogEntryState, s: IslandState): Line {
+/** Một dòng nhật ký thành lời (dùng cả ở màn lật bài cho khoảnh khắc ⭐). */
+export function describe(e: LogEntryState, s: IslandState): Line {
   const name = (id: string) => s.players.get(id)?.name ?? "?";
   if (e.kind === "check") {
     const card = content.cards.get(e.cardId);
@@ -187,6 +190,9 @@ function describe(e: LogEntryState, s: IslandState): Line {
   if (e.kind === "outside") {
     const title = content.nights.get(e.defId)?.title.toLowerCase() ?? "khó ngủ";
     return { day: e.day, ok: e.success, text: `${name(e.playerId)} ngủ ngoài, gặp ${title}: ${e.total} / ${e.dc} ${e.success ? "✓" : "✗"}` };
+  }
+  if (e.kind === "give") {
+    return { day: e.day, ok: true, text: `${name(e.playerId)} đưa cho ${name(e.players[0] ?? "")} ${itemName(e.defId).toLowerCase()}` };
   }
   if (e.kind === "stash") {
     return { day: e.day, ok: true, text: `${name(e.playerId)} góp ${itemName(e.defId).toLowerCase()} vào kho (+${e.amount} khẩu phần)` };

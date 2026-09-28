@@ -183,10 +183,65 @@ export const RECIPES: Record<string, Recipe> = {
 
 export type SoundName = keyof typeof RECIPES;
 
+/**
+ * Hệ số chỉnh độ to từng tiếng, đo bằng cách dựng ngoại tuyến (OfflineAudioContext) mỗi công thức rồi so đỉnh
+ * sóng với mức mong muốn: bước chân khẽ, đòn đánh rõ, nổ súng và dung nham to nhất nhưng không vượt 1 (không vỡ tiếng).
+ */
+export const TRIM: Record<string, number> = {
+  step_sand: 2.25,
+  step_grass: 1.38,
+  step_rock: 0.39,
+  step_wood: 0.77,
+  step_water: 0.80,
+  swim: 0.91,
+  climb: 1.82,
+  whoosh: 2.86,
+  throw: 3.08,
+  punch: 0.68,
+  slash: 0.86,
+  clang: 0.53,
+  bite: 0.57,
+  gunshot: 0.54,
+  twang: 0.91,
+  thud: 0.80,
+  kill: 0.86,
+  poof: 1.59,
+  chop: 0.82,
+  tree_fall: 0.65,
+  dig: 1.40,
+  hammer: 0.85,
+  splash: 0.92,
+  bubbles: 1.21,
+  sizzle: 0.71,
+  lava: 0.49,
+  crunch: 1.52,
+  gulp: 0.85,
+  pickup: 0.92,
+  stash: 0.89,
+  rustle: 0.38,
+  thunder: 1.25,
+  rumble: 0.8,
+  shark: 1.47,
+  click: 0.71,
+  buzz: 2.27,
+  chime_good: 0.75,
+  chime_bad: 0.68,
+  chime_neutral: 0.76,
+  dice: 1.38,
+  success: 0.79,
+  fail: 0.80,
+  dawn: 0.82,
+  dusk: 0.65,
+  night: 0.95,
+  death: 0.69,
+  twist: 1.54,
+  ended: 0.81,
+};
+
 /** Phát một tiếng động (không vị trí thì nghe như ở ngay tai). */
 export function play(name: SoundName, opts: { at?: Place; volume?: number; bus?: Bus; delay?: number; hearing?: number } = {}) {
   const recipe = RECIPES[name];
-  const out = recipe && audio.output(opts.bus ?? "sfx", opts.volume ?? 1, opts.at, opts.hearing);
+  const out = recipe && audio.output(opts.bus ?? "sfx", (opts.volume ?? 1) * (TRIM[name] ?? 1), opts.at, opts.hearing);
   if (!out) return;
   recipe(out, audio.ctx!.currentTime + (opts.delay ?? 0));
 }

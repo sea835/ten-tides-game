@@ -11,7 +11,13 @@ export const TOTAL_DAYS = 10;
 export const RATIONS_PER_FOOD_ITEM = 1;
 /** Mang quá tải thì mỗi đêm đói thêm chừng này. */
 export const OVERWEIGHT_HUNGER = 10;
-export const MAX_CARDS_PER_DAY = 7;
+export const MAX_CARDS_PER_DAY = 6;
+/** Trượt liên tiếp chừng này lần thì được "Quyết tâm +1", gấp đôi số đó thì +2. */
+export const FAIL_STREAK_BONUS = 2;
+/** Thẻ có lựa chọn được cộng điểm nhờ món đồ đội đang mang thì dễ được chia ra hơn chừng này lần. */
+export const ITEM_CARD_WEIGHT = 2;
+/** Mỗi người giữ chừng này dòng nhật ký chỉ số gần nhất. */
+export const STAT_LOG_SIZE = 40;
 export const DAILY_HUNGER = 25;
 /** Ngủ ngoài trại không có lều thì mất chừng này Tinh thần, rồi còn gặp chuyện trong đêm. */
 export const OUTSIDE_MORALE = 8;
@@ -63,14 +69,27 @@ export const TRAITOR_CHANCE: Record<number, number> = { 4: 0.5, 5: 0.6, 6: 0.7 }
 export const NURSE_CHANCE = 0.5;
 
 /** Hành động đêm bí mật. Ai cũng có một hành động để thời điểm bấm nút không tố cáo kẻ phản bội. */
-export const NIGHT_ACTION_IDS = ["repair", "sleep", "guard", "protect", "sabotage", "signal", "forge", "pocket"] as const;
+export const NIGHT_ACTION_IDS = ["repair", "sleep", "guard", "search", "protect", "sabotage", "signal", "forge", "pocket"] as const;
 export type NightActionId = (typeof NIGHT_ACTION_IDS)[number];
 export const ROLE_NIGHT_ACTIONS: Record<RoleId, readonly NightActionId[]> = {
-  villager: ["repair", "sleep", "guard"],
-  nurse: ["repair", "sleep", "guard", "protect"],
-  pirate: ["repair", "sleep", "guard", "sabotage", "signal"],
-  con: ["repair", "sleep", "guard", "forge", "pocket"],
+  villager: ["repair", "sleep", "guard", "search"],
+  nurse: ["repair", "sleep", "guard", "search", "protect"],
+  pirate: ["repair", "sleep", "guard", "search", "sabotage", "signal"],
+  con: ["repair", "sleep", "guard", "search", "forge", "pocket"],
 };
+/** Hành động đêm cần chọn một người khác đang ngồi quanh đống lửa. */
+export const TARGETED_NIGHT_ACTIONS: readonly NightActionId[] = ["protect", "search"];
+/** Lục soát balo người khác: mệt và áy náy, mất chừng này Tinh thần. */
+export const SEARCH_MORALE_COST = 5;
+
+/** Hồn ma mỗi đêm được làm một việc nhỏ: thì thầm vào giấc mơ, làm ai đó lạnh gáy, hay dẫn lối manh mối. */
+export const GHOST_ACTION_IDS = ["whisper", "chill", "guide"] as const;
+export type GhostActionId = (typeof GHOST_ACTION_IDS)[number];
+export const GHOST_WHISPER_MAX = 80;
+export const GHOST_CHILL_MORALE = 6;
+export const GHOST_GUIDE_TREASURE = 2;
+/** Mỗi người đánh dấu tối đa chừng này khoảnh khắc trong một ván. */
+export const MAX_STARS = 12;
 /** Hành động đêm có hại, dùng để biết đêm nay kẻ phản bội có ra tay không. */
 export const TRAITOR_ACTIONS: readonly NightActionId[] = ["sabotage", "signal", "forge", "pocket"];
 
@@ -139,6 +158,26 @@ export interface PlayerSheet {
   tray: TrayItem[];
   /** Tay cờ bạc đã dùng lượt tung lại của hôm nay chưa. */
   rerolledToday: boolean;
+  /** Số lần trượt liên tiếp ở thẻ sự kiện; đủ nhiều thì được cộng "Quyết tâm" (bù xui công khai). */
+  failStreak: number;
+}
+
+/** Một lần chỉ số của một người thay đổi, và vì sao (mã lý do, client dịch ra lời). */
+export interface StatChange {
+  day: number;
+  /** Mã lý do: "card:<id>", "encounter:<nguồn>:<id>", "eat:<món>", "night", "dusk", "twist"... */
+  reason: string;
+  hp?: number;
+  hunger?: number;
+  morale?: number;
+  stamina?: number;
+}
+
+export interface GhostChoice {
+  action: GhostActionId;
+  target?: string;
+  /** Lời thì thầm (chỉ với "whisper"), đã cắt ngắn. */
+  text?: string;
 }
 
 export interface NightChoice {
@@ -260,6 +299,8 @@ export type LogEntry =
   | { kind: "twist"; day: number; twist: string; playerId: string | null }
   /** Một người ngủ ngoài trại gặp chuyện trong đêm. */
   | { kind: "outside"; day: number; playerId: string; event: string; result: CheckResult }
+  /** Trao tay một món cho người khác. */
+  | { kind: "give"; day: number; playerId: string; target: string; itemId: string }
   /** Góp đồ ăn kiếm được vào kho lương thực chung. */
   | { kind: "stash"; day: number; playerId: string; itemId: string; amount: number };
 
@@ -305,6 +346,15 @@ export interface GameState {
   kills: { day: number; by: string; target: string }[];
   /** Số chỗ ngủ có mái che ở trại (chòi, nhà sàn đã dựng). */
   shelter: number;
+  /** Việc hồn ma chọn đêm nay và các đêm trước (lộ ở màn lật bài). */
+  ghostChoices: Record<string, GhostChoice>;
+  ghostHistory: ({ day: number; playerId: string } & GhostChoice)[];
+  /** Khảo sát kín mỗi đêm: ai nghi ai (null là không nghi ai). Chỉ lộ ở màn lật bài. */
+  suspicions: { day: number; playerId: string; target: string | null }[];
+  /** Khoảnh khắc người chơi đánh dấu ⭐: lúc nào, ngay sau dòng nhật ký nào. */
+  stars: { day: number; phase: Phase; playerId: string; logIndex: number }[];
+  /** Nhật ký thay đổi chỉ số của từng người (chỉ gửi riêng cho người đó), giữ vài chục dòng gần nhất. */
+  statLog: Record<string, StatChange[]>;
   /** Biến cố ngày 5, chọn từ lúc bắt đầu ván và giữ bí mật tới khi xảy ra; `twistPlayer` là người bị cuốn vào. */
   twist: string;
   twistPlayer: string | null;
@@ -354,6 +404,12 @@ export type GameAction =
   /** Server lật phiếu sớm khi những người còn kết nối đã bỏ phiếu hết. */
   | { type: "revealBallot" }
   | { type: "nightAction"; playerId: string; action: NightActionId; target?: string }
+  /** Hồn ma chọn việc làm đêm nay. */
+  | { type: "ghostAction"; playerId: string; action: GhostActionId; target?: string; text?: string }
+  /** Khảo sát kín: đêm nay mình nghi ai (null là không nghi ai). */
+  | { type: "suspect"; playerId: string; target: string | null }
+  /** Đánh dấu ⭐ khoảnh khắc vừa xảy ra, để xem lại ở màn lật bài. */
+  | { type: "star"; playerId: string }
   /** Server đã kiểm tra người đào đứng đúng chỗ. */
   | { type: "dig"; playerId: string }
   /**
@@ -370,6 +426,8 @@ export type GameAction =
   | { type: "assassinate"; playerId: string; target: string }
   /** Dựng công trình ở trại: tiêu vật liệu trong balo, thêm chỗ ngủ có mái che. */
   | { type: "build"; playerId: string; building: string; cost: Record<string, number>; shelter: number }
+  /** Trao tay một món cho người đứng cạnh. Server đã kiểm tra khoảng cách. */
+  | { type: "give"; playerId: string; target: string; uid: string }
   /** Góp một món ăn được vào kho lương thực chung. Server đã kiểm tra người đó đứng ở lửa trại. */
   | { type: "stash"; playerId: string; uid: string }
   /** Nướng một món trên lửa trại (thịt sống thành thịt nướng...). Server đã kiểm tra đứng ở lửa trại. */

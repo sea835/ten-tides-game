@@ -7,9 +7,11 @@ import {
   type Clue,
   type GameConfig,
   type GameState,
+  type GhostChoice,
   type NightActionId,
   type NightChoice,
   type RoleId,
+  type StatChange,
 } from "./types.ts";
 
 /**
@@ -33,6 +35,16 @@ export interface PrivateView {
   pairs: AdjacencyId[];
   /** Kẻ phản bội: hôm nay còn kết liễu được không. */
   canAssassinate: boolean;
+  /** Nhật ký chỉ số của riêng mình: được mất gì, vì sao. */
+  statLog: StatChange[];
+  /** Số lần trượt liên tiếp (để hiện "Quyết tâm" sắp có). */
+  failStreak: number;
+  /** Hồn ma: việc đã chọn đêm nay. */
+  ghostChoice: GhostChoice | null;
+  /** Khảo sát kín: đêm nay mình đang nghi ai ("" là chưa ghi, null là không nghi ai). */
+  suspicion: string | null | "";
+  /** Số khoảnh khắc mình đã đánh dấu. */
+  stars: number;
 }
 
 export function privateView(state: GameState, playerId: string, config: GameConfig): PrivateView | null {
@@ -58,5 +70,10 @@ export function privateView(state: GameState, playerId: string, config: GameConf
     capacityKg: capacityKg(p.stats.strength),
     pairs: activePairs(p.bag, lookupFrom(config.items)),
     canAssassinate: canAssassinate(state, playerId),
+    statLog: state.statLog[playerId] ?? [],
+    failStreak: p.failStreak ?? 0,
+    ghostChoice: state.ghostChoices[playerId] ?? null,
+    suspicion: state.suspicions.find((s) => s.day === state.day && s.playerId === playerId)?.target ?? "",
+    stars: state.stars.filter((s) => s.playerId === playerId).length,
   };
 }

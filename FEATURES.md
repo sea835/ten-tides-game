@@ -30,10 +30,10 @@
 | H3 | Một phần | Ai cũng có hành động đêm bí mật (sửa thuyền, ngủ bù, canh gác, cộng năng lực của vai). Đêm vẫn rút ngắn khi mọi người bấm "Đi ngủ", nhưng chỉ công khai con số |
 | H4 | Xong | Đề cử, bỏ phiếu kín, lật cùng lúc khi mọi người có mặt đã bầu; quá nửa đồng ý mới trói |
 | H5 | Xong | Đêm 60/90/120 giây do chủ phòng chọn; mọi người đi ngủ thì rút ngắn |
-| H6 | Một phần | Người bị trói vẫn ở trại; hồn ma nghe được đống lửa và chat với nhau. Hồn ma chưa có hành động nhỏ mỗi đêm |
+| H6 | Xong | Người bị trói vẫn ở trại; hồn ma nghe được đống lửa, chat với nhau, và mỗi đêm làm một việc nhỏ: thì thầm một câu vào giấc mơ ai đó (không lộ là ai), làm ai đó lạnh gáy, hoặc dẫn lối (+2 kho báu); lộ ở màn lật bài |
 | H7 | Xong | Màn lật bài: vai thật, trói đúng hay oan, hành động từng đêm, đồ kẻ lừa đảo bỏ túi, tiến độ bí mật |
 | H8 | Xong | Trói không báo đúng hay sai; chỉ lộ ở màn lật bài |
-| S1 | Một phần | Máu / No / Tinh thần; Sức bền là thanh chạy (giới hạn theo mệt trong ngày). Chưa có nhật ký thay đổi của từng người |
+| S1 | Xong | Máu / No / Tinh thần; Sức bền là thanh chạy (giới hạn theo mệt trong ngày). Nhật ký chỉ số riêng trong khung nhân vật: được mất bao nhiêu, vì thẻ nào, con gì cắn, ăn gì, qua đêm... |
 | S2 | Xong | Thời tiết, núi lửa, lương thực, kho báu (và chỗ đào khi đã biết), thuyền (và mức tối thiểu để rời đảo) |
 | S3 | Xong | Bản đồ nhỏ (người, điểm sự kiện, chỗ đào) và cảnh báo khi không còn kịp chạy về trại |
 | S4, S5, S7 | Xong | Như lần cập nhật trước |
@@ -52,7 +52,7 @@
 | T1 | Xong | `pnpm --filter @tentides/server sim` in phân phối kết thúc kèm khoảng tin cậy, nhịp, đường cong theo ngày, tần suất thẻ, tỷ lệ thành công từng lựa chọn |
 | T2 | Xong | Phát lại theo seed; công cụ `replay` đọc log ván |
 | T3 | Chưa | |
-| D1 | Một phần | Thẻ cộng điểm theo đồ trong balo; lời kể hoàng hôn nhắc món đồ đã giúp. Chưa lọc thẻ theo đồ |
+| D1 | Xong | Thẻ cộng điểm theo đồ trong balo; lời kể hoàng hôn nhắc món đồ đã giúp; thẻ có lựa chọn được cộng nhờ đồ cả đội đang mang thì dễ được chia ra gấp đôi |
 | D2 | Xong | "Thiếu N điểm; nếu có Xẻng (+3) đã qua" |
 | D3 | Xong | Sự cố tự nhiên mỗi đêm trông giống hệt phá hoại |
 | D4, D5, D6 | Xong | Lời kể riêng mỗi sáng, lời kể hoàng hôn, biên niên sử có nút sao chép |
@@ -76,13 +76,17 @@
 | G2 | Xong | Ngủ ngoài trại: 11 chuyện đêm (theo thời tiết) có phép kiểm tra, lều, đuốc, súng... cộng điểm; kể lại lúc bình minh và trong lời kể riêng |
 | G3 | Xong | Nướng thịt, cá ở lửa trại; góp dừa, cá, thịt, lương khô vào kho lương thực chung |
 | G4 | Xong | Trang nhật ký mỗi ngày một trang theo seed bản đồ, mỗi trang hé một mảnh cốt truyện, +4 kho báu, lưu vào sổ truyện riêng |
+| G6 | Xong | Trao tay (G): đưa món đang cầm cho người đứng cạnh. Lục soát: hành động đêm mới, thấy cả ngăn bí mật và túi đồ kẻ lừa đảo giấu riêng; người bị lục chỉ biết là có người lục |
+| G7 | Xong | Bù xui công khai: trượt 2 lần liền thì "Quyết tâm +1", 4 lần thì +2, hiện trong tỷ lệ % trước khi chọn |
+| G8 | Xong | Khảo sát kín mỗi đêm "bạn nghi ai" và nút ⭐ đánh dấu khoảnh khắc (K); màn lật bài hiện "đêm N: x/y người nghi đúng" và danh sách khoảnh khắc |
+| G9 | Xong | Điều khiển cảm ứng: cần gạt, vuốt để xoay camera, nút đánh, ném, nhảy, lặn, dùng, đưa, kết liễu; balo chạm-chọn, chạm-đặt; HUD gọn trên màn nhỏ |
 | G5 | Xong | 16 danh hiệu cuối ván trên màn lật bài và trong biên niên sử |
 | V1 | Xong | Thời tiết nhìn thấy được: mây, mưa, bão có gió giật và sấm chớp, sương mù, động đất; đom đóm đêm quang; bụi chân, gợn nước; cảnh cố định cho xác tàu, phế tích, mỏm đá tổ chim, suối nước nóng |
 | E1 | Xong | Nhảy vào hồ dung nham chết ngay; giẫm vào lửa trại bỏng từng nhịp, bị hất ra; đuối nước thật: hết hơi thì ngoi chậm, mất Máu nhanh, kiệt sức hay quá tải thì chìm dần. Lời kể và nhật ký nói đúng nguyên nhân cái chết |
 | A1 | Xong | Âm thanh tổng hợp bằng Web Audio: tiếng động hành động, bước chân theo mặt đất, nền môi trường theo vị trí, thời tiết và giờ, ù dưới nước, tiếng giao diện, nhạc nền tự sinh; M tắt tiếng, N tắt nhạc |
 | M7 | Xong | Seed bản đồ công khai, chủ phòng nhập hoặc gieo lại ở sảnh chờ; seed của engine luật không còn gửi xuống client |
 
-Cân bằng hiện tại (bot, 3.000 ván 4–6 người, 7 thẻ mỗi ngày): phe đội thắng 53,7%, không ai thắng 26,4%, phản bội thắng 33,0% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%. Bot chưa biết nướng, góp lương thực hay nhặt trang nhật ký, nên ván người thật sẽ dư dả hơn một chút.
+Cân bằng hiện tại (bot, 3.000 ván 4–6 người, 6 thẻ mỗi ngày; bot biết hái dừa góp kho và nhặt trang nhật ký): phe đội thắng 54,5%, không ai thắng 24,1%, phản bội thắng 35,5% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%.
 
 ## Quyết định đã chốt
 
@@ -305,12 +309,12 @@ Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản t�
 ### Add After Validation (v1.x)
 
 - [ ] **Lưu ván để chơi tiếp buổi sau.** Làm khi playtest cho thấy nhóm thường không chơi hết 10 ngày trong một buổi. Event sourcing đã làm việc này rẻ đi
-- [ ] **Bù xui công khai** ("Quyết tâm +1" sau 2 lần trượt). Làm khi khảo sát báo "xúc xắc bất công" dù đã có R1/R2/D2
-- [ ] **Khảo sát nghi ngờ riêng mỗi đêm** ("bạn nghi ai?"), dùng cho dữ liệu và cho màn lật bài ("đêm 4, 3/5 người đã nghi đúng"). Làm khi cần biết nhóm bắt đầu nghi đúng từ lúc nào
-- [ ] **Nút ⭐ khoảnh khắc (D10)** và **dòng thời gian đêm của kẻ phản bội (D7)** ở mức đầy đủ
+- [x] **Bù xui công khai** ("Quyết tâm +1" sau 2 lần trượt)
+- [x] **Khảo sát nghi ngờ riêng mỗi đêm** ("bạn nghi ai?"), màn lật bài hiện "đêm 4, 3/5 người đã nghi đúng"
+- [x] **Nút ⭐ khoảnh khắc (D10)** và **dòng thời gian đêm của kẻ phản bội (D7)** (có cả việc làm của hồn ma)
 - [ ] **Mở rộng nội dung** lên mức "tươi 2–3 buổi". Làm khi nhóm đòi chơi ván 2, 3
-- [ ] **Hồn ma có năng lực phong phú hơn.** Làm khi telemetry cho thấy người chết sớm thoát khỏi ván hoặc im lặng
-- [ ] **Chế độ chạm cho điện thoại** (chạm-chọn / chạm-đặt). Làm khi nhóm test chủ yếu dùng điện thoại
+- [x] **Hồn ma có việc làm mỗi đêm** (thì thầm, làm lạnh gáy, dẫn lối)
+- [x] **Chế độ chạm cho điện thoại** (cần gạt, nút bấm, balo chạm-chọn / chạm-đặt)
 
 ### Future Consideration (v2+)
 
@@ -383,7 +387,7 @@ Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản t�
 | Slay the Spire | 52 event (12 chỉ hồi 1, 16 chỉ hồi 2, 8 chỉ hồi 3, 16 dùng chung) | Mỗi event tối đa 1 lần mỗi lượt chơi; ước khoảng 10–15 event mỗi lượt | HIGH (số event), LOW (số mỗi lượt) |
 | Eldritch Horror | 272 location encounter (tính cả bản mở rộng) | Theo vùng màu | MEDIUM |
 | Backpack Battles | Shop bày 5 món mỗi vòng, reroll 1 vàng × 4 lần rồi 2 vàng, giữ chỗ được | Không áp dụng | HIGH |
-| Tài liệu TEN TIDES | Prototype giấy: 30 thẻ; MVP 3D: 60 thẻ gắn điểm, 40 đồ. Hiện có 57 thẻ, 38 đồ, 19 điểm thuộc 12 loại | Engine đặt tối đa 7 thẻ mỗi ngày (`MAX_CARDS_PER_DAY`) | Nguồn nội bộ |
+| Tài liệu TEN TIDES | Prototype giấy: 30 thẻ; MVP 3D: 60 thẻ gắn điểm, 40 đồ. Hiện có 57 thẻ, 38 đồ, 19 điểm thuộc 12 loại | Engine đặt tối đa 6 thẻ mỗi ngày (`MAX_CARDS_PER_DAY`) | Nguồn nội bộ |
 
 **Quy tắc ngón tay cái (MEDIUM-LOW, suy luận):** các game trên có kho khoảng **3 lần** số lần rút mỗi ván thì chơi nhiều buổi vẫn thấy mới. Để một ván không lặp mà vẫn có lựa chọn, kho cần tối thiểu khoảng **1,5 lần** số lần rút, vì bộ lọc (vùng × hồi × thời tiết × đồ mang theo) chia kho ra nhiều ngăn nhỏ.
 

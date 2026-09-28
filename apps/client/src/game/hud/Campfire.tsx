@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { BedDouble, Check, EyeOff, Flame, Ghost, Lock, Moon, Send, Wheat } from "lucide-react";
-import { NIGHT_ACTION_LABELS, RATION_LABELS } from "@tentides/content";
+import { BedDouble, Check, EyeOff, Flame, Ghost, Lock, Moon, Search, Send, Wheat } from "lucide-react";
+import { GHOST_ACTION_LABELS, NIGHT_ACTION_LABELS, RATION_LABELS } from "@tentides/content";
 import { CHAT_MAX_LENGTH, Messages, type ChatChannel } from "@tentides/protocol";
-import { RATION_IDS } from "@tentides/rules";
+import { GHOST_ACTION_IDS, GHOST_WHISPER_MAX, RATION_IDS, TARGETED_NIGHT_ACTIONS, type GhostActionId } from "@tentides/rules";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useChat } from "../chatStore.ts";
 import { usePrivate } from "../privateStore.ts";
@@ -87,12 +87,61 @@ export function LobbyChat({ room }: { room: IslandRoom }) {
 /** Người đã gục vẫn ở lại ván: nghe được cả trại ban đêm và nói chuyện với nhau. */
 export function GhostChat({ room }: { room: IslandRoom }) {
   const ghost = useRoomSnapshot(room, (s) => s.phase !== "lobby" && s.phase !== "ended" && s.players.get(myId(room))?.alive === false);
+  const night = useRoomSnapshot(room, (s) => s.phase === "night");
   if (!ghost) return null;
   return (
     <section className="panel ghost-chat">
       <SectionLabel icon={Ghost}>Hồn ma · ban đêm nghe được cả trại, nhưng chỉ hồn ma nghe thấy bạn</SectionLabel>
+      {night && <GhostActions room={room} />}
       <ChatBox room={room} channels={["camp", "ghost"]} placeholder="Nhấn Enter để nói với các hồn ma khác" />
     </section>
+  );
+}
+
+/** Mỗi đêm hồn ma làm được một việc nhỏ: thì thầm vào giấc mơ ai đó, làm ai đó lạnh gáy, hay dẫn lối manh mối. */
+function GhostActions({ room }: { room: IslandRoom }) {
+  const living = useRoomSnapshot(room, (s) => [...s.players.entries()].filter(([, p]) => p.alive).map(([id, p]) => ({ id, name: p.name })));
+  const choice = usePrivate()?.ghostChoice ?? null;
+  const [action, setAction] = useState<GhostActionId>(choice?.action ?? "whisper");
+  const [target, setTarget] = useState(choice?.target ?? living[0]?.id ?? "");
+  const [text, setText] = useState("");
+  const submit = (e?: FormEvent) => {
+    e?.preventDefault();
+    room.send(Messages.ghostAction, action === "guide" ? { action } : action === "whisper" ? { action, target, text } : { action, target });
+  };
+  return (
+    <form className="ghost-actions" onSubmit={submit}>
+      <div className="vote-grid three">
+        {GHOST_ACTION_IDS.map((id) => (
+          <button type="button" key={id} className={action === id ? "vote selected" : "vote"} onClick={() => setAction(id)} title={GHOST_ACTION_LABELS[id].detail}>
+            <strong>{GHOST_ACTION_LABELS[id].title}</strong>
+            <span>{GHOST_ACTION_LABELS[id].detail}</span>
+          </button>
+        ))}
+      </div>
+      {action !== "guide" && (
+        <select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Chọn người">
+          {living.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {action === "whisper" && (
+        <input value={text} maxLength={GHOST_WHISPER_MAX} placeholder="Lời thì thầm (ngắn thôi)" onChange={(e) => setText(e.target.value)} />
+      )}
+      <button className="primary" disabled={action === "whisper" && !text.trim()}>
+        <Ghost size={15} aria-hidden /> {choice ? "Đổi việc đêm nay" : "Làm việc này đêm nay"}
+      </button>
+      {choice && (
+        <div className="hint">
+          Đêm nay: {GHOST_ACTION_LABELS[choice.action].title}
+          {choice.target && ` · ${living.find((p) => p.id === choice.target)?.name ?? ""}`}
+          {choice.text && ` · “${choice.text}”`}
+        </div>
+      )}
+    </form>
   );
 }
 
@@ -264,7 +313,7 @@ export function Campfire({ room }: { room: IslandRoom }) {
             </SectionLabel>
             <div className="vote-grid">
               {view.nightActions
-                .filter((a) => a !== "protect")
+                .filter((a) => !TARGETED_NIGHT_ACTIONS.includes(a))
                 .map((a) => (
                   <button
                     key={a}
@@ -289,9 +338,47 @@ export function Campfire({ room }: { room: IslandRoom }) {
                 ))}
               </div>
             )}
+            {view.nightActions.includes("search") && (
+              <>
+                <div className="hint">
+                  <Search size={12} aria-hidden /> {NIGHT_ACTION_LABELS.search.title}: {NIGHT_ACTION_LABELS.search.detail}
+                </div>
+                <div className="vote-grid">
+                  {night.campers
+                    .filter((c) => c.id !== me)
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        className={nightChoice?.action === "search" && nightChoice.target === c.id ? "vote selected" : "vote"}
+                        onClick={() => room.send(Messages.nightAction, { action: "search", target: c.id })}
+                      >
+                        <strong>Lục balo {c.name}</strong>
+                      </button>
+                    ))}
+                </div>
+              </>
+            )}
             <div className="hint">Không chọn gì thì coi như ngủ bù.</div>
           </div>
         )}
+
+        <div className="camp-section secret">
+          <SectionLabel icon={EyeOff} tone="secret">
+            Bạn đang nghi ai? · khảo sát kín, chỉ lộ ở màn lật bài
+          </SectionLabel>
+          <div className="nominees">
+            {[...night.campers.filter((c) => c.id !== me), null].map((c) => (
+              <button
+                key={c?.id ?? "none"}
+                className={view?.suspicion === (c?.id ?? null) ? "nominee selected" : "nominee"}
+                onClick={() => room.send(Messages.suspect, { target: c?.id ?? null })}
+              >
+                {c && <Avatar name={c.name} color={c.color} size="sm" />}
+                <span>{c ? c.name : "Không nghi ai"}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       <div className="campfire-chat">
         <ChatBox room={room} channels={["camp"]} placeholder="Nhấn Enter để nói với cả trại" />

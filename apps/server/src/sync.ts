@@ -106,6 +106,11 @@ function toLogEntry(entry: LogEntry): LogEntryState {
       out.dc = entry.result.dc;
       out.success = entry.result.success;
       break;
+    case "give":
+      out.playerId = entry.playerId;
+      out.players.push(entry.target);
+      out.defId = entry.itemId;
+      break;
     case "stash":
       out.playerId = entry.playerId;
       out.defId = entry.itemId;
@@ -227,6 +232,30 @@ export function syncState(target: IslandState, game: GameState) {
       record.action = n.action;
       record.target = n.target ?? "";
       reveal.nights.push(record);
+    }
+    for (const g of game.ghostHistory) {
+      const record = new NightRecordState();
+      record.day = g.day;
+      record.playerId = g.playerId;
+      record.action = `ghost_${g.action}`;
+      record.target = g.target ?? "";
+      record.text = g.text ?? "";
+      reveal.nights.push(record);
+    }
+    for (const s of game.suspicions) {
+      const record = new NightRecordState();
+      record.day = s.day;
+      record.playerId = s.playerId;
+      record.target = s.target ?? "";
+      reveal.suspicions.push(record);
+    }
+    for (const s of game.stars) {
+      const record = new NightRecordState();
+      record.day = s.day;
+      record.playerId = s.playerId;
+      record.action = s.phase;
+      record.target = String(s.logIndex);
+      reveal.stars.push(record);
     }
     reveal.signals = game.signals;
     reveal.deceit = game.deceit;

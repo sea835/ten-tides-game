@@ -53,6 +53,7 @@ export function join(state: GameState, playerId: string, name: string): GameStat
     bag: [],
     tray: [],
     rerolledToday: false,
+    failStreak: 0,
   };
   applyCharacter(p, placeholder.choice);
   state.players[playerId] = p;

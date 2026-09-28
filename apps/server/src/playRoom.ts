@@ -22,6 +22,7 @@ import {
   BuildingState,
   ClimbMessage,
   GroundItemState,
+  GiveMessage,
   HoldMessage,
   Messages,
   PickupMessage,
@@ -30,6 +31,7 @@ import {
   ThrowMessage,
   UseMessage,
   type CorrectMessage,
+  type EncounterMessage,
   type FxMessage,
   type IslandState,
   type KnockMessage,
@@ -74,6 +76,8 @@ const HUNT_FRIEND_MORALE = -8;
 const SHARK_AFTER = 8;
 const SHARK_CHANCE_PER_SECOND = 0.05;
 const TOLERANCE = 1.5;
+/** Đứng cách nhau chừng này thì trao tay được. */
+export const GIVE_RADIUS = 2.5;
 /** Đứng cách lửa trại chừng này thì nướng, góp kho được. */
 export const CAMPFIRE_REACH = 4;
 
@@ -127,6 +131,7 @@ export class PlayController {
     h.onMessage(Messages.attack, AttackMessage, (client, m) => this.onAttack(client, m.yaw, m.pitch));
     h.onMessage(Messages.throw, ThrowMessage, (client, m) => this.onThrow(client, m.yaw, m.pitch, m.power));
     h.onMessage(Messages.drop, (client) => this.onDrop(client));
+    h.onMessage(Messages.give, GiveMessage, (client, { target }) => this.onGive(client, target));
     h.onMessage(Messages.use, UseMessage, (client, m) => this.onUse(client, m.x, m.z));
     h.onMessage(Messages.pickup, PickupMessage, (client, { id }) => this.onPickup(client, id));
     h.onMessage(Messages.climb, ClimbMessage, (client, { treeId }) => this.onClimb(client, treeId));
@@ -334,6 +339,30 @@ export class PlayController {
     this.feat(a.id, "throws");
     this.play.throw(a.id, held.itemId, { x: a.player.x, y: a.player.y, z: a.player.z }, yaw, pitch, power, stats);
     this.act(a.id, "throw");
+  }
+
+  /** Trao món đang cầm cho người đứng sát bên. */
+  private onGive(client: Client, targetId: string) {
+    const a = this.actor(client, { allowTied: true });
+    if (!a) return;
+    const h = this.host;
+    const held = this.heldItem(a.id);
+    if (!held) return h.reject(client, "Cầm món muốn đưa trên tay trước (Q).");
+    const target = h.state.players.get(targetId);
+    if (!target || !h.game().players[targetId]?.alive) return h.reject(client, "Người này không nhận được.");
+    if (Math.hypot(target.x - a.player.x, target.z - a.player.z) > GIVE_RADIUS + TOLERANCE) return h.reject(client, "Lại gần hơn mới đưa được.");
+    if (!h.dispatch({ type: "give", playerId: a.id, target: targetId, uid: held.uid }, client)) return;
+    this.play.held.delete(a.id);
+    this.act(a.id, "throw");
+    const name = content.items.get(held.itemId)?.name ?? held.itemId;
+    h.clientOf(targetId)?.send(Messages.encounter, {
+      title: `${a.player.name} đưa cho bạn ${name.toLowerCase()}`,
+      text: "Món đồ đã nằm gọn trong balo của bạn.",
+      tone: "good",
+      effects: {},
+      gained: held.itemId,
+    } satisfies EncounterMessage);
+    this.fx({ kind: "give", x: target.x, y: target.y + 1.6, z: target.z, word: "CẦM LẤY!" });
   }
 
   private onDrop(client: Client) {

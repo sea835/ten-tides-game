@@ -9,6 +9,7 @@ import { PhaseClock, PhaseSplash } from "./Clock.tsx";
 import { EventCard } from "./EventCard.tsx";
 import { Feed } from "./Feed.tsx";
 import { Hotbar, StatusOverlay } from "./Hands.tsx";
+import { TouchControls } from "./TouchControls.tsx";
 import { EncounterToast, EndScreen, EnvironmentOverlay, InteractPrompt, KeyHints, PausedOverlay, PostureBadge, Toast } from "./Overlays.tsx";
 import { PhaseBanner } from "./PhaseBanner.tsx";
 import { RoomPanel } from "./RoomPanel.tsx";
@@ -38,6 +39,7 @@ export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }
           <KeyHints />
           <InteractPrompt room={room} />
           <Hotbar room={room} />
+          <TouchControls room={room} />
           <PostureBadge />
           <EventCard room={room} />
           <Campfire room={room} />

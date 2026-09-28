@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -267,14 +268,40 @@ function placer(world: World) {
 
 type Tint = (i: number, c: Color, spot: Spot) => void;
 
-function Instances({ spots, geometry, material, tint, heightScale = false, cast = false }: {
-  spots: Spot[];
+/** Cây cỏ chia theo ô vuông cạnh chừng này mét: ô nào ngoài khung hình thì card đồ hoạ bỏ qua cả ô. */
+const CELL = 72;
+
+interface Chunk {
+  key: string;
+  cx: number;
+  cz: number;
+  spots: { spot: Spot; index: number }[];
+}
+
+function chunked(spots: Spot[]): Chunk[] {
+  const map = new Map<string, Chunk>();
+  spots.forEach((spot, index) => {
+    const gx = Math.floor(spot.x / CELL);
+    const gz = Math.floor(spot.z / CELL);
+    const key = `${gx},${gz}`;
+    let c = map.get(key);
+    if (!c) {
+      c = { key, cx: (gx + 0.5) * CELL, cz: (gz + 0.5) * CELL, spots: [] };
+      map.set(key, c);
+    }
+    c.spots.push({ spot, index });
+  });
+  return [...map.values()];
+}
+
+function ChunkMesh({ chunk, geometry, material, tint, heightScale, cast, meshRef }: {
+  chunk: Chunk;
   geometry: BufferGeometry;
   material: MeshStandardMaterial;
   tint: Tint;
-  /** Co giãn chiều cao theo `spot.h` (cỏ), không thì co đều theo `spot.s`. */
-  heightScale?: boolean;
-  cast?: boolean;
+  heightScale: boolean;
+  cast: boolean;
+  meshRef: (m: InstancedMesh | null) => void;
 }) {
   const mesh = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
@@ -282,22 +309,78 @@ function Instances({ spots, geometry, material, tint, heightScale = false, cast 
     if (!m) return;
     const dummy = new Object3D();
     const color = new Color();
-    spots.forEach((p, i) => {
+    chunk.spots.forEach(({ spot: p, index }, i) => {
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, p.r, 0);
       if (heightScale) dummy.scale.set(p.s, p.h, p.s);
       else dummy.scale.setScalar(p.s);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
-      tint(i, color, p);
+      // Màu tính theo chỉ số trong cả danh sách, để chia ô không làm đổi màu từng khóm.
+      tint(index, color, p);
       m.setColorAt(i, color);
     });
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    // Khung bao của riêng ô này: three.js dùng nó để bỏ qua ô nằm ngoài khung hình.
     m.computeBoundingSphere();
-  }, [spots, tint, heightScale]);
-  if (spots.length === 0) return null;
-  return <instancedMesh key={spots.length} ref={mesh} args={[geometry, material, spots.length]} castShadow={cast} receiveShadow />;
+  }, [chunk, tint, heightScale]);
+  return (
+    <instancedMesh
+      ref={(m) => {
+        mesh.current = m;
+        meshRef(m);
+      }}
+      args={[geometry, material, chunk.spots.length]}
+      castShadow={cast}
+      receiveShadow
+    />
+  );
+}
+
+/**
+ * Một loại cây cỏ, chia thành từng ô (mỗi ô một InstancedMesh). `farthest`: ô có tâm xa camera hơn chừng này
+ * mét thì ẩn hẳn (cỏ nhỏ ở xa chỉ còn là vài điểm ảnh, vẽ ra tốn công vô ích).
+ */
+function Instances({ spots, geometry, material, tint, heightScale = false, cast = false, farthest }: {
+  spots: Spot[];
+  geometry: BufferGeometry;
+  material: MeshStandardMaterial;
+  tint: Tint;
+  /** Co giãn chiều cao theo `spot.h` (cỏ), không thì co đều theo `spot.s`. */
+  heightScale?: boolean;
+  cast?: boolean;
+  farthest?: number;
+}) {
+  const chunks = useMemo(() => chunked(spots), [spots]);
+  const meshes = useRef(new Map<string, InstancedMesh>());
+  useFrame(({ camera }) => {
+    if (!farthest) return;
+    const limit = farthest + CELL * 0.71;
+    for (const c of chunks) {
+      const m = meshes.current.get(c.key);
+      if (m) m.visible = Math.hypot(c.cx - camera.position.x, c.cz - camera.position.z) < limit;
+    }
+  });
+  return (
+    <>
+      {chunks.map((c) => (
+        <ChunkMesh
+          key={`${c.key}:${c.spots.length}`}
+          chunk={c}
+          geometry={geometry}
+          material={material}
+          tint={tint}
+          heightScale={heightScale}
+          cast={cast}
+          meshRef={(m) => {
+            if (m) meshes.current.set(c.key, m);
+            else meshes.current.delete(c.key);
+          }}
+        />
+      ))}
+    </>
+  );
 }
 
 export function Vegetation({ world }: { world: World }) {
@@ -427,20 +510,20 @@ export function Vegetation({ world }: { world: World }) {
 
   return (
     <>
-      <Instances spots={spots.short} geometry={geo.short} material={mats.grass} tint={tints.short} heightScale />
-      <Instances spots={spots.medium} geometry={geo.medium} material={mats.grass} tint={tints.medium} heightScale />
+      <Instances spots={spots.short} geometry={geo.short} material={mats.grass} tint={tints.short} heightScale farthest={80} />
+      <Instances spots={spots.medium} geometry={geo.medium} material={mats.grass} tint={tints.medium} heightScale farthest={110} />
       <Instances spots={spots.tall} geometry={geo.tall} material={mats.tall} tint={tints.tall} heightScale />
-      <Instances spots={spots.ferns} geometry={geo.fern} material={mats.fern} tint={tints.fern} />
+      <Instances spots={spots.ferns} geometry={geo.fern} material={mats.fern} tint={tints.fern} farthest={140} />
       <Instances spots={spots.bushes} geometry={geo.bush} material={mats.bush} tint={tints.bush} cast />
-      <Instances spots={spots.flowers} geometry={geo.flower} material={mats.flower} tint={tints.flower} />
+      <Instances spots={spots.flowers} geometry={geo.flower} material={mats.flower} tint={tints.flower} farthest={90} />
       <Instances spots={spots.rocks} geometry={geo.rock} material={mats.stone} tint={tints.rock} cast />
-      <Instances spots={spots.shells} geometry={geo.shell} material={mats.stone} tint={tints.shell} />
+      <Instances spots={spots.shells} geometry={geo.shell} material={mats.stone} tint={tints.shell} farthest={70} />
       <Instances spots={spots.driftwood} geometry={geo.driftwood} material={mats.stone} tint={tints.driftwood} cast />
       <Instances spots={spots.bananas} geometry={geo.bananaStem} material={mats.trunk} tint={tints.bananaStem} />
       <Instances spots={spots.bananas} geometry={geo.bananaLeaves} material={mats.banana} tint={tints.banana} cast />
       <Instances spots={spots.pandans} geometry={geo.pandan} material={mats.tall} tint={tints.pandan} />
-      <Instances spots={spots.beachGrass} geometry={geo.beachGrass} material={mats.grass} tint={tints.beachGrass} heightScale />
-      <Instances spots={spots.creepers} geometry={geo.creeper} material={mats.creeper} tint={tints.creeper} />
+      <Instances spots={spots.beachGrass} geometry={geo.beachGrass} material={mats.grass} tint={tints.beachGrass} heightScale farthest={90} />
+      <Instances spots={spots.creepers} geometry={geo.creeper} material={mats.creeper} tint={tints.creeper} farthest={90} />
     </>
   );
 }

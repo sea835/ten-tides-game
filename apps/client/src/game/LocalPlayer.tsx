@@ -413,6 +413,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       climbing: !!s.climb,
       sinking: s.swimming ? s.sinking : "",
       victim: frozen || s.climb ? null : nearestVictim(room, next.x, feetY, next.z),
+      giveTo: frozen || s.climb || !getHands() ? null : nearestPlayer(room, next.x, feetY, next.z, GIVE_RADIUS),
       sprint: Math.round(s.energy),
       atDigSite: !frozen && atDigSite(room, next.x, next.z),
       sitting: s.sitting,
@@ -538,6 +539,26 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
 
 /** Đứng cách lửa trại chừng này thì nướng, góp kho được (server kiểm tra lại). */
 const CAMPFIRE_REACH = 4;
+
+/** Đứng cách nhau chừng này thì trao tay được (server kiểm tra lại). */
+const GIVE_RADIUS = 2.5;
+
+/** Người còn sống gần nhất trong bán kính (để trao đồ). */
+function nearestPlayer(room: IslandRoom, x: number, y: number, z: number, radius: number): { id: string; name: string } | null {
+  if (!["dawn", "explore", "dusk"].includes(room.state.phase)) return null;
+  const me = myId(room);
+  let best: { id: string; name: string } | null = null;
+  let bestDist = radius;
+  for (const [id, p] of room.state.players) {
+    if (id === me || !p.alive || !p.connected || Math.abs(p.y - y) > 2) continue;
+    const d = Math.hypot(p.x - x, p.z - z);
+    if (d <= bestDist) {
+      best = { id, name: p.name };
+      bestDist = d;
+    }
+  }
+  return best;
+}
 
 /** Kẻ phản bội (đúng lúc được ra tay) đứng sát ai đó: người đó có thể bị kết liễu bằng F. */
 function nearestVictim(room: IslandRoom, x: number, y: number, z: number): { id: string; name: string } | null {

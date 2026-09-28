@@ -126,6 +126,11 @@ function ItemTip({ itemId }: { itemId: string }) {
   );
 }
 
+/** Máy cảm ứng (ngón tay, không có chuột): balo dùng chạm-chọn, chạm-đặt thay cho kéo thả. */
+function touchMode(): boolean {
+  return typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
+}
+
 /**
  * Lưới balo. Có `onDrop` thì kéo thả được: bóng xem trước bắt dính theo ô, xanh là đặt được, đỏ là không.
  * Rê chuột lên một món thì các món đang tạo hiệu ứng cạnh nhau với nó sáng lên.
@@ -172,9 +177,15 @@ function Grid({
       onPointerMove={(e) => drag && setHover(cellAt(e))}
       onPointerLeave={() => setHover(null)}
       onPointerUp={(e) => {
-        if (!drag || !onDrop) return;
+        // Cảm ứng thì chạm để chọn rồi chạm chỗ khác để đặt (xử lý ở onClick), không kéo thả.
+        if (!drag || !onDrop || e.pointerType !== "mouse") return;
         const { x, y } = cellAt(e);
         onDrop(x, y);
+      }}
+      onClick={(e) => {
+        if (!drag || !onDrop || !touchMode()) return;
+        const rect = ref.current!.getBoundingClientRect();
+        onDrop(Math.floor((e.clientX - rect.left) / CELL), Math.floor((e.clientY - rect.top) / CELL));
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -194,6 +205,8 @@ function Grid({
             className={`bag-item${dragging ? " dragging" : ""}${partners.has(p.uid) ? " paired" : ""}`}
             style={{ left: p.x * CELL, top: p.y * CELL, width: w * CELL, height: h * CELL, background: itemColor(p.itemId) }}
             onPointerDown={(e) => {
+              // Cảm ứng: đang chọn một món mà chạm lên món khác là đặt vào chỗ đó (onClick của lưới lo).
+              if (e.pointerType !== "mouse" && drag) return;
               if (e.button === 0 && onPick) {
                 e.preventDefault();
                 onPick(p);
@@ -272,8 +285,10 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
       e.preventDefault();
       rotate();
     };
-    // Thả chuột ngoài lưới thì huỷ kéo (món vẫn ở chỗ cũ).
-    const onUp = () => setTimeout(() => setDrag(null), 0);
+    // Thả chuột ngoài lưới thì huỷ kéo (món vẫn ở chỗ cũ). Cảm ứng thì chạm-chọn, chạm-đặt nên không huỷ.
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerType === "mouse") setTimeout(() => setDrag(null), 0);
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("contextmenu", onContext);
     window.addEventListener("pointerup", onUp);
@@ -330,6 +345,25 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
           </section>
 
           <section>
+            {drag && touchMode() && (
+              <div className="touch-bag-bar">
+                <span className="hint">Chạm vào ô muốn đặt {content.items.get(drag.itemId)?.name.toLowerCase()}</span>
+                <button onClick={() => setDrag((d) => (d ? { ...d, rot: d.rot === 0 ? 1 : 0 } : d))}>Xoay</button>
+                {view.bag.some((b) => b.uid === drag.uid) && (
+                  <button
+                    onClick={() => {
+                      room.send(Messages.unplace, { uid: drag.uid });
+                      setDrag(null);
+                    }}
+                  >
+                    Nhấc ra khay
+                  </button>
+                )}
+                <button className="ghost" onClick={() => setDrag(null)}>
+                  Thôi
+                </button>
+              </div>
+            )}
             <Grid
               bag={view.bag}
               drag={drag}

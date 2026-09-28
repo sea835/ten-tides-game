@@ -66,7 +66,7 @@ function ActiveCard({ room, anchorId, cardId, participants, timeLeft }: {
   // Balo đầy đủ (kể cả ngăn bí mật) chỉ có trong thông tin riêng.
   const view = usePrivate();
   const bag = view?.bag ?? [];
-  const mine = { ...pub, bag, items: bag.map((b) => b.itemId) };
+  const mine = { ...pub, bag, items: bag.map((b) => b.itemId), failStreak: view?.failStreak ?? 0 };
   const myItems = mine.items;
   const zone = anchorZone(gameConfig, anchorId);
   const [sent, setSent] = useState(false);

@@ -43,6 +43,8 @@ import {
   Messages,
   MoveMessage,
   NightActionMessage,
+  GhostActionMessage,
+  SuspectMessage,
   NominateMessage,
   PHASE_SECONDS,
   PlayerState,
@@ -289,6 +291,21 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.nightAction, NightActionMessage, (client, { action, target }) => {
       const id = this.playerOf(client);
       if (id) this.dispatch({ type: "nightAction", playerId: id, action, target }, client);
+    });
+
+    this.onMessage(Messages.ghostAction, GhostActionMessage, (client, { action, target, text }) => {
+      const id = this.playerOf(client);
+      if (id) this.dispatch({ type: "ghostAction", playerId: id, action, target, text }, client);
+    });
+
+    this.onMessage(Messages.suspect, SuspectMessage, (client, { target }) => {
+      const id = this.playerOf(client);
+      if (id) this.dispatch({ type: "suspect", playerId: id, target }, client);
+    });
+
+    this.onMessage(Messages.star, (client) => {
+      const id = this.playerOf(client);
+      if (id && this.dispatch({ type: "star", playerId: id }, client)) client.send(Messages.starred, { count: this.game.stars.filter((s) => s.playerId === id).length });
     });
 
     this.onMessage(Messages.dig, (client) => {

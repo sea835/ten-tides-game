@@ -3429,3 +3429,264 @@ kbd {
 .icon-btn.off {
   opacity: 0.45;
 }
+
+/* Nhật ký chỉ số riêng trong khung nhân vật. */
+.stat-log {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  font-size: 11.5px;
+}
+.stat-log-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.stat-log-head svg:last-child {
+  margin-left: auto;
+}
+.stat-log-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+}
+.stat-log-reason {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.stat-log-deltas {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.stat-log.open {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* Hồn ma: việc làm mỗi đêm. */
+.ghost-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+.ghost-actions select,
+.ghost-actions input {
+  width: 100%;
+}
+.nominee.selected {
+  border-color: var(--secret);
+  background: rgba(182, 156, 255, 0.15);
+}
+/* Khoảnh khắc ⭐ trên màn lật bài. */
+.moments .label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.moments .label svg,
+.toast.star svg {
+  color: var(--treasure);
+}
+.moment {
+  font-size: 12.5px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.toast.star {
+  color: var(--treasure);
+}
+
+/* ---------- Điều khiển cảm ứng (điện thoại, máy tính bảng) ---------- */
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.touch-look {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 55%;
+  height: 100%;
+  pointer-events: auto;
+  touch-action: none;
+}
+.touch-stick {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  width: 170px;
+  height: 170px;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  touch-action: none;
+}
+.touch-stick-ring {
+  width: 124px;
+  height: 124px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(8, 20, 29, 0.35);
+}
+.touch-stick-knob {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+.touch-actions {
+  position: absolute;
+  right: 16px;
+  bottom: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 10px;
+  justify-items: center;
+  align-items: end;
+  pointer-events: none;
+}
+.touch-top {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+.touch-btn {
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  touch-action: none;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0;
+  background: rgba(8, 20, 29, 0.6);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.1;
+}
+.touch-btn.big {
+  width: 78px;
+  height: 78px;
+  font-size: 11px;
+}
+.touch-btn.accent {
+  background: rgba(242, 180, 65, 0.35);
+  border-color: var(--accent);
+}
+.touch-btn.danger {
+  background: rgba(255, 122, 102, 0.35);
+  border-color: var(--danger);
+}
+.touch-btn:active {
+  transform: scale(0.94);
+}
+.touch-top .touch-btn {
+  width: 48px;
+  height: 48px;
+}
+/* Balo trên máy cảm ứng: thanh chạm-chọn, chạm-đặt. */
+.touch-bag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+@media (pointer: coarse) {
+  /* Trên máy cảm ứng bảng phím tắt và thanh gợi ý chuột không có ích, nhường chỗ cho nút bấm. */
+  .hud .keys,
+  .hud .keys-chip,
+  .hotbar-hint {
+    display: none;
+  }
+  .hotbar-wrap {
+    bottom: 200px;
+  }
+}
+
+/* Màn nhỏ nằm ngang (điện thoại): màn chuẩn bị gọn lại, HUD chỉ giữ thứ cần khi chơi bằng ngón tay. */
+@media (max-height: 500px) {
+  .prep-screen {
+    padding: 6px;
+  }
+  .prep-card {
+    max-height: calc(100vh - 12px);
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .prep-header h2 {
+    font-size: 20px;
+  }
+}
+@media (pointer: coarse) and (max-width: 1000px) {
+  .hud .self {
+    top: 56px;
+    bottom: auto;
+    left: 8px;
+    width: 180px;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .hud .self .self-head,
+  .hud .self .stat-chips,
+  .hud .self .items-row,
+  .hud .self .stat-log,
+  .hud .self .callout {
+    display: none;
+  }
+  .hud .status,
+  .hud .feed {
+    display: none;
+  }
+  .hud.show-map .status {
+    display: flex;
+    top: 64px;
+    right: 80px;
+    width: 220px;
+    z-index: 5;
+  }
+  .hud .room {
+    top: 8px;
+    left: 8px;
+    padding: 6px 8px;
+  }
+  .hud .room .roster {
+    display: none;
+  }
+  .prompt {
+    bottom: 42%;
+    font-size: 13px;
+  }
+}

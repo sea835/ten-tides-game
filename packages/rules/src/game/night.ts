@@ -18,7 +18,14 @@ import {
   ROLE_NIGHT_ACTIONS,
   SABOTAGE_DAMAGE,
   SABOTAGE_GUARDED,
+  GHOST_ACTION_IDS,
+  GHOST_CHILL_MORALE,
+  GHOST_GUIDE_TREASURE,
+  GHOST_WHISPER_MAX,
+  MAX_STARS,
   OUTSIDE_MORALE,
+  SEARCH_MORALE_COST,
+  TARGETED_NIGHT_ACTIONS,
   SHELTER_MORALE,
   SIGNAL_SEEN_CHANCE,
   SLEEP_MORALE,
@@ -29,6 +36,7 @@ import {
   weatherOf,
   type GameConfig,
   type GameState,
+  type GhostActionId,
   type IncidentEffect,
   type NightActionId,
   type NightVotes,
@@ -113,12 +121,57 @@ export function allowedNightActions(state: GameState, playerId: string): readonl
 export function chooseNightAction(state: GameState, playerId: string, action: NightActionId, target?: string): GameState {
   requireCamper(state, playerId);
   if (!allowedNightActions(state, playerId).includes(action)) fail("Bạn không làm được việc này đêm nay");
-  if (action === "protect") {
-    if (!target || !aliveCampers(state).includes(target)) fail("Chỉ che chở được người đang ở trong trại");
+  if (TARGETED_NIGHT_ACTIONS.includes(action)) {
+    if (!target || !aliveCampers(state).includes(target)) fail("Chỉ chọn được người đang ở trong trại");
+    if (action === "search" && target === playerId) fail("Không tự lục balo của mình được");
     state.nightChoices[playerId] = { action, target };
   } else {
     state.nightChoices[playerId] = { action };
   }
+  return state;
+}
+
+/** Hồn ma (người đã gục) chọn một việc nhỏ cho đêm nay: thì thầm vào giấc mơ ai đó, làm ai đó lạnh gáy, hay dẫn lối. */
+export function chooseGhostAction(state: GameState, playerId: string, action: GhostActionId, target?: string, text?: string): GameState {
+  if (state.phase !== "night") fail("Hồn ma chỉ ra tay ban đêm");
+  const p = state.players[playerId] ?? fail("Không có người chơi này");
+  if (p.alive) fail("Chỉ hồn ma mới làm được việc này");
+  if (!GHOST_ACTION_IDS.includes(action)) fail("Hồn ma không làm được việc này");
+  if (action === "guide") {
+    state.ghostChoices[playerId] = { action };
+    return state;
+  }
+  if (!target || !state.players[target]?.alive) fail("Chỉ chọn được người còn sống");
+  if (action === "whisper") {
+    const clean = (text ?? "").replace(/\s+/g, " ").trim().slice(0, GHOST_WHISPER_MAX);
+    if (!clean) fail("Hãy viết lời thì thầm");
+    state.ghostChoices[playerId] = { action, target, text: clean };
+  } else {
+    state.ghostChoices[playerId] = { action, target };
+  }
+  return state;
+}
+
+/** Khảo sát kín mỗi đêm: người còn sống ghi mình đang nghi ai. Không ảnh hưởng luật; lộ ở màn lật bài. */
+export function suspect(state: GameState, playerId: string, target: string | null): GameState {
+  if (state.phase !== "night") fail("Chỉ ghi được ban đêm");
+  const p = state.players[playerId] ?? fail("Không có người chơi này");
+  if (!p.alive) fail("Người đã gục không bỏ phiếu nghi ngờ");
+  if (target !== null && (target === playerId || !state.players[target]?.alive)) fail("Chỉ nghi được người khác còn sống");
+  state.suspicions = state.suspicions.filter((s) => !(s.day === state.day && s.playerId === playerId));
+  state.suspicions.push({ day: state.day, playerId, target });
+  return state;
+}
+
+/** Đánh dấu ⭐ khoảnh khắc: ghi lại ngay sau dòng nhật ký mới nhất, để màn lật bài nhắc lại. */
+export function star(state: GameState, playerId: string): GameState {
+  if (state.phase === "lobby") fail("Ván chưa bắt đầu");
+  if (!state.players[playerId]) fail("Không có người chơi này");
+  const mine = state.stars.filter((s) => s.playerId === playerId);
+  if (mine.length >= MAX_STARS) fail("Bạn đã đánh dấu đủ số khoảnh khắc rồi");
+  const logIndex = state.log.length - 1;
+  if (mine.some((s) => s.logIndex === logIndex)) fail("Khoảnh khắc này bạn đánh dấu rồi");
+  state.stars.push({ day: state.day, phase: state.phase, playerId, logIndex });
   return state;
 }
 
@@ -287,6 +340,35 @@ export function resolveNight(state: GameState, config: GameConfig) {
     const names = suspects.value.map((id) => state.players[id]!.name).join(" hoặc ");
     addClue(state, guard, `Nửa đêm bạn thấy một bóng người lén lút, dáng giống ${names}.`);
   }
+
+  // Lục soát: người lục thấy hết balo người kia, kể cả ngăn bí mật và túi đồ kẻ lừa đảo giấu riêng;
+  // người bị lục chỉ biết là có ai đó đã lục, không biết là ai.
+  for (const searcher of doing("search")) {
+    const target = state.players[choices[searcher]!.target!]!;
+    const p = state.players[searcher]!;
+    p.morale = clamp(p.morale - SEARCH_MORALE_COST, 0, 100);
+    const names = (ids: readonly string[]) => [...new Set(ids)].map((id) => config.items.find((i) => i.id === id)?.name ?? id).join(", ");
+    const found = target.items.length > 0 ? names(target.items) : "trống trơn";
+    const hidden = target.loot.length > 0 ? ` Dưới đáy còn một túi nhỏ giấu kỹ: ${names(target.loot)}.` : "";
+    addClue(state, searcher, `Nửa đêm bạn lén lục balo của ${target.name}: ${found}.${hidden}`);
+    addClue(state, target.id, "Sáng ra balo của bạn bị xới tung: đêm qua có người đã lục soát.");
+  }
+
+  // Hồn ma ra tay: thì thầm vào giấc mơ (không ai biết là hồn ma nào), làm ai đó lạnh gáy, hay dẫn lối manh mối.
+  for (const [ghostId, choice] of Object.entries(state.ghostChoices)) {
+    if (state.players[ghostId]?.alive !== false) continue;
+    state.ghostHistory.push({ day: state.day, playerId: ghostId, ...choice });
+    const target = choice.target ? state.players[choice.target] : undefined;
+    if (choice.action === "whisper" && target?.alive && choice.text) {
+      addClue(state, target.id, `Trong giấc mơ, một giọng nói quen quen thì thầm: “${choice.text}”`);
+    } else if (choice.action === "chill" && target?.alive) {
+      target.morale = clamp(target.morale - GHOST_CHILL_MORALE, 0, 100);
+      addClue(state, target.id, "Nửa đêm bạn thấy lạnh gáy, như có ai đứng sát sau lưng mà quay lại thì không thấy.");
+    } else if (choice.action === "guide") {
+      state.treasure = clamp(state.treasure + GHOST_GUIDE_TREASURE, 0, 100);
+    }
+  }
+  state.ghostChoices = {};
 
   // Thợ mộc sửa gấp đôi; có búa thì sửa thêm; búa cạnh dây thừng là bộ đồ sửa thuyền.
   const lookup = lookupFrom(config.items);

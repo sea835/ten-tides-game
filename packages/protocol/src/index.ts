@@ -3,7 +3,7 @@
 // đi qua message `private`, server gửi riêng cho đúng từng người; chỗ đào kho báu chỉ vào state khi đã lộ.
 
 import { schema, t, type SchemaType } from "@colyseus/schema";
-import { BACKGROUND_IDS, BIO_MAX_LENGTH, DIFFICULTY_IDS, FLAW_IDS, GRID_SIZE, NIGHT_ACTION_IDS, RATION_IDS, STAT_MAX, STAT_MIN, type EncounterEffects, type PrivateView } from "@tentides/rules";
+import { BACKGROUND_IDS, BIO_MAX_LENGTH, DIFFICULTY_IDS, FLAW_IDS, GHOST_ACTION_IDS, GRID_SIZE, NIGHT_ACTION_IDS, RATION_IDS, STAT_MAX, STAT_MIN, type EncounterEffects, type PrivateView } from "@tentides/rules";
 import { z } from "zod";
 
 export const ROOM_NAME = "island";
@@ -202,6 +202,8 @@ export const NightRecordState = schema(
     playerId: t.string().default(""),
     action: t.string().default(""),
     target: t.string().default(""),
+    /** Hồn ma thì thầm gì (chỉ lộ ở màn lật bài). */
+    text: t.string().default(""),
   },
   "NightRecordState",
 );
@@ -236,6 +238,10 @@ export const RevealState = schema(
     deceit: t.uint8().default(0),
     tied: t.array("string"),
     awards: t.array(AwardState),
+    /** Khảo sát kín từng đêm: ai nghi ai ("" là không nghi ai). */
+    suspicions: t.array(NightRecordState),
+    /** Khoảnh khắc ⭐: ai đánh dấu, ngay sau dòng nhật ký nào (`target` là chỉ số dòng). */
+    stars: t.array(NightRecordState),
   },
   "RevealState",
 );
@@ -472,7 +478,7 @@ export const AssassinateMessage = z.object({ target: id });
 
 /** Server gửi cho mọi người để vẽ hiệu ứng: trúng đòn, trượt, chặt cây, cây đổ, thú chết, ăn uống... */
 export interface FxMessage {
-  kind: "hit" | "miss" | "chop" | "fell" | "poof" | "kill" | "eat" | "plant" | "build" | "splash" | "shoot" | "cook" | "page" | "lava" | "burn" | "drown";
+  kind: "hit" | "miss" | "chop" | "fell" | "poof" | "kill" | "eat" | "plant" | "build" | "splash" | "shoot" | "cook" | "page" | "lava" | "burn" | "drown" | "give";
   x: number;
   y: number;
   z: number;
@@ -518,6 +524,11 @@ export type PlaceMessage = z.infer<typeof PlaceMessage>;
 export const UnplaceMessage = z.object({ uid: id });
 
 export const NightActionMessage = z.object({ action: z.enum(NIGHT_ACTION_IDS), target: id.optional() });
+export const GhostActionMessage = z.object({ action: z.enum(GHOST_ACTION_IDS), target: id.optional(), text: z.string().max(200).optional() });
+/** Khảo sát kín: đêm nay nghi ai (null là không nghi ai). */
+export const SuspectMessage = z.object({ target: id.nullable() });
+/** Trao món đang cầm cho người đứng cạnh. */
+export const GiveMessage = z.object({ target: id });
 
 /** Thông tin riêng server gửi cho đúng một người: vai, hành động đêm, ghi chú, balo, lời kể riêng. */
 export type PrivateMessage = PrivateView & { story: { day: number; text: string }[] };
@@ -590,6 +601,12 @@ export const Messages = {
   packCamp: "packCamp",
   /** Nướng hoặc góp vào kho món đang cầm, khi đứng cạnh lửa trại. */
   campfire: "campfire",
+  give: "give",
+  ghostAction: "ghostAction",
+  suspect: "suspect",
+  star: "star",
+  /** Server báo đã ghi khoảnh khắc ⭐ (kèm số khoảnh khắc mình đã đánh dấu). */
+  starred: "starred",
   build: "build",
   assassinate: "assassinate",
   fx: "fx",
