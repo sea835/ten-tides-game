@@ -97,7 +97,7 @@ describe("xếp balo", () => {
     expect(() => reduce(s, { type: "place", playerId: "a", uid, x: start.x, y: start.y, rot: 0 }, config)).toThrow(/không vừa/);
   });
 
-  it("hết giờ: đồ còn trong khay bị bỏ lại, đồ ăn trong balo góp vào kho chung", () => {
+  it("hết giờ: đồ còn trong khay được nhét vào chỗ trống, đồ ăn trong balo góp vào kho chung", () => {
     let s = toPacking();
     const food = s.food;
     s = { ...s, shop: [...s.shop, "hardtack"] };
@@ -106,7 +106,7 @@ describe("xếp balo", () => {
     const spot = firstFit(s.players.a!.bag, item("hardtack"), lookup)!;
     s = act(s, { type: "place", playerId: "a", uid: first!.uid, ...spot }, { type: "advance" });
     expect(s.phase).toBe("dawn");
-    expect(s.food).toBe(food + 1);
+    expect(s.food).toBe(food + 2);
     expect(s.players.a!.tray).toHaveLength(0);
     expect(s.players.a!.items).not.toContain("hardtack");
   });

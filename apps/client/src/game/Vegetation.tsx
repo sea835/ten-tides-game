@@ -16,6 +16,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { ANCHORS, CAMP, CAVE, LAKE, TREASURE_SITES, type GrassPatch, type World } from "@tentides/content";
 import { useQuality } from "./graphics.ts";
 import { grain, mulberry32, patch, swayMaterial } from "./nature.ts";
+import { detailed } from "./textures.ts";
 
 // Cây cỏ của đảo hoang: cỏ thấp phủ khắp, cỏ vừa, đám cỏ tranh cao (ngồi vào là nấp được),
 // lau sậy quanh hồ, dương xỉ dưới tán dừa, bụi rậm có hoa, chuối rừng lá to, dứa dại gai góc ven rừng,
@@ -467,15 +468,15 @@ export function Vegetation({ world }: { world: World }) {
   );
   const mats = useMemo(
     () => ({
-      grass: swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.22, 0, true),
-      tall: swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.1, 0, true),
-      fern: swayMaterial({ flatShading: true, side: DoubleSide, roughness: 0.9 }, 0.05),
-      bush: swayMaterial({ flatShading: true, roughness: 0.9 }, 0.025),
-      flower: new MeshStandardMaterial({ flatShading: true, roughness: 0.6 }),
-      stone: new MeshStandardMaterial({ flatShading: true, roughness: 1 }),
-      trunk: new MeshStandardMaterial({ flatShading: true, roughness: 1 }),
-      banana: swayMaterial({ flatShading: true, side: DoubleSide, roughness: 0.75 }, 0.06, -1),
-      creeper: new MeshStandardMaterial({ flatShading: true, roughness: 0.9 }),
+      grass: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.22, 0, true), "leaf"),
+      tall: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.1, 0, true), "leaf"),
+      fern: detailed(swayMaterial({ flatShading: true, side: DoubleSide, roughness: 0.9 }, 0.05), "leaf"),
+      bush: detailed(swayMaterial({ flatShading: true, roughness: 0.9 }, 0.025), "leaf"),
+      flower: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 0.6 }), "leaf", 0.15),
+      stone: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 1 }), "rock"),
+      trunk: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 1 }), "bark"),
+      banana: detailed(swayMaterial({ flatShading: true, side: DoubleSide, roughness: 0.75 }, 0.06, -1), "leaf"),
+      creeper: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 0.9 }), "leaf"),
     }),
     [],
   );

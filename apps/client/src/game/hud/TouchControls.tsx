@@ -19,7 +19,7 @@ function coarse(): boolean {
   return typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
 }
 
-function useTouchDevice(): boolean {
+export function useTouchDevice(): boolean {
   return useSyncExternalStore(
     (l) => {
       if (typeof matchMedia === "undefined") return () => {};

@@ -425,7 +425,7 @@ function CreatureView({ creature }: { creature: CreatureState }) {
 
   if (!model || !def) return null;
   return (
-    <group ref={root} position={[creature.x, creature.y, creature.z]}>
+    <group ref={root} position={[creature.x, creature.y, creature.z]} userData={{ detail: "fur" }}>
       <group ref={body} scale={size}>
         {model.parts.map((part, i) => (
           <group key={i} ref={(el) => void (parts.current[i] = el)} position={part.p} rotation={part.r ?? [0, 0, 0]}>

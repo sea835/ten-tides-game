@@ -1,6 +1,6 @@
 // Hai pha chuẩn bị trước khi lên đảo: tạo nhân vật rồi mua đồ và xếp balo.
 
-import { canPlace, lookupFrom, type Rotation } from "./backpack.ts";
+import { canPlace, firstFit, lookupFrom, type Rotation } from "./backpack.ts";
 import { BACKGROUNDS, BIO_MAX_LENGTH, BACKGROUND_IDS, FLAW_IDS, randomCharacter, statsProblem, type CharacterChoice } from "./character.ts";
 import { beginDay } from "./day.ts";
 import { gainItem, newUid, syncItems } from "./inventory.ts";
@@ -111,6 +111,12 @@ export function finishPacking(state: GameState, config: GameConfig): GameState {
   const lookup = lookupFrom(config.items);
   for (const id of state.playerOrder) {
     const p = state.players[id]!;
+    // Đồ còn trong khay được nhét vào chỗ trống nếu vừa; hết chỗ thì mới bị bỏ lại trên tàu.
+    for (const t of p.tray) {
+      const def = lookup(t.itemId);
+      const spot = def && firstFit(p.bag, def, lookup);
+      if (spot) p.bag.push({ uid: t.uid, itemId: t.itemId, ...spot });
+    }
     p.tray = [];
     const food = p.bag.filter((b) => lookup(b.itemId)?.tags.includes("food"));
     state.food += food.length * RATIONS_PER_FOOD_ITEM;

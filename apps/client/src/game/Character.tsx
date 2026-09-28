@@ -2,6 +2,7 @@ import { useMemo, useRef, type Ref } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Color, type Group } from "three";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
+import type { DetailKind } from "./textures.ts";
 
 export interface Motion {
   moving: boolean;
@@ -178,7 +179,10 @@ export function Character({
     }
   });
 
-  const mat = (c: string) => <meshStandardMaterial color={c} flatShading transparent={transparent} opacity={opacity} roughness={0.85} />;
+  // Vân chất liệu dính theo người (không trôi khi đi): áo quần là vải, da mịn, tóc sợi, giày da.
+  const mat = (c: string, detail: DetailKind = "fabric") => (
+    <meshStandardMaterial color={c} flatShading transparent={transparent} opacity={opacity} roughness={0.85} userData={{ detail, detailSpace: "object" }} />
+  );
 
   return (
     <group ref={ref}>
@@ -195,7 +199,7 @@ export function Character({
             </mesh>
             <mesh castShadow position={[0, -0.8, 0.05]}>
               <boxGeometry args={[0.18, 0.1, 0.28]} />
-              {mat("#3b2a1c")}
+              {mat("#3b2a1c", "skin")}
             </mesh>
           </group>
         ))}
@@ -229,7 +233,7 @@ export function Character({
             </mesh>
             <mesh castShadow position-y={-0.6}>
               <sphereGeometry args={[0.075, 5, 4]} />
-              {mat(look.skin)}
+              {mat(look.skin, "skin")}
             </mesh>
             {i === 1 && held && (
               // Cầm trong nắm tay phải: đồ dài chĩa ra trước theo cánh tay, đồ nhỏ nắm gọn.
@@ -242,16 +246,16 @@ export function Character({
         {/* Đầu, tóc, mắt (để thấy hướng nhìn). */}
         <mesh castShadow position-y={1.68}>
           <icosahedronGeometry args={[0.2, 1]} />
-          {mat(look.skin)}
+          {mat(look.skin, "skin")}
         </mesh>
         <mesh position={[0, 1.76, -0.03]} scale={[1, 0.75, 1]}>
           <icosahedronGeometry args={[0.215, 1]} />
-          {mat(look.hair)}
+          {mat(look.hair, "fur")}
         </mesh>
         {[-0.07, 0.07].map((x) => (
           <mesh key={x} position={[x, 1.7, 0.18]}>
             <boxGeometry args={[0.04, 0.05, 0.02]} />
-            {mat("#1a1410")}
+            {mat("#1a1410", "skin")}
           </mesh>
         ))}
         {/* Balo. */}

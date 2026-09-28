@@ -233,6 +233,11 @@ export function Campfire({ room }: { room: IslandRoom }) {
         </span>
       </header>
       {story && <p className="story campfire-story">{story}</p>}
+      <ol className="night-steps">
+        <li className={night.rationNeeded && !mine.ration ? "now" : "done"}>{night.rationNeeded ? "Bầu cách chia khẩu phần" : "Đủ ăn, khỏi chia"}</li>
+        <li>Bàn nhau: ai đáng ngờ? Nghi thì đề cử trói</li>
+        <li className={imReady ? "done" : ""}>Bấm "Đi ngủ" khi xong</li>
+      </ol>
       <div className="campfire-body">
       <div className="campfire-votes">
         <div className="camp-section">
@@ -325,47 +330,54 @@ export function Campfire({ room }: { room: IslandRoom }) {
                   </button>
                 ))}
             </div>
-            {view.nightActions.includes("protect") && (
-              <div className="vote-grid">
-                {night.campers.map((c) => (
-                  <button
-                    key={c.id}
-                    className={nightChoice?.action === "protect" && nightChoice.target === c.id ? "vote selected" : "vote"}
-                    onClick={() => room.send(Messages.nightAction, { action: "protect", target: c.id })}
-                  >
-                    <strong>Che chở {c.id === me ? "bản thân" : c.name}</strong>
-                  </button>
-                ))}
-              </div>
-            )}
-            {view.nightActions.includes("search") && (
-              <>
-                <div className="hint">
-                  <Search size={12} aria-hidden /> {NIGHT_ACTION_LABELS.search.title}: {NIGHT_ACTION_LABELS.search.detail}
-                </div>
-                <div className="vote-grid">
-                  {night.campers
-                    .filter((c) => c.id !== me)
-                    .map((c) => (
+            {(view.nightActions.includes("protect") || view.nightActions.includes("search")) && (
+              <details className="more">
+                <summary>
+                  Việc khác: {[view.nightActions.includes("protect") && "che chở ai đó", view.nightActions.includes("search") && "lục balo"].filter(Boolean).join(", ")}
+                </summary>
+                {view.nightActions.includes("protect") && (
+                  <div className="vote-grid">
+                    {night.campers.map((c) => (
                       <button
                         key={c.id}
-                        className={nightChoice?.action === "search" && nightChoice.target === c.id ? "vote selected" : "vote"}
-                        onClick={() => room.send(Messages.nightAction, { action: "search", target: c.id })}
+                        className={nightChoice?.action === "protect" && nightChoice.target === c.id ? "vote selected" : "vote"}
+                        onClick={() => room.send(Messages.nightAction, { action: "protect", target: c.id })}
                       >
-                        <strong>Lục balo {c.name}</strong>
+                        <strong>Che chở {c.id === me ? "bản thân" : c.name}</strong>
                       </button>
                     ))}
-                </div>
-              </>
+                  </div>
+                )}
+                {view.nightActions.includes("search") && (
+                  <>
+                    <div className="hint">
+                      <Search size={12} aria-hidden /> {NIGHT_ACTION_LABELS.search.title}: {NIGHT_ACTION_LABELS.search.detail}
+                    </div>
+                    <div className="vote-grid">
+                      {night.campers
+                        .filter((c) => c.id !== me)
+                        .map((c) => (
+                          <button
+                            key={c.id}
+                            className={nightChoice?.action === "search" && nightChoice.target === c.id ? "vote selected" : "vote"}
+                            onClick={() => room.send(Messages.nightAction, { action: "search", target: c.id })}
+                          >
+                            <strong>Lục balo {c.name}</strong>
+                          </button>
+                        ))}
+                    </div>
+                  </>
+                )}
+              </details>
             )}
             <div className="hint">Không chọn gì thì coi như ngủ bù.</div>
           </div>
         )}
 
-        <div className="camp-section secret">
-          <SectionLabel icon={EyeOff} tone="secret">
-            Bạn đang nghi ai? · khảo sát kín, chỉ lộ ở màn lật bài
-          </SectionLabel>
+        <details className="camp-section secret more">
+          <summary>
+            <EyeOff size={13} aria-hidden /> Bạn đang nghi ai? · khảo sát kín, không bắt buộc
+          </summary>
           <div className="nominees">
             {[...night.campers.filter((c) => c.id !== me), null].map((c) => (
               <button
@@ -378,7 +390,7 @@ export function Campfire({ room }: { room: IslandRoom }) {
               </button>
             ))}
           </div>
-        </div>
+        </details>
       </div>
       <div className="campfire-chat">
         <ChatBox room={room} channels={["camp"]} placeholder="Nhấn Enter để nói với cả trại" />

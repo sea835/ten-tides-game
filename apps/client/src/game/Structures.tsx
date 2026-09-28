@@ -17,6 +17,7 @@ import {
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { STRUCTURE_WALL, structureSlabs, type Slab, type Structure, type World } from "@tentides/content";
 import { grain, mulberry32 } from "./nature.ts";
+import { detailed } from "./textures.ts";
 
 // Hang động và hầm mỏ sinh theo seed. Va chạm là các khối hộp (vách, trần); phần nhìn thấy là đá lởm chởm
 // phủ ngoài, cộng đồ trang trí gộp chung theo vật liệu để mỗi hang chỉ tốn vài lần vẽ:
@@ -246,14 +247,14 @@ function StructureView({ s }: { s: Structure }) {
   const mats = useMemo(() => {
     const glow = (c: string, i = 2) => new MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i, toneMapped: false, flatShading: true });
     return {
-      mound: new MeshStandardMaterial({ color: colors.mound, flatShading: true, roughness: 1 }),
-      rock2: new MeshStandardMaterial({ color: "#6a645d", flatShading: true, roughness: 1 }),
-      wood: new MeshStandardMaterial({ color: "#6b4a2b", flatShading: true, roughness: 1 }),
-      metal: new MeshStandardMaterial({ color: "#5a5f66", flatShading: true, metalness: 0.4, roughness: 0.6 }),
+      mound: detailed(new MeshStandardMaterial({ color: colors.mound, flatShading: true, roughness: 1 }), "cliff"),
+      rock2: detailed(new MeshStandardMaterial({ color: "#6a645d", flatShading: true, roughness: 1 }), "rock"),
+      wood: detailed(new MeshStandardMaterial({ color: "#6b4a2b", flatShading: true, roughness: 1 }), "wood"),
+      metal: detailed(new MeshStandardMaterial({ color: "#5a5f66", flatShading: true, metalness: 0.4, roughness: 0.6 }), "metal"),
       wire: new MeshStandardMaterial({ color: "#222" }),
       stem: new MeshStandardMaterial({ color: "#d8d2c0", flatShading: true }),
       sign: new MeshStandardMaterial({ color: "#8a6a42", flatShading: true }),
-      oreHeap: new MeshStandardMaterial({ color: "#4a4038", flatShading: true }),
+      oreHeap: detailed(new MeshStandardMaterial({ color: "#4a4038", flatShading: true }), "dirt"),
       lamp: glow("#ffb347", 2.4),
       flame: glow("#ff9a3a", 3),
       ore: glow(dressing.ore, 1.6),

@@ -21,6 +21,7 @@ import { CLIMBABLE_GROWTH, type Tree, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { useFx } from "./fxStore.ts";
 import { grain, mulberry32, swayMaterial } from "./nature.ts";
+import { detailed } from "./textures.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 // Cây leo được, chặt được: dừa và cây rừng tán rộng của bản đồ (trừ cây đã bị đốn, chỉ còn gốc),
@@ -176,14 +177,14 @@ const shared = {
   stump: new CylinderGeometry(0.28, 0.36, 0.45, 7).translate(0, 0.2, 0),
 };
 const mats = {
-  palmTrunk: swayMaterial({ color: "#8b6b43", flatShading: true, roughness: 1 }, 0.004),
-  palmLeaves: swayMaterial({ color: "#3f9a3c", flatShading: true, side: DoubleSide, roughness: 0.8 }, 0.035, -2),
-  nuts: new MeshStandardMaterial({ color: "#5a4020", flatShading: true }),
-  trunk: new MeshStandardMaterial({ flatShading: true, roughness: 1 }),
-  canopy: swayMaterial({ flatShading: true, roughness: 0.9 }, 0.004, 1),
-  stump: new MeshStandardMaterial({ color: "#7a5a38", flatShading: true, roughness: 1 }),
-  leaf: new MeshStandardMaterial({ color: "#4f9a3c", flatShading: true, roughness: 0.9 }),
-  bark: new MeshStandardMaterial({ color: "#5a4028", flatShading: true, roughness: 1 }),
+  palmTrunk: detailed(swayMaterial({ color: "#8b6b43", flatShading: true, roughness: 1 }, 0.004), "bark"),
+  palmLeaves: detailed(swayMaterial({ color: "#3f9a3c", flatShading: true, side: DoubleSide, roughness: 0.8 }, 0.035, -2), "leaf"),
+  nuts: detailed(new MeshStandardMaterial({ color: "#5a4020", flatShading: true }), "fur"),
+  trunk: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 1 }), "bark"),
+  canopy: detailed(swayMaterial({ flatShading: true, roughness: 0.9 }, 0.004, 1), "leaf"),
+  stump: detailed(new MeshStandardMaterial({ color: "#7a5a38", flatShading: true, roughness: 1 }), "wood"),
+  leaf: detailed(new MeshStandardMaterial({ color: "#4f9a3c", flatShading: true, roughness: 0.9 }), "leaf"),
+  bark: detailed(new MeshStandardMaterial({ color: "#5a4028", flatShading: true, roughness: 1 }), "bark"),
 };
 
 interface TreeLike {

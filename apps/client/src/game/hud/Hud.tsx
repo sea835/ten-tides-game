@@ -11,6 +11,7 @@ import { Feed } from "./Feed.tsx";
 import { Hotbar, StatusOverlay } from "./Hands.tsx";
 import { TouchControls } from "./TouchControls.tsx";
 import { EncounterToast, EndScreen, EnvironmentOverlay, InteractPrompt, KeyHints, PausedOverlay, PostureBadge, Toast } from "./Overlays.tsx";
+import { Objectives, Tips, WaypointMarker } from "./Objectives.tsx";
 import { PhaseBanner } from "./PhaseBanner.tsx";
 import { RoomPanel } from "./RoomPanel.tsx";
 import { SelfPanel } from "./SelfPanel.tsx";
@@ -26,6 +27,8 @@ export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }
   const fullscreen = FULLSCREEN_PHASES.has(phase);
   return (
     <div className={`hud phase-${phase}`}>
+      {/* Mũi tên chỉ đường nằm dưới mọi khung HUD. */}
+      {!fullscreen && <WaypointMarker />}
       {!fullscreen && <EnvironmentOverlay room={room} />}
       {!fullscreen && <StatusOverlay room={room} />}
       {!fullscreen && (
@@ -34,6 +37,8 @@ export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }
           <PhaseClock room={room} />
           <StatusPanel room={room} />
           <PhaseBanner room={room} />
+          <Objectives room={room} />
+          <Tips room={room} />
           <SelfPanel room={room} />
           <Feed room={room} />
           <KeyHints />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Backpack, Check, Coins, Heart, Minus, Plus, Smile } from "lucide-react";
+import { Backpack, Check, Coins, Heart, Minus, Plus, Settings2, Smile } from "lucide-react";
 import { BACKGROUND_LABELS, FLAW_LABELS, content } from "@tentides/content";
 import { Messages, PLAYER_COLORS } from "@tentides/protocol";
 import {
@@ -33,6 +33,58 @@ const STAT_HINTS: Record<keyof Stats, string> = {
   nerve: "Tinh thần, chịu đựng",
 };
 
+/** Nhân vật dựng sẵn cho người mới: bấm một cái là xong, ai muốn thì mở phần tùy chỉnh chi tiết. */
+const PRESETS: { id: string; title: string; blurb: string; stats: Stats; background: BackgroundId; flaw: FlawId }[] = [
+  {
+    id: "sailor",
+    title: "Thủy thủ lực lưỡng",
+    blurb: "Nhiều máu, mang được nhiều, giỏi việc ở bãi biển và hồ",
+    stats: { strength: 5, dexterity: 4, intellect: 2, charisma: 2, nerve: 4 },
+    background: "old_sailor",
+    flaw: "alcoholic",
+  },
+  {
+    id: "hunter",
+    title: "Thợ săn",
+    blurb: "Khéo tay, có súng hỏa mai, săn thú và câu cá giỏi",
+    stats: { strength: 4, dexterity: 5, intellect: 3, charisma: 2, nerve: 3 },
+    background: "hunter",
+    flaw: "fear_heights",
+  },
+  {
+    id: "medic",
+    title: "Y sĩ",
+    blurb: "Mang hộp cứu thương, ăn nói tốt, giữ cả trại sống sót",
+    stats: { strength: 3, dexterity: 3, intellect: 4, charisma: 4, nerve: 3 },
+    background: "ex_medic",
+    flaw: "fear_dark",
+  },
+  {
+    id: "scholar",
+    title: "Nhà khảo cổ",
+    blurb: "Thông minh, có bản đồ cũ, lần manh mối kho báu nhanh",
+    stats: { strength: 2, dexterity: 3, intellect: 5, charisma: 3, nerve: 4 },
+    background: "archaeologist",
+    flaw: "greedy",
+  },
+  {
+    id: "guide",
+    title: "Người dẫn đường",
+    blurb: "Có đèn dầu, gan dạ, giỏi đi hang động và núi lửa",
+    stats: { strength: 4, dexterity: 3, intellect: 4, charisma: 2, nerve: 4 },
+    background: "guide",
+    flaw: "liar",
+  },
+  {
+    id: "carpenter",
+    title: "Thợ mộc",
+    blurb: "Khỏe, có búa, sửa thuyền và dựng nhà nhanh",
+    stats: { strength: 5, dexterity: 4, intellect: 3, charisma: 2, nerve: 3 },
+    background: "carpenter",
+    flaw: "clumsy",
+  },
+];
+
 /** Pha tạo nhân vật: chia điểm, chọn xuất thân, tật xấu, dòng tự mô tả và màu áo. */
 export function CharacterCreator({ room }: { room: IslandRoom }) {
   const me = myId(room);
@@ -46,12 +98,14 @@ export function CharacterCreator({ room }: { room: IslandRoom }) {
     myColor: st.players.get(me)?.color ?? "",
     takenColors: [...st.players.entries()].filter(([id]) => id !== me).map(([, p]) => p.color),
   }));
-  const [stats, setStats] = useState<Stats>({ strength: 4, dexterity: 4, intellect: 3, charisma: 3, nerve: 3 });
-  const [background, setBackground] = useState<BackgroundId>("old_sailor");
-  const [flaw, setFlaw] = useState<FlawId>("fear_dark");
+  const [stats, setStats] = useState<Stats>(PRESETS[0]!.stats);
+  const [background, setBackground] = useState<BackgroundId>(PRESETS[0]!.background);
+  const [flaw, setFlaw] = useState<FlawId>(PRESETS[0]!.flaw);
   const [bio, setBio] = useState("");
   const [color, setColor] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [preset, setPreset] = useState<string>(PRESETS[0]!.id);
+  const [custom, setCustom] = useState(false);
 
   useEffect(() => {
     if (s.phase === "create" && document.pointerLockElement) document.exitPointerLock();
@@ -66,6 +120,7 @@ export function CharacterCreator({ room }: { room: IslandRoom }) {
     const next = Math.max(STAT_MIN, Math.min(STAT_MAX, value));
     if (next - stats[id] > left) return;
     setStats({ ...stats, [id]: next });
+    setPreset("");
   };
   const submit = () => {
     room.send(Messages.createCharacter, { stats, background, flaw, bio: bio.trim(), color: chosenColor as (typeof PLAYER_COLORS)[number] });
@@ -92,7 +147,36 @@ export function CharacterCreator({ room }: { room: IslandRoom }) {
           <span className={s.timeLeft <= 15 ? "event-timer urgent" : "event-timer"}>{clock(s.timeLeft)}</span>
         </header>
 
-        <div className="creator-body">
+        <section className="presets">
+          <div className="label split">
+            <span>Chọn nhanh một nhân vật</span>
+            <button className={custom ? "ghost small selected" : "ghost small"} onClick={() => setCustom(!custom)}>
+              <Settings2 size={13} aria-hidden /> {custom ? "Ẩn tùy chỉnh" : "Tùy chỉnh chi tiết"}
+            </button>
+          </div>
+          <div className="preset-grid">
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                className={preset === p.id ? "pick preset selected" : "pick preset"}
+                onClick={() => {
+                  setPreset(p.id);
+                  setStats(p.stats);
+                  setBackground(p.background);
+                  setFlaw(p.flaw);
+                }}
+              >
+                <strong>{p.title}</strong>
+                <span>{p.blurb}</span>
+                <span className="pick-item">
+                  {content.items.get(BACKGROUNDS[p.background].startItem)?.name} · {FLAW_LABELS[p.flaw].title}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {custom && <div className="creator-body">
           <div className="creator-left">
             <div className="creator-preview">
               <Avatar name={s.name} color={chosenColor} size="lg" />
@@ -186,7 +270,10 @@ export function CharacterCreator({ room }: { room: IslandRoom }) {
               <div className="label">Xuất thân · cho 1 món đồ và 1 kỹ năng</div>
               <div className="pick-grid">
                 {BACKGROUND_IDS.map((id) => (
-                  <button key={id} className={background === id ? "pick selected" : "pick"} onClick={() => setBackground(id)}>
+                  <button key={id} className={background === id ? "pick selected" : "pick"} onClick={() => {
+                      setBackground(id);
+                      setPreset("");
+                    }}>
                     <strong>{BACKGROUND_LABELS[id].title}</strong>
                     <span>{BACKGROUND_LABELS[id].skill}</span>
                     <span className="pick-item">{content.items.get(BACKGROUNDS[id].startItem)?.name}</span>
@@ -199,7 +286,10 @@ export function CharacterCreator({ room }: { room: IslandRoom }) {
               <div className="label">Tật xấu · bắt buộc</div>
               <div className="pick-grid flaws">
                 {FLAW_IDS.map((id) => (
-                  <button key={id} className={flaw === id ? "pick flaw selected" : "pick flaw"} onClick={() => setFlaw(id)}>
+                  <button key={id} className={flaw === id ? "pick flaw selected" : "pick flaw"} onClick={() => {
+                      setFlaw(id);
+                      setPreset("");
+                    }}>
                     <strong>{FLAW_LABELS[id].title}</strong>
                     <span>{FLAW_LABELS[id].effect}</span>
                   </button>
@@ -207,7 +297,7 @@ export function CharacterCreator({ room }: { room: IslandRoom }) {
               </div>
             </section>
           </div>
-        </div>
+        </div>}
 
         <footer className="prep-footer">
           <span className="hint">
@@ -217,7 +307,7 @@ export function CharacterCreator({ room }: { room: IslandRoom }) {
             {s.readyCount}/{s.readyNeeded} người đã xong
           </span>
           <button className="primary" disabled={left !== 0} onClick={submit}>
-            {sent ? "Lưu lại" : "Xong"}
+            {sent ? "Lưu lại" : "Xong, lên tàu"}
           </button>
         </footer>
       </div>

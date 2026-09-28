@@ -12,6 +12,7 @@ import {
   Lamp,
   Map as MapIcon,
   Package,
+  ShoppingBasket,
   Sparkles,
   Swords,
   Tent,
@@ -27,6 +28,7 @@ import {
   GRID_SIZE,
   activePairs,
   canPlace,
+  firstFit,
   footprint,
   lookupFrom,
   type Placement,
@@ -256,6 +258,52 @@ function PairsList({ bag }: { bag: Placement[] }) {
 }
 
 /** Pha xếp balo: mua đồ, kéo vào lưới, xoay bằng R hoặc chuột phải. */
+/** Gói đồ gợi ý cho người mới, theo thứ tự ưu tiên (trùng tên là mua thêm cái nữa). */
+const STARTER_KIT = [
+  "shovel",
+  "axe",
+  "hardtack",
+  "hardtack",
+  "first_aid_kit",
+  "water_bottle",
+  "torch",
+  "spear",
+  "matches",
+  "fishing_net",
+  "rope",
+  "machete",
+  "hardtack",
+  "lantern",
+  "slingshot",
+  "compass",
+];
+
+/** Những món trong gói gợi ý còn mua được: có bán, chưa có, đủ tiền và không quá sức mang. */
+function suggestKit(shop: readonly string[], view: { budget: number; capacityKg: number; bag: { itemId: string }[]; tray: { itemId: string }[] }): string[] {
+  const owned = new Map<string, number>();
+  let weight = 0;
+  for (const it of [...view.bag, ...view.tray]) {
+    owned.set(it.itemId, (owned.get(it.itemId) ?? 0) + 1);
+    weight += lookup(it.itemId)?.weightKg ?? 0;
+  }
+  let budget = view.budget;
+  const out: string[] = [];
+  for (const id of STARTER_KIT) {
+    const def = lookup(id);
+    if (!def || !shop.includes(id)) continue;
+    const have = owned.get(id) ?? 0;
+    if (have > 0) {
+      owned.set(id, have - 1);
+      continue;
+    }
+    if (def.price > budget || weight + def.weightKg > view.capacityKg) continue;
+    out.push(id);
+    budget -= def.price;
+    weight += def.weightKg;
+  }
+  return out;
+}
+
 export function PackingScreen({ room }: { room: IslandRoom }) {
   const view = usePrivate();
   const s = useRoomSnapshot(room, (st) => ({
@@ -268,10 +316,48 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [done, setDone] = useState(false);
   const [pointing, setPointing] = useState<string | null>(null);
+  /** Món mới mua được tự xếp vào chỗ trống một lần; người chơi nhấc ra khay thì để yên ở khay. */
+  const autoPlaced = useRef(new Set<string>());
 
   useEffect(() => {
     if (s.phase === "pack" && document.pointerLockElement) document.exitPointerLock();
   }, [s.phase]);
+
+  /** Xếp hết khay vào chỗ trống ngay (bấm tay): tính dồn trên một bản sao balo để các món không đè nhau. */
+  const placeAll = () => {
+    if (!view) return;
+    const bag = [...view.bag];
+    for (const t of view.tray) {
+      autoPlaced.current.add(t.uid);
+      const def = lookup(t.itemId);
+      const spot = def && firstFit(bag, def, lookup);
+      if (!spot) continue;
+      room.send(Messages.place, { uid: t.uid, ...spot });
+      bag.push({ uid: t.uid, itemId: t.itemId, ...spot });
+    }
+  };
+  // Món mới mua tự xếp từng món một: chờ server nhận món trước rồi mới tính chỗ cho món sau (mua dồn nhiều món một lúc).
+  const pending = useRef<{ uid: string; at: number } | null>(null);
+  const [, recheck] = useState(0);
+  useEffect(() => {
+    if (s.phase !== "pack" || drag || !view) return;
+    const wait = pending.current;
+    if (wait && view.tray.some((t) => t.uid === wait.uid) && performance.now() - wait.at < 1500) {
+      const timer = setTimeout(() => recheck((n) => n + 1), 400);
+      return () => clearTimeout(timer);
+    }
+    pending.current = null;
+    for (const t of view.tray) {
+      if (autoPlaced.current.has(t.uid)) continue;
+      autoPlaced.current.add(t.uid);
+      const def = lookup(t.itemId);
+      const spot = def && firstFit(view.bag, def, lookup);
+      if (!spot) continue;
+      pending.current = { uid: t.uid, at: performance.now() };
+      room.send(Messages.place, { uid: t.uid, ...spot });
+      return;
+    }
+  });
 
   useEffect(() => {
     if (!drag) return;
@@ -301,6 +387,7 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
 
   if (s.phase !== "pack" || !view) return null;
   const overweight = view.weightKg > view.capacityKg;
+  const kit = suggestKit(s.shop, view);
 
   return (
     <div className="prep-screen">
@@ -318,6 +405,16 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
         <div className="packing-body">
           <section className="shop">
             <div className="label">Cửa hàng ván này</div>
+            <button
+              className="primary kit-button"
+              disabled={kit.length === 0}
+              title={kit.map((id) => content.items.get(id)?.name).join(", ")}
+              onClick={() => kit.forEach((itemId) => room.send(Messages.buy, { itemId }))}
+            >
+              <ShoppingBasket size={16} aria-hidden />
+              {kit.length ? `Mua gói gợi ý (${kit.length} món)` : "Đã đủ đồ cần thiết"}
+            </button>
+            <div className="hint">Mua xong đồ tự vào balo. Muốn thì kéo để sắp lại.</div>
             <div className="shop-list">
               {s.shop.map((itemId) => {
                 const def = content.items.get(itemId)!;
@@ -402,7 +499,14 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
               </div>
             </div>
             {overweight && <Callout tone="danger">Quá tải: đi chậm, Thể lực/Khéo léo −2, đói nhanh hơn.</Callout>}
-            <div className="label">Khay tạm · chưa xếp</div>
+            <div className="label split">
+              <span>Khay tạm · chưa xếp</span>
+              {view.tray.length > 0 && (
+                <button className="ghost small" onClick={placeAll}>
+                  Xếp hết vào balo
+                </button>
+              )}
+            </div>
             <div className="tray">
               {view.tray.length === 0 && <div className="hint">Trống</div>}
               {view.tray.map((t) => (
@@ -424,7 +528,7 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
                 </div>
               ))}
             </div>
-            {view.tray.length > 0 && <Callout tone="caution">Hết giờ mà còn trong khay thì bị bỏ lại trên tàu.</Callout>}
+            {view.tray.length > 0 && <Callout tone="caution">Hết giờ thì đồ trong khay được nhét vào chỗ trống; không vừa thì bị bỏ lại trên tàu.</Callout>}
             <div className="label">Hiệu ứng đặt cạnh nhau</div>
             <PairsList bag={view.bag} />
           </section>

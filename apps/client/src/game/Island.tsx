@@ -32,6 +32,7 @@ import { SeaLife } from "./SeaLife.tsx";
 import { Trees } from "./Trees.tsx";
 import { Camp } from "./Camp.tsx";
 import { Landmarks } from "./Landmarks.tsx";
+import { detailed } from "./textures.ts";
 
 // ---------------------------------------------------------------------------
 // Địa hình
@@ -107,6 +108,48 @@ function faceColor(world: World, out: Color, x: number, z: number, h: number, sl
     if (d < 1.2) out.lerp(C.straw, 0.55 * Math.min(1, (1.2 - d) * 2));
   }
   return out;
+}
+
+/**
+ * Trộn vân địa hình tại một đỉnh: [cát, cỏ, vách đá, đất], cùng logic vùng với faceColor nhưng gọn hơn
+ * (tính theo đỉnh nên chỗ giáp hai loại chuyển dần, không gãy theo mặt tam giác).
+ */
+function splatAt(world: World, x: number, z: number, h: number, slope: number): [number, number, number, number] {
+  const surf = world.surface(x, z);
+  const n = patch(x, z);
+  const islet = surf.islet && surf.inland > -30 ? surf.islet : null;
+  if (h < WATER_LEVEL + 0.35) return [1, 0, 0, 0];
+  if (surf.pad || world.structureAt(x, z)) return [0, 0, 0.3, 0.7];
+  if (slope > 0.55 && h > 2) return [0, 0, 1, 0];
+  const mix = (t: number, a: [number, number, number, number], b: [number, number, number, number]) =>
+    a.map((v, i) => v * (1 - t) + b[i]! * t) as [number, number, number, number];
+  const SAND: [number, number, number, number] = [1, 0, 0, 0];
+  const GRASS: [number, number, number, number] = [0, 1, 0, 0];
+  const CLIFF: [number, number, number, number] = [0, 0, 1, 0];
+  const DIRT: [number, number, number, number] = [0, 0, 0, 1];
+  if (islet) {
+    switch (islet.kind) {
+      case "volcanic":
+        return h > 4 ? mix(0.4, DIRT, CLIFF) : mix(0.3, SAND, DIRT);
+      case "rocky":
+        if (h > 3 || n > 0.3) return CLIFF;
+        return surf.inland < 4 ? mix(0.4, SAND, CLIFF) : mix(0.35, GRASS, CLIFF);
+      case "sandbar":
+      case "atoll":
+        return surf.inland < 6 + n * 2 ? SAND : mix(0.5, SAND, GRASS);
+      case "jungle":
+        if (surf.inland < 4 + n * 1.5) return SAND;
+        if (surf.inland < 7) return mix((surf.inland - 4) / 3, SAND, GRASS);
+        return GRASS;
+    }
+  }
+  if (world.zoneAt(x, z) === "volcano" && h > 6) return mix(0.35, DIRT, CLIFF);
+  if (h > 8) return mix(Math.min(1, (h - 8) / 3), GRASS, CLIFF);
+  const inland = surf.inland;
+  if (inland < 12 + n * 3) return SAND;
+  if (inland < 16) return mix((inland - 12) / 4, SAND, GRASS);
+  // Rừng sâu: đất lẫn cỏ.
+  return inland > 40 && n > 0.2 ? mix(0.35, GRASS, DIRT) : GRASS;
 }
 
 interface TerrainChunk {
@@ -185,6 +228,16 @@ function buildTerrain(world: World): TerrainChunk[] {
       const grid = new BufferGeometry();
       grid.setAttribute("position", new BufferAttribute(verts, 3));
       grid.setIndex(new BufferAttribute(indices, 1));
+      // Trọng số vân theo đỉnh (lưới còn chung đỉnh nên mỗi điểm chỉ tính một lần).
+      grid.computeVertexNormals();
+      const gnorm = grid.attributes.normal!;
+      const splat = new Float32Array((cells + 1) * (cells + 1) * 4);
+      for (let v = 0; v < gnorm.count; v++) {
+        const w = splatAt(world, verts[v * 3]!, verts[v * 3 + 2]!, verts[v * 3 + 1]!, 1 - Math.abs(gnorm.getY(v)));
+        splat.set(w, v * 4);
+      }
+      grid.setAttribute("splat", new BufferAttribute(splat, 4));
+      grid.deleteAttribute("normal");
       const flat = grid.toNonIndexed();
       flat.computeVertexNormals();
       const fpos = flat.attributes.position!;
@@ -210,7 +263,12 @@ function buildTerrain(world: World): TerrainChunk[] {
 
 function Terrain({ world }: { world: World }) {
   const chunks = useMemo(() => buildTerrain(world), [world]);
-  const material = useMemo(() => new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }), []);
+  const material = useMemo(() => {
+    const m = detailed(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }), "grass");
+    m.userData.detailSplat = true;
+    m.userData.detailBump = 0.6;
+    return m;
+  }, []);
   useEffect(() => () => chunks.forEach((c) => c.geometry.dispose()), [chunks]);
   return (
     <RigidBody type="fixed" colliders={false}>

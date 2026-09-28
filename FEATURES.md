@@ -39,7 +39,7 @@
 | S4, S5, S7 | Xong | Như lần cập nhật trước |
 | S6 | Xong | Bộ sinh truyện kể lại cả ngày lúc hoàng hôn |
 | S8 | Xong | Đủ lương thực thì chia đều, chỉ bầu khi thiếu |
-| B1–B4 | Xong | Lưới 16x16 kéo thả, bóng xem trước xanh/đỏ, xoay bằng R/chuột phải, khay tạm (còn trong khay khi hết giờ thì bị bỏ lại, có báo trước), thanh trọng lượng và ngân sách, mô tả khi trỏ chuột |
+| B1–B4 | Xong | Lưới 16x16 kéo thả, bóng xem trước xanh/đỏ, xoay bằng R/chuột phải, khay tạm (đồ mới mua tự vào chỗ trống; hết giờ thì đồ còn trong khay được nhét vào chỗ trống, không vừa mới bị bỏ lại), nút "Mua gói gợi ý" và "Xếp hết vào balo", thanh trọng lượng và ngân sách, mô tả khi trỏ chuột |
 | B5 | Xong | 4 cặp hiệu ứng (đèn dầu + bản đồ, la bàn + bản đồ, thuốc súng + diêm, búa + dây thừng); trỏ chuột thì món đi cặp sáng lên |
 | B6 | Xong | Ngăn bí mật 4x4: đồ nằm trọn trong ngăn không lộ với đồng đội |
 | B7 | Xong | Đồng hồ 4 phút, nút "Xong, lên đảo" |
@@ -47,7 +47,7 @@
 | R1–R4 | Xong | Tỷ lệ % trước khi chọn (tính cả đồ, xuất thân, tật xấu, vùng, quá tải); phân rã xúc xắc; nhật ký đầy đủ; PRNG có seed |
 | A1–A7 | Xong (theo hướng mới) | Bộ sinh truyện theo seed: kể sau khi engine đã chốt kết quả, không bao giờ treo hay chậm, lời kể ngắn, tách chung/riêng, chỉ đọc nhật ký của engine nên không mâu thuẫn; sổ truyện (phím J) để đọc lại |
 | C1 | Xong | Ưu tiên thẻ chưa gặp; kho 57 thẻ trên 12 loại điểm (19 điểm), mỗi loại điểm có thẻ cho mọi hồi; thẻ theo thời tiết và chuỗi thẻ nối nhau qua cờ (vd. nhật ký thuyền trưởng ở xác tàu mở cửa đá trong phế tích) |
-| C2 | Xong | 8 xuất thân, 6 tật xấu |
+| C2 | Xong | 8 xuất thân, 6 tật xấu; 6 nhân vật dựng sẵn chọn một chạm, phần chia điểm chi tiết thu gọn |
 | C3 | Xong | zod kiểm tra thẻ, đồ, yếu tố truyện, mẫu câu và mọi tham chiếu |
 | T1 | Xong | `pnpm --filter @tentides/server sim` in phân phối kết thúc kèm khoảng tin cậy, nhịp, đường cong theo ngày, tần suất thẻ, tỷ lệ thành công từng lựa chọn |
 | T2 | Xong | Phát lại theo seed; công cụ `replay` đọc log ván |
@@ -84,6 +84,9 @@
 | V1 | Xong | Thời tiết nhìn thấy được: mây, mưa, bão có gió giật và sấm chớp, sương mù, động đất; đom đóm đêm quang; bụi chân, gợn nước; cảnh cố định cho xác tàu, phế tích, mỏm đá tổ chim, suối nước nóng |
 | E1 | Xong | Nhảy vào hồ dung nham chết ngay; giẫm vào lửa trại bỏng từng nhịp, bị hất ra; đuối nước thật: hết hơi thì ngoi chậm, mất Máu nhanh, kiệt sức hay quá tải thì chìm dần. Lời kể và nhật ký nói đúng nguyên nhân cái chết |
 | A1 | Xong | Âm thanh tổng hợp bằng Web Audio: tiếng động hành động, bước chân theo mặt đất, nền môi trường theo vị trí, thời tiết và giờ, ù dưới nước, tiếng giao diện, nhạc nền tự sinh; M tắt tiếng, N tắt nhạc |
+| U1 | Xong | Bảng "Việc hôm nay": sự kiện còn lại, lương thực cho đêm nay, trang nhật ký, tiến độ kho báu, giờ về trại; mũi tên chỉ đường (sự kiện gần nhất, chỗ đào khi có xẻng, lửa trại lúc sắp tối hay khi vác rương) |
+| U2 | Xong | Mẹo theo ngữ cảnh, mỗi mẹo một lần (lần đầu vào đảo, gần sự kiện, cây, đồ dưới đất, lửa trại, đói, bơi, hoàng hôn, lộ chỗ đào, thành hồn ma), có nút tắt hẳn; bảng phím tắt rút còn 6 phím; ban đêm 3 bước, lựa chọn phụ thu gọn |
+| V2 | Xong | Vân chất liệu sinh tại chỗ (gỗ, đá, lá, vải, cát, cỏ, vách đá, đất) phủ mọi vật theo toạ độ kèm bump; địa hình trộn theo từng đỉnh; người, thú, đồ cầm tay dính vân theo vật; đồ hoạ Thấp tắt vân |
 | M7 | Xong | Seed bản đồ công khai, chủ phòng nhập hoặc gieo lại ở sảnh chờ; seed của engine luật không còn gửi xuống client |
 
 Cân bằng hiện tại (bot, 3.000 ván 4–6 người, 6 thẻ mỗi ngày; bot biết hái dừa góp kho và nhặt trang nhật ký): phe đội thắng 54,5%, không ai thắng 24,1%, phản bội thắng 35,5% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%.

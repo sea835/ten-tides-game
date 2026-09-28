@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 // Chất lượng đồ hoạ: "high" có hậu kỳ (bloom, vignette), bóng đổ nét hơn và nhiều cây cỏ hơn;
-// "low" cho máy yếu. Phím G để đổi, nhớ theo trình duyệt.
+// "low" cho máy yếu (tắt cả vân chất liệu). Phím P để đổi, nhớ theo trình duyệt.
 
 export type Quality = "high" | "low";
 const KEY = "tentides.quality";

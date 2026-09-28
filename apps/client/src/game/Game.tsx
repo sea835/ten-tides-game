@@ -14,7 +14,9 @@ import { GroundItems } from "./Items3D.tsx";
 import { Pages } from "./Pages.tsx";
 import { audio } from "./sound/engine.ts";
 import { Soundscape } from "./sound/Soundscape.tsx";
+import { Texturize } from "./Texturize.tsx";
 import { Trails } from "./Trails.tsx";
+import { WaypointTracker } from "./Waypoint.tsx";
 import { Weather } from "./Weather.tsx";
 import { DayCycle } from "./DayCycle.tsx";
 import { toggleQuality, useQuality } from "./graphics.ts";
@@ -80,7 +82,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   useEffect(() => listenFx(room), [room]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!isTyping(e) && e.code === "KeyG" && !e.repeat) toggleQuality();
+      if (!isTyping(e) && e.code === "KeyP" && !e.repeat) toggleQuality();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -122,6 +124,8 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <Trails room={room} world={world} />
           <Soundscape room={room} world={world} />
           <Fx />
+          <WaypointTracker />
+          <Texturize />
           <DayCycle room={room} sun={sun} hemi={hemi} />
           <DebugHook room={room} />
           {high && <PostFx />}

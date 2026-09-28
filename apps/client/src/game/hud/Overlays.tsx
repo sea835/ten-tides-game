@@ -308,10 +308,13 @@ const KEYS: [string, string][] = [
   ["1–4", "Chọn lựa chọn"],
 ];
 const HELP_KEY = "tentides.help";
+/** Vài phím cần nhất cho người mới; phần còn lại mở bằng "Tất cả phím". */
+const ESSENTIAL_KEYS = new Set(["WASD", "Shift", "E", "Chuột trái", "Q · lăn chuột", "B"]);
 
 /** Bảng phím tắt, H để bật tắt. Lần đầu chơi thì mở sẵn, lần sau nhớ lựa chọn của người chơi. */
 export function KeyHints() {
   const quality = useQuality();
+  const [all, setAll] = useState(false);
   const [open, setOpen] = useState(() => {
     try {
       return localStorage.getItem(HELP_KEY) !== "closed";
@@ -346,18 +349,23 @@ export function KeyHints() {
       <button className="keys-close" title="Ẩn (H)" onClick={() => setOpen(false)}>
         <ChevronDown size={14} aria-hidden />
       </button>
-      <div className="hint">Bấm vào màn hình để xoay camera</div>
+      <div className="hint">Bấm vào màn hình để xoay camera · theo mũi tên vàng để tới sự kiện</div>
       <div className="keys-grid">
-        {KEYS.map(([k, label]) => (
+        {KEYS.filter(([k]) => all || ESSENTIAL_KEYS.has(k)).map(([k, label]) => (
           <div key={k} className="key-row">
             <kbd>{k}</kbd>
             <span>{label}</span>
           </div>
         ))}
-        <div className="key-row">
-          <kbd>G</kbd>
-          <span>Đồ họa: {quality === "high" ? "Cao" : "Thấp"}</span>
-        </div>
+        {all && (
+          <div className="key-row">
+            <kbd>P</kbd>
+            <span>Đồ họa: {quality === "high" ? "Cao" : "Thấp"}</span>
+          </div>
+        )}
+        <button className="ghost small keys-more" onClick={() => setAll(!all)}>
+          {all ? "Thu gọn" : `Tất cả phím (${KEYS.length + 1})`}
+        </button>
       </div>
     </section>
   );

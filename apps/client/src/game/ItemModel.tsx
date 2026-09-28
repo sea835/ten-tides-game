@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 type V3 = [number, number, number];
 
 function M({ c, e = 0 }: { c: string; e?: number }) {
-  return <meshStandardMaterial color={c} emissive={e ? c : "#000000"} emissiveIntensity={e} toneMapped={e === 0} flatShading roughness={0.8} />;
+  return <meshStandardMaterial color={c} emissive={e ? c : "#000000"} emissiveIntensity={e} toneMapped={e === 0} flatShading roughness={0.8} userData={{ detailSpace: "object" }} />;
 }
 
 function Box({ s, p = [0, 0, 0], r = [0, 0, 0], c, e }: { s: V3; p?: V3; r?: V3; c: string; e?: number }) {
