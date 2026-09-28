@@ -1,14 +1,64 @@
 # Feature Research
 
-**Domain:** Game co-op sinh tồn + suy luận xã hội (có thể có kẻ phản bội) chơi online qua link, dạng prototype chữ, có AI Game Master (LLM) kể chuyện. Người chơi: một nhóm bạn Việt Nam 4–6 người.
-**Researched:** 2026-09-25
+**Domain:** Game co-op 3D sinh tồn + suy luận xã hội (có thể có kẻ phản bội), chơi trên trình duyệt qua link, đồ hoạ low-poly nhẹ. Ban ngày khám phá đảo theo thời gian thực, có AI Game Master (LLM) kể chuyện. Người chơi: nhóm bạn Việt Nam 2–6 người; vai ẩn chỉ có từ 4 người.
+**Researched:** 2026-09-25 · **Cập nhật:** 2026-09-28. Bản đầu nhắm prototype chữ trên C#/SignalR; bản này chỉnh theo hướng đã chốt trong PROJECT.md (3D trên web, TypeScript + Colyseus) và đối chiếu với code graybox hiện có.
 **Confidence:** MEDIUM. Số liệu về luật, số thẻ của board game và cơ chế game số lấy từ nguồn chính thức hoặc nhiều nguồn khớp nhau (HIGH/MEDIUM). Ước lượng khối lượng nội dung và mục tiêu tỷ lệ kết thúc là suy luận từ các game tương tự (MEDIUM/LOW), phải kiểm chứng bằng bot sim và playtest.
 
 ## Cách đọc tài liệu này
 
 - **"Table stakes" hiểu theo bối cảnh prototype cho nhóm bạn**, không phải chuẩn phát hành thương mại. Thiếu những thứ này thì ván 45–60 phút gãy giữa chừng, nhóm bỏ cuộc, hoặc không trả lời được câu "có vui không".
-- **Complexity** (LOW/MEDIUM/HIGH) tính cho stack đã chọn: engine C# thuần + ASP.NET Core/SignalR + web client mỏng.
+- **Complexity** (LOW/MEDIUM/HIGH) tính cho stack đã chọn: TypeScript monorepo gồm engine luật thuần (`packages/rules`), server Colyseus giữ cả phần thời gian thực lẫn game master (`apps/server`), client three.js + React Three Fiber + Rapier (`apps/client`). Chi tiết ở mục Kiến trúc kỹ thuật của PROJECT.md.
+- **Trạng thái** của từng mã so với code hiện tại nằm ở bảng ngay dưới. Các bảng tính năng phía sau là khuyến nghị, không phải mô tả code.
 - **Mã ID** (L1, H3, B5…) để REQUIREMENTS.md và roadmap tham chiếu: L = Lobby & session, H = Hidden roles, S = Survival loop, B = Backpack, R = Randomness, A = AI narration, C = Content, T = Balance tooling & telemetry, D = Differentiator.
+
+## Trạng thái hiện tại (graybox, 2026-09-28)
+
+**Xong** là chạy được và có test hoặc đã thử trên trình duyệt; **Một phần** là có bản tối thiểu, còn thiếu như ghi chú; mã không có trong bảng là **chưa làm**.
+
+| ID | Trạng thái | Đang có / còn thiếu |
+|----|-----------|---------------------|
+| L1 | Xong | Mã 4 ký tự, link `?room=ABCD`, không cần tài khoản. Bảng chữ bỏ O/0 và I/1 nhưng còn chữ L |
+| L2 | Một phần | Nhập tên, không đăng ký; định danh là `sessionId` của Colyseus chứ không phải tên. Chưa lưu token ở trình duyệt, nên tải lại trang là mất chỗ |
+| L3 | Một phần | Rớt mạng được giữ chỗ 30 giây (`allowReconnection`), SDK tự nối lại. Chưa có trạng thái riêng để gửi lại |
+| L4 | Một phần | Người rời sau khi bắt đầu thì nhân vật ở lại và được tính là đã về trại lúc hoàng hôn. Bot chưa tự hành động |
+| L5 | Một phần | Chủ phòng bắt đầu ván; chủ phòng rời thì chuyển cho người khác. Chưa có độ khó, kick, tạm dừng |
+| L7 | Một phần | Server giữ seed + chuỗi hành động trong bộ nhớ (`IslandRoom.actions`); phát lại ra đúng ván đã có test. Chưa lưu xuống PostgreSQL nên restart vẫn mất ván |
+| L8 | Xong | Danh sách người chơi hiện "mất kết nối" và "đã gục" |
+| H4 | Một phần | Phiếu trói công khai và cập nhật trực tiếp, cần quá nửa số người ở trại, có "Không trói ai". Chưa có đề cử, chưa khoá-rồi-lật |
+| H5 | Một phần | Đêm 60 giây; mọi người có mặt đã bầu xong thì rút còn 5 giây. Chủ phòng chưa chỉnh được |
+| H6 | Một phần | Bị trói chỉ kéo dài một ngày: đi lại được trong trại nhưng không mở được sự kiện, tới hoàng hôn thì được thả nên đêm đó vẫn chat và bỏ phiếu. Người chết đi lại như hồn ma nhưng không chat được |
+| S1 | Một phần | Máu / No / Tinh thần, cộng thêm Sức bền do thẻ dùng. Thẻ kết quả hiện các thay đổi, nhưng chưa có nhật ký thay đổi của từng người |
+| S2 | Xong | Bảng trạng thái hiện thời tiết, núi lửa, lương thực, kho báu, thuyền |
+| S4 | Xong | Có sẵn nhờ 3D thời gian thực: mọi người đi cùng lúc, sự kiện của các nhóm chạy song song |
+| S5 | Xong | Người đứng trong bán kính 7 m được tham gia và bị giữ đứng yên; kết quả xúc xắc vào nhật ký công khai của cả phòng |
+| S6 | Một phần | Một dòng tổng kết hoàng hôn trong nhật ký; chưa có lời kể |
+| S7 | Xong | Banner hoàng hôn báo trước; ngủ ngoài −10 Máu, −15 Tinh thần, không được ăn, không được ngồi quanh đống lửa |
+| S8 | Một phần | Không ai bầu thì chia đều, nhưng bảng bầu khẩu phần hiện mọi đêm |
+| R1 | Một phần | Trước khi chọn đã thấy thuộc tính, DC, đồ nào cộng điểm và mình có đồ đó không. Chưa hiện tỷ lệ % |
+| R2 | Xong | Xúc xắc lăn khoảng 1 giây rồi hiện phân rã: d20 + thuộc tính + đồ + trạng thái, so với DC |
+| R3 | Một phần | Nhật ký chỉ hiện 6 dòng gần nhất |
+| R4 | Xong | Mọi random của luật đi qua PRNG có seed trong `packages/rules` |
+| A2 | Một phần | Mỗi thẻ đã có lời văn mẫu, là phần dự phòng khi AI lỗi. Chưa gọi AI |
+| C1 | Một phần | Engine ưu tiên thẻ chưa gặp, nhưng kho mới có 12 thẻ nên sẽ lặp |
+| C3 | Xong | `loadContent()` kiểm tra schema zod và mọi tham chiếu (đồ, loại điểm) |
+| T1 | Một phần | Bot chơi 500 ván trong `simulate.test.ts` để bắt lỗi luật. Chưa xuất báo cáo phân phối |
+| T2 | Một phần | Phát lại theo seed có tính xác định (đã test); chưa có công cụ phát lại ván từ log đã lưu |
+
+Đã có mà các bảng dưới chưa nói tới: chat quanh đống lửa (chỉ người ở trại nghe được), bỏ phiếu chia khẩu phần 4 mức, người bị trói không ra khỏi trại được suốt ngày hôm sau.
+
+## Quyết định cần chốt
+
+Những chỗ code graybox đang làm khác khuyến nghị trong tài liệu này. Graybox chọn cách đơn giản để chơi thử được; cần chốt trước khi làm vai ẩn.
+
+| # | Khuyến nghị | Code hiện tại | Khi nào phải chốt |
+|---|-------------|---------------|-------------------|
+| 1 | H3: đêm dài cố định, không kết thúc sớm | Đêm rút còn 5 giây khi mọi người đã bầu xong | Trước khi thêm hành động đêm bí mật. Ít nhất không được hiện ai đã xong hành động |
+| 2 | H4: chỉ bỏ phiếu khi có đề cử; khoá phiếu rồi lật cùng lúc | Phiếu trói mở sẵn mỗi đêm, ai bầu gì thấy ngay | Trước playtest có vai ẩn. Phiếu thấy ngay dễ thành "bầu theo số đông" |
+| 3 | S8: chỉ bỏ phiếu khẩu phần khi thiếu | Bảng bầu hiện mọi đêm, mặc định chia đều | Sau playtest graybox: đo xem nhóm có thấy bầu mỗi đêm là nhàm không |
+| 4 | H5: đêm 90–150 giây nếu chat bằng chữ | 60 giây theo PROJECT.md | Sau playtest: nhóm dùng voice ngoài game thì 60 giây có thể đủ |
+| 5 | S1: chỉ 3 chỉ số | Có thêm Sức bền vì thẻ mẫu `cave_collapse_01` dùng `stamina` | Nên để Sức bền chỉ là thanh chạy thời gian thực (PROJECT.md: Thể lực quyết định thanh sức bền), bỏ khỏi chỉ số ngày |
+| 6 | H6: hồn ma chat với nhau | Người chết không chat được | Khi làm H6 |
+| 7 | L1: bỏ cả chữ L | Bảng chữ còn L | Đổi được bất cứ lúc nào, một dòng trong `packages/protocol` |
 
 ## Feature Landscape
 
@@ -20,13 +70,13 @@ Thiếu thì người chơi thấy game hỏng hoặc "chơi ép". Có thì khô
 
 | ID | Feature | Why Expected | Complexity | Notes |
 |----|---------|--------------|------------|-------|
-| L1 | Mã phòng ngắn + link mời chứa sẵn mã | Jackbox dùng mã 4 chữ, Among Us 6 chữ, Secret Hitler Online cho vào bằng mã hoặc link. Nhóm bạn gửi link qua Zalo/Messenger là vào | LOW | 4–5 ký tự, bỏ ký tự dễ nhầm (0/O, 1/I/L); link dạng `/r/ABCD`; không cần tài khoản |
+| L1 | Mã phòng ngắn + link mời chứa sẵn mã | Jackbox dùng mã 4 chữ, Among Us 6 chữ, Secret Hitler Online cho vào bằng mã hoặc link. Nhóm bạn gửi link qua Zalo/Messenger là vào | LOW | 4–5 ký tự, bỏ ký tự dễ nhầm (0/O, 1/I/L); link dạng `?room=ABCD`; không cần tài khoản |
 | L2 | Nhập tên, không đăng ký; token phiên lưu ở trình duyệt | Chuẩn của party game web. Jackbox cho vào lại bằng mã + tên | LOW | Khoá định danh phải là token ngẫu nhiên, không phải tên, để không ai gõ trùng tên mà chiếm được vai của bạn |
-| L3 | Rớt mạng vào lại đúng ván, nhận lại đủ trạng thái riêng (vai, balo, ngăn bí mật, lời kể riêng đã nhận) | Among Us **không** cho vào lại ván đang chơi và đây là lời phàn nàn lâu năm. Jackbox giữ chỗ khi vào lại. Ván 45–60 phút chạy qua tunnel thì gần như chắc chắn có người rớt mạng | MEDIUM | SignalR reconnect + server gửi lại snapshot theo góc nhìn người đó. Phụ thuộc event log |
+| L3 | Rớt mạng vào lại đúng ván, nhận lại đủ trạng thái riêng (vai, balo, ngăn bí mật, lời kể riêng đã nhận) | Among Us **không** cho vào lại ván đang chơi và đây là lời phàn nàn lâu năm. Jackbox giữ chỗ khi vào lại. Ván 45–60 phút chạy qua Wi-Fi quán cà phê hay 4G thì gần như chắc chắn có người rớt mạng | MEDIUM | Colyseus `allowReconnection` + reconnection token lưu ở trình duyệt để tải lại trang vẫn vào được. State riêng đi qua `StateView`, nên nối lại là nhận đúng góc nhìn người đó. Phụ thuộc event log |
 | L4 | Người rời hẳn thì bot giữ nhân vật ở trại | "Zombie mode" của Board Game Arena: ván đi tiếp, bot không được kết thúc ván sớm và không được thiên vị ai | MEDIUM | BGA khuyên chỉ cần mức "pass" hoặc "random hợp lệ", đừng làm AI giỏi. Kẻ phản bội bị bot thay thì ngừng phá hoại và không lộ vai. Bot này dùng lại cho mô phỏng (T1) |
 | L5 | Quyền chủ phòng: bắt đầu ván, chọn độ khó, kick, tạm dừng | Jackbox thêm tính năng kick ở Party Pack 9 (2022) vì thiếu nó là vấn đề thật; Jackbox tự tạm dừng tối đa 5 phút khi host mất kết nối | LOW | Chơi với bạn thì luôn có lúc ai đó phải đi vắng, nên cần pause. Chủ phòng **không** được thấy bí mật |
 | L6 | Nút "Sẵn sàng" và thanh "đang chờ ai" trước mỗi pha lớn | Sảnh chờ của Among Us và Jackbox; tránh để một người bị cuốn theo khi chưa đọc xong | LOW | Kết hợp timer: đủ người sẵn sàng thì chuyển ngay, hết giờ thì tự chuyển |
-| L7 | Khôi phục ván khi server khởi động lại | Server chạy trên máy dev + tunnel, nên restart hoặc crash là rủi ro thật chứ không phải lý thuyết | MEDIUM | Replay event log từ seed. Chỉ làm được nếu engine xác định (deterministic) |
+| L7 | Khôi phục ván khi server khởi động lại | Server là một process Node (Fly.io/Railway, hoặc máy dev khi playtest). Mỗi lần deploy là một lần restart, nên mất ván là rủi ro thật chứ không phải lý thuyết | MEDIUM | Replay event log từ seed. Engine đã xác định (deterministic); còn thiếu phần lưu log xuống PostgreSQL |
 | L8 | Trạng thái kết nối từng người (online / mất kết nối / bot đang giữ) | Nhóm cần biết đang chờ ai | LOW | |
 
 #### 2. Hidden roles & social deduction
@@ -34,8 +84,8 @@ Thiếu thì người chơi thấy game hỏng hoặc "chơi ép". Có thì khô
 | ID | Feature | Why Expected | Complexity | Notes |
 |----|---------|--------------|------------|-------|
 | H1 | Màn nhận vai riêng, mặc định che ("giữ để xem"), xem lại được bất cứ lúc nào | Nhóm bạn hay share màn hình trên Discord/Zalo call. Các bản online như Secret Hitler và Among Us đều có màn lật vai riêng | LOW | Thẻ vai che mặc định là cách chống lộ vai rẻ nhất |
-| H2 | Kênh thông tin riêng tách hẳn kênh chung (khung "Chỉ mình bạn thấy", màu khác) | Wolvesville tách chat chung và tin riêng; grimoire của BotC chỉ Storyteller thấy | MEDIUM | Server lọc theo người nhận. **Không** gửi cho tất cả rồi ẩn bằng client |
-| H3 | Pha đêm: **ai cũng có một hành động bí mật**, pha kéo dài cố định dù mọi người bấm xong sớm | Đêm của Town of Salem cố định 37 giây. App One Night Ultimate Werewolf giữ nhịp gọi vai cố định để không lộ ai đang hành động. Nếu chỉ kẻ phản bội có việc làm ban đêm thì thời điểm bấm nút đã tố cáo hắn | MEDIUM | Người thường có lựa chọn thật: canh gác, nghe ngóng, ngủ bù (hồi Tinh thần), lén lấy đồ. Vừa che hành động của kẻ phản bội vừa thêm drama |
+| H2 | Kênh thông tin riêng tách hẳn kênh chung (khung "Chỉ mình bạn thấy", màu khác) | Wolvesville tách chat chung và tin riêng; grimoire của BotC chỉ Storyteller thấy | MEDIUM | Server lọc theo người nhận: `StateView` của Colyseus cho phần state, gửi message tới từng client cho chat và lời kể riêng. **Không** gửi cho tất cả rồi ẩn bằng client. Phiếu bầu ban đêm hiện vẫn nằm trong state công khai, cần chuyển sang `StateView` |
+| H3 | Pha đêm: **ai cũng có một hành động bí mật**, pha kéo dài cố định dù mọi người bấm xong sớm | Đêm của Town of Salem cố định 37 giây. App One Night Ultimate Werewolf giữ nhịp gọi vai cố định để không lộ ai đang hành động. Nếu chỉ kẻ phản bội có việc làm ban đêm thì thời điểm bấm nút đã tố cáo hắn | MEDIUM | Người thường có lựa chọn thật: canh gác, nghe ngóng, ngủ bù (hồi Tinh thần), lén lấy đồ. Vừa che hành động của kẻ phản bội vừa thêm drama. Xem Quyết định cần chốt #1 về việc rút ngắn đêm |
 | H4 | Bỏ phiếu trói: chỉ mở khi có người đề cử; mọi người khoá phiếu cùng lúc rồi lật đồng loạt, hiện rõ ai bầu ai; có "bỏ qua"; hoà hoặc không đạt đa số thì không trói ai | Among Us: phiếu skip thắng, hoà, hoặc không ai bầu thì "No one was ejected". Secret Hitler lật phiếu Ja/Nein đồng loạt. Dead of Winter chỉ bỏ phiếu khi có người khởi xướng. Phiếu công khai là dữ liệu để suy luận | LOW | Chỉ bỏ phiếu khi có đề cử (giống nomination của BotC) giúp đêm yên ắng trôi nhanh, giữ mục tiêu 4–5 phút/ngày |
 | H5 | Thời gian thảo luận có giới hạn, chủ phòng kéo dài được, cả nhóm bấm "xong" thì rút ngắn | Among Us cho chỉnh thảo luận 15–300 giây và bỏ phiếu 0–300 giây, gợi ý nhóm 5–6 người dùng 30 + 60 giây; Wolvesville 60 + 30 giây. Nhóm có voice call ngoài game cần ít giờ chat trong game hơn | LOW | **Đêm 60 giây trong tài liệu là quá ngắn nếu chat bằng chữ.** Nên mặc định 90–150 giây, cấu hình được |
 | H6 | Người chết hoặc bị trói vẫn có việc để làm | Among Us: hồn ma vẫn làm task, impostor chết vẫn phá được. Don't Starve Together: có hồn ma và hồi sinh. Dead of Winter: người bị exile nhận mục tiêu mới. Loại người chơi quá sớm là lý do chính khiến Werewolf với nhóm nhỏ kém vui | MEDIUM | Chết ở ngày 3 nghĩa là ngồi xem 40 phút. Gợi ý: hồn ma xem kênh chung, chat với hồn ma khác, mỗi đêm được 1 "lời thì thầm" ngắn hoặc 1 hành động nhỏ. Người bị trói vẫn làm việc ở trại (sửa thuyền, nấu ăn) |
@@ -48,8 +98,8 @@ Thiếu thì người chơi thấy game hỏng hoặc "chơi ép". Có thì khô
 |----|---------|--------------|------------|-------|
 | S1 | Chỉ số cá nhân Máu / No / Tinh thần kèm nhật ký thay đổi ("−10 No: ngủ ngoài") | Don't Starve Together luôn hiện 3 đồng hồ; người chơi phải thấy nguyên nhân, không chỉ con số | LOW | Chỉ 3 chỉ số. Đừng thêm khát, nhiệt độ… |
 | S2 | Bảng tài nguyên chung luôn hiển thị: tiến độ kho báu, mức núi lửa, độ bền thuyền, lương thực chung | Thanh morale/food của Dead of Winter; đồng hồ đếm ngược chung tạo lý do để hợp tác | LOW | |
-| S3 | Bản đồ điểm: thấy ai đang ở đâu, chi phí giờ mặt trời của mỗi đường, giờ còn lại, và **chi phí quay về trại** | Nếu người chơi phải ngủ ngoài chỉ vì không tính được giờ, họ sẽ thấy game chơi ép. Ngủ ngoài phải là lựa chọn có chủ đích | MEDIUM | Cảnh báo khi đi tiếp sẽ không kịp về trại |
-| S4 | Lên kế hoạch đồng thời rồi giải quyết, không đi theo lượt từng người | Robinson Crusoe cho mọi người gán hành động cùng lúc. 4–6 người ngồi chờ lượt nhau trên web rất chán | MEDIUM | Sự kiện của nhóm A và nhóm B chạy song song. Còn câu hỏi mở: quỹ giờ theo lượt hay đồng hồ thật (xem Anti-Features) |
+| S3 | Bản đồ nhỏ + đồng hồ mặt trời: thấy ai đang ở đâu, giờ còn lại, và **thời gian chạy về trại** | Nếu người chơi phải ngủ ngoài chỉ vì không tính được giờ, họ sẽ thấy game chơi ép. Ngủ ngoài phải là lựa chọn có chủ đích | MEDIUM | Bản 3D tính từ khoảng cách và tốc độ chạy (9 m/s); cảnh báo khi đi tiếp sẽ không kịp về trại. Cột sáng đã giúp tìm tới điểm sự kiện, nhưng chưa có gì chỉ đường về trại |
+| S4 | Mọi người hành động cùng lúc, không đi theo lượt từng người | Robinson Crusoe cho mọi người gán hành động cùng lúc. 4–6 người ngồi chờ lượt nhau trên web rất chán | LOW | Bản 3D giải sẵn: ban ngày chạy thời gian thực, sự kiện của nhóm A và nhóm B chạy song song |
 | S5 | Sự kiện chỉ gồm người đứng tại điểm; người khác xem trực tiếp xúc xắc công khai của nhóm kia trong lúc chờ | Luật gốc của thiết kế. Phát xúc xắc trực tiếp cho cả phòng lấp được khoảng chờ | MEDIUM | Nội dung lựa chọn và lời kể riêng vẫn chỉ gửi cho người tại điểm |
 | S6 | Hoàng hôn: tổng kết ngày cho cả đội (ai đi đâu, được gì, mất gì, phần công khai) | Khi chia nhóm, mọi người cần bức tranh chung trước khi tranh luận ban đêm | LOW | Dữ liệu do engine đưa, AI chỉ viết lời |
 | S7 | Ngủ ngoài có hậu quả rõ ràng, báo trước | Robinson Crusoe: không có chỗ trú thì mỗi người mất 1 máu mỗi đêm. Don't Starve: bóng tối giết người | LOW | |
@@ -59,7 +109,7 @@ Thiếu thì người chơi thấy game hỏng hoặc "chơi ép". Có thì khô
 
 | ID | Feature | Why Expected | Complexity | Notes |
 |----|---------|--------------|------------|-------|
-| B1 | Kéo thả có bóng xem trước bắt dính lưới, ô xanh/đỏ báo hợp lệ, thả sai thì đồ tự bật về chỗ cũ | Chuẩn của "inventory tetris" (Resident Evil 4, Escape from Tarkov, Backpack Hero) | MEDIUM | Client kiểm tra để phản hồi tức thì; server kiểm tra lại mọi lần đặt có hệ quả |
+| B1 | Kéo thả có bóng xem trước bắt dính lưới, ô xanh/đỏ báo hợp lệ, thả sai thì đồ tự bật về chỗ cũ | Chuẩn của "inventory tetris" (Resident Evil 4, Escape from Tarkov, Backpack Hero) | MEDIUM | Làm bằng React DOM phủ lên canvas 3D. Client kiểm tra để phản hồi tức thì; engine luật kiểm tra lại mọi lần đặt có hệ quả |
 | B2 | Xoay bằng phím R / chuột phải / nút xoay trong lúc kéo | Backpack Hero xoay bằng chuột phải hoặc phím mũi tên; R là quy ước phổ biến | LOW | |
 | B3 | Khay tạm cho đồ đã mua nhưng chưa xếp | Resident Evil 4 có chỗ để đồ tạm khi sắp lại cặp | LOW | **Báo trước** đồ còn trong khay khi hết giờ sẽ ra sao (mất hay hoàn tiền) |
 | B4 | Thanh trọng lượng và ngân sách cập nhật tức thì; tooltip đồ (kích thước, cân nặng, giá, thẻ, hiệu ứng kề cạnh) | Ba giới hạn chạy cùng lúc thì phải nhìn thấy cùng lúc | LOW | |
@@ -70,7 +120,7 @@ Thiếu thì người chơi thấy game hỏng hoặc "chơi ép". Có thì khô
 
 **Lưu ý về kích thước lưới (MEDIUM):** 16x16 = 256 ô lớn hơn nhiều so với các game cùng thể loại. Cặp lớn nhất của Resident Evil 4 là 10x13 = 130 ô (bắt đầu từ 6x10 = 60); mỗi class trong Backpack Battles bắt đầu với 12–14 trên tổng 63 ô; Backpack Hero bắt đầu từ 3x3. Nhiều khả năng không gian sẽ không phải giới hạn chạm đầu tiên. Cần một tham số "vùng dùng được" (khoá bớt ô, mở theo Thể lực hoặc túi mua thêm như Backpack Battles), và bot sim phải ghi lại giới hạn nào chạm trước (xem T1).
 
-**Lưu ý thiết bị (MEDIUM):** Party game web như Jackbox hay MysteryPartyNow mặc định người chơi vào bằng điện thoại. Lưới 16x16 trên màn hình 360px chỉ còn khoảng 22px mỗi ô, kéo thả và xoay rất khó. Cần chốt sớm: v1 là **máy tính trước**, điện thoại chỉ "dùng được". Nếu nhóm test chủ yếu cầm điện thoại thì cần chế độ chạm-chọn / chạm-đặt.
+**Lưu ý thiết bị (MEDIUM):** Party game web như Jackbox hay MysteryPartyNow mặc định người chơi vào bằng điện thoại. TEN TIDES đã chốt khác: bản 3D điều khiển bằng WASD + chuột, và PROJECT.md để điều khiển cảm ứng ngoài MVP. Vậy v1 là **máy tính**, lưới 16x16 chỉ cần dùng tốt từ khoảng 1280px trở lên. Trên màn hình 360px mỗi ô chỉ còn khoảng 22px, nên nếu nhóm test chủ yếu cầm điện thoại thì cần cả điều khiển cảm ứng lẫn chế độ chạm-chọn / chạm-đặt cho balo (v1.x).
 
 #### 5. Randomness & fairness
 
@@ -142,10 +192,11 @@ Bám Core Value: *"balo và xúc xắc công khai tạo ra câu chuyện riêng 
 | Thêm vai đặc biệt, hoặc 2 kẻ phản bội khi 4–6 người | "Nhiều vai thì vui hơn" | Hướng dẫn cân bằng của werewolv.es: với nhóm nhỏ hãy "start even simpler than you think you need to", chỉ một vai thêm đã làm lệch cả ván | Giữ 4 vai như tài liệu; cân bằng bằng xác suất có kẻ phản bội và độ mạnh năng lực |
 | Chat riêng 1-1 giữa người chơi trong game | Wolvesville và Town of Salem có | Chỉ có một kẻ phản bội nên không có phe cần phối hợp; nhóm bạn đằng nào cũng nhắn Zalo riêng; tách nhỏ cuộc thảo luận ban đêm | Kênh chung + kênh riêng từ GM. Trao đổi đồ là cách tương tác riêng duy nhất |
 | Voice chat, TTS đọc lời kể, ảnh AI | Nhập vai hơn | Tốn chi phí, tăng độ trễ; voice nằm ngoài phạm vi; nhóm đã có Discord/Zalo call | Chữ ngắn; thiết kế timer cho nhóm dùng voice ngoài game |
+| Đồ hoạ chi tiết, nước và bóng đổ đẹp, vật lý thật | Đã làm 3D thì muốn đẹp | Tăng dung lượng tải và tụt khung hình trên laptop của bạn bè; art nuốt thời gian trước khi biết game có vui không | Low-poly, tô màu bằng vertex color, ngân sách đồ hoạ trong PROJECT.md (60fps trên GPU tích hợp, tải lần đầu dưới 30MB) |
 | Chế tạo đồ, xây trại (kiểu Raft/Sons of the Forest) | Thể loại survival hay có | Phình phạm vi, lệch khỏi câu hỏi "mang gì, tin ai" | Hành động ở trại cố định: sửa thuyền, nấu ăn, canh gác |
 | Tự động xếp balo | Tiện | Giết câu đố xếp đồ, là một trong hai trụ của game | Khay tạm + xoay nhanh; tối đa chỉ có "gom đồ về khay" |
 | Undo sau hành động có hệ quả | Lỡ tay | Bị lợi dụng (xem kết quả rồi hoàn tác); phức tạp event log | Chỉ được undo trong pha xếp balo, trước khi hết giờ |
-| Đồng hồ thời gian thực cho di chuyển ban ngày trong bản chữ | Giống bản 3D | Bản chữ không có di chuyển để "chơi", đồng hồ thật chỉ ép người ta đọc vội lời kể; 6 người khác tốc độ đọc | Quỹ giờ mặt trời + timer pha mềm (đủ người sẵn sàng là sang pha). Chốt ở discuss-phase (MEDIUM) |
+| Lời kể dài hiện giữa lúc đang khám phá | Muốn AI kể mọi thứ ngay tại chỗ | Ban ngày chạy thời gian thực: đọc đoạn văn dài thì hoặc đứng im mất giờ, hoặc bỏ qua không đọc; 6 người khác tốc độ đọc | Lời kể dài dồn vào bình minh và hoàng hôn, là những pha không cần di chuyển. Tại điểm sự kiện chỉ 1–3 câu, và người tham gia được giữ đứng yên trong lúc đọc (đã làm) (MEDIUM) |
 | Tài khoản, bảng xếp hạng, thống kê toàn cục | Có vẻ chuyên nghiệp | Ngoài phạm vi PROJECT; không giúp trả lời "vui không" | Token phiên + log playtest cục bộ |
 
 ## Feature Dependencies
@@ -160,13 +211,13 @@ Bám Core Value: *"balo và xúc xắc công khai tạo ra câu chuyện riêng 
                        ├──enables──> [Fact ledger] ──> [AI consistency A6] ──> [Chronicle D6]
                        └──enables──> [Replay by seed T2] [Playtest telemetry T3]
 
-[Per-player view filtering on server]
+[Per-player view filtering on server (Colyseus StateView)]
     └──required by──> [Role reveal H1] [Private channel H2] [Secret compartment B6]
                       [Night actions H3] [Private narration D4] [Reconnect snapshot L3]
 
 Luồng một ván (phase sau phụ thuộc phase trước):
 [Lobby L1/L2/L5/L6] → [Character creation] → [Shop + Backpack B1–B8]
-    → [Node map + sun hours S3/S4] → [Event cards + public dice R1/R2/D2]
+    → [3D exploration + sun clock S3/S4] → [Event cards + public dice R1/R2/D2]
     → [Dusk S6/D5] → [Night H3/H4/H5] → [Endings] → [Reveal H7] → [Chronicle D6]
 
 [Bot policies] ──enables──> [Zombie bot L4] và [Headless sim T1]   (D11)
@@ -179,15 +230,15 @@ Luồng một ván (phase sau phụ thuộc phase trước):
 [Suspicion noise D3] ──conflicts──> [Confirm-on-tie-up]            (xem H8)
 [Spectators] ──conflicts──> [Secrets protected by architecture]      (lộ qua voice)
 [Freeform player input to AI] ──conflicts──> [Engine decides]
-[Real-time day clock] ──conflicts──> [Reading AI narration at leisure]
+[Real-time day clock] ──tension──> [Reading AI narration]   (long narration at dawn/dusk only)
 [Ending "Kẻ sống sót duy nhất" (thắng cá nhân)] ──tension──> [Co-op incentives of loyal players]
 ```
 
 ### Dependency Notes
 
 - **Mọi thứ phụ thuộc engine xác định + event log.** Reconnect, khôi phục sau restart, màn lật bài, biên niên sử, replay và telemetry đều đọc cùng một event log. Phải làm nó trước, không để "thêm sau".
-- **Lọc góc nhìn theo người chơi là điều kiện của mọi bí mật.** Vai ẩn, ngăn bí mật, lời kể riêng và hành động đêm đều cần server gửi dữ liệu khác nhau cho từng người. Làm sai ở đây thì phải viết lại cả lớp mạng.
-- **Bot là một thành phần, dùng hai nơi.** Bot giữ nhân vật cho người rời ván (L4) và bot mô phỏng (T1) nên dùng chung interface chính sách. Làm bot sim trước thì L4 gần như có sẵn.
+- **Lọc góc nhìn theo người chơi là điều kiện của mọi bí mật.** Vai ẩn, ngăn bí mật, lời kể riêng và hành động đêm đều cần server gửi dữ liệu khác nhau cho từng người. Colyseus đã có sẵn cơ chế (`StateView` + field `.view()`), nên việc còn lại là gắn đúng trường và viết test chứng minh người khác không nhận được. Nên làm cùng lúc với việc chuyển phiếu đêm sang `StateView`.
+- **Bot là một thành phần, dùng hai nơi.** Bot giữ nhân vật cho người rời ván (L4) và bot mô phỏng (T1) nên dùng chung interface chính sách. Bot trong `packages/rules/src/simulate.test.ts` hiện chọn ngẫu nhiên; tách nó thành module dùng chung là bước đầu của cả L4 lẫn T1.
 - **Logic đặt đồ vào lưới dùng lại cho trao đổi, nhặt đồ, mất đồ.** Trao đổi đòi người nhận còn chỗ, tức là mở luồng đặt đồ phía người nhận. Nên giới hạn trao đổi ở trại (hoàng hôn hoặc đêm) cho v1.
 - **D3 (nhiễu nghi ngờ) cần nội dung, không chỉ code.** Phải có thẻ "sự cố không rõ nguyên nhân" với tần suất cơ bản, và hành động phá của kẻ phản bội phải ra đúng cùng dạng. Mâu thuẫn trực tiếp với xác nhận trói đúng/sai.
 - **Kết thúc "Kẻ sống sót duy nhất" tạo động cơ ích kỷ cho cả phe đội.** Nếu người thường có thể thắng một mình khi để người khác chết, game trượt sang kiểu Nemesis (ai cũng vì mình). Đây có thể là chủ ý, nhưng phải để bot sim đo và bàn ở discuss-phase.
@@ -197,12 +248,13 @@ Luồng một ván (phase sau phụ thuộc phase trước):
 
 ### Launch With (v1)
 
-Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thiểu** đủ để trả lời "có vui không".
+Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản tối thiểu** đủ để trả lời "có vui không". Phần đã làm trong giai đoạn 1 (graybox) xem ở Trạng thái hiện tại.
 
 - [ ] **Lobby & session:** L1–L8. Kick và pause ở mức đơn giản. Bot người rời ở mức "ở trại, pass"
 - [ ] **Tạo nhân vật đầy đủ** như PROJECT, với **≥8 xuất thân và ≥8 tật xấu** (hoặc ít nhất ≥6 tật xấu) để 6 người không buộc phải trùng
 - [ ] **Balo:** B1–B8. Hiệu ứng kề cạnh v1 chỉ **4–6 cặp**; hao mòn v1 chỉ gồm thức ăn hỏng + dụng cụ có số lần dùng; trao đổi chỉ ở trại; tham số "vùng dùng được" của lưới chỉnh được qua config
-- [ ] **Đảo & ngày:** S1–S8, lên kế hoạch đồng thời, sự kiện song song theo nhóm, cảnh báo giờ về trại
+- [ ] **Đảo & ngày:** S1–S8, bản đồ nhỏ và cảnh báo giờ về trại
+- [ ] **Đảo low-poly hoàn chỉnh:** thay khối graybox bằng asset low-poly, 10 easter egg, đồ lớn hiện trên người (theo PROJECT.md)
 - [ ] **Xúc xắc:** R1–R5 + D2 (phản thực tế "nếu có X đã qua"), vì nó rẻ và đánh thẳng vào rủi ro "random bất công"
 - [ ] **Vai ẩn:** H1–H8, 4 vai, xác suất có kẻ phản bội cấu hình được; mọi người đều có hành động đêm; bỏ phiếu chỉ khi có đề cử
 - [ ] **Nhiễu nghi ngờ D3** ở mức tối thiểu: 4–6 thẻ sự cố không rõ nguyên nhân
@@ -223,7 +275,7 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 
 ### Future Consideration (v2+)
 
-- [ ] **Client 3D Unity, easter egg, đồ hiện trên người.** Thuộc milestone Graybox trở đi
+- [ ] **Bản desktop trên Steam:** bọc bản web bằng Tauri hoặc Electron (giai đoạn 4 trong PROJECT.md)
 - [ ] **Thẻ ảnh chia sẻ biên niên sử, analytics, kiểm duyệt nội dung.** Thuộc closed beta, khi có người lạ chơi
 - [ ] **Spectator/audience, tài khoản, bảng xếp hạng.** Chỉ có ý nghĩa khi có cộng đồng
 - [ ] **TTS, ảnh AI, voice.** Chi phí và độ trễ; phải chứng minh vòng chơi vui trước
@@ -240,8 +292,8 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 | Bot giữ người rời (L4) | MEDIUM | MEDIUM (LOW nếu dùng lại bot sim) | P1 |
 | Lưới balo kéo thả/xoay/bắt dính (B1–B4) | HIGH | MEDIUM | P1 |
 | Hiệu ứng kề cạnh khi hover (B5) | MEDIUM | MEDIUM | P1 (chỉ 4–6 cặp) |
-| Bản đồ điểm + chi phí về trại (S3) | HIGH | MEDIUM | P1 |
-| Kế hoạch đồng thời + sự kiện song song (S4/S5) | HIGH | MEDIUM | P1 |
+| Bản đồ nhỏ + cảnh báo giờ về trại (S3) | HIGH | MEDIUM | P1 |
+| Hành động đồng thời + sự kiện song song (S4/S5) | HIGH | MEDIUM | P1 (đã có nhờ 3D thời gian thực) |
 | Xúc xắc công khai có phân rã + % trước khi chọn (R1/R2) | HIGH | LOW | P1 |
 | "Vì sao thua" phản thực tế (D2) | HIGH | LOW | P1 |
 | Hành động đêm cho mọi người + thời lượng cố định (H3) | HIGH | MEDIUM | P1 |
@@ -270,7 +322,7 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 | Feature | Social deduction online (Among Us, Town of Salem, Wolvesville, BotC online) | Board game co-op/traitor (Dead of Winter, Betrayal, BSG, Robinson Crusoe) | Inventory games (Backpack Battles, Backpack Hero, RE4) | AI GM (Tabled, Friends & Fables, AI Dungeon, Hidden Door, Death by AI) | TEN TIDES approach |
 |---------|------|------|------|------|------|
 | Vào phòng | Mã 4–6 ký tự; Jackbox có QR | Không áp dụng | Không áp dụng | Tabled: một mã mời cho tối đa 6 người; Death by AI chạy trong Discord Activity | Mã + link, không tài khoản |
-| Rớt mạng | Among Us không cho vào lại; ToS phạt người rời 5 phút | Không áp dụng | Không áp dụng | Tabled/Infinity DM chơi bất đồng bộ nên né được vấn đề | Vào lại đúng ván + bot giữ chỗ |
+| Rớt mạng | Among Us không cho vào lại; ToS phạt người rời 5 phút | Không áp dụng | Không áp dụng | Tabled/Infinity DM chơi bất đồng bộ nên né được vấn đề | Vào lại đúng ván + bot giữ chỗ (hiện giữ chỗ 30 giây) |
 | Nhận vai | Màn reveal riêng khi bắt đầu | DoW: mục tiêu bí mật, khoảng 43–45% ván có kẻ phản bội; Betrayal: kẻ phản bội lộ giữa ván; BSG: chia vai 2 lần (có pha "sleeper") | Không áp dụng | Không áp dụng | Chia lúc đầu, 0 hoặc 1 kẻ phản bội, che mặc định |
 | Hành động ẩn | Đêm cố định (ToS 37 giây) | BSG: đóng góp úp + Destiny Deck làm nhiễu | Không áp dụng | Không áp dụng | Ai cũng có hành động đêm + nhiễu nghi ngờ |
 | Bỏ phiếu | Among Us: skip/hoà thì không ai bị loại, tuỳ chọn phiếu ẩn danh; BotC: đề cử rồi bầu công khai | DoW: bất kỳ ai khởi xướng exile; exile nhầm 2 người thì morale về 0 | Không áp dụng | Không áp dụng | Chỉ khi có đề cử; khoá đồng thời, lật công khai; hoà thì không trói |
@@ -292,13 +344,13 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 | Slay the Spire | 52 event (12 chỉ hồi 1, 16 chỉ hồi 2, 8 chỉ hồi 3, 16 dùng chung) | Mỗi event tối đa 1 lần mỗi lượt chơi; ước khoảng 10–15 event mỗi lượt | HIGH (số event), LOW (số mỗi lượt) |
 | Eldritch Horror | 272 location encounter (tính cả bản mở rộng) | Theo vùng màu | MEDIUM |
 | Backpack Battles | Shop bày 5 món mỗi vòng, reroll 1 vàng × 4 lần rồi 2 vàng, giữ chỗ được | Không áp dụng | HIGH |
-| Tài liệu TEN TIDES | Prototype giấy: 30 thẻ; MVP 3D: 60 thẻ gắn điểm, 40 đồ | Không áp dụng | Nguồn nội bộ |
+| Tài liệu TEN TIDES | Prototype giấy: 30 thẻ; MVP 3D: 60 thẻ gắn điểm, 40 đồ. Graybox hiện có 12 thẻ, 11 đồ, 12 điểm thuộc 7 loại | Engine đặt tối đa 6 thẻ mỗi ngày (`MAX_CARDS_PER_DAY`) | Nguồn nội bộ |
 
 **Quy tắc ngón tay cái (MEDIUM-LOW, suy luận):** các game trên có kho khoảng **3 lần** số lần rút mỗi ván thì chơi nhiều buổi vẫn thấy mới. Để một ván không lặp mà vẫn có lựa chọn, kho cần tối thiểu khoảng **1,5 lần** số lần rút, vì bộ lọc (vùng × hồi × thời tiết × đồ mang theo) chia kho ra nhiều ngăn nhỏ.
 
 ### Ước lượng số lần rút mỗi ván TEN TIDES (LOW, cần bot sim đo)
 
-- **Ban ngày:** 4–6 người thường chia 2–3 nhóm. Với khoảng 3 phút khám phá mỗi ngày và 30–60 giây mỗi thẻ ở bản chữ, mỗi nhóm gặp khoảng 1,5–2 thẻ mỗi ngày → 3–6 thẻ điểm mỗi ngày → **30–60 thẻ điểm mỗi ván** 10 ngày.
+- **Ban ngày:** 4–6 người thường chia 2–3 nhóm. Với khoảng 3 phút khám phá mỗi ngày, 20–40 giây mỗi thẻ, cộng thời gian chạy giữa các điểm (đảo rộng khoảng 200 m, chạy 9 m/s, tức 10–20 giây mỗi chặng), mỗi nhóm gặp khoảng 1,5–2 thẻ mỗi ngày → 3–6 thẻ điểm mỗi ngày → **30–60 thẻ điểm mỗi ván** 10 ngày. Engine hiện giới hạn 6 thẻ mỗi ngày nên trần là 60.
 - **Ngoài điểm:** bình minh/trại 5–8, ngủ ngoài 2–5, tật xấu khoảng 1 mỗi người (4–6), twist ngày 5: 1.
 - **Tổng khoảng 45–80 lần rút mỗi ván**, nhưng mỗi người **trực tiếp** gặp chỉ khoảng 15–25 thẻ vì các nhóm tách nhau. Cảm giác lặp vì vậy thấp hơn con số tổng.
 
@@ -306,7 +358,7 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 
 | Loại nội dung | Tối thiểu cho 1 ván không lặp (v1) | Mục tiêu tươi 2–3 buổi | Ghi chú |
 |---------------|-----------------------------------|------------------------|---------|
-| Thẻ sự kiện tại điểm (4 vùng) | **60** (khoảng 15 mỗi vùng, phần lớn dùng được ở nhiều hồi) | 100–120 (25–30 mỗi vùng) | Mỗi ô (vùng × hồi) cần ≥6–8 thẻ hợp lệ sau khi lọc, nếu không bộ rút sẽ cạn hoặc lặp |
+| Thẻ sự kiện tại điểm (4 vùng) | **60** (khoảng 15 mỗi vùng, phần lớn dùng được ở nhiều hồi) | 100–120 (25–30 mỗi vùng) | Thẻ gắn theo **loại điểm**, không chỉ theo vùng. Mỗi ô (loại điểm × hồi) cần ≥6–8 thẻ hợp lệ sau khi lọc, nếu không bộ rút sẽ cạn hoặc lặp. Hiện mỗi loại điểm chỉ có 1–2 thẻ |
 | Thẻ trại / bình minh / hoàng hôn | 10 | 20 | |
 | Sự kiện đêm khi ngủ ngoài | 6–8 | 12–15 | |
 | Sự kiện tật xấu | 2 mỗi tật xấu | 3–4 mỗi tật xấu | |
@@ -344,6 +396,8 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 - **Nhịp:** ≥60–70% ván chạy tới ngày 10 để có cao trào núi lửa; ≤10% ván kết thúc trước ngày 6; cái chết đầu tiên hiếm khi xảy ra trước ngày 4.
 - **Từng phép kiểm tra:** tỷ lệ thành công ở chỉ số điển hình nằm trong 25–85%. Ngoài khoảng đó thì đánh dấu để xem lại.
 
+**Quan sát đầu tiên (graybox, 1 ván chạy nhanh, LOW):** đói chưa đủ nguy hiểm. Hai người đứng yên không mở thẻ nào, hết lương thực từ ngày 3, vẫn sống tới ngày 10 với 35 và 15 Máu. Cần bot sim đo lại sau khi chỉnh lương thực và sát thương khi đói.
+
 **Bot sim không đo được khả năng suy luận.** Bot chỉ đo độ khó của hòn đảo và sức mạnh của năng lực phản bội. Cách làm: cho bot phe đội một tham số "độ chính xác nghi ngờ" q (xác suất bầu đúng khi có tín hiệu), quét q ∈ {0,2; 0,4; 0,6}. Dải thắng của kẻ phản bội phải đứng vững ở q khoảng 0,3–0,5, mức của một nhóm bạn bình thường.
 
 **Vì sao 30 ván người không đủ để kiểm cổng 40%:** với p = 40% và n = 30, khoảng tin cậy 95% là ±17,5 điểm phần trăm, nên một kết thúc "thật ra 40%" có thể hiện ra từ 23% đến 57%. Ở n = 2.000 ván bot, khoảng này còn ±2,1 điểm. Vậy bot sim là cổng chính; 30 ván người chỉ để xác nhận hướng và đo "vui".
@@ -369,10 +423,11 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 6. Chat: số tin mỗi đêm và phân bố theo người (ai im lặng), số đề cử, số phiếu, trói đúng/sai, ngày đầu tiên có người nghi đúng.
 7. Kiểu chia nhóm mỗi ngày: số lần đi một mình, số lần ngủ ngoài (chủ động hay vì hết giờ).
 8. Số lần trao đổi đồ, lục soát, dùng reroll.
-9. Xếp balo: thời gian dùng, % ô, % trọng lượng, % ngân sách, đồ mua mà không bao giờ dùng.
-10. Tín hiệu bối rối: số lần mở lại tooltip, lịch sử xúc xắc, xem lại vai.
-11. Rớt mạng, vào lại, bot tiếp quản.
-12. Số lần bấm ⭐ khoảnh khắc (nếu có D10) và nó rơi vào loại sự kiện nào.
+9. Di chuyển 3D: quãng đường và thời gian đi bộ mỗi ngày, thời gian đứng trong sự kiện so với thời gian đi đường, bản đồ nhiệt vị trí (điểm nào không ai tới, chỗ nào hay bị kẹt).
+10. Xếp balo: thời gian dùng, % ô, % trọng lượng, % ngân sách, đồ mua mà không bao giờ dùng.
+11. Tín hiệu bối rối: số lần mở lại tooltip, lịch sử xúc xắc, xem lại vai.
+12. Rớt mạng, vào lại, bot tiếp quản; FPS trung bình và thấp nhất theo máy.
+13. Số lần bấm ⭐ khoảnh khắc (nếu có D10) và nó rơi vào loại sự kiện nào.
 
 **Thái độ (khảo sát 1 phút sau ván, trong game):**
 - Vui không (1–10); muốn chơi lại không (1–10). Hai câu mặc định mà các dịch vụ playtest như PlaytestCloud dùng.
@@ -453,5 +508,5 @@ Khớp phạm vi v1 trong PROJECT.md; mỗi mục ghi **phiên bản tối thi�
 - [PlaytestCloud — Default survey questions](https://help.playtestcloud.com/en/articles/1187190-default-survey-questions-five-star-ratings), [John Hopson — Mid-playtest feedback methods](https://medium.com/@john.hopson/mid-playtest-feedback-methods-319521c01e44) (MEDIUM)
 
 ---
-*Feature research for: online co-op survival + hidden-traitor text prototype with LLM Game Master*
-*Researched: 2026-09-25*
+*Feature research for: browser 3D co-op survival + hidden-traitor game with LLM Game Master*
+*Researched: 2026-09-25 · Updated: 2026-09-28*
