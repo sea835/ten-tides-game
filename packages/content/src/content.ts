@@ -51,7 +51,7 @@ export const content: Content = loadContent({ items: itemsJson, cards: cardsJson
 export const gameConfig: GameConfig = {
   cards: [...content.cards.values()],
   anchors: ANCHORS,
-  items: [...content.items.values()].map(({ id, name, size, weightKg, price, tags }) => ({ id, name, size, weightKg, price, tags })),
+  items: [...content.items.values()].map(({ id, name, size, weightKg, price, tags, loot, eat }) => ({ id, name, size, weightKg, price, tags, loot, eat })),
   treasureSites: TREASURE_SITES,
 };
 

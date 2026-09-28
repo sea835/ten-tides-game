@@ -2,13 +2,28 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CapsuleCollider, RigidBody, useRapier, type RapierCollider, type RapierRigidBody } from "@react-three/rapier";
 import { Vector3, type Group } from "three";
-import { ANCHORS, ANCHOR_TRIGGER_RADIUS, CAMP, CAMP_RADIUS, DIG_RADIUS, TREASURE_SITES, WATER_LEVEL, worldCatalog, type World } from "@tentides/content";
-import { INTERACT_RADIUS, MAX_RUN_SPEED, Messages, type CorrectMessage, type MoveMessage } from "@tentides/protocol";
+import {
+  ANCHORS,
+  ANCHOR_TRIGGER_RADIUS,
+  ASSASSINATE_RADIUS,
+  CAMP_RADIUS,
+  CLIMB_REACH,
+  DIG_RADIUS,
+  PICKUP_RADIUS,
+  TREASURE_SITES,
+  WATER_LEVEL,
+  content,
+  worldCatalog,
+  type World,
+} from "@tentides/content";
+import { INTERACT_RADIUS, MAX_RUN_SPEED, Messages, type CorrectMessage, type KnockMessage, type MoveMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
-import { Character } from "./Character.tsx";
+import { Character, type Motion } from "./Character.tsx";
 import { getHud, setHud, type NearTarget } from "./hudStore.ts";
 import { isTyping, keys, look } from "./input.ts";
-import { debugCam, localEnv, localMotion, localPosition } from "./shared.ts";
+import { getPrivate } from "./privateStore.ts";
+import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
+import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 const WALK_SPEED = 8;
@@ -42,6 +57,13 @@ const SEND_INTERVAL = 1 / 15;
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.4;
 const FEET_OFFSET = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS;
+/** Leo cây: ôm cách tâm thân cây chừng này, trèo lên/tuột xuống nhanh chừng này, A/D vòng quanh thân. */
+const CLIMB_HUG = 0.72;
+const CLIMB_SPEED = 2.2;
+const CLIMB_SPRINT_SPEED = 3.4;
+const CLIMB_TURN = 2.2;
+/** Vừa đánh hay ném thì quay mặt theo hướng camera chừng này giây. */
+const AIM_FACE_MS = 450;
 
 type CharacterController = ReturnType<ReturnType<typeof useRapier>["world"]["createCharacterController"]>;
 
@@ -82,6 +104,11 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     sitting: false,
     swimming: false,
     camHeight: CAM_HEIGHT_STAND,
+    /** Đang leo cây nào (server đã đồng ý), cao bao nhiêu trên gốc, đứng ở góc nào quanh thân. */
+    climb: null as { tree: ClimbTree; h: number; angle: number } | null,
+    wobble: 0,
+    /** Vừa bấm Space để nhảy khỏi cây (chờ server đồng ý thôi leo). */
+    leap: false,
   });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
@@ -96,6 +123,17 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       }),
     [room],
   );
+  // Bị đánh trúng: bật lùi theo hướng server báo, nảy lên một chút.
+  useEffect(
+    () =>
+      room.onMessage(Messages.knock, (k: KnockMessage) => {
+        knock.vx += k.dx * k.force;
+        knock.vz += k.dz * k.force;
+        if (sim.current.grounded) sim.current.vy = Math.max(sim.current.vy, k.force * 0.5);
+        shake.amount = Math.min(0.8, shake.amount + 0.3);
+      }),
+    [room],
+  );
 
   // Nhấn E khi đứng cạnh một điểm sự kiện để mở thẻ. Server kiểm tra lại khoảng cách.
   // Nhấn C để ngồi xuống hoặc đứng dậy.
@@ -107,10 +145,19 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         if (!sim.current.swimming) sim.current.sitting = !sim.current.sitting;
         return;
       }
+      // Đang leo thì E là buông tay tụt xuống, Space là nhún người nhảy ra khỏi cây.
+      if (sim.current.climb && (e.code === "KeyE" || e.code === "Space")) {
+        sim.current.leap = e.code === "Space";
+        room.send(Messages.climb, { treeId: "" });
+        return;
+      }
       if (e.code !== "KeyE") return;
       const { nearAnchor, atDigSite, nearTarget } = getHud();
       if (atDigSite) room.send(Messages.dig);
       else if (nearAnchor) room.send(Messages.trigger, { anchorId: nearAnchor });
+      else if (nearTarget?.kind === "item") room.send(Messages.pickup, { id: nearTarget.id });
+      else if (nearTarget?.kind === "tree") room.send(Messages.climb, { treeId: nearTarget.id });
+      else if (nearTarget?.kind === "camp") room.send(Messages.packCamp);
       else if (nearTarget) room.send(Messages.interact, { targetId: nearTarget.id });
     };
     window.addEventListener("keydown", onKey);
@@ -132,7 +179,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     }
     // Tạm dừng thì đứng yên; đang trong sự kiện thì đứng yên tại chỗ, người khác vẫn đi tiếp.
     const sheet = room.state.players.get(myId(room));
-    const frozen = room.state.paused || isBusy(room.state, myId(room));
+    const stunned = (sheet?.stun ?? 0) > 0;
+    const frozen = room.state.paused || isBusy(room.state, myId(room)) || stunned;
+    const dizzy = sheet?.dizzy ?? 0;
 
     const forward = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const strafe = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
@@ -173,8 +222,12 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const speed = baseSpeed * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
-    let mx = -Math.sin(look.yaw) * forward + Math.cos(look.yaw) * strafe;
-    let mz = -Math.cos(look.yaw) * forward - Math.sin(look.yaw) * strafe;
+    // Chóng mặt thì đi loạng choạng: hướng đi bị lệch qua lệch lại.
+    s.wobble += dt;
+    const reel = dizzy > 0 ? Math.sin(s.wobble * 2.3) * 0.9 + Math.sin(s.wobble * 5.1) * 0.35 : 0;
+    const heading = look.yaw + reel;
+    let mx = -Math.sin(heading) * forward + Math.cos(heading) * strafe;
+    let mz = -Math.cos(heading) * forward - Math.sin(heading) * strafe;
     mx *= inputScale;
     mz *= inputScale;
     const len = Math.hypot(mx, mz);
@@ -187,44 +240,92 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
 
     // Bị trói thì chỉ quanh quẩn trong trại (server cũng chặn).
     const tied = room.state.players.get(myId(room))?.tied ?? false;
-    const campDist = (x: number, z: number) => Math.hypot(x - CAMP.x, z - CAMP.z);
+    const campDist = (x: number, z: number) => Math.hypot(x - room.state.campX, z - room.state.campZ);
     const leavingCamp = tied && campDist(pos.x + mx, pos.z + mz) > CAMP_RADIUS - 0.5 && campDist(pos.x + mx, pos.z + mz) > campDist(pos.x, pos.z);
     if (leavingCamp) {
       mx = 0;
       mz = 0;
     }
 
-    if (s.swimming) {
-      // Giữ C (hoặc Ctrl) để lặn, Space để ngoi; thả tay thì nổi dần lên mặt nước. Hết hơi thì bị đẩy lên.
-      const surface = WATER_LEVEL - SWIM_FLOAT;
-      const diving = !frozen && breath > 0 && (keys.has("KeyC") || keys.has("ControlLeft") || keys.has("ControlRight"));
-      const ascending = !frozen && keys.has("Space");
-      let target: number;
-      if (diving) target = -DIVE_SPEED;
-      else if (ascending || breath === 0) target = ASCEND_SPEED;
-      else target = feetNow < surface - 0.05 ? 1.6 : (surface - feetNow) * 4;
-      s.vy += (target - s.vy) * Math.min(1, dt * 6);
-      // Không nhô khỏi mặt nước khi đang bơi (trừ khi tới chỗ nông thì lội lên bờ).
-      if (feetNow + s.vy * dt > surface + 0.05 && s.vy > 0) s.vy = Math.max(0, (surface + 0.05 - feetNow) / dt);
+    // Leo cây: server đồng ý thì bám vào thân, không còn trọng lực hay va chạm; server báo thôi leo
+    // (tự buông, nhảy ra, hay cây bị đốn) thì rơi xuống như thường.
+    const climbingId = sheet?.alive ? (sheet?.climbing ?? "") : "";
+    if (climbingId && s.climb?.tree.id !== climbingId) {
+      const tree = climbTrees(room, world).find((t) => t.id === climbingId);
+      if (tree) s.climb = { tree, h: Math.max(0.2, feetNow - tree.y), angle: Math.atan2(pos.x - tree.x, pos.z - tree.z) };
+    } else if (!climbingId && s.climb) {
+      // Thôi leo: đẩy nhẹ ra khỏi thân cây cho khỏi kẹt vào thân; nhảy ra thì bật xa và nảy lên.
+      const push = s.leap ? 5 : 2.5;
+      knock.vx += Math.sin(s.climb.angle) * push;
+      knock.vz += Math.cos(s.climb.angle) * push;
+      s.vy = s.leap ? JUMP_SPEED * 0.6 : 0;
+      s.climb = null;
+      s.leap = false;
+    }
+
+    let next: { x: number; y: number; z: number };
+    let climbMoving = false;
+    if (s.climb) {
+      const c = s.climb;
+      const top = climbTop(c.tree);
+      const climbSpeed = (running ? CLIMB_SPRINT_SPEED : CLIMB_SPEED) * inputScale;
+      c.h = Math.min(top, c.h + forward * climbSpeed * dt);
+      c.angle += strafe * CLIMB_TURN * dt * inputScale;
+      climbMoving = !frozen && (forward !== 0 || strafe !== 0);
+      if (!frozen && c.h <= 0 && forward < 0) {
+        // Tụt tới gốc rồi mà vẫn bấm S: xuống đất.
+        c.h = 0;
+        room.send(Messages.climb, { treeId: "" });
+      }
+      c.h = Math.max(0, c.h);
+      const center = trunkAt(c.tree, c.h);
+      next = { x: center.x + Math.sin(c.angle) * CLIMB_HUG, y: c.tree.y + c.h + FEET_OFFSET, z: center.z + Math.cos(c.angle) * CLIMB_HUG };
+      s.facing = c.angle + Math.PI;
+      s.grounded = false;
+      s.sitting = false;
     } else {
-      if (s.grounded && !frozen && keys.has("Space")) s.vy = JUMP_SPEED;
-      s.vy -= GRAVITY * dt;
-    }
+      if (s.swimming) {
+        // Giữ C (hoặc Ctrl) để lặn, Space để ngoi; thả tay thì nổi dần lên mặt nước. Hết hơi thì bị đẩy lên.
+        const surface = WATER_LEVEL - SWIM_FLOAT;
+        const diving = !frozen && breath > 0 && (keys.has("KeyC") || keys.has("ControlLeft") || keys.has("ControlRight"));
+        const ascending = !frozen && keys.has("Space");
+        let target: number;
+        if (diving) target = -DIVE_SPEED;
+        else if (ascending || breath === 0) target = ASCEND_SPEED;
+        else target = feetNow < surface - 0.05 ? 1.6 : (surface - feetNow) * 4;
+        s.vy += (target - s.vy) * Math.min(1, dt * 6);
+        // Không nhô khỏi mặt nước khi đang bơi (trừ khi tới chỗ nông thì lội lên bờ).
+        if (feetNow + s.vy * dt > surface + 0.05 && s.vy > 0) s.vy = Math.max(0, (surface + 0.05 - feetNow) / dt);
+      } else {
+        if (s.grounded && !frozen && keys.has("Space")) s.vy = JUMP_SPEED;
+        s.vy -= GRAVITY * dt;
+      }
 
-    controller.computeColliderMovement(col, { x: mx, y: s.vy * dt, z: mz });
-    const delta = controller.computedMovement();
-    s.grounded = controller.computedGrounded();
-    if (s.grounded && s.vy < 0) s.vy = 0;
+      // Bị đánh bật lùi: cộng thêm vận tốc đẩy, giảm dần.
+      mx += knock.vx * dt;
+      mz += knock.vz * dt;
+      controller.computeColliderMovement(col, { x: mx, y: s.vy * dt, z: mz });
+      const delta = controller.computedMovement();
+      s.grounded = controller.computedGrounded();
+      if (s.grounded && s.vy < 0) s.vy = 0;
 
-    const next = { x: pos.x + delta.x, y: pos.y + delta.y, z: pos.z + delta.z };
-    if (next.y < world.heightAt(next.x, next.z) - 5) {
-      // Lỡ lọt khỏi địa hình thì đưa về điểm xuất phát.
-      next.x = spawn.x;
-      next.y = spawn.y;
-      next.z = spawn.z;
-      s.vy = 0;
+      next = { x: pos.x + delta.x, y: pos.y + delta.y, z: pos.z + delta.z };
+      if (next.y < world.heightAt(next.x, next.z) - 5) {
+        // Lỡ lọt khỏi địa hình thì đưa về điểm xuất phát.
+        next.x = spawn.x;
+        next.y = spawn.y;
+        next.z = spawn.z;
+        s.vy = 0;
+      }
     }
+    const fade = Math.exp(-dt * 6);
+    knock.vx *= fade;
+    knock.vz *= fade;
+    if (Math.abs(knock.vx) + Math.abs(knock.vz) < 0.05) knock.vx = knock.vz = 0;
     rb.setNextKinematicTranslation(next);
+
+    // Vừa đánh hay ném: quay mặt theo hướng camera cho đòn đi đúng chỗ mình nhắm.
+    if (!s.climb && performance.now() - localAim.at < AIM_FACE_MS) s.facing = localAim.yaw + Math.PI;
 
     if (avatar.current) {
       const current = avatar.current.rotation.y;
@@ -256,14 +357,24 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (blocked || firstFrame) state.camera.position.copy(camPos);
     else state.camera.position.lerp(camPos, Math.min(1, dt * 10));
     state.camera.lookAt(camTarget);
+    // Rung màn hình (bị đánh, cây đổ sát bên) và nghiêng ngả khi chóng mặt.
+    if (shake.amount > 0.005) {
+      const a = shake.amount * 0.35;
+      state.camera.position.x += (Math.random() - 0.5) * a;
+      state.camera.position.y += (Math.random() - 0.5) * a;
+      state.camera.position.z += (Math.random() - 0.5) * a;
+      shake.amount *= Math.exp(-dt * 7);
+    } else shake.amount = 0;
+    if (dizzy > 0) state.camera.rotateZ(Math.sin(s.wobble * 1.7) * 0.14 * Math.min(1, dizzy));
     if (import.meta.env.DEV && debugCam.enabled) {
       state.camera.position.copy(debugCam.position);
       state.camera.lookAt(debugCam.target);
     }
 
     localPosition.set(next.x, feetY, next.z);
-    localMotion.moving = moving;
+    localMotion.moving = s.climb ? climbMoving : moving;
     localMotion.running = moving && running;
+    localMotion.climbing = !!s.climb;
     localMotion.sitting = s.sitting;
     localMotion.swimming = s.swimming;
     const inside = world.structureAt(next.x, next.z);
@@ -281,7 +392,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       swimming: s.swimming,
       underwater: headUnder,
       nearAnchor: anchor,
-      nearTarget: frozen || anchor ? null : nearestTarget(room, world, next.x, feetY, next.z),
+      nearTarget: frozen || anchor || s.climb ? null : nearestTarget(room, world, next.x, feetY, next.z),
+      climbing: !!s.climb,
+      victim: frozen || s.climb ? null : nearestVictim(room, next.x, feetY, next.z),
       sprint: Math.round(s.energy),
       atDigSite: !frozen && atDigSite(room, next.x, next.z),
       sitting: s.sitting,
@@ -291,8 +404,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     s.sendTimer += dt;
     if (s.sendTimer >= SEND_INTERVAL) {
       s.sendTimer = 0;
-      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving, sitting: s.sitting, swimming: s.swimming };
-      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${moving},${s.sitting},${s.swimming}`;
+      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving: s.climb ? climbMoving : moving, sitting: s.sitting, swimming: s.swimming };
+      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming}`;
       if (key !== s.lastSent) {
         s.lastSent = key;
         room.send(Messages.move, msg);
@@ -304,13 +417,23 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     <RigidBody ref={body} type="kinematicPosition" colliders={false} position={[spawn.x, spawn.y + FEET_OFFSET, spawn.z]}>
       <CapsuleCollider ref={collider} args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
       <group position-y={-FEET_OFFSET}>
-        <Carrier room={room}>{(carrying) => <Character ref={avatar} color={me.color} carrying={carrying} motion={readLocalMotion} />}</Carrier>
+        <Carrier room={room}>{(carrying, held) => <Character ref={avatar} color={me.color} carrying={carrying} held={held} motion={() => readLocalMotion(room)} />}</Carrier>
       </group>
     </RigidBody>
   );
 }
 
-const readLocalMotion = () => localMotion;
+/** Dáng của mình: đi đứng tính ngay trên máy, động tác (đánh, ném, ăn) và choáng váng lấy từ server. */
+const merged: Motion = { moving: false };
+function readLocalMotion(room: IslandRoom): Motion {
+  const sheet = room.state.players.get(myId(room));
+  Object.assign(merged, localMotion);
+  merged.act = sheet?.act;
+  merged.actN = sheet?.actN;
+  merged.stun = sheet?.stun;
+  merged.dizzy = sheet?.dizzy;
+  return merged;
+}
 
 function nearestOpenAnchor(room: IslandRoom, x: number, z: number): string | null {
   if (room.state.phase !== "explore") return null;
@@ -357,6 +480,49 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
       bestDist = d;
     }
   }
+  if (best) return best;
+  // Đồ nằm dưới đất: nhặt lên.
+  bestDist = PICKUP_RADIUS;
+  for (const [id, g] of state.groundItems) {
+    if (Math.abs(g.y - y) > 2.5) continue;
+    const d = Math.hypot(g.x - x, g.z - z);
+    if (d <= bestDist) {
+      best = { id, kind: "item", label: `Nhặt ${content.items.get(g.itemId)?.name.toLowerCase() ?? "món đồ"}` };
+      bestDist = d;
+    }
+  }
+  if (best) return best;
+  // Lửa trại lúc sáng sớm hay ban ngày: nhổ trại vác đi chỗ khác.
+  if (!state.campPacked && state.phase !== "dusk" && Math.hypot(state.campX - x, state.campZ - z) <= 3.5) {
+    return { id: "camp", kind: "camp", label: "Nhổ lửa trại mang đi" };
+  }
+  // Cây đủ lớn: leo lên.
+  bestDist = CLIMB_REACH;
+  for (const t of climbTrees(room, world)) {
+    if (Math.abs(t.y - y) > 2) continue;
+    const d = Math.hypot(t.x - x, t.z - z);
+    if (d <= bestDist) {
+      best = { id: t.id, kind: "tree", label: t.kind === "palm" ? "Leo cây dừa" : "Leo cây" };
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+/** Kẻ phản bội (đúng lúc được ra tay) đứng sát ai đó: người đó có thể bị kết liễu bằng F. */
+function nearestVictim(room: IslandRoom, x: number, y: number, z: number): { id: string; name: string } | null {
+  if (!getPrivate()?.canAssassinate) return null;
+  const me = myId(room);
+  let best: { id: string; name: string } | null = null;
+  let bestDist = ASSASSINATE_RADIUS;
+  for (const [id, p] of room.state.players) {
+    if (id === me || !p.alive || Math.abs(p.y - y) > 2) continue;
+    const d = Math.hypot(p.x - x, p.z - z);
+    if (d <= bestDist) {
+      best = { id, name: p.name };
+      bestDist = d;
+    }
+  }
   return best;
 }
 
@@ -367,8 +533,9 @@ function atDigSite(room: IslandRoom, x: number, z: number): boolean {
   return !!site && Math.hypot(site.x - x, site.z - z) <= DIG_RADIUS;
 }
 
-/** Vẽ lại nhân vật khi mình bắt đầu hay thôi vác rương. */
-function Carrier({ room, children }: { room: IslandRoom; children: (carrying: boolean) => ReactNode }) {
+/** Vẽ lại nhân vật khi mình bắt đầu hay thôi vác rương, hay đổi món cầm trên tay. */
+function Carrier({ room, children }: { room: IslandRoom; children: (carrying: boolean, held: string) => ReactNode }) {
   const carrying = useRoomSnapshot(room, (s) => s.treasureCarrier === myId(room) && !s.treasureSafe);
-  return <>{children(carrying)}</>;
+  const held = useRoomSnapshot(room, (s) => s.players.get(myId(room))?.held ?? "");
+  return <>{children(carrying, held)}</>;
 }

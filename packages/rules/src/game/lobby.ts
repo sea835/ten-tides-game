@@ -90,10 +90,10 @@ export function start(state: GameState, difficulty: Difficulty, config: GameConf
 
   const stock = shuffle(
     state.rng,
-    config.items.map((i) => i.id).filter((id) => id !== DIG_ITEM),
+    config.items.filter((i) => !i.loot && i.id !== DIG_ITEM).map((i) => i.id),
   );
   state.rng = stock.rng;
-  const count = Math.max(1, Math.round(config.items.length * SHOP_SHARE) - 1);
+  const count = Math.max(1, Math.round(config.items.filter((i) => !i.loot).length * SHOP_SHARE) - 1);
   state.shop = [DIG_ITEM, ...stock.value.slice(0, count)].filter((id) => config.items.some((i) => i.id === id));
 
   state.phase = "create";

@@ -59,6 +59,15 @@ Easter egg tìm được sẽ được ghi vào sổ sự thật, để bộ sin
 
 Chủ phòng nhập hoặc gieo lại seed bản đồ ở sảnh chờ, để nhóm chơi lại một bản đồ hay hoặc khoe seed với nhóm khác. Mọi chạm trán (bị cắn, sập bẫy, nhặt easter egg) đi qua engine luật như một hành động, nên ván vẫn phát lại được từ seed và log.
 
+**Tay chân và đánh nhau.** Đồ trong balo không chỉ để cộng điểm: cầm món nào lên tay là dùng được món đó ngay trên đảo.
+
+- Cầm để đánh (dao rựa, rìu, giáo, búa…), bắn (súng kíp, ná), ném (thuốc súng nổ, dừa, túi mực làm mù), ăn uống (bánh quy, rượu rum làm chóng mặt, thịt sống thì đau bụng), trồng cây, đặt xuống đất cho người khác nhặt. Tay không thì đấm, và chặt cây rất chậm.
+- Đánh trúng là phải đã mắt và buồn cười: chữ tượng thanh to (BỤP!, XOẸT!, ĐOÀNG!, BONG!), số Máu mất, mảnh vụn văng, rung màn hình, bị đánh thì bật lùi. Ba trạng thái: choáng (đứng hình, sao bay quanh đầu), chóng mặt (đi loạng choạng, màn hình nghiêng), mù (tối sầm).
+- Kẻ phản bội có thêm một đòn kết liễu: đứng sát ai đó là hạ gục ngay, mỗi ngày một lần. Mọi người chỉ thấy người đó gục ngã; ai ra tay chỉ lộ ở màn lật bài.
+- Leo cây để nhìn xa hay trốn thú dữ (nhân vật ôm thân cây, chổng mông ra ngoài, trèo thì mông lắc qua lắc lại). Cây chặt được, rơi gỗ, dừa, cây giống; cây giống trồng xuống sẽ lớn dần. Đang leo mà có người đốn cây thì té, mất Máu theo độ cao.
+- Thú vật đánh chết được và rơi đồ. Có con leo lên cây, bay vút lên hay lặn sâu để trốn; thú dữ bị đánh thì thù dai, đuổi theo. Giết thú hiền thì mất Tinh thần. Bơi ra khơi lâu có thể có cá mập tới.
+- Gỗ và da dựng được chòi lá, nhà sàn, hàng rào quanh lửa trại; nhà đủ chỗ cho mọi người ở trại thì đêm đó cả đội đỡ mất Tinh thần. Lửa trại nhổ lên mang đi được: đặt lửa trại ở đâu là cả khu nhà dời theo tới đó (tới hoàng hôn mà chưa ai đặt thì lửa trại tự dựng lại chỗ người vác).
+
 ## Trải nghiệm một ván chơi
 
 Một ván gồm 3 bước chuẩn bị rồi tối đa 10 vòng ngày. Mục tiêu thiết kế là 4–5 phút mỗi ngày, trong đó khoảng 3 phút khám phá đảo tự do, để cả ván gói trong 45–60 phút.

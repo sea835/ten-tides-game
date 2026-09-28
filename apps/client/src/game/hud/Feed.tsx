@@ -1,5 +1,21 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Dices, Gem, Moon, PawPrint, Sailboat, Skull, Sparkles, Sunset, TriangleAlert, type LucideIcon } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Dices,
+  Gem,
+  Hammer,
+  Moon,
+  PawPrint,
+  Sailboat,
+  Skull,
+  Sparkles,
+  Sunset,
+  Swords,
+  TreePalm,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { RATION_LABELS, content, worldCatalog } from "@tentides/content";
 import type { IslandState, LogEntryState } from "@tentides/protocol";
 import type { RationId } from "@tentides/rules";
@@ -22,6 +38,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   departure: Sailboat,
   death: Skull,
   encounter: Sparkles,
+  build: Hammer,
 };
 
 const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
@@ -31,6 +48,9 @@ const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
   creature: PawPrint,
   friend: PawPrint,
   drowning: Skull,
+  attack: Swords,
+  fall: TreePalm,
+  hunt: PawPrint,
 };
 
 const EFFECT_WORDS: Record<string, string> = { hp: "Máu", morale: "Tinh thần", hunger: "No", stamina: "Sức bền", food: "lương thực", treasure: "kho báu" };
@@ -57,6 +77,14 @@ function encounterLine(e: LogEntryState, name: (id: string) => string): Line {
       return { day: e.day, ok: false, text: `${creature?.name ?? "Thú dữ"} tấn công ${who}${tail}` };
     case "friend":
       return { day: e.day, ok: true, text: `${who} làm quen với ${creature?.name.toLowerCase() ?? "một con vật"}${tail}` };
+    case "attack": {
+      const weapon = e.defId === "fists" ? "tay không" : itemName(e.defId);
+      return { day: e.day, ok: false, text: `${name(e.refId)} đánh ${who} bằng ${weapon}${tail}` };
+    }
+    case "fall":
+      return { day: e.day, ok: false, text: `${who} ngã từ trên cây bị đốn${tail}` };
+    case "hunt":
+      return { day: e.day, ok: false, text: `${who} giết ${creature?.name.toLowerCase() ?? "một con vật hiền lành"}${tail}` };
     default:
       return { day: e.day, ok: false, text: `${who} suýt đuối nước${tail}` };
   }
@@ -120,6 +148,10 @@ function describe(e: LogEntryState, s: IslandState): Line {
     return { day: e.day, ok: !bad, text: `Sáng ra: ${parts.join(" · ")}` };
   }
   if (e.kind === "encounter") return encounterLine(e, name);
+  if (e.kind === "build") {
+    const b = worldCatalog.buildings.get(e.building);
+    return { day: e.day, ok: true, text: `${name(e.playerId)} dựng ${b?.name.toLowerCase() ?? "một công trình"} ở trại` };
+  }
   if (e.kind === "dig") return { day: e.day, ok: true, text: `${name(e.playerId)} đã đào được rương kho báu!` };
   if (e.kind === "departure") {
     const behind = [...e.others].map(name);

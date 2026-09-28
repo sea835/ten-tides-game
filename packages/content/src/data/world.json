@@ -5,280 +5,698 @@
       "name": "Rùa biển",
       "temper": "friendly",
       "strangeness": "familiar",
-      "habitats": ["shallows"],
+      "habitats": [
+        "shallows"
+      ],
       "model": "turtle",
-      "count": [2, 4],
+      "count": [
+        2,
+        4
+      ],
       "fromDay": 1,
       "speed": 1.1,
       "size": 1,
-      "interact": { "effects": { "morale": 6 }, "text": "Con rùa biển để bạn vuốt lên mai rồi thong thả bơi đi. Lòng nhẹ hẳn." },
-      "blurb": "Hiền, bơi chậm quanh bãi cạn."
+      "interact": {
+        "effects": {
+          "morale": 6
+        },
+        "text": "Con rùa biển để bạn vuốt lên mai rồi thong thả bơi đi. Lòng nhẹ hẳn."
+      },
+      "blurb": "Hiền, bơi chậm quanh bãi cạn.",
+      "hp": 40,
+      "drops": [
+        {
+          "item": "raw_meat",
+          "chance": 0.6
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     },
     {
       "id": "grey_parrot",
       "name": "Vẹt xám",
       "temper": "friendly",
       "strangeness": "familiar",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "parrot",
-      "count": [2, 3],
+      "count": [
+        2,
+        3
+      ],
       "fromDay": 1,
       "speed": 2,
       "size": 1,
-      "interact": { "effects": { "morale": 5 }, "text": "Con vẹt nghiêng đầu, nhại lại tên bạn bằng giọng một người đàn ông đã chết từ lâu." },
-      "blurb": "Thích người, hay nhại tiếng."
+      "interact": {
+        "effects": {
+          "morale": 5
+        },
+        "text": "Con vẹt nghiêng đầu, nhại lại tên bạn bằng giọng một người đàn ông đã chết từ lâu."
+      },
+      "blurb": "Thích người, hay nhại tiếng.",
+      "hp": 10,
+      "drops": [
+        {
+          "item": "feather",
+          "chance": 1
+        }
+      ],
+      "abilities": [
+        "fly"
+      ]
     },
     {
       "id": "dolphin",
       "name": "Cá heo",
       "temper": "friendly",
       "strangeness": "familiar",
-      "habitats": ["sea"],
+      "habitats": [
+        "sea"
+      ],
       "model": "dolphin",
-      "count": [2, 4],
+      "count": [
+        2,
+        4
+      ],
       "fromDay": 1,
       "speed": 4,
       "size": 1.1,
-      "interact": { "effects": { "morale": 6, "stamina": 20 }, "text": "Bầy cá heo lượn quanh rồi đẩy bạn đi một quãng. Tay chân bớt mỏi." },
-      "blurb": "Bơi theo bầy ngoài khơi."
+      "interact": {
+        "effects": {
+          "morale": 6,
+          "stamina": 20
+        },
+        "text": "Bầy cá heo lượn quanh rồi đẩy bạn đi một quãng. Tay chân bớt mỏi."
+      },
+      "blurb": "Bơi theo bầy ngoài khơi.",
+      "hp": 60,
+      "drops": [
+        {
+          "item": "raw_meat",
+          "chance": 0.7
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     },
     {
       "id": "coconut_crab",
       "name": "Cua dừa",
       "temper": "neutral",
       "strangeness": "familiar",
-      "habitats": ["beach", "islet"],
+      "habitats": [
+        "beach",
+        "islet"
+      ],
       "model": "crab",
-      "count": [3, 5],
+      "count": [
+        3,
+        5
+      ],
       "fromDay": 1,
       "speed": 1.3,
       "size": 1,
-      "blurb": "Bò ngang, thấy người là chạy."
+      "blurb": "Bò ngang, thấy người là chạy.",
+      "hp": 15,
+      "drops": [
+        {
+          "item": "raw_meat",
+          "chance": 0.7
+        },
+        {
+          "item": "coconut",
+          "chance": 0.3
+        }
+      ],
+      "abilities": [
+        "climb"
+      ]
     },
     {
       "id": "mountain_goat",
       "name": "Dê núi",
       "temper": "neutral",
       "strangeness": "familiar",
-      "habitats": ["volcano", "islet"],
+      "habitats": [
+        "volcano",
+        "islet"
+      ],
       "model": "goat",
-      "count": [2, 4],
+      "count": [
+        2,
+        4
+      ],
       "fromDay": 1,
       "speed": 2.2,
       "size": 1,
-      "blurb": "Leo dốc giỏi, nhát người."
+      "blurb": "Leo dốc giỏi, nhát người.",
+      "hp": 35,
+      "drops": [
+        {
+          "item": "raw_meat",
+          "chance": 1
+        },
+        {
+          "item": "hide",
+          "chance": 0.6
+        }
+      ],
+      "abilities": []
     },
     {
       "id": "long_tail_monkey",
       "name": "Khỉ đuôi dài",
       "temper": "neutral",
       "strangeness": "familiar",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "monkey",
-      "count": [3, 5],
+      "count": [
+        3,
+        5
+      ],
       "fromDay": 1,
       "speed": 2.6,
       "size": 1,
-      "blurb": "Tò mò, giữ khoảng cách."
+      "blurb": "Tò mò, giữ khoảng cách.",
+      "hp": 20,
+      "drops": [
+        {
+          "item": "coconut",
+          "chance": 0.6
+        },
+        {
+          "item": "hide",
+          "chance": 0.2
+        }
+      ],
+      "abilities": [
+        "climb"
+      ]
     },
     {
       "id": "wild_boar",
       "name": "Heo rừng",
       "temper": "hostile",
       "strangeness": "familiar",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "boar",
-      "count": [2, 3],
+      "count": [
+        2,
+        3
+      ],
       "fromDay": 1,
       "speed": 1.6,
       "size": 1,
       "aggro": 9,
       "chaseSpeed": 6.5,
-      "attack": { "effects": { "hp": -12 }, "cooldown": 5 },
-      "deterredBy": ["machete", "flintlock", "torch"],
-      "blurb": "Húc người lạ vào lãnh thổ."
+      "attack": {
+        "effects": {
+          "hp": -12
+        },
+        "cooldown": 5,
+        "status": {
+          "dizzy": 2
+        }
+      },
+      "deterredBy": [
+        "machete",
+        "flintlock",
+        "torch"
+      ],
+      "blurb": "Húc người lạ vào lãnh thổ.",
+      "hp": 45,
+      "drops": [
+        {
+          "item": "raw_meat",
+          "chance": 1
+        },
+        {
+          "item": "hide",
+          "chance": 0.7
+        },
+        {
+          "item": "bone",
+          "chance": 0.4
+        }
+      ],
+      "abilities": []
     },
     {
       "id": "blackfin_shark",
       "name": "Cá mập vây đen",
       "temper": "hostile",
       "strangeness": "familiar",
-      "habitats": ["sea"],
+      "habitats": [
+        "sea"
+      ],
       "model": "shark",
-      "count": [2, 3],
+      "count": [
+        2,
+        3
+      ],
       "fromDay": 1,
       "speed": 2.5,
       "size": 1.3,
       "aggro": 14,
       "chaseSpeed": 5.5,
-      "attack": { "effects": { "hp": -18, "morale": -5 }, "cooldown": 6 },
-      "blurb": "Lượn ở vùng nước sâu, xa bờ."
+      "attack": {
+        "effects": {
+          "hp": -18,
+          "morale": -5
+        },
+        "cooldown": 6,
+        "status": {
+          "stun": 0.8
+        }
+      },
+      "blurb": "Lượn ở vùng nước sâu, xa bờ.",
+      "hp": 80,
+      "drops": [
+        {
+          "item": "raw_meat",
+          "chance": 1
+        },
+        {
+          "item": "bone",
+          "chance": 0.6
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     },
     {
       "id": "sea_snake",
       "name": "Rắn biển",
       "temper": "hostile",
       "strangeness": "familiar",
-      "habitats": ["shallows", "reef"],
+      "habitats": [
+        "shallows",
+        "reef"
+      ],
       "model": "snake",
-      "count": [2, 3],
+      "count": [
+        2,
+        3
+      ],
       "fromDay": 1,
       "speed": 1.2,
       "size": 1,
       "aggro": 5,
       "chaseSpeed": 3.2,
-      "attack": { "effects": { "hp": -8, "morale": -4 }, "cooldown": 5 },
-      "blurb": "Nọc độc, chỉ cắn khi bị quấy."
+      "attack": {
+        "effects": {
+          "hp": -8,
+          "morale": -4
+        },
+        "cooldown": 5
+      },
+      "blurb": "Nọc độc, chỉ cắn khi bị quấy.",
+      "hp": 15,
+      "drops": [
+        {
+          "item": "raw_meat",
+          "chance": 0.3
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     },
     {
       "id": "cave_bat",
       "name": "Dơi hang",
       "temper": "neutral",
       "strangeness": "familiar",
-      "habitats": ["cave"],
+      "habitats": [
+        "cave"
+      ],
       "model": "bat",
-      "count": [4, 6],
+      "count": [
+        4,
+        6
+      ],
       "fromDay": 1,
       "speed": 3,
       "size": 1,
       "fly": 2.6,
-      "blurb": "Treo ngược trên trần hang."
+      "blurb": "Treo ngược trên trần hang.",
+      "hp": 6,
+      "drops": [
+        {
+          "item": "feather",
+          "chance": 0.2
+        }
+      ],
+      "abilities": [
+        "fly"
+      ]
     },
     {
       "id": "lantern_jelly",
       "name": "Sứa đèn lồng",
       "temper": "hostile",
       "strangeness": "strange",
-      "habitats": ["reef", "shallows"],
+      "habitats": [
+        "reef",
+        "shallows"
+      ],
       "model": "jellyfish",
-      "count": [4, 6],
+      "count": [
+        4,
+        6
+      ],
       "fromDay": 2,
       "speed": 0.35,
       "size": 1,
       "aggro": 1.8,
       "chaseSpeed": 0.6,
-      "attack": { "effects": { "hp": -6, "stamina": -15 }, "cooldown": 4 },
-      "blurb": "Phát sáng dưới nước, chạm vào là bỏng rát."
+      "attack": {
+        "effects": {
+          "hp": -6,
+          "stamina": -15
+        },
+        "cooldown": 4,
+        "status": {
+          "stun": 1.5
+        }
+      },
+      "blurb": "Phát sáng dưới nước, chạm vào là bỏng rát.",
+      "hp": 8,
+      "drops": [
+        {
+          "item": "ink_sac",
+          "chance": 0.3
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     },
     {
       "id": "eyeless_carp",
       "name": "Cá hồ không mắt",
       "temper": "neutral",
       "strangeness": "strange",
-      "habitats": ["lake_water"],
+      "habitats": [
+        "lake_water"
+      ],
       "model": "fish",
-      "count": [3, 4],
+      "count": [
+        3,
+        4
+      ],
       "fromDay": 2,
       "speed": 1.2,
       "size": 1.2,
-      "blurb": "Không có mắt, vẫn tránh được bạn."
+      "blurb": "Không có mắt, vẫn tránh được bạn.",
+      "hp": 12,
+      "drops": [
+        {
+          "item": "fish",
+          "chance": 1
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     },
     {
       "id": "shadow_fox",
       "name": "Cáo bóng",
       "temper": "friendly",
       "strangeness": "strange",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "fox",
-      "count": [1, 1],
+      "count": [
+        1,
+        1
+      ],
       "fromDay": 2,
       "speed": 2.4,
       "size": 1,
-      "interact": { "effects": { "morale": 8 }, "text": "Con cáo mắt xanh lè dụi đầu vào tay bạn. Nó không có bóng." },
-      "blurb": "Mắt phát sáng, lặng lẽ đi theo người."
+      "interact": {
+        "effects": {
+          "morale": 8
+        },
+        "text": "Con cáo mắt xanh lè dụi đầu vào tay bạn. Nó không có bóng."
+      },
+      "blurb": "Mắt phát sáng, lặng lẽ đi theo người.",
+      "hp": 25,
+      "drops": [
+        {
+          "item": "hide",
+          "chance": 0.5
+        },
+        {
+          "item": "crystal_shard",
+          "chance": 0.4
+        }
+      ],
+      "abilities": []
     },
     {
       "id": "stone_octopus",
       "name": "Bạch tuộc đá",
       "temper": "neutral",
       "strangeness": "strange",
-      "habitats": ["reef"],
+      "habitats": [
+        "reef"
+      ],
       "model": "octopus",
-      "count": [1, 2],
+      "count": [
+        1,
+        2
+      ],
       "fromDay": 2,
       "speed": 0.8,
       "size": 1,
-      "blurb": "Đổi màu giống hệt đá san hô."
+      "blurb": "Đổi màu giống hệt đá san hô.",
+      "hp": 25,
+      "drops": [
+        {
+          "item": "ink_sac",
+          "chance": 1
+        },
+        {
+          "item": "raw_meat",
+          "chance": 0.4
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     },
     {
       "id": "lava_monitor",
       "name": "Kỳ đà dung nham",
       "temper": "hostile",
       "strangeness": "mutant",
-      "habitats": ["volcano"],
+      "habitats": [
+        "volcano"
+      ],
       "model": "lizard",
-      "count": [2, 3],
+      "count": [
+        2,
+        3
+      ],
       "fromDay": 4,
       "speed": 1.4,
       "size": 1.2,
       "aggro": 8,
       "chaseSpeed": 5,
-      "attack": { "effects": { "hp": -14 }, "cooldown": 5 },
-      "blurb": "Da nứt nẻ, bên dưới đỏ rực như than."
+      "attack": {
+        "effects": {
+          "hp": -14
+        },
+        "cooldown": 5
+      },
+      "blurb": "Da nứt nẻ, bên dưới đỏ rực như than.",
+      "hp": 55,
+      "drops": [
+        {
+          "item": "hide",
+          "chance": 0.8
+        },
+        {
+          "item": "crystal_shard",
+          "chance": 0.3
+        }
+      ],
+      "abilities": [
+        "climb"
+      ]
     },
     {
       "id": "crystal_crab",
       "name": "Cua pha lê",
       "temper": "neutral",
       "strangeness": "mutant",
-      "habitats": ["beach", "islet"],
+      "habitats": [
+        "beach",
+        "islet"
+      ],
       "model": "crystal_crab",
-      "count": [2, 3],
+      "count": [
+        2,
+        3
+      ],
       "fromDay": 5,
       "speed": 1.1,
       "size": 1.5,
-      "blurb": "Mai mọc đầy tinh thể, sáng lên khi trời tối."
+      "blurb": "Mai mọc đầy tinh thể, sáng lên khi trời tối.",
+      "hp": 30,
+      "drops": [
+        {
+          "item": "crystal_shard",
+          "chance": 1
+        }
+      ],
+      "abilities": [
+        "climb"
+      ]
     },
     {
       "id": "twin_head_bat",
       "name": "Dơi hai đầu",
       "temper": "hostile",
       "strangeness": "mutant",
-      "habitats": ["mine", "cave"],
+      "habitats": [
+        "mine",
+        "cave"
+      ],
       "model": "twin_bat",
-      "count": [2, 3],
+      "count": [
+        2,
+        3
+      ],
       "fromDay": 4,
       "speed": 3,
       "size": 1.3,
       "fly": 2.4,
       "aggro": 7,
       "chaseSpeed": 5,
-      "attack": { "effects": { "hp": -7, "morale": -3 }, "cooldown": 4 },
-      "deterredBy": ["torch", "lantern"],
-      "blurb": "Hai cái đầu cãi nhau xem nên cắn ai."
+      "attack": {
+        "effects": {
+          "hp": -7,
+          "morale": -3
+        },
+        "cooldown": 4,
+        "status": {
+          "blind": 3
+        }
+      },
+      "deterredBy": [
+        "torch",
+        "lantern"
+      ],
+      "blurb": "Hai cái đầu cãi nhau xem nên cắn ai.",
+      "hp": 14,
+      "drops": [
+        {
+          "item": "crystal_shard",
+          "chance": 0.2
+        }
+      ],
+      "abilities": [
+        "fly"
+      ]
     },
     {
       "id": "giant_centipede",
       "name": "Rết khổng lồ",
       "temper": "hostile",
       "strangeness": "mutant",
-      "habitats": ["mine"],
+      "habitats": [
+        "mine"
+      ],
       "model": "centipede",
-      "count": [1, 2],
+      "count": [
+        1,
+        2
+      ],
       "fromDay": 6,
       "speed": 1.5,
       "size": 1.4,
       "aggro": 7,
       "chaseSpeed": 4.5,
-      "attack": { "effects": { "hp": -16, "morale": -6 }, "cooldown": 6 },
-      "deterredBy": ["torch"],
-      "blurb": "Dài bằng người nằm, trăm chân gõ lách cách trên đá."
+      "attack": {
+        "effects": {
+          "hp": -16,
+          "morale": -6
+        },
+        "cooldown": 6
+      },
+      "deterredBy": [
+        "torch"
+      ],
+      "blurb": "Dài bằng người nằm, trăm chân gõ lách cách trên đá.",
+      "hp": 60,
+      "drops": [
+        {
+          "item": "crystal_shard",
+          "chance": 0.5
+        },
+        {
+          "item": "bone",
+          "chance": 0.5
+        }
+      ],
+      "abilities": []
     },
     {
       "id": "three_eyed_eel",
       "name": "Lươn điện ba mắt",
       "temper": "hostile",
       "strangeness": "mutant",
-      "habitats": ["lake_water"],
+      "habitats": [
+        "lake_water"
+      ],
       "model": "eel",
-      "count": [1, 1],
+      "count": [
+        1,
+        1
+      ],
       "fromDay": 5,
       "speed": 1.4,
       "size": 1.3,
       "aggro": 5,
       "chaseSpeed": 3,
-      "attack": { "effects": { "hp": -10, "stamina": -30 }, "cooldown": 6 },
-      "blurb": "Phóng điện khi có người lội xuống hồ."
+      "attack": {
+        "effects": {
+          "hp": -10,
+          "stamina": -30
+        },
+        "cooldown": 6,
+        "status": {
+          "stun": 2
+        }
+      },
+      "blurb": "Phóng điện khi có người lội xuống hồ.",
+      "hp": 35,
+      "drops": [
+        {
+          "item": "fish",
+          "chance": 1
+        },
+        {
+          "item": "crystal_shard",
+          "chance": 0.4
+        }
+      ],
+      "abilities": [
+        "dive"
+      ]
     }
   ],
   "pois": [
@@ -286,263 +704,492 @@
       "id": "golden_coconut",
       "kind": "egg",
       "name": "Trái dừa vàng",
-      "habitats": ["palm"],
+      "habitats": [
+        "palm"
+      ],
       "model": "golden_coconut",
-      "effects": { "morale": 15 },
+      "effects": {
+        "morale": 15
+      },
       "text": "Dưới gốc dừa có một trái dừa bằng vàng thật, nặng trĩu tay. Chẳng để làm gì, nhưng ai mà chẳng vui."
     },
     {
       "id": "shipwreck",
       "kind": "egg",
       "name": "Xác tàu cổ",
-      "habitats": ["seabed"],
+      "habitats": [
+        "seabed"
+      ],
       "model": "shipwreck",
-      "effects": { "treasure": 6, "gainItem": "spyglass" },
+      "effects": {
+        "treasure": 6,
+        "gainItem": "spyglass"
+      },
       "text": "Dưới đáy biển là xác một con tàu ba cột buồm. Trong khoang lái còn một chiếc ống nhòm và tấm hải đồ đánh dấu hòn đảo này."
     },
     {
       "id": "carved_names",
       "kind": "egg",
       "name": "Vách khắc tên",
-      "habitats": ["cave_deep"],
+      "habitats": [
+        "cave_deep"
+      ],
       "model": "carved_wall",
-      "effects": { "morale": 10 },
+      "effects": {
+        "morale": 10
+      },
       "text": "Vách đá khắc chi chít tên những đoàn thám hiểm đã tới đây. Dòng cuối cùng còn trống, như đang chờ tên đoàn bạn."
     },
     {
       "id": "giant_footprints",
       "kind": "egg",
       "name": "Dấu chân khổng lồ",
-      "habitats": ["volcano"],
+      "habitats": [
+        "volcano"
+      ],
       "model": "footprints",
-      "effects": { "morale": 3 },
+      "effects": {
+        "morale": 3
+      },
       "text": "Một chuỗi dấu chân dài hơn cả sải tay dẫn lên sườn núi, rồi dừng lại ở một chỗ chẳng có gì."
     },
     {
       "id": "message_bottle",
       "kind": "egg",
       "name": "Chai thư trôi dạt",
-      "habitats": ["beach"],
+      "habitats": [
+        "beach"
+      ],
       "model": "bottle",
       "oneDay": true,
-      "effects": { "treasure": 4 },
+      "effects": {
+        "treasure": 4
+      },
       "text": "Trong chai là một lá thư ướt nhòe: \"Đừng tin kẻ đi một mình vào hang. Kho báu nằm nơi bóng núi ngắn nhất.\""
     },
     {
       "id": "sailor_grave",
       "kind": "egg",
       "name": "Mộ thủy thủ vô danh",
-      "habitats": ["islet"],
+      "habitats": [
+        "islet"
+      ],
       "model": "grave",
-      "effects": { "morale": -3, "gainItem": "compass" },
+      "effects": {
+        "morale": -3,
+        "gainItem": "compass"
+      },
       "text": "Một nấm mộ đắp đá, cắm mái chèo gãy. Treo trên mái chèo là chiếc la bàn vẫn còn chạy."
     },
     {
       "id": "stone_head",
       "kind": "egg",
       "name": "Tượng đầu đá",
-      "habitats": ["islet"],
+      "habitats": [
+        "islet"
+      ],
       "model": "stone_head",
-      "effects": { "treasure": 3, "morale": 5 },
+      "effects": {
+        "treasure": 3,
+        "morale": 5
+      },
       "text": "Một cái đầu đá khổng lồ nhìn đăm đăm về phía núi lửa. Ai đó đã tạc nó từ trước khi có bất kỳ con tàu nào tới đây."
     },
     {
       "id": "miner_cache",
       "kind": "egg",
       "name": "Rương thợ mỏ",
-      "habitats": ["mine_deep"],
+      "habitats": [
+        "mine_deep"
+      ],
       "model": "chest",
-      "effects": { "treasure": 2, "gainItem": "gunpowder" },
+      "effects": {
+        "treasure": 2,
+        "gainItem": "gunpowder"
+      },
       "text": "Cuối đường hầm là một chiếc rương gỗ của thợ mỏ, trong có thuốc nổ gói giấy dầu và một cuốn sổ ghi \"đào nữa thì núi thức\"."
     },
     {
       "id": "giant_clam",
       "kind": "egg",
       "name": "Trai khổng lồ",
-      "habitats": ["reef"],
+      "habitats": [
+        "reef"
+      ],
       "model": "clam",
-      "effects": { "treasure": 5, "morale": 5 },
+      "effects": {
+        "treasure": 5,
+        "morale": 5
+      },
       "text": "Con trai to bằng cái nồi hé miệng. Bên trong là một viên ngọc trai đen, đúng loại mà truyền thuyết của đảo nhắc tới."
     },
     {
       "id": "stone_chess",
       "kind": "egg",
       "name": "Bàn cờ đá dang dở",
-      "habitats": ["hilltop"],
+      "habitats": [
+        "hilltop"
+      ],
       "model": "chess",
-      "effects": { "morale": 8 },
+      "effects": {
+        "morale": 8
+      },
       "text": "Một bàn cờ tướng tạc trên phiến đá, ván cờ đang dở. Bên đỏ chỉ còn một nước là chiếu bí."
     },
     {
       "id": "whale_skeleton",
       "kind": "egg",
       "name": "Bộ xương cá voi",
-      "habitats": ["beach"],
+      "habitats": [
+        "beach"
+      ],
       "model": "whale_bones",
-      "effects": { "morale": 4, "food": 1 },
+      "effects": {
+        "morale": 4,
+        "food": 1
+      },
       "text": "Bộ xương cá voi nằm vắt ngang bãi cát như một túp lều khổng lồ. Trong hốc sườn có ai đó đã giấu một gói cá khô."
     },
     {
       "id": "explorer_marker",
       "kind": "egg",
       "name": "Cột mốc năm 1932",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "marker",
-      "effects": { "treasure": 4 },
+      "effects": {
+        "treasure": 4
+      },
       "text": "Cột gỗ sơn đỏ, tấm biển đồng ghi \"Đoàn khảo sát 1932 — mốc số 7\". Mũi tên khắc bên dưới chỉ về phía núi."
     },
     {
       "id": "sunken_bell",
       "kind": "egg",
       "name": "Chuông đồng đáy hồ",
-      "habitats": ["lake_bed"],
+      "habitats": [
+        "lake_bed"
+      ],
       "model": "bell",
-      "effects": { "treasure": 4, "morale": 4 },
+      "effects": {
+        "treasure": 4,
+        "morale": 4
+      },
       "text": "Dưới đáy hồ là một quả chuông đồng phủ rêu. Gõ nhẹ, cả hồ rung lên một tiếng trầm như có ai trả lời."
     },
     {
       "id": "cave_painting",
       "kind": "egg",
       "name": "Tranh vẽ trên vách",
-      "habitats": ["cave_deep"],
+      "habitats": [
+        "cave_deep"
+      ],
       "model": "painting",
-      "effects": { "treasure": 5 },
+      "effects": {
+        "treasure": 5
+      },
       "text": "Tranh vẽ bằng than và thổ hoàng: những người nhỏ xíu khiêng một chiếc rương, đi về phía một ngọn núi đang khóc lửa."
     },
     {
       "id": "abandoned_camp",
       "kind": "egg",
       "name": "Trại bỏ hoang",
-      "habitats": ["forest", "islet"],
+      "habitats": [
+        "forest",
+        "islet"
+      ],
       "model": "old_camp",
-      "effects": { "food": 2, "gainItem": "matches" },
+      "effects": {
+        "food": 2,
+        "gainItem": "matches"
+      },
       "text": "Một cái lều mục, bếp lửa nguội lạnh và hộp diêm còn khô. Chủ nhân rời đi vội đến mức bỏ lại cả nồi cơm."
     },
     {
       "id": "treetop_boat",
       "kind": "egg",
       "name": "Chiếc xuồng trên ngọn cây",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "tree_boat",
-      "effects": { "morale": 6, "gainItem": "rope" },
+      "effects": {
+        "morale": 6,
+        "gainItem": "rope"
+      },
       "text": "Một chiếc xuồng mắc trên cành cây cao tít, cách bờ biển cả trăm mét. Sóng thần năm nào đã đưa nó lên đây? Dây neo vẫn còn dùng được."
     },
     {
       "id": "idol_shrine",
       "kind": "egg",
       "name": "Miếu thờ bỏ hoang",
-      "habitats": ["hilltop", "islet"],
+      "habitats": [
+        "hilltop",
+        "islet"
+      ],
       "model": "shrine",
-      "effects": { "morale": 4, "gainItem": "amulet" },
+      "effects": {
+        "morale": 4,
+        "gainItem": "amulet"
+      },
       "text": "Một cái miếu nhỏ bằng đá, bát hương còn tro mới. Trên bệ thờ là một lá bùa không ai dám lấy, trừ bạn."
     },
     {
       "id": "sea_glass_cove",
       "kind": "egg",
       "name": "Bãi thủy tinh biển",
-      "habitats": ["islet"],
+      "habitats": [
+        "islet"
+      ],
       "model": "sea_glass",
-      "effects": { "morale": 6 },
+      "effects": {
+        "morale": 6
+      },
       "text": "Cả bãi cát lấp lánh những mảnh thủy tinh mài tròn đủ màu. Nhặt một mảnh bỏ túi, tự nhiên thấy mình may mắn."
     },
     {
       "id": "fire_anomaly",
       "kind": "anomaly",
       "name": "Lửa ma xanh",
-      "habitats": ["beach", "islet"],
+      "habitats": [
+        "beach",
+        "islet"
+      ],
       "model": "ghost_fire",
       "outcomes": [
-        { "weight": 2, "effects": { "treasure": 4 }, "text": "Ngọn lửa xanh không nóng. Hơ tay vào, bạn thấy lờ mờ hình một tấm bản đồ trong ánh lửa." },
-        { "weight": 1, "effects": { "morale": -8 }, "text": "Ngọn lửa xanh vụt tắt khi bạn tới gần, để lại mùi tóc cháy và cảm giác có ai đứng sau lưng." }
+        {
+          "weight": 2,
+          "effects": {
+            "treasure": 4
+          },
+          "text": "Ngọn lửa xanh không nóng. Hơ tay vào, bạn thấy lờ mờ hình một tấm bản đồ trong ánh lửa."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "morale": -8
+          },
+          "text": "Ngọn lửa xanh vụt tắt khi bạn tới gần, để lại mùi tóc cháy và cảm giác có ai đứng sau lưng."
+        }
       ]
     },
     {
       "id": "fairy_ring",
       "kind": "anomaly",
       "name": "Vòng nấm phát sáng",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "fairy_ring",
       "outcomes": [
-        { "weight": 2, "effects": { "morale": 12 }, "text": "Bước vào giữa vòng nấm, người bạn nhẹ bẫng như vừa ngủ một giấc dài." },
-        { "weight": 1, "effects": { "morale": -10, "hunger": -10 }, "text": "Bước vào giữa vòng nấm, trời đất quay cuồng. Tỉnh lại thì bụng đói cồn cào như đã qua mấy ngày." },
-        { "weight": 1, "effects": { "stamina": 40 }, "text": "Vòng nấm sáng rực lên rồi tắt. Chân tay bạn bỗng khỏe như chưa từng mệt." }
+        {
+          "weight": 2,
+          "effects": {
+            "morale": 12
+          },
+          "text": "Bước vào giữa vòng nấm, người bạn nhẹ bẫng như vừa ngủ một giấc dài."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "morale": -10,
+            "hunger": -10
+          },
+          "text": "Bước vào giữa vòng nấm, trời đất quay cuồng. Tỉnh lại thì bụng đói cồn cào như đã qua mấy ngày."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "stamina": 40
+          },
+          "text": "Vòng nấm sáng rực lên rồi tắt. Chân tay bạn bỗng khỏe như chưa từng mệt."
+        }
       ]
     },
     {
       "id": "floating_stones",
       "kind": "anomaly",
       "name": "Đá lơ lửng",
-      "habitats": ["volcano", "hilltop"],
+      "habitats": [
+        "volcano",
+        "hilltop"
+      ],
       "model": "floating_stones",
       "outcomes": [
-        { "weight": 2, "effects": { "treasure": 5 }, "text": "Những viên đá lơ lửng xoay chậm rồi xếp thành một mũi tên chỉ xuống đất." },
-        { "weight": 1, "effects": { "hp": -8 }, "text": "Bạn chạm vào một viên. Cả đám đá rơi xuống cùng lúc, một viên trúng vai." }
+        {
+          "weight": 2,
+          "effects": {
+            "treasure": 5
+          },
+          "text": "Những viên đá lơ lửng xoay chậm rồi xếp thành một mũi tên chỉ xuống đất."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "hp": -8
+          },
+          "text": "Bạn chạm vào một viên. Cả đám đá rơi xuống cùng lúc, một viên trúng vai."
+        }
       ]
     },
     {
       "id": "spinning_compass",
       "kind": "anomaly",
       "name": "Chỗ la bàn quay loạn",
-      "habitats": ["forest", "beach"],
+      "habitats": [
+        "forest",
+        "beach"
+      ],
       "model": "iron_stone",
       "outcomes": [
-        { "weight": 1, "effects": { "treasure": 4 }, "text": "Kim la bàn quay tít rồi dừng hẳn, chỉ về một hướng không phải hướng bắc. Có gì đó bằng sắt rất lớn nằm dưới đất phía ấy." },
-        { "weight": 1, "effects": { "morale": -6, "stamina": -20 }, "text": "Đầu óc bạn quay theo kim la bàn. Mất một lúc lâu mới nhớ ra mình đang đứng ở đâu." }
+        {
+          "weight": 1,
+          "effects": {
+            "treasure": 4
+          },
+          "text": "Kim la bàn quay tít rồi dừng hẳn, chỉ về một hướng không phải hướng bắc. Có gì đó bằng sắt rất lớn nằm dưới đất phía ấy."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "morale": -6,
+            "stamina": -20
+          },
+          "text": "Đầu óc bạn quay theo kim la bàn. Mất một lúc lâu mới nhớ ra mình đang đứng ở đâu."
+        }
       ]
     },
     {
       "id": "whisper_stone",
       "kind": "anomaly",
       "name": "Tảng đá thì thầm",
-      "habitats": ["islet", "cave_deep"],
+      "habitats": [
+        "islet",
+        "cave_deep"
+      ],
       "model": "whisper_stone",
       "outcomes": [
-        { "weight": 1, "effects": { "treasure": 6 }, "text": "Áp tai vào đá, bạn nghe rõ một giọng khàn gọi tên người đã giấu kho báu." },
-        { "weight": 1, "effects": { "morale": -12 }, "text": "Áp tai vào đá, bạn nghe một giọng khàn gọi tên chính bạn. Rồi gọi tên người sẽ phản bội bạn, nhưng gió át mất." }
+        {
+          "weight": 1,
+          "effects": {
+            "treasure": 6
+          },
+          "text": "Áp tai vào đá, bạn nghe rõ một giọng khàn gọi tên người đã giấu kho báu."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "morale": -12
+          },
+          "text": "Áp tai vào đá, bạn nghe một giọng khàn gọi tên chính bạn. Rồi gọi tên người sẽ phản bội bạn, nhưng gió át mất."
+        }
       ]
     },
     {
       "id": "warm_spring",
       "kind": "anomaly",
       "name": "Suối nước ấm",
-      "habitats": ["volcano", "forest"],
+      "habitats": [
+        "volcano",
+        "forest"
+      ],
       "model": "warm_spring",
       "outcomes": [
-        { "weight": 2, "effects": { "hp": 15, "morale": 6 }, "text": "Nước ấm sủi bọt, ngâm chân một lúc là vết thương bớt nhức hẳn." },
-        { "weight": 1, "effects": { "hp": 6, "hunger": -8 }, "text": "Nước ấm, hơi tanh mùi lưu huỳnh. Đỡ đau một chút nhưng bụng réo liên hồi." }
+        {
+          "weight": 2,
+          "effects": {
+            "hp": 15,
+            "morale": 6
+          },
+          "text": "Nước ấm sủi bọt, ngâm chân một lúc là vết thương bớt nhức hẳn."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "hp": 6,
+            "hunger": -8
+          },
+          "text": "Nước ấm, hơi tanh mùi lưu huỳnh. Đỡ đau một chút nhưng bụng réo liên hồi."
+        }
       ]
     },
     {
       "id": "bleeding_tree",
       "kind": "anomaly",
       "name": "Cây chảy nhựa đỏ",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "bleeding_tree",
       "outcomes": [
-        { "weight": 1, "effects": { "hunger": 20 }, "text": "Nhựa đỏ ngọt như mật ong. Ăn vài vốc là no căng." },
-        { "weight": 1, "effects": { "hp": -6, "morale": -4 }, "text": "Nhựa đỏ bỏng rát như a-xít. Bạn rụt tay lại, vết đỏ hằn lên hình một bàn tay khác." }
+        {
+          "weight": 1,
+          "effects": {
+            "hunger": 20
+          },
+          "text": "Nhựa đỏ ngọt như mật ong. Ăn vài vốc là no căng."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "hp": -6,
+            "morale": -4
+          },
+          "text": "Nhựa đỏ bỏng rát như a-xít. Bạn rụt tay lại, vết đỏ hằn lên hình một bàn tay khác."
+        }
       ]
     },
     {
       "id": "upward_rain",
       "kind": "anomaly",
       "name": "Cơn mưa rơi ngược",
-      "habitats": ["beach", "lake"],
+      "habitats": [
+        "beach",
+        "lake"
+      ],
       "model": "upward_rain",
       "outcomes": [
-        { "weight": 1, "effects": { "morale": 10 }, "text": "Giọt nước bay từ mặt đất lên trời. Đứng giữa cơn mưa ngược, bạn cười như trẻ con." },
-        { "weight": 1, "effects": { "stamina": -30 }, "text": "Cơn mưa ngược hút cả hơi ấm khỏi người bạn. Run cầm cập, chân tay rã rời." }
+        {
+          "weight": 1,
+          "effects": {
+            "morale": 10
+          },
+          "text": "Giọt nước bay từ mặt đất lên trời. Đứng giữa cơn mưa ngược, bạn cười như trẻ con."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "stamina": -30
+          },
+          "text": "Cơn mưa ngược hút cả hơi ấm khỏi người bạn. Run cầm cập, chân tay rã rời."
+        }
       ]
     },
     {
       "id": "bubbling_vent",
       "kind": "anomaly",
       "name": "Mạch bọt dưới biển",
-      "habitats": ["reef", "seabed"],
+      "habitats": [
+        "reef",
+        "seabed"
+      ],
       "model": "bubble_vent",
       "outcomes": [
-        { "weight": 2, "effects": { "stamina": 30, "treasure": 3 }, "text": "Dòng bọt ấm nâng bạn lên. Dưới lớp cát bị thổi bay lộ ra một đồng tiền vàng khắc hình con rắn." },
-        { "weight": 1, "effects": { "hp": -6 }, "text": "Dòng bọt nóng bỏng phụt thẳng vào mặt. Bạn sặc nước, trồi lên ho sù sụ." }
+        {
+          "weight": 2,
+          "effects": {
+            "stamina": 30,
+            "treasure": 3
+          },
+          "text": "Dòng bọt ấm nâng bạn lên. Dưới lớp cát bị thổi bay lộ ra một đồng tiền vàng khắc hình con rắn."
+        },
+        {
+          "weight": 1,
+          "effects": {
+            "hp": -6
+          },
+          "text": "Dòng bọt nóng bỏng phụt thẳng vào mặt. Bạn sặc nước, trồi lên ho sù sụ."
+        }
       ]
     }
   ],
@@ -550,9 +1197,13 @@
     {
       "id": "spike_pit",
       "name": "Hố chông",
-      "habitats": ["forest"],
+      "habitats": [
+        "forest"
+      ],
       "model": "spike_pit",
-      "effects": { "hp": -14 },
+      "effects": {
+        "hp": -14
+      },
       "dodge": "dexterity",
       "text": "Mặt đất sụt xuống, chông tre đâm vào chân.",
       "dodgeText": "Mặt đất lún dưới chân, bạn kịp nhảy qua miệng hố chông."
@@ -560,9 +1211,16 @@
     {
       "id": "snare",
       "name": "Bẫy thòng lọng",
-      "habitats": ["forest", "beach", "islet"],
+      "habitats": [
+        "forest",
+        "beach",
+        "islet"
+      ],
       "model": "snare",
-      "effects": { "stamina": -40, "morale": -4 },
+      "effects": {
+        "stamina": -40,
+        "morale": -4
+      },
       "dodge": "dexterity",
       "text": "Thòng lọng siết cổ chân, kéo bạn treo ngược lên cành cây một lúc lâu.",
       "dodgeText": "Sợi thòng lọng bật lên sượt qua gót chân bạn."
@@ -570,9 +1228,15 @@
     {
       "id": "quicksand",
       "name": "Cát lún",
-      "habitats": ["beach", "lake"],
+      "habitats": [
+        "beach",
+        "lake"
+      ],
       "model": "quicksand",
-      "effects": { "stamina": -50, "hunger": -8 },
+      "effects": {
+        "stamina": -50,
+        "hunger": -8
+      },
       "dodge": "strength",
       "text": "Cát lún ngập tới hông. Bạn vùng vẫy mãi mới thoát ra, kiệt sức.",
       "dodgeText": "Cát lún dưới chân, bạn gồng người rút chân ra kịp."
@@ -580,9 +1244,14 @@
     {
       "id": "rockfall",
       "name": "Đá lở",
-      "habitats": ["cave", "mine"],
+      "habitats": [
+        "cave",
+        "mine"
+      ],
       "model": "rockfall",
-      "effects": { "hp": -16 },
+      "effects": {
+        "hp": -16
+      },
       "dodge": "dexterity",
       "text": "Trần hầm rung lên, đá rơi rào rào xuống người bạn.",
       "dodgeText": "Nghe tiếng đá rạn, bạn lao lên trước ngay khi trần hầm sập xuống sau lưng."
@@ -590,9 +1259,15 @@
     {
       "id": "gas_vent",
       "name": "Khe khí độc",
-      "habitats": ["volcano", "mine"],
+      "habitats": [
+        "volcano",
+        "mine"
+      ],
       "model": "gas_vent",
-      "effects": { "hp": -8, "morale": -8 },
+      "effects": {
+        "hp": -8,
+        "morale": -8
+      },
       "dodge": "intellect",
       "text": "Mùi trứng thối xộc lên từ khe đá. Bạn choáng váng, ho sặc sụa.",
       "dodgeText": "Ngửi thấy mùi lưu huỳnh, bạn bịt mũi vòng qua khe khí độc."
@@ -600,9 +1275,14 @@
     {
       "id": "sea_urchins",
       "name": "Bãi nhím biển",
-      "habitats": ["shallows", "reef"],
+      "habitats": [
+        "shallows",
+        "reef"
+      ],
       "model": "urchins",
-      "effects": { "hp": -7 },
+      "effects": {
+        "hp": -7
+      },
       "dodge": "dexterity",
       "text": "Gai nhím biển cắm đầy lòng bàn chân.",
       "dodgeText": "Bạn thấy đám nhím biển đen sì kịp lúc, rụt chân lại."
@@ -610,9 +1290,13 @@
     {
       "id": "dart_trap",
       "name": "Bẫy tên cổ",
-      "habitats": ["cave"],
+      "habitats": [
+        "cave"
+      ],
       "model": "dart_trap",
-      "effects": { "hp": -12 },
+      "effects": {
+        "hp": -12
+      },
       "dodge": "intellect",
       "text": "Tách một tiếng, mũi tên gỗ bắn ra từ vách đá, cắm vào vai.",
       "dodgeText": "Thấy phiến đá lát hơi nhô, bạn bước vòng. Mũi tên cổ bắn trượt vào vách bên kia."
@@ -620,9 +1304,15 @@
     {
       "id": "fire_ants",
       "name": "Ổ kiến lửa",
-      "habitats": ["forest", "islet"],
+      "habitats": [
+        "forest",
+        "islet"
+      ],
       "model": "ant_nest",
-      "effects": { "hp": -5, "morale": -6 },
+      "effects": {
+        "hp": -5,
+        "morale": -6
+      },
       "dodge": "nerve",
       "text": "Dẫm phải ổ kiến lửa. Cả bầy bò lên, cắn rát tới tận cổ.",
       "dodgeText": "Kiến lửa bò lên chân, bạn bình tĩnh phủi sạch trước khi chúng kịp cắn."
@@ -630,17 +1320,95 @@
     {
       "id": "rotten_planks",
       "name": "Ván mục",
-      "habitats": ["mine"],
+      "habitats": [
+        "mine"
+      ],
       "model": "rotten_planks",
-      "effects": { "hp": -10, "stamina": -20 },
+      "effects": {
+        "hp": -10,
+        "stamina": -20
+      },
       "dodge": "dexterity",
       "text": "Tấm ván lót sàn hầm gãy đôi, bạn rơi xuống hố sâu ngang ngực.",
       "dodgeText": "Tấm ván kêu răng rắc, bạn kịp nhảy sang tấm bên cạnh."
     }
   ],
   "names": {
-    "islets": ["Hòn Rùa", "Hòn Khô", "Hòn Mắt Rồng", "Cù lao Sẹo", "Hòn Chim", "Hòn Đá Bạc", "Hòn Mồ Côi", "Hòn Lưỡi Liềm", "Hòn Gió Bấc", "Hòn Ma Trơi", "Hòn Yên Ngựa", "Cù lao Muối", "Hòn Ông Già", "Hòn Mèo Ngủ"],
-    "caves": ["Hang Dơi Xám", "Hang Gió Hú", "Hang Nước Mắt", "Hang Sọ Người", "Hang Rồng Ngủ", "Hang Đá Khóc", "Hang Mắt Mèo", "Hang Tiếng Vọng"],
-    "mines": ["Mỏ Đồng Đỏ", "Mỏ Lưu Huỳnh", "Mỏ Bạc Cũ", "Mỏ Than Đen", "Mỏ Ngọc Lục", "Mỏ Người Hà Lan"]
-  }
+    "islets": [
+      "Hòn Rùa",
+      "Hòn Khô",
+      "Hòn Mắt Rồng",
+      "Cù lao Sẹo",
+      "Hòn Chim",
+      "Hòn Đá Bạc",
+      "Hòn Mồ Côi",
+      "Hòn Lưỡi Liềm",
+      "Hòn Gió Bấc",
+      "Hòn Ma Trơi",
+      "Hòn Yên Ngựa",
+      "Cù lao Muối",
+      "Hòn Ông Già",
+      "Hòn Mèo Ngủ"
+    ],
+    "caves": [
+      "Hang Dơi Xám",
+      "Hang Gió Hú",
+      "Hang Nước Mắt",
+      "Hang Sọ Người",
+      "Hang Rồng Ngủ",
+      "Hang Đá Khóc",
+      "Hang Mắt Mèo",
+      "Hang Tiếng Vọng"
+    ],
+    "mines": [
+      "Mỏ Đồng Đỏ",
+      "Mỏ Lưu Huỳnh",
+      "Mỏ Bạc Cũ",
+      "Mỏ Than Đen",
+      "Mỏ Ngọc Lục",
+      "Mỏ Người Hà Lan"
+    ]
+  },
+  "buildings": [
+    {
+      "id": "lean_to",
+      "name": "Chòi lá",
+      "cost": {
+        "wood": 3
+      },
+      "shelter": 2,
+      "size": [
+        3.2,
+        3.2
+      ],
+      "blurb": "Mái nghiêng lợp lá, che mưa cho hai người."
+    },
+    {
+      "id": "hut",
+      "name": "Nhà sàn",
+      "cost": {
+        "wood": 6,
+        "hide": 1
+      },
+      "shelter": 4,
+      "size": [
+        4.2,
+        4.2
+      ],
+      "blurb": "Nhà sàn bốn cột, ngủ được bốn người, khỏi lo rắn bò vào."
+    },
+    {
+      "id": "fence",
+      "name": "Hàng rào",
+      "cost": {
+        "wood": 1
+      },
+      "shelter": 0,
+      "size": [
+        3.2,
+        0.4
+      ],
+      "blurb": "Hàng rào cọc, chặn thú dữ đi lạc vào trại."
+    }
+  ]
 }

@@ -90,6 +90,19 @@ export interface Structure {
   depth: number[];
 }
 
+export type TreeKind = "palm" | "broadleaf";
+
+export interface Tree {
+  id: string;
+  kind: TreeKind;
+  x: number;
+  z: number;
+  /** Chiều cao thân (m). */
+  height: number;
+  /** Dừa: độ nghiêng; cây rừng: độ to của tán (0,8–1,3). */
+  lean: number;
+}
+
 export interface Poi {
   id: string;
   defId: string;
@@ -153,6 +166,11 @@ export interface World {
   spawns: readonly CreatureSpawn[];
   /** Mọi cây dừa: dừa đảo chính (trừ cây nằm trên nền hang, hầm) và dừa trên các đảo nhỏ. */
   palms: readonly Palm[];
+  /**
+   * Mọi cây leo được, chặt được: dừa (id "p…") và cây rừng tán rộng (id "b…"). Server giữ cây nào đã bị chặt,
+   * cây nào mới trồng; client vẽ theo.
+   */
+  trees: readonly Tree[];
   /** Đám cỏ cao để nấp: như TALL_GRASS, bỏ những đám bị hang, hầm đè lên. */
   tallGrass: readonly GrassPatch[];
   /** Đang đứng trong lõi một đám cỏ cao (ngồi xuống là nấp). */
@@ -454,6 +472,7 @@ export function generateWorld(seed: number, catalog: WorldCatalog = worldCatalog
     pois: [],
     spawns: [],
     palms: [],
+    trees: [],
     tallGrass: [],
     inTallGrass: (x, z) => world.tallGrass.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius * 0.85),
     heightAt,
@@ -470,6 +489,10 @@ export function generateWorld(seed: number, catalog: WorldCatalog = worldCatalog
   world.tallGrass = TALL_GRASS.filter((p) => world.isClear(p.x, p.z, p.radius + 1));
   world.palms = [...PALMS.filter((p) => world.isClear(p.x, p.z, 2)), ...generateIsletPalms(makeRand(subSeed(seed, "palms")), world)];
   world.pois = generatePois(makeRand(subSeed(seed, "pois")), world, catalog);
+  world.trees = [
+    ...world.palms.map((p, i): Tree => ({ id: `p${i}`, kind: "palm", x: p.x, z: p.z, height: p.height, lean: p.lean })),
+    ...generateBroadleaf(makeRand(subSeed(seed, "trees")), world),
+  ];
   world.spawns = generateSpawns(makeRand(subSeed(seed, "creatures")), world, catalog);
   return world;
 }
@@ -724,6 +747,36 @@ function generateIsletPalms(rand: Rand, world: World): Palm[] {
     }
   }
   return palms;
+}
+
+/**
+ * Cây rừng tán rộng mọc trong nội đảo chính và trên đảo rừng: tránh điểm sự kiện, kho báu, trại,
+ * cây dừa, đám cỏ tranh, hang, hầm và điểm bí mật.
+ */
+function generateBroadleaf(rand: Rand, world: World): Tree[] {
+  const out: Tree[] = [];
+  const jungle = world.islets.filter((it) => it.kind === "jungle");
+  const target = 40 + jungle.length * 7;
+  const inland = (x: number, z: number) => {
+    const s = world.surface(x, z);
+    return s.island === "islet" ? s.inland * 2.5 : s.inland;
+  };
+  for (let tries = 0; out.length < target && tries < 6000; tries++) {
+    const onIslet = jungle.length > 0 && tries % 3 === 2;
+    const r = onIslet ? jungle[Math.floor(rand() * jungle.length)]! : { x: 0, z: 0, radius: 75 };
+    const x = r.x + (rand() * 2 - 1) * r.radius * (onIslet ? 0.8 : 1.2);
+    const z = r.z + (rand() * 2 - 1) * r.radius * (onIslet ? 0.8 : 1.2);
+    const h = world.heightAt(x, z);
+    if (h < 0.6 || h > 9 || inland(x, z) < 26) continue;
+    if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.radius + 3 || Math.hypot(x - CAVE.x, z - CAVE.z) < CAVE.radius + 2) continue;
+    if (world.zoneAt(x, z) === "volcano" || world.structureAt(x, z)) continue;
+    if (!awayFromFixed(x, z, 4) || !world.isClear(x, z, 5)) continue;
+    if (world.tallGrass.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius + 2)) continue;
+    if (world.palms.some((p) => Math.hypot(p.x - x, p.z - z) < 5)) continue;
+    if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 8)) continue;
+    out.push({ id: `b${out.length}`, kind: "broadleaf", x, z, height: 4.5 + rand() * 2.5, lean: 0.8 + rand() * 0.5 });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

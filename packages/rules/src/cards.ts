@@ -72,4 +72,8 @@ export interface ItemDef {
   weightKg: number;
   price: number;
   tags: string[];
+  /** Chỉ nhặt được trên đảo, cửa hàng không bán. */
+  loot?: boolean;
+  /** Ăn, uống hoặc dùng ngay thì được gì (món đồ mất đi). `dizzy` là hiệu ứng thời gian thực, engine bỏ qua. */
+  eat?: { hunger?: number; hp?: number; morale?: number; stamina?: number; dizzy?: number };
 }

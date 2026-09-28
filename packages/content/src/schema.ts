@@ -3,6 +3,17 @@ import { STAT_IDS, WEATHER_IDS, ZONE_IDS, type EventCard as RulesEventCard } fro
 
 const id = z.string().regex(/^[a-z][a-z0-9_]*$/, "id chỉ gồm chữ thường, số và dấu gạch dưới");
 
+/** Hệ quả khi đánh hoặc ném trúng: sát thương, tiếng kêu vui vẻ hiện lên màn hình, và hiệu ứng (giây). */
+function HitSchema() {
+  return z.object({
+    damage: z.int().min(0).max(60),
+    word: z.string().min(1).optional(),
+    stun: z.number().positive().max(5).optional(),
+    dizzy: z.number().positive().max(10).optional(),
+    blind: z.number().positive().max(10).optional(),
+  });
+}
+
 export const ItemSchema = z.object({
   id,
   name: z.string().min(1),
@@ -14,6 +25,27 @@ export const ItemSchema = z.object({
   tags: z.array(id).min(1),
   /** Móc câu cho AI dựng cảnh. */
   hooks: z.array(z.string().min(1)),
+  /** Đồ chỉ nhặt được trên đảo (rơi từ thú, chặt cây...), cửa hàng không bán. */
+  loot: z.boolean().optional(),
+  /** Cầm trên tay đánh gần: sát thương, tầm với (m), hồi chiêu (giây), hiệu ứng lên người trúng (giây). */
+  melee: HitSchema().extend({ reach: z.number().positive().max(4), cooldown: z.number().positive() }).optional(),
+  /** Bắn xa (súng, ná): trúng thứ đầu tiên trên đường ngắm trong tầm. */
+  ranged: HitSchema().extend({ range: z.number().positive().max(60), cooldown: z.number().positive() }).optional(),
+  /** Ném đi được và gây hệ quả khi trúng. `breaks`: vỡ luôn khi chạm, không nằm lại dưới đất. */
+  throw: HitSchema().extend({ breaks: z.boolean().optional() }).optional(),
+  /** Sức chặt cây mỗi nhát (không có thì chặt bằng tay không, rất chậm). */
+  chop: z.int().positive().optional(),
+  /** Ăn, uống hoặc dùng ngay (hết món). */
+  eat: z
+    .object({ hunger: z.int(), hp: z.int(), morale: z.int(), stamina: z.int(), dizzy: z.number().positive() })
+    .partial()
+    .optional(),
+  /** Trồng xuống đất thành cây. */
+  plant: z.enum(["palm", "broadleaf"]).optional(),
+  /** Vật liệu dựng nhà. */
+  build: z.boolean().optional(),
+  /** Bộ lửa trại: đặt xuống là dời trại tới đó. */
+  camp: z.boolean().optional(),
 });
 export type Item = z.infer<typeof ItemSchema>;
 

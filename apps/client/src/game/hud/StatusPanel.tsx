@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Flame, Gem, MapPin, Sailboat, Waves, Wheat, Wind, type LucideIcon } from "lucide-react";
-import { CAMP, CAMP_RADIUS, TREASURE_SITES, ZONE_LABELS } from "@tentides/content";
+import { CAMP_RADIUS, TREASURE_SITES, ZONE_LABELS } from "@tentides/content";
 import { MAX_RUN_SPEED } from "@tentides/protocol";
 import { HULL_TO_SAIL, TREASURE_REVEAL, WEATHER_LABELS, type WeatherId } from "@tentides/rules";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -19,7 +19,7 @@ function useReturnTime(room: IslandRoom) {
     if (s.phase !== "explore" && s.phase !== "dusk") return null;
     const me = s.players.get(myId(room));
     if (!me?.alive) return null;
-    const distance = Math.max(0, Math.hypot(me.x - CAMP.x, me.z - CAMP.z) - CAMP_RADIUS);
+    const distance = Math.max(0, Math.hypot(me.x - s.campX, me.z - s.campZ) - CAMP_RADIUS);
     return {
       run: Math.ceil((distance / MAX_RUN_SPEED) * PATH_FACTOR),
       untilNight: s.phase === "explore" ? s.timeLeft + s.duskSeconds : s.timeLeft,

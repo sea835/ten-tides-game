@@ -4,7 +4,7 @@ import { Vector3 } from "three";
 export const localPosition = new Vector3();
 
 /** Mình có đang đi/chạy/ngồi/bơi không, để nhân vật tạo dáng. LocalPlayer ghi mỗi khung hình. */
-export const localMotion = { moving: false, running: false, sitting: false, swimming: false };
+export const localMotion = { moving: false, running: false, sitting: false, swimming: false, climbing: false };
 
 /**
  * Môi trường quanh mình, LocalPlayer ghi mỗi khung hình: `indoor` là độ sâu trong hang/hầm (0 ngoài trời, 1 sâu nhất),
@@ -20,3 +20,18 @@ export const sky = { time: 0.35, elevation: 1, night: 0 };
 
 /** Camera tự do khi dev (window.__tentides.debugCam): bật lên thì camera đứng ở `position`, nhìn về `target`. */
 export const debugCam = { enabled: false, position: new Vector3(0, 120, 160), target: new Vector3(0, 0, 0) };
+
+/** Rung màn hình: cường độ giảm dần theo thời gian (bị đánh, cây đổ gần, nổ). */
+export const shake = { amount: 0 };
+
+/** Đẩy lùi khi bị đánh trúng: vận tốc ngang giảm dần, LocalPlayer cộng vào chuyển động. */
+export const knock = { vx: 0, vz: 0 };
+
+/** Bóng công trình đang ngắm để dựng (Camp tính mỗi khung hình, Controls gửi lên server khi bấm). */
+export const buildGhost = { x: 0, z: 0, rot: 0, turn: 0, ok: false, kind: "" };
+
+/** Leo cây: LocalPlayer vừa bấm E xin leo cây này, chờ server đồng ý. */
+export const climbRequest = { treeId: "" };
+
+/** Vừa đánh hay ném theo hướng camera: LocalPlayer quay người về hướng này một lúc. */
+export const localAim = { yaw: 0, at: 0 };

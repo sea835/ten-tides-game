@@ -34,7 +34,14 @@
     "hooks": [
       "chặt dừa",
       "mở lối qua rừng rậm"
-    ]
+    ],
+    "melee": {
+      "damage": 11,
+      "reach": 2.0,
+      "cooldown": 0.6,
+      "word": "XOẸT!"
+    },
+    "chop": 22
   },
   {
     "id": "lantern",
@@ -51,7 +58,13 @@
     ],
     "hooks": [
       "cần để vào sâu trong hang"
-    ]
+    ],
+    "melee": {
+      "damage": 4,
+      "reach": 1.6,
+      "cooldown": 0.7,
+      "word": "LENG KENG!"
+    }
   },
   {
     "id": "water_bottle",
@@ -68,7 +81,11 @@
     "hooks": [
       "múc ở hồ",
       "nước bẩn nếu chưa đun"
-    ]
+    ],
+    "eat": {
+      "stamina": 30,
+      "morale": 2
+    }
   },
   {
     "id": "old_map",
@@ -100,7 +117,10 @@
     ],
     "hooks": [
       "hỏng sau 3 ngày"
-    ]
+    ],
+    "eat": {
+      "hunger": 20
+    }
   },
   {
     "id": "flintlock",
@@ -117,7 +137,20 @@
     ],
     "hooks": [
       "tiếng súng kéo thú dữ hoặc cướp biển tới"
-    ]
+    ],
+    "melee": {
+      "damage": 6,
+      "reach": 1.8,
+      "cooldown": 0.8,
+      "word": "CỐP!"
+    },
+    "ranged": {
+      "damage": 30,
+      "range": 26,
+      "cooldown": 4,
+      "stun": 1.2,
+      "word": "ĐOÀNG!"
+    }
   },
   {
     "id": "first_aid_kit",
@@ -133,7 +166,11 @@
     ],
     "hooks": [
       "cứu người sắp chết"
-    ]
+    ],
+    "eat": {
+      "hp": 30,
+      "morale": 4
+    }
   },
   {
     "id": "rum",
@@ -151,7 +188,12 @@
     "hooks": [
       "đổi tin tức với người lạ",
       "một đêm say xỉn"
-    ]
+    ],
+    "eat": {
+      "morale": 12,
+      "hunger": 3,
+      "dizzy": 8
+    }
   },
   {
     "id": "shovel",
@@ -168,7 +210,15 @@
     ],
     "hooks": [
       "cần để đào kho báu"
-    ]
+    ],
+    "melee": {
+      "damage": 9,
+      "reach": 2.2,
+      "cooldown": 0.9,
+      "stun": 0.8,
+      "word": "KENG!"
+    },
+    "chop": 10
   },
   {
     "id": "amulet",
@@ -219,7 +269,14 @@
     "hooks": [
       "vá thuyền",
       "tiếng búa gõ trong đêm"
-    ]
+    ],
+    "melee": {
+      "damage": 10,
+      "reach": 1.7,
+      "cooldown": 0.8,
+      "stun": 1.2,
+      "word": "BONG!"
+    }
   },
   {
     "id": "fishing_net",
@@ -290,7 +347,13 @@
     "hooks": [
       "nổ tung vách đá",
       "một tiếng nổ làm cả đảo giật mình"
-    ]
+    ],
+    "throw": {
+      "damage": 18,
+      "stun": 2,
+      "breaks": true,
+      "word": "BÙM!"
+    }
   },
   {
     "id": "spyglass",
@@ -343,6 +406,385 @@
     "hooks": [
       "ánh lửa chập chờn trong hang",
       "khói đuốc làm dơi bay loạn"
-    ]
+    ],
+    "melee": {
+      "damage": 7,
+      "reach": 1.9,
+      "cooldown": 0.7,
+      "blind": 1.5,
+      "word": "XÈO!"
+    }
+  },
+  {
+    "id": "axe",
+    "name": "Rìu",
+    "size": {
+      "w": 2,
+      "h": 4
+    },
+    "weightKg": 2.5,
+    "price": 14,
+    "tags": [
+      "tool",
+      "cut"
+    ],
+    "hooks": [
+      "đốn cây làm bè",
+      "chẻ củi"
+    ],
+    "melee": {
+      "damage": 16,
+      "reach": 2.1,
+      "cooldown": 0.95,
+      "stun": 0.6,
+      "word": "PHẬP!"
+    },
+    "chop": 34
+  },
+  {
+    "id": "spear",
+    "name": "Giáo tre",
+    "size": {
+      "w": 1,
+      "h": 7
+    },
+    "weightKg": 1.5,
+    "price": 8,
+    "tags": [
+      "weapon"
+    ],
+    "hooks": [
+      "đâm cá",
+      "giữ khoảng cách với thú dữ"
+    ],
+    "melee": {
+      "damage": 12,
+      "reach": 2.8,
+      "cooldown": 0.8,
+      "word": "PHẬP!"
+    },
+    "throw": {
+      "damage": 20,
+      "word": "VÚT!"
+    }
+  },
+  {
+    "id": "slingshot",
+    "name": "Ná cao su",
+    "size": {
+      "w": 1,
+      "h": 2
+    },
+    "weightKg": 0.3,
+    "price": 7,
+    "tags": [
+      "weapon"
+    ],
+    "hooks": [
+      "bắn chim",
+      "trò trẻ con"
+    ],
+    "ranged": {
+      "damage": 7,
+      "range": 22,
+      "cooldown": 1.1,
+      "dizzy": 2,
+      "word": "BÉP!"
+    }
+  },
+  {
+    "id": "stone",
+    "name": "Đá cuội",
+    "size": {
+      "w": 1,
+      "h": 1
+    },
+    "weightKg": 0.4,
+    "price": 0,
+    "tags": [
+      "rock"
+    ],
+    "hooks": [
+      "ném",
+      "kê bếp"
+    ],
+    "loot": true,
+    "throw": {
+      "damage": 7,
+      "dizzy": 2,
+      "word": "CỘP!"
+    }
+  },
+  {
+    "id": "coconut",
+    "name": "Trái dừa",
+    "size": {
+      "w": 2,
+      "h": 2
+    },
+    "weightKg": 0.8,
+    "price": 0,
+    "tags": [
+      "coconut"
+    ],
+    "hooks": [
+      "nước dừa mát lạnh",
+      "trái dừa rơi trúng đầu"
+    ],
+    "loot": true,
+    "eat": {
+      "hunger": 12,
+      "morale": 2
+    },
+    "throw": {
+      "damage": 6,
+      "dizzy": 3,
+      "word": "BỘP!"
+    }
+  },
+  {
+    "id": "wood",
+    "name": "Khúc gỗ",
+    "size": {
+      "w": 1,
+      "h": 3
+    },
+    "weightKg": 1.2,
+    "price": 0,
+    "tags": [
+      "wood"
+    ],
+    "hooks": [
+      "dựng chòi",
+      "nhóm lửa"
+    ],
+    "loot": true,
+    "build": true,
+    "melee": {
+      "damage": 6,
+      "reach": 1.9,
+      "cooldown": 0.7,
+      "stun": 0.4,
+      "word": "BỤP!"
+    }
+  },
+  {
+    "id": "palm_sprout",
+    "name": "Mầm dừa",
+    "size": {
+      "w": 1,
+      "h": 2
+    },
+    "weightKg": 0.3,
+    "price": 0,
+    "tags": [
+      "seed"
+    ],
+    "hooks": [
+      "trồng lại rừng dừa"
+    ],
+    "loot": true,
+    "plant": "palm"
+  },
+  {
+    "id": "sapling",
+    "name": "Cây non",
+    "size": {
+      "w": 1,
+      "h": 2
+    },
+    "weightKg": 0.3,
+    "price": 0,
+    "tags": [
+      "seed"
+    ],
+    "hooks": [
+      "trồng lại một góc rừng"
+    ],
+    "loot": true,
+    "plant": "broadleaf"
+  },
+  {
+    "id": "raw_meat",
+    "name": "Thịt sống",
+    "size": {
+      "w": 2,
+      "h": 2
+    },
+    "weightKg": 0.8,
+    "price": 0,
+    "tags": [
+      "meat"
+    ],
+    "hooks": [
+      "bữa tối nướng than"
+    ],
+    "loot": true,
+    "eat": {
+      "hunger": 20,
+      "hp": -4,
+      "morale": -3
+    }
+  },
+  {
+    "id": "fish",
+    "name": "Cá tươi",
+    "size": {
+      "w": 1,
+      "h": 3
+    },
+    "weightKg": 0.6,
+    "price": 0,
+    "tags": [
+      "fish"
+    ],
+    "hooks": [
+      "cá nướng lá chuối"
+    ],
+    "loot": true,
+    "eat": {
+      "hunger": 16,
+      "morale": 2
+    },
+    "melee": {
+      "damage": 2,
+      "reach": 1.6,
+      "cooldown": 0.5,
+      "dizzy": 1,
+      "word": "CHÁT!"
+    }
+  },
+  {
+    "id": "feather",
+    "name": "Lông vũ",
+    "size": {
+      "w": 1,
+      "h": 1
+    },
+    "weightKg": 0.05,
+    "price": 0,
+    "tags": [
+      "trinket"
+    ],
+    "hooks": [
+      "cài lên mũ cho oai"
+    ],
+    "loot": true,
+    "melee": {
+      "damage": 0,
+      "reach": 1.6,
+      "cooldown": 0.4,
+      "dizzy": 1.5,
+      "word": "CÙ LÉT!"
+    }
+  },
+  {
+    "id": "hide",
+    "name": "Da thú",
+    "size": {
+      "w": 3,
+      "h": 2
+    },
+    "weightKg": 1,
+    "price": 0,
+    "tags": [
+      "hide"
+    ],
+    "hooks": [
+      "lợp mái chòi"
+    ],
+    "loot": true,
+    "build": true
+  },
+  {
+    "id": "bone",
+    "name": "Xương",
+    "size": {
+      "w": 1,
+      "h": 3
+    },
+    "weightKg": 0.5,
+    "price": 0,
+    "tags": [
+      "bone"
+    ],
+    "hooks": [
+      "dùi cui thời tiền sử"
+    ],
+    "loot": true,
+    "melee": {
+      "damage": 7,
+      "reach": 1.8,
+      "cooldown": 0.6,
+      "word": "CỘC!"
+    },
+    "throw": {
+      "damage": 5,
+      "word": "VỤT!"
+    }
+  },
+  {
+    "id": "crystal_shard",
+    "name": "Mảnh pha lê",
+    "size": {
+      "w": 1,
+      "h": 1
+    },
+    "weightKg": 0.2,
+    "price": 0,
+    "tags": [
+      "mystery"
+    ],
+    "hooks": [
+      "lấp lánh như có linh hồn"
+    ],
+    "loot": true,
+    "throw": {
+      "damage": 3,
+      "blind": 4,
+      "breaks": true,
+      "word": "LOÉ!"
+    }
+  },
+  {
+    "id": "ink_sac",
+    "name": "Túi mực",
+    "size": {
+      "w": 1,
+      "h": 1
+    },
+    "weightKg": 0.2,
+    "price": 0,
+    "tags": [
+      "ink"
+    ],
+    "hooks": [
+      "viết thư, hay bôi đen mặt kẻ thù"
+    ],
+    "loot": true,
+    "throw": {
+      "damage": 1,
+      "blind": 5,
+      "breaks": true,
+      "word": "BẸP!"
+    }
+  },
+  {
+    "id": "camp_kit",
+    "name": "Bộ lửa trại",
+    "size": {
+      "w": 3,
+      "h": 3
+    },
+    "weightKg": 4,
+    "price": 0,
+    "tags": [
+      "camp"
+    ],
+    "hooks": [
+      "dời trại tới nơi an toàn hơn"
+    ],
+    "loot": true,
+    "camp": true
   }
 ]

@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Callbacks } from "@colyseus/sdk";
-import { BoxGeometry, ConeGeometry, CylinderGeometry, IcosahedronGeometry, MeshStandardMaterial, OctahedronGeometry, type BufferGeometry, type Group } from "three";
+import {
+  BoxGeometry,
+  ConeGeometry,
+  CylinderGeometry,
+  IcosahedronGeometry,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  OctahedronGeometry,
+  type BufferGeometry,
+  type Group,
+  type Mesh,
+} from "three";
 import { worldCatalog } from "@tentides/content";
 import type { CreatureState } from "@tentides/protocol";
 import type { IslandRoom } from "../net.ts";
@@ -305,16 +316,25 @@ function material(color: string, emissive = 0): MeshStandardMaterial {
 
 const VISIBLE_RANGE = 90;
 
+const barMats = {
+  back: new MeshBasicMaterial({ color: "#1a1010", transparent: true, opacity: 0.7, depthTest: false }),
+  fill: new MeshBasicMaterial({ color: "#e0413a", depthTest: false }),
+  star: new MeshBasicMaterial({ color: "#ffe066", toneMapped: false }),
+};
+
 function CreatureView({ creature }: { creature: CreatureState }) {
   const def = worldCatalog.creatures.get(creature.species);
   const model = def ? MODELS[def.model] : undefined;
   const root = useRef<Group>(null);
   const body = useRef<Group>(null);
   const parts = useRef<(Group | null)[]>([]);
-  const anim = useRef({ phase: Math.random() * 10, speed: 0, lastX: creature.x, lastZ: creature.z });
+  const anim = useRef({ phase: Math.random() * 10, speed: 0, lastX: creature.x, lastZ: creature.z, hp: creature.hp, flash: 0, hitAt: -99 });
+  const bar = useRef<Group>(null);
+  const fill = useRef<Mesh>(null);
+  const stars = useRef<Group>(null);
   const size = def?.size ?? 1;
 
-  useFrame(({ clock }, rawDt) => {
+  useFrame(({ clock, camera }, rawDt) => {
     const g = root.current;
     if (!g || !model) return;
     const dt = Math.min(rawDt, 0.05);
@@ -336,8 +356,34 @@ function CreatureView({ creature }: { creature: CreatureState }) {
     a.phase += dt * (flying ? 18 : 4 + a.speed * 4);
     const swing = Math.sin(a.phase) * Math.min(1, a.speed / 1.5 + 0.08);
     const time = clock.elapsedTime;
-    // Lúc lao tới tấn công thì chồm người về trước.
-    if (body.current) body.current.rotation.x = creature.mode === "chase" || creature.mode === "attack" ? 0.12 : 0;
+    // Bị đánh trúng: giật nảy, bẹp người rồi phồng lại; thanh máu hiện lên một lúc.
+    if (creature.hp < a.hp) {
+      a.flash = 1;
+      a.hitAt = time;
+    }
+    a.hp = creature.hp;
+    a.flash = Math.max(0, a.flash - dt * 4);
+    if (body.current) {
+      // Lúc lao tới tấn công thì chồm người về trước.
+      body.current.rotation.x = (creature.mode === "chase" || creature.mode === "attack" ? 0.12 : 0) - a.flash * 0.35;
+      const squash = 1 + Math.sin(a.flash * Math.PI) * 0.3;
+      body.current.scale.set(size * squash, (size / squash) * (creature.stunned ? 0.92 : 1), size * squash);
+      body.current.position.x = (Math.random() - 0.5) * a.flash * 0.25;
+    }
+    if (bar.current && fill.current) {
+      const showing = time - a.hitAt < 4 && creature.hp > 0;
+      bar.current.visible = showing;
+      if (showing) {
+        bar.current.quaternion.copy(camera.quaternion);
+        const k = Math.max(0, Math.min(1, creature.hp / (def?.hp ?? 1)));
+        fill.current.scale.x = Math.max(0.001, k);
+        fill.current.position.x = -(1 - k) * 0.5;
+      }
+    }
+    if (stars.current) {
+      stars.current.visible = creature.stunned;
+      stars.current.rotation.y = time * 5;
+    }
 
     model.parts.forEach((part, i) => {
       const p = parts.current[i];
@@ -385,6 +431,23 @@ function CreatureView({ creature }: { creature: CreatureState }) {
           <group key={i} ref={(el) => void (parts.current[i] = el)} position={part.p} rotation={part.r ?? [0, 0, 0]}>
             <mesh geometry={geometries[part.g]} material={material(part.c, part.e)} scale={part.s} castShadow={size >= 1 && !part.e} />
           </group>
+        ))}
+      </group>
+      <group ref={bar} position-y={size * 1.35 + 0.4} visible={false}>
+        <mesh scale={[size * 0.9 + 0.3, 0.09, 1]} material={barMats.back}>
+          <planeGeometry />
+        </mesh>
+        <group scale={[size * 0.9 + 0.3, 1, 1]}>
+          <mesh ref={fill} position-z={0.01} scale={[1, 0.07, 1]} material={barMats.fill}>
+            <planeGeometry />
+          </mesh>
+        </group>
+      </group>
+      <group ref={stars} position-y={size * 1.2 + 0.3} visible={false}>
+        {[0, 1, 2].map((i) => (
+          <mesh key={i} position={[Math.cos((i * Math.PI * 2) / 3) * 0.35 * size, 0, Math.sin((i * Math.PI * 2) / 3) * 0.35 * size]} material={barMats.star} scale={0.09 + size * 0.03}>
+            <octahedronGeometry args={[1, 0]} />
+          </mesh>
         ))}
       </group>
     </group>

@@ -63,6 +63,15 @@
 | M4 | Xong | 18 easter egg và 9 điểm bất thường trong danh mục; mỗi ván rải chừng 15 egg và 5–7 điểm bất thường, vắng vài cái để ván sau còn thứ tìm. Nhấn E để xem xét; kết quả của điểm bất thường định sẵn theo seed. Ghi vào nhật ký, bộ sinh truyện kể lúc hoàng hôn và trong biên niên sử |
 | M5 | Xong | 9 loại bẫy, rải theo seed bí mật của server; né theo thuộc tính; sập rồi mới lộ trên bản đồ |
 | M6 | Xong | 19 loài sinh vật: thân thiện (vuốt ve được), trung tính (bỏ chạy), nguy hiểm (đuổi cắn, sợ dao, súng, đuốc); quen thuộc từ ngày 1, lạ từ ngày 2, biến dị từ ngày 4–6 khi núi lửa thức |
+| P1 | Xong | 36 món đồ (thêm rìu, giáo, ná và 13 món nhặt được như đá, dừa, gỗ, thịt, da, lông, túi mực, bộ lửa trại). Cầm món bất kỳ trong balo (thanh đồ nghề, Q/lăn chuột), đặt xuống đất (X), ném (giữ chuột phải), nhặt (E) |
+| P2 | Xong | Đánh gần, bắn, ném có sát thương và chữ tượng thanh riêng từng món; số Máu mất, mảnh vụn, rung màn hình, bật lùi. Kẻ phản bội kết liễu một đòn (F), mỗi ngày một lần, bí mật tới màn lật bài |
+| P3 | Xong | Leo cây: ôm thân, trèo lên tụt xuống, vòng quanh, nhảy ra; dáng chổng mông lắc lư khi trèo |
+| P4 | Xong | Cây dừa và cây rừng chặt được (rơi gỗ, dừa, cây giống), trồng lại bằng mầm dừa hay cây giống, lớn dần; đang leo mà cây đổ thì té mất Máu, chóng mặt |
+| P5 | Xong | Choáng, chóng mặt, mù từ đòn đánh, món ném, thú cắn; có lớp phủ trên màn hình và dáng trên nhân vật |
+| P6 | Xong | Thú có Máu, rơi đồ khi chết; leo cây, bay lên, lặn xuống để trốn; thú dữ thù dai; giết thú hiền mất Tinh thần; thú hồi sinh mỗi sáng |
+| P7 | Xong | Bơi xa bờ ở vùng nước sâu một lúc thì có thể bị cá mập tìm tới |
+| P8 | Xong | Dựng chòi lá, nhà sàn, hàng rào (V) bằng gỗ, da quanh lửa trại; đủ chỗ ngủ thì cả trại được cộng Tinh thần ban đêm. Nhổ lửa trại mang đi (E) rồi đặt lại (chuột trái): cả khu nhà dời theo |
+| P9 | Xong | Thêm cây rừng sinh theo seed (leo, chặt được), chuối rừng, dứa dại, cỏ biển, dây leo; bụi rậm, dương xỉ, cỏ dày hơn |
 | M7 | Xong | Seed bản đồ công khai, chủ phòng nhập hoặc gieo lại ở sảnh chờ; seed của engine luật không còn gửi xuống client |
 
 Cân bằng hiện tại (bot, 3.000 ván 4–6 người): phe đội thắng 57,6%, không ai thắng 22,5%, phản bội thắng 32,9% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%.

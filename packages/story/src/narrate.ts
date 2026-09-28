@@ -7,6 +7,7 @@ import {
   FLAW_LABELS,
   ROLE_LABELS,
   ZONE_LABELS,
+  content,
   worldCatalog,
   type StoryElement,
   type StoryLibrary,
@@ -100,7 +101,13 @@ function incidentText(t: Teller, config: GameConfig, e: IncidentEffect): string 
 
 /** Tên (viết thường) của thứ được chạm trán: easter egg, điểm bất thường, bẫy hay sinh vật. */
 function encounterThing(defId: string): string {
-  const name = worldCatalog.pois.get(defId)?.name ?? worldCatalog.traps.get(defId)?.name ?? worldCatalog.creatures.get(defId)?.name ?? "điều lạ";
+  const name =
+    worldCatalog.pois.get(defId)?.name ??
+    worldCatalog.traps.get(defId)?.name ??
+    worldCatalog.creatures.get(defId)?.name ??
+    worldCatalog.buildings.get(defId)?.name ??
+    content.items.get(defId)?.name ??
+    (defId === "fists" ? "nắm đấm" : "điều lạ");
   return name.toLocaleLowerCase("vi");
 }
 
@@ -121,6 +128,12 @@ function encounterLine(t: Teller, e: Extract<LogEntry, { kind: "encounter" }>): 
       return t.line("encounter_friend", vars);
     case "drowning":
       return t.line("encounter_drown", vars);
+    case "attack":
+      return t.line("encounter_attack", { ...vars, thing: encounterThing(e.defId) });
+    case "fall":
+      return t.line("encounter_fall", vars);
+    case "hunt":
+      return t.line("encounter_hunt", vars);
   }
 }
 
@@ -214,6 +227,7 @@ export function narrateDusk(ctx: StoryContext, day: number): string[] {
     told.add(key);
     out.push(encounterLine(t, e));
   }
+  for (const e of entriesOf(state, "build", day)) out.push(t.line("build", { name: t.name(e.playerId), thing: encounterThing(e.building) }));
   for (const e of entriesOf(state, "dig", day)) out.push(t.line("dig", { name: t.name(e.playerId) }));
   for (const e of entriesOf(state, "death", day)) out.push(t.line("death", { name: t.name(e.playerId) }));
   const dusk = entriesOf(state, "dusk", day)[0];

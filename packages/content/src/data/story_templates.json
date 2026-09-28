@@ -189,5 +189,21 @@
   "chronicle_discoveries": [
     "Cả đoàn đã lần ra {count} bí mật của hòn đảo, trong đó có {things}.",
     "Hòn đảo để lộ {count} bí mật cho những kẻ chịu lục lọi: {things}."
+  ],
+  "encounter_attack": [
+    "{name} ăn một đòn {thing} giữa đường, và ai cũng thấy.",
+    "Có người đã vung {thing} vào {name}. Trên đảo này, bạn bè cũng biết đau."
+  ],
+  "encounter_fall": [
+    "{name} đang ở trên ngọn cây thì cây bị đốn, rơi đánh huỵch xuống đất.",
+    "Cây đổ, {name} đổ theo. Ai đã chặt cái cây ấy?"
+  ],
+  "encounter_hunt": [
+    "{name} hạ được {thing}, nhưng lương tâm thì không nhẹ nhõm gì.",
+    "Tay {name} còn dính máu {thing}."
+  ],
+  "build": [
+    "{name} dựng xong {thing} ở trại; đêm nay có chỗ chui ra chui vào.",
+    "Trại có thêm {thing}, công của {name}."
   ]
 }

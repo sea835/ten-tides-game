@@ -78,6 +78,7 @@ import { isPlausibleMove } from "./movement.ts";
 import { randomRoomCode } from "./roomCode.ts";
 import { syncState } from "./sync.ts";
 import { Wildlife, type Bite } from "./wildlife.ts";
+import { PlayController, type PlayHost } from "./playRoom.ts";
 
 const RECONNECT_SECONDS = 60;
 /** Nhịp của mặt phẳng thời gian thực: sinh vật đi lại, hơi thở khi lặn, bẫy. */
@@ -128,6 +129,8 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   /** Ai đã vuốt ve con nào trong ngày nào: mỗi người mỗi con một lần mỗi ngày. */
   private petted = new Set<string>();
   private realtimeTicks = 0;
+  /** Cầm đồ, đánh, ném, cây cối, trại và nhà cửa. */
+  private playCtl!: PlayController;
 
   get actions(): readonly GameAction[] {
     return this.logFile.actions;
@@ -141,6 +144,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     this.logWriter = new GameLogWriter(this.logFile);
     this.state.duskSeconds = scaled(PHASE_SECONDS.dusk);
     this.setupWorld(crypto.getRandomValues(new Uint32Array(1))[0]! || 1);
+    this.playCtl.register();
     syncState(this.state, this.game);
 
     this.onMessage(Messages.move, MoveMessage, (client, move) => {
@@ -152,8 +156,10 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       const elapsed = now - (this.lastMoveAt.get(id) ?? now);
       // Tạm dừng thì đứng yên; đang trong sự kiện thì đứng yên tới khi chọn xong;
       // bị trói thì không ra khỏi trại được.
-      const frozen = this.state.paused || isBusy(this.game, id);
-      const leavingCamp = this.game.players[id]?.tied && Math.hypot(move.x - CAMP.x, move.z - CAMP.z) > CAMP_RADIUS;
+      // Đang choáng thì đứng hình.
+      const frozen = this.state.paused || isBusy(this.game, id) || this.playCtl.play.stunned(id);
+      const camp = this.playCtl.camp();
+      const leavingCamp = this.game.players[id]?.tied && Math.hypot(move.x - camp.x, move.z - camp.z) > CAMP_RADIUS;
       if (frozen || leavingCamp || !isPlausibleMove(player, move, elapsed, this.world.heightAt)) {
         client.send(Messages.correct, { x: player.x, y: player.y, z: player.z } satisfies CorrectMessage);
         return;
@@ -166,6 +172,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       player.moving = move.moving;
       player.sitting = move.sitting && !move.moving;
       player.swimming = move.swimming ?? false;
+      this.playCtl.checkClimber(id, move.x, move.z);
     });
 
     this.onMessage(Messages.settings, SettingsMessage, (client, settings) => {
@@ -438,12 +445,40 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     this.world = worldFor(worldSeed);
     const secret = subSeed(this.game.seed, `world:${worldSeed}`);
     this.hazards = new Hazards(this.world, generateTraps(this.world, secret), secret);
-    this.wildlife = new Wildlife(this.world, worldSeed);
+    if (this.playCtl) this.playCtl.reset(this.world, worldSeed);
+    else this.playCtl = new PlayController(this.playHost(), this.world, worldSeed);
+    this.wildlife = new Wildlife(
+      this.world,
+      worldSeed,
+      worldCatalog,
+      () => this.playCtl.perches(),
+      () => ({ ...this.playCtl.camp(), radius: CAMP_RADIUS + 8 }),
+    );
     this.state.creatures.clear();
     this.state.traps.clear();
   }
 
-  /** Mặt phẳng thời gian thực: sinh vật đi lại và cắn, hơi thở khi lặn, bẫy. */
+  /** Những gì hệ thống tương tác được dùng từ phòng chơi. */
+  private playHost(): PlayHost {
+    const room = this;
+    return {
+      get state() {
+        return room.state;
+      },
+      game: () => room.game,
+      world: () => room.world,
+      wildlife: () => room.wildlife,
+      playerOf: (client) => room.playerOf(client),
+      clientOf: (id) => room.clientOf(id),
+      dispatch: (action, client) => room.dispatch(action, client),
+      reject: (client, reason) => room.reject(client, reason),
+      broadcast: (type, message) => room.broadcast(type, message),
+      encounter: (playerId, source, refId, defId, effects, opts, message) => room.encounter(playerId, source, refId, defId, effects, opts, message),
+      onMessage: ((type: string, a: unknown, b?: unknown) => (b ? room.onMessage(type, a as never, b as never) : room.onMessage(type, a as never))) as PlayHost["onMessage"],
+    };
+  }
+
+  /** Mặt phẳng thời gian thực: sinh vật đi lại và cắn, hơi thở khi lặn, bẫy, cầm đánh ném, cây cối. */
   private realtimeTick(dt: number) {
     if (this.state.paused) return;
     const active = ENCOUNTER_PHASES.includes(this.game.phase);
@@ -454,7 +489,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     const bites = this.wildlife.step(
       dt,
       this.game.day,
-      people.map(({ id, p, sheet }) => ({ id, x: p.x, y: p.y, z: p.z, alive: sheet!.alive, items: sheet!.items })),
+      people.map(({ id, p, sheet }) => ({ id, x: p.x, y: p.y, z: p.z, alive: sheet!.alive, items: sheet!.items, climbing: !!p.climbing })),
       active,
     );
     const hazards = this.hazards.step(
@@ -479,6 +514,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       const breath = Math.round(this.hazards.breath.get(id) ?? 100);
       if (p.breath !== breath) p.breath = breath;
     }
+    this.playCtl.tick(dt, active);
     // Vị trí sinh vật chỉ gửi 5 lần mỗi giây (client tự nội suy), đỡ tốn băng thông và đỡ bắt HUD tính lại.
     if (++this.realtimeTicks % 2 === 0) this.syncCreatures();
   }
@@ -489,6 +525,9 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       ? `${def.name} lao tới nhưng chùn lại trước thứ bạn đang cầm, chỉ kịp cào một đường rồi bỏ chạy.`
       : `${def.name} bất ngờ tấn công bạn. ${def.blurb}`;
     this.encounter(bite.playerId, "creature", bite.creatureId, bite.species, bite.effects, {}, { title: `${def.name} tấn công!`, text });
+    this.playCtl.play.applyStatus(bite.playerId, bite.status);
+    const p = this.state.players.get(bite.playerId);
+    if (p) this.broadcast(Messages.fx, { kind: "hit", x: p.x, y: p.y + 1.6, z: p.z, word: "NGOẠM!", amount: -(bite.effects.hp ?? 0) });
   }
 
   private onHazard(event: HazardEvent) {
@@ -556,6 +595,10 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       if (target.z !== round(c.z)) target.z = round(c.z);
       if (target.rotY !== round(c.rotY)) target.rotY = round(c.rotY);
       if (target.mode !== c.mode) target.mode = c.mode;
+      const hp = Math.round((c.hp / c.def.hp) * 100);
+      if (target.hp !== hp) target.hp = hp;
+      const stunned = c.stun > 0;
+      if (target.stunned !== stunned) target.stunned = stunned;
     }
   }
 
@@ -640,6 +683,8 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     this.ready.clear();
     this.updateReadyCount();
     if (phase !== "explore") this.eventTimers.clear();
+    // Sáng ra, đàn thú khác tới thế chỗ những con đã bị giết.
+    if (phase === "dawn") this.wildlife.respawn();
     if (phase === "ended") this.state.paused = false;
     this.tellStory(phase);
     void this.logWriter.save();
@@ -722,10 +767,12 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       this.state.timeLeft--;
       return;
     }
+    if (this.game.phase === "dusk") this.playCtl.ensureCamp();
+    const camp = this.playCtl.camp();
     const atCamp =
       this.game.phase === "dusk"
         ? [...this.state.players.entries()]
-            .filter(([, p]) => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) <= CAMP_RADIUS || !p.connected)
+            .filter(([, p]) => Math.hypot(p.x - camp.x, p.z - camp.z) <= CAMP_RADIUS || !p.connected)
             .map(([id]) => id)
         : undefined;
     this.dispatch({ type: "advance", atCamp });

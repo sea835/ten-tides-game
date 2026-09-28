@@ -57,6 +57,17 @@ export const PlayerState = schema(
     swimming: t.boolean().default(false),
     /** Hơi thở khi lặn (0–100), server tính từ độ sâu. Hết hơi thì đuối nước, mất Máu. */
     breath: t.uint8().default(100),
+    /** Món đang cầm trên tay (id đồ, rỗng là tay không). Ai cũng thấy, như đồ lớn đeo trên lưng. */
+    held: t.string().default(""),
+    /** Động tác vừa làm (swing, throw, shoot, stab, eat, chop) và bộ đếm, để máy khác diễn lại đúng một lần. */
+    act: t.string().default(""),
+    actN: t.uint16().default(0),
+    /** Hiệu ứng còn lại bao nhiêu giây: choáng (đứng hình), chóng mặt (loạng choạng), mù (tối sầm). */
+    stun: t.float32().default(0),
+    dizzy: t.float32().default(0),
+    blind: t.float32().default(0),
+    /** Đang leo cây nào (id cây, rỗng là không leo). */
+    climbing: t.string().default(""),
     connected: t.boolean().default(true),
     // Phiếu nhân vật, chép từ engine luật sau mỗi hành động.
     background: t.string().default(""),
@@ -160,6 +171,8 @@ export const LogEntryState = schema(
     defId: t.string().default(""),
     /** encounter: né được bẫy */
     dodged: t.boolean().default(false),
+    /** build: công trình vừa dựng */
+    building: t.string().default(""),
   },
   "LogEntryState",
 );
@@ -245,8 +258,12 @@ export const CreatureState = schema(
     y: t.float32().default(0),
     z: t.float32().default(0),
     rotY: t.float32().default(0),
-    /** idle, walk, flee, chase, attack, follow */
+    /** idle, walk, flee, chase, attack, follow, return, climb, perch */
     mode: t.string().default("idle"),
+    /** Máu còn lại (phần trăm). */
+    hp: t.uint8().default(100),
+    /** Đang choáng: đứng im, sao bay quanh đầu. */
+    stunned: t.boolean().default(false),
   },
   "CreatureState",
 );
@@ -263,6 +280,55 @@ export const TrapState = schema(
   "TrapState",
 );
 export type TrapState = SchemaType<typeof TrapState>;
+
+/** Một món đồ nằm dưới đất (thả ra, ném đi, rơi từ thú hay từ cây). */
+export const GroundItemState = schema(
+  {
+    itemId: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+  },
+  "GroundItemState",
+);
+export type GroundItemState = SchemaType<typeof GroundItemState>;
+
+/** Một món đang bay (bị ném hoặc đạn bắn ra). */
+export const ProjectileState = schema(
+  {
+    itemId: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+  },
+  "ProjectileState",
+);
+export type ProjectileState = SchemaType<typeof ProjectileState>;
+
+/** Cây mới trồng: lớn dần theo thời gian (0–1). */
+export const PlantState = schema(
+  {
+    kind: t.string().default("palm"),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    growth: t.float32().default(0),
+  },
+  "PlantState",
+);
+export type PlantState = SchemaType<typeof PlantState>;
+
+/** Công trình ở trại, đặt tương đối so với lửa trại: dời lửa trại là cả khu nhà dời theo. */
+export const BuildingState = schema(
+  {
+    kind: t.string().default(""),
+    dx: t.float32().default(0),
+    dz: t.float32().default(0),
+    rot: t.float32().default(0),
+  },
+  "BuildingState",
+);
+export type BuildingState = SchemaType<typeof BuildingState>;
 
 export const IslandState = schema(
   {
@@ -305,6 +371,17 @@ export const IslandState = schema(
     traps: t.map(TrapState),
     /** Easter egg đã tìm thấy, điểm bất thường đã chạm, bẫy đã sập. */
     discovered: t.array("string"),
+    groundItems: t.map(GroundItemState),
+    projectiles: t.map(ProjectileState),
+    /** Cây của bản đồ đã bị đốn (chỉ còn gốc). */
+    stumps: t.array("string"),
+    /** Cây mới trồng, theo id. */
+    plants: t.map(PlantState),
+    /** Lửa trại: về đây trước khi tối. `campPacked`: đang có người vác bộ lửa trại đi dời trại. */
+    campX: t.float32().default(0),
+    campZ: t.float32().default(80),
+    campPacked: t.boolean().default(false),
+    buildings: t.map(BuildingState),
     sceneStates: t.map("string"),
     /** Cửa hàng của ván này. */
     shop: t.array("string"),
@@ -366,6 +443,42 @@ export type SettingsMessage = z.infer<typeof SettingsMessage>;
 
 export const KickMessage = z.object({ playerId: id });
 export const TriggerMessage = z.object({ anchorId: id });
+const angle = z.number().min(-100).max(100);
+/** Chọn món cầm trên tay (uid trong balo, rỗng là cất tay không). */
+export const HoldMessage = z.object({ uid: z.string().max(64) });
+/** Đánh (hoặc bắn) theo hướng đang nhìn. */
+export const AttackMessage = z.object({ yaw: angle, pitch: angle });
+/** Ném món đang cầm theo hướng đang nhìn; `power` 0–1 là lực ném. */
+export const ThrowMessage = z.object({ yaw: angle, pitch: angle, power: z.number().min(0).max(1) });
+/** Dùng món đang cầm: ăn uống, trồng cây, đặt lửa trại (ở vị trí x, z trước mặt). */
+export const UseMessage = z.object({ x: finite, z: finite });
+export const PickupMessage = z.object({ id });
+/** Leo lên cây (id cây) hoặc tụt xuống (rỗng). */
+export const ClimbMessage = z.object({ treeId: z.string().max(64) });
+export const BuildMessage = z.object({ kind: id, x: finite, z: finite, rot: angle });
+export const AssassinateMessage = z.object({ target: id });
+
+/** Server gửi cho mọi người để vẽ hiệu ứng: trúng đòn, trượt, chặt cây, cây đổ, thú chết, ăn uống... */
+export interface FxMessage {
+  kind: "hit" | "miss" | "chop" | "fell" | "poof" | "kill" | "eat" | "plant" | "build" | "splash" | "shoot";
+  x: number;
+  y: number;
+  z: number;
+  /** Tiếng kêu vui hiện lên (BỐP!, PHẬP!...) và số Máu mất. */
+  word?: string;
+  amount?: number;
+  /** Cây đổ theo hướng này (radian), id cây. */
+  dir?: number;
+  treeId?: string;
+}
+
+/** Server gửi riêng cho người bị đánh: bị đẩy lùi theo hướng này. */
+export interface KnockMessage {
+  dx: number;
+  dz: number;
+  force: number;
+}
+
 /** Nhấn E cạnh easter egg, điểm bất thường hoặc sinh vật thân thiện. */
 export const InteractMessage = z.object({ targetId: id });
 export type InteractMessage = z.infer<typeof InteractMessage>;
@@ -455,6 +568,18 @@ export const Messages = {
   dig: "dig",
   interact: "interact",
   encounter: "encounter",
+  hold: "hold",
+  attack: "attack",
+  throw: "throw",
+  drop: "drop",
+  use: "use",
+  pickup: "pickup",
+  climb: "climb",
+  packCamp: "packCamp",
+  build: "build",
+  assassinate: "assassinate",
+  fx: "fx",
+  knock: "knock",
   private: "private",
   chat: "chat",
   rejected: "rejected",

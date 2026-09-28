@@ -1,5 +1,4 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
-import { CylinderCollider, RigidBody } from "@react-three/rapier";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -18,8 +17,9 @@ import { useQuality } from "./graphics.ts";
 import { grain, mulberry32, patch, swayMaterial } from "./nature.ts";
 
 // Cây cỏ của đảo hoang: cỏ thấp phủ khắp, cỏ vừa, đám cỏ tranh cao (ngồi vào là nấp được),
-// lau sậy quanh hồ, dương xỉ dưới tán dừa, bụi rậm có hoa, cây rừng tán rộng và gỗ trôi dạt.
-// Tất cả dùng InstancedMesh; chỉ cây rừng có va chạm (số lượng cố định, không đổi theo chất lượng).
+// lau sậy quanh hồ, dương xỉ dưới tán dừa, bụi rậm có hoa, chuối rừng lá to, dứa dại gai góc ven rừng,
+// cỏ biển lún phún trên cát, dây leo bò lan và gỗ trôi dạt. Tất cả dùng InstancedMesh, không va chạm
+// (cây leo được, chặt được nằm ở Trees.tsx).
 
 // ---------------------------------------------------------------------------
 // Hình khối
@@ -122,14 +122,51 @@ function bush(): BufferGeometry {
   return g;
 }
 
-/** Tán cây rừng: bốn khối lá lớn chồng lệch nhau quanh ngọn thân. */
-function canopy(): BufferGeometry {
-  const parts = [
-    [0, 0, 0, 2.2],
-    [1.5, -0.4, 0.4, 1.6],
-    [-1.3, -0.3, -0.6, 1.7],
-    [0.2, 0.9, -0.3, 1.5],
-  ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 0).translate(x!, y!, z!));
+/** Lá chuối rừng: mỗi tàu lá là dải rộng vươn lên rồi rủ xuống, mọc quanh ngọn một thân giả ngắn. */
+function bananaLeaves(): BufferGeometry {
+  const pos: number[] = [];
+  const count = 7;
+  for (let f = 0; f < count; f++) {
+    const angle = (f / count) * Math.PI * 2 + (f % 2) * 0.4;
+    const length = 1.5 + (f % 3) * 0.2;
+    const rise = 0.55 + (f % 2) * 0.25;
+    const point = (s: number, side: number) => {
+      const along = s * length;
+      // Cuống vươn lên, phiến lá rủ dần về cuối; hai mép lá hơi cụp xuống như lá chuối thật.
+      const y = 1.35 + rise * s - 1.3 * s * s;
+      const width = Math.sin(Math.PI * Math.min(1, 0.15 + s * 0.9)) * 0.3 * side;
+      return [Math.cos(angle) * along - Math.sin(angle) * width, y - Math.abs(width) * 0.35, Math.sin(angle) * along + Math.cos(angle) * width];
+    };
+    const steps = 5;
+    for (let i = 0; i < steps; i++) {
+      const s0 = i / steps;
+      const s1 = (i + 1) / steps;
+      for (const side of [-1, 1]) {
+        const a = point(s0, 0);
+        const b = point(s1, 0);
+        const c = point(s1, side);
+        const d = point(s0, side);
+        pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+      }
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Dây leo bò lan trên đất: mấy nhánh lá tròn nhỏ toả ra sát mặt đất. */
+function creeper(): BufferGeometry {
+  const rand = mulberry32(77);
+  const parts: BufferGeometry[] = [];
+  for (let b = 0; b < 5; b++) {
+    const angle = rand() * Math.PI * 2;
+    for (let k = 1; k <= 4; k++) {
+      const d = k * 0.32;
+      parts.push(new IcosahedronGeometry(0.16 + rand() * 0.06, 0).scale(1, 0.35, 1).translate(Math.cos(angle + k * 0.25) * d, 0.05, Math.sin(angle + k * 0.25) * d));
+    }
+  }
   const g = mergeGeometries(parts)!;
   g.computeVertexNormals();
   return g;
@@ -218,29 +255,7 @@ function placer(world: World) {
     return out;
   }
 
-  /** Cây rừng tán rộng mọc trong nội đảo; tránh điểm sự kiện, kho báu, trại, cây dừa, đám cỏ tranh, hang. */
-  function jungleTrees(): Spot[] {
-    const rand = mulberry32(41);
-    const out: Spot[] = [];
-    const target = 34 + world.islets.filter((it) => it.kind === "jungle").length * 6;
-    for (let tries = 0; out.length < target && tries < 5000; tries++) {
-      const onIslet = tries % 3 === 2 && world.islets.some((it) => it.kind === "jungle");
-      const jungle = world.islets.filter((it) => it.kind === "jungle");
-      const r = onIslet ? jungle[Math.floor(rand() * jungle.length)]! : { x: 0, z: 0, radius: 75 };
-      const x = r.x + (rand() * 2 - 1) * r.radius * (onIslet ? 0.8 : 1.2);
-      const z = r.z + (rand() * 2 - 1) * r.radius * (onIslet ? 0.8 : 1.2);
-      const h = heightAt(x, z);
-      if (!grassy(x, z, h) || inland(x, z) < 30) continue;
-      if (nearCamp(x, z, 22) || !clearOfPoints(x, z, 7)) continue;
-      if (world.tallGrass.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius + 2)) continue;
-      if (world.palms.some((p) => Math.hypot(p.x - x, p.z - z) < 5)) continue;
-      if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
-      out.push({ x, y: h, z, s: 0.8 + rand() * 0.5, h: 4.5 + rand() * 2.5, r: rand() * Math.PI * 2 });
-    }
-    return out;
-  }
-
-  return { heightAt, inland, clearOfPoints, grassy, scatter, fillPatches, jungleTrees };
+  return { heightAt, inland, clearOfPoints, grassy, scatter, fillPatches };
 }
 
 // ---------------------------------------------------------------------------
@@ -293,21 +308,37 @@ export function Vegetation({ world }: { world: World }) {
     const zoneAt = world.zoneAt;
     const d = (n: number) => Math.round(n * density);
     const underPalm = (x: number, z: number) => world.palms.some((p) => Math.hypot(p.x - x, p.z - z) < 4);
-    const bushes = scatter(d(420), 12, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 11) && clearOfPoints(x, z, 3) && (inland(x, z) > 30 || rand() < 0.35), [0.6, 1.8]);
+    const nearTree = (x: number, z: number, r: number) => world.trees.some((t) => Math.hypot(t.x - x, t.z - z) < r);
+    /** Bãi cát: trên mặt nước, sát mép bờ (đảo đá, đảo núi lửa không có). */
+    const sandy = (x: number, z: number, h: number) => {
+      if (h < 0.25 || h > 3 || inLake(x, z)) return false;
+      const s = world.surface(x, z);
+      if (s.islet && (s.islet.kind === "rocky" || s.islet.kind === "volcanic")) return false;
+      return inland(x, z) < 14 && !s.pad && !world.structureAt(x, z);
+    };
+    const bushes = scatter(d(680), 12, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 11) && clearOfPoints(x, z, 3) && (inland(x, z) > 30 || rand() < 0.35), [0.6, 1.8]);
     return {
       // Cỏ thấp phủ khắp nơi có đất, thưa dần ra phía cát.
-      short: scatter(d(9000), 11, (x, z, h, rand) => grassy(x, z, h) && (inland(x, z) > 16 || rand() < 0.3) && !nearCamp(x, z, 3.5), [0.7, 1.4]).map((p, i) => ({
+      short: scatter(d(10500), 11, (x, z, h, rand) => grassy(x, z, h) && (inland(x, z) > 16 || rand() < 0.3) && !nearCamp(x, z, 3.5), [0.7, 1.4]).map((p, i) => ({
         ...p,
         h: 0.25 + grain(i, 9) * 0.35 + Math.max(0, patch(p.x, p.z)) * 0.2,
       })),
       // Cỏ vừa mọc thành từng khóm lẻ, dày hơn ở bìa rừng.
-      medium: scatter(d(1600), 15, (x, z, h, rand) => grassy(x, z, h) && inland(x, z) > 18 && !nearCamp(x, z, 5) && (patch(x, z) > -0.2 || rand() < 0.3), [0.8, 1.3]).map((p, i) => ({
+      medium: scatter(d(2300), 15, (x, z, h, rand) => grassy(x, z, h) && inland(x, z) > 18 && !nearCamp(x, z, 5) && (patch(x, z) > -0.2 || rand() < 0.3), [0.8, 1.3]).map((p, i) => ({
         ...p,
         h: 0.6 + grain(i, 7) * 0.5,
       })),
       // Cỏ cao dùng để nấp nên dày như nhau ở mọi mức đồ hoạ (máy yếu không được lợi thế nhìn xuyên cỏ).
       tall: fillPatches(world.tallGrass, 3.4, 16),
-      ferns: scatter(d(520), 17, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 8) && clearOfPoints(x, z, 2.5) && (underPalm(x, z) || inland(x, z) > 38 || rand() < 0.15), [0.6, 1.3]),
+      ferns: scatter(d(850), 17, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 8) && clearOfPoints(x, z, 2.5) && (underPalm(x, z) || nearTree(x, z, 6) || inland(x, z) > 38 || rand() < 0.15), [0.6, 1.3]),
+      // Chuối rừng mọc thành cụm ở chỗ ẩm trong rừng, dưới tán cây lớn.
+      bananas: scatter(d(170), 19, (x, z, h, rand) => grassy(x, z, h) && inland(x, z) > 26 && !nearCamp(x, z, 12) && clearOfPoints(x, z, 3.5) && !nearTree(x, z, 1.8) && (nearTree(x, z, 9) || rand() < 0.25), [0.8, 1.35]),
+      // Dứa dại: khóm lá dài gai góc ở bìa rừng giáp bãi cát.
+      pandans: scatter(d(260), 20, (x, z, h) => h > 0.5 && h < 6 && inland(x, z) > 7 && inland(x, z) < 26 && !inLake(x, z) && !nearCamp(x, z, 9) && clearOfPoints(x, z, 3) && !world.structureAt(x, z), [0.9, 1.6]),
+      // Cỏ biển lún phún trên cát.
+      beachGrass: scatter(d(1300), 22, (x, z, h) => sandy(x, z, h) && !nearCamp(x, z, 4) && clearOfPoints(x, z, 1.5), [0.6, 1.2]).map((p, i) => ({ ...p, h: 0.35 + grain(i, 23) * 0.45 })),
+      // Dây leo bò lan dưới tán rừng và trên bãi cát (rau muống biển).
+      creepers: scatter(d(420), 24, (x, z, h, rand) => (grassy(x, z, h) && inland(x, z) > 30) || (sandy(x, z, h) && rand() < 0.4), [0.7, 1.5]),
       bushes,
       // Khoảng một phần ba số bụi trổ hoa.
       flowers: bushes
@@ -328,8 +359,6 @@ export function Vegetation({ world }: { world: World }) {
       driftwood: scatter(16, 18, (x, z, h) => h > 0.15 && h < 0.7 && !nearCamp(x, z, 8) && clearOfPoints(x, z, 3), [0.8, 1.6]),
     };
   }, [density, place, world]);
-  // Cây rừng có va chạm nên không đổi theo chất lượng đồ hoạ.
-  const trees = useMemo(() => place.jungleTrees(), [place]);
 
   const geo = useMemo(
     () => ({
@@ -342,8 +371,11 @@ export function Vegetation({ world }: { world: World }) {
       rock: new DodecahedronGeometry(0.6, 0),
       shell: new CylinderGeometry(0, 0.12, 0.08, 5),
       driftwood: new CylinderGeometry(0.16, 0.2, 2.4, 6).rotateZ(Math.PI / 2).translate(0, 0.12, 0),
-      trunk: new CylinderGeometry(0.22, 0.38, 1, 7).translate(0, 0.5, 0),
-      canopy: canopy(),
+      bananaStem: new CylinderGeometry(0.1, 0.16, 1.45, 6).translate(0, 0.72, 0),
+      bananaLeaves: bananaLeaves(),
+      pandan: grassClump(14, 4, 0.18, 0.14),
+      beachGrass: grassClump(7, 5, 0.2, 0.05),
+      creeper: creeper(),
     }),
     [],
   );
@@ -356,7 +388,8 @@ export function Vegetation({ world }: { world: World }) {
       flower: new MeshStandardMaterial({ flatShading: true, roughness: 0.6 }),
       stone: new MeshStandardMaterial({ flatShading: true, roughness: 1 }),
       trunk: new MeshStandardMaterial({ flatShading: true, roughness: 1 }),
-      canopy: swayMaterial({ flatShading: true, roughness: 0.9 }, 0.004, 1),
+      banana: swayMaterial({ flatShading: true, side: DoubleSide, roughness: 0.75 }, 0.06, -1),
+      creeper: new MeshStandardMaterial({ flatShading: true, roughness: 0.9 }),
     }),
     [],
   );
@@ -379,13 +412,15 @@ export function Vegetation({ world }: { world: World }) {
       rock: ((i, c) => c.setHSL(0.08, 0.06, 0.36 + grain(i, 12) * 0.16)) as Tint,
       shell: ((i, c) => c.setHSL(0.05 + grain(i, 13) * 0.08, 0.5, 0.82)) as Tint,
       driftwood: ((i, c) => c.setHSL(0.08, 0.18, 0.55 + grain(i, 14) * 0.12)) as Tint,
-      trunk: ((i, c) => c.setHSL(0.07, 0.35, 0.22 + grain(i, 15) * 0.06)) as Tint,
-      canopy: ((i, c) => c.setHSL(0.27 + grain(i, 16) * 0.06, 0.45, 0.2 + grain(i, 17) * 0.07)) as Tint,
+      bananaStem: ((i, c) => c.setHSL(0.2 + grain(i, 15) * 0.04, 0.35, 0.33)) as Tint,
+      // Lá chuối xanh non, thỉnh thoảng có cây ngả vàng úa.
+      banana: ((i, c) => c.setHSL(0.25 - (grain(i, 16) < 0.15 ? 0.08 : 0) + grain(i, 17) * 0.04, 0.55, 0.34 + grain(i, 18) * 0.08)) as Tint,
+      pandan: ((i, c) => c.setHSL(0.24 + grain(i, 19) * 0.05, 0.4, 0.3 + grain(i, 20) * 0.08)) as Tint,
+      beachGrass: ((i, c) => c.setHSL(0.16 + grain(i, 21) * 0.06, 0.4, 0.5 + grain(i, 22) * 0.1)) as Tint,
+      creeper: ((i, c) => c.setHSL(0.3 + grain(i, 23) * 0.05, 0.45, 0.25 + grain(i, 24) * 0.07)) as Tint,
     };
   }, []);
 
-  // Tán cây đặt trên ngọn thân (thân co giãn theo chiều cao riêng của từng cây).
-  const canopies = useMemo(() => trees.map((t) => ({ ...t, y: t.y + t.h * 0.95 })), [trees]);
 
   return (
     <>
@@ -398,13 +433,11 @@ export function Vegetation({ world }: { world: World }) {
       <Instances spots={spots.rocks} geometry={geo.rock} material={mats.stone} tint={tints.rock} cast />
       <Instances spots={spots.shells} geometry={geo.shell} material={mats.stone} tint={tints.shell} />
       <Instances spots={spots.driftwood} geometry={geo.driftwood} material={mats.stone} tint={tints.driftwood} cast />
-      <Instances spots={trees} geometry={geo.trunk} material={mats.trunk} tint={tints.trunk} heightScale cast />
-      <Instances spots={canopies} geometry={geo.canopy} material={mats.canopy} tint={tints.canopy} cast />
-      <RigidBody type="fixed" colliders={false}>
-        {trees.map((t, i) => (
-          <CylinderCollider key={i} args={[t.h / 2, 0.35 * t.s]} position={[t.x, t.y + t.h / 2, t.z]} />
-        ))}
-      </RigidBody>
+      <Instances spots={spots.bananas} geometry={geo.bananaStem} material={mats.trunk} tint={tints.bananaStem} />
+      <Instances spots={spots.bananas} geometry={geo.bananaLeaves} material={mats.banana} tint={tints.banana} cast />
+      <Instances spots={spots.pandans} geometry={geo.pandan} material={mats.tall} tint={tints.pandan} />
+      <Instances spots={spots.beachGrass} geometry={geo.beachGrass} material={mats.grass} tint={tints.beachGrass} heightScale />
+      <Instances spots={spots.creepers} geometry={geo.creeper} material={mats.creeper} tint={tints.creeper} />
     </>
   );
 }

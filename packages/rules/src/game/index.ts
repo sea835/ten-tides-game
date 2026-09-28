@@ -6,6 +6,7 @@
 import { advance } from "./day.ts";
 import { choose, dig, trigger } from "./events.ts";
 import { encounter } from "./encounters.ts";
+import { assassinate, build, consume, drop, pickup } from "./interactions.ts";
 import { join, leave, start } from "./lobby.ts";
 import { buy, createCharacter, finishCreation, finishPacking, place, sell, unplace } from "./prep.ts";
 import { castBallot, chooseNightAction, emptyVotes, nominate, revealBallot, voteRation } from "./night.ts";
@@ -19,6 +20,7 @@ export { anchorZone, canAct, checkModifiers, effectiveDc, isBusy, isOverweight, 
 export { allowedNightActions, rationResult, rationVoteNeeded, tieResult } from "./night.ts";
 export { ENDING_WINNERS } from "./endings.ts";
 export { ENCOUNTER_PHASES } from "./encounters.ts";
+export { canAssassinate, hasMaterials } from "./interactions.ts";
 export { privateView, type PrivateView } from "./private.ts";
 
 export function createGame(seed: number): GameState {
@@ -52,6 +54,8 @@ export function createGame(seed: number): GameState {
     deceit: 0,
     tieHistory: [],
     discovered: [],
+    kills: [],
+    shelter: 0,
     shop: [],
     nextUid: 1,
     treasureSite: "",
@@ -104,6 +108,16 @@ export function reduce(prev: GameState, action: GameAction, config: GameConfig):
       return dig(state, action.playerId);
     case "encounter":
       return encounter(state, action, config);
+    case "drop":
+      return drop(state, action.playerId, action.uid);
+    case "pickup":
+      return pickup(state, action.playerId, action.itemId, config);
+    case "consume":
+      return consume(state, action.playerId, action.uid, config);
+    case "assassinate":
+      return assassinate(state, action.playerId, action.target);
+    case "build":
+      return build(state, action.playerId, action.building, action.cost, action.shelter);
   }
 }
 

@@ -7,6 +7,10 @@ import { ANCHORS } from "@tentides/content";
 import type { DirectionalLight, HemisphereLight, PointLight } from "three";
 import type { IslandRoom } from "../net.ts";
 import { Anchors } from "./Anchors.tsx";
+import { Controls } from "./Controls.tsx";
+import { Fx } from "./Fx.tsx";
+import { listenFx } from "./fxStore.ts";
+import { GroundItems } from "./Items3D.tsx";
 import { DayCycle } from "./DayCycle.tsx";
 import { toggleQuality, useQuality } from "./graphics.ts";
 import { Hud } from "./hud/Hud.tsx";
@@ -68,6 +72,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   const world = useWorld(room);
 
   useEffect(() => bindInput(wrapper.current!), []);
+  useEffect(() => listenFx(room), [room]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!isTyping(e) && e.code === "KeyG" && !e.repeat) toggleQuality();
@@ -106,11 +111,14 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <PlayerLight />
           <RemotePlayers room={room} />
           <Anchors room={room} />
+          <GroundItems room={room} />
+          <Fx />
           <DayCycle room={room} sun={sun} hemi={hemi} />
           <DebugHook room={room} />
           {high && <PostFx />}
         </Suspense>
       </Canvas>
+      <Controls room={room} />
       <Hud room={room} onLeave={onLeave} />
     </div>
   );

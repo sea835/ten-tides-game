@@ -19,6 +19,11 @@ export function listenPrivate(room: IslandRoom): () => void {
   };
 }
 
+/** Đọc ngay (cho vòng lặp 3D, không cần render lại). */
+export function getPrivate(): PrivateMessage | null {
+  return current;
+}
+
 export function usePrivate(): PrivateMessage | null {
   return useSyncExternalStore(
     (l) => {

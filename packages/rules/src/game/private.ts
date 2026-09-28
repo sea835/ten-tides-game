@@ -1,5 +1,6 @@
 import { activePairs, bagWeight, capacityKg, lookupFrom, type AdjacencyId, type Placement, type TrayItem } from "./backpack.ts";
 import { allowedNightActions } from "./night.ts";
+import { canAssassinate } from "./interactions.ts";
 import {
   DECEIT_TO_WIN,
   SIGNALS_TO_WIN,
@@ -30,6 +31,8 @@ export interface PrivateView {
   weightKg: number;
   capacityKg: number;
   pairs: AdjacencyId[];
+  /** Kẻ phản bội: hôm nay còn kết liễu được không. */
+  canAssassinate: boolean;
 }
 
 export function privateView(state: GameState, playerId: string, config: GameConfig): PrivateView | null {
@@ -54,5 +57,6 @@ export function privateView(state: GameState, playerId: string, config: GameConf
     weightKg: Math.round(bagWeight(p.bag, lookupFrom(config.items)) * 10) / 10,
     capacityKg: capacityKg(p.stats.strength),
     pairs: activePairs(p.bag, lookupFrom(config.items)),
+    canAssassinate: canAssassinate(state, playerId),
   };
 }

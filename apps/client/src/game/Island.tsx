@@ -18,7 +18,7 @@ import {
   type PointLight,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { CAMP, CAVE, MAP_HALF_SIZE, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, type World } from "@tentides/content";
+import { CAVE, MAP_HALF_SIZE, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { sky } from "./shared.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
@@ -29,6 +29,8 @@ import { Structures } from "./Structures.tsx";
 import { Points } from "./Points.tsx";
 import { Wildlife } from "./Wildlife.tsx";
 import { SeaLife } from "./SeaLife.tsx";
+import { Trees } from "./Trees.tsx";
+import { Camp } from "./Camp.tsx";
 
 // ---------------------------------------------------------------------------
 // Địa hình
@@ -222,136 +224,6 @@ function Terrain({ world }: { world: World }) {
 }
 
 // ---------------------------------------------------------------------------
-// Rừng dừa
-// ---------------------------------------------------------------------------
-
-/** Độ cong của thân dừa ở độ cao t (0 gốc, 1 ngọn), tính theo bề ngang. */
-const TRUNK_BEND = 0.9;
-const bend = (t: number) => TRUNK_BEND * t * t;
-
-function buildTrunk(): BufferGeometry {
-  const g = new CylinderGeometry(0.17, 0.3, 1, 6, 6);
-  g.translate(0, 0.5, 0);
-  const p = g.attributes.position!;
-  for (let i = 0; i < p.count; i++) {
-    const t = p.getY(i);
-    p.setX(i, p.getX(i) + bend(t));
-    // Gờ vòng trên thân dừa.
-    const ring = 1 + 0.08 * Math.abs(Math.sin(t * 40));
-    p.setX(i, bend(t) + (p.getX(i) - bend(t)) * ring);
-    p.setZ(i, p.getZ(i) * ring);
-  }
-  const flat = g.toNonIndexed();
-  flat.computeVertexNormals();
-  return flat;
-}
-
-/** Tán dừa: 8 tàu lá rủ xuống (mỗi tàu là một dải có lá hai bên) và chùm dừa. */
-function buildCrown(): { leaves: BufferGeometry; nuts: BufferGeometry } {
-  const fronds: BufferGeometry[] = [];
-  const count = 8;
-  for (let f = 0; f < count; f++) {
-    const angle = (f / count) * Math.PI * 2 + (f % 2) * 0.2;
-    const length = 3 + (f % 3) * 0.35;
-    const steps = 6;
-    const verts: number[] = [];
-    const point = (s: number, side: number) => {
-      const along = s * length;
-      const droop = -0.9 * s * s * length * 0.45 + 0.35 * s;
-      const width = Math.sin(Math.PI * Math.min(1, s * 1.1)) * 0.55 * side;
-      const x = Math.cos(angle) * along - Math.sin(angle) * width;
-      const z = Math.sin(angle) * along + Math.cos(angle) * width;
-      // Mép lá thấp hơn sống lá một chút cho thành hình chữ V.
-      return [x, droop - Math.abs(width) * 0.35, z];
-    };
-    for (let i = 0; i < steps; i++) {
-      const s0 = i / steps;
-      const s1 = (i + 1) / steps;
-      for (const side of [-1, 1]) {
-        const a = point(s0, 0);
-        const b = point(s1, 0);
-        const c = point(s1, side);
-        const d = point(s0, side);
-        verts.push(...a, ...b, ...c, ...a, ...c, ...d);
-      }
-    }
-    const g = new BufferGeometry();
-    g.setAttribute("position", new BufferAttribute(new Float32Array(verts), 3));
-    g.computeVertexNormals();
-    fronds.push(g);
-  }
-  const leaves = mergeGeometries(fronds)!;
-  const nutParts = [0, 1, 2].map((i) => {
-    const s = new SphereGeometry(0.2, 5, 4);
-    const a = (i / 3) * Math.PI * 2;
-    s.translate(Math.cos(a) * 0.22, -0.25, Math.sin(a) * 0.22);
-    return s.toNonIndexed();
-  });
-  const nuts = mergeGeometries(nutParts)!;
-  nuts.computeVertexNormals();
-  return { leaves, nuts };
-}
-
-function Palms({ world }: { world: World }) {
-  const palms = world.palms;
-  const trunks = useRef<InstancedMesh>(null);
-  const crowns = useRef<InstancedMesh>(null);
-  const nuts = useRef<InstancedMesh>(null);
-  const geo = useMemo(() => ({ trunk: buildTrunk(), ...buildCrown() }), []);
-  const mats = useMemo(
-    () => ({
-      trunk: swayMaterial({ color: "#8b6b43", flatShading: true, roughness: 1 }, 0.004),
-      leaves: swayMaterial({ color: "#3f9a3c", flatShading: true, side: DoubleSide, roughness: 0.8 }, 0.035, -2),
-      nuts: new MeshStandardMaterial({ color: "#5a4020", flatShading: true }),
-    }),
-    [],
-  );
-
-  useLayoutEffect(() => {
-    const dummy = new Object3D();
-    const top = new Vector3();
-    const rand = mulberry32(7);
-    const leafColor = new Color();
-    palms.forEach((palm, i) => {
-      const ground = world.heightAt(palm.x, palm.z);
-      // Hướng nghiêng: dừa ven biển hay ngả ra phía biển.
-      const seaward = Math.atan2(palm.z, palm.x);
-      const lean = palm.lean + 0.25;
-      dummy.position.set(palm.x, ground - 0.1, palm.z);
-      dummy.rotation.set(0, -seaward + (rand() - 0.5) * 0.8, 0);
-      dummy.scale.set(1 + lean * 0.3, palm.height, 1 + lean * 0.3);
-      dummy.updateMatrix();
-      trunks.current!.setMatrixAt(i, dummy.matrix);
-
-      top.set(bend(1), 1, 0).applyMatrix4(dummy.matrix);
-      dummy.position.copy(top);
-      dummy.rotation.set((rand() - 0.5) * 0.25, rand() * Math.PI * 2, (rand() - 0.5) * 0.25);
-      const s = 0.85 + (palm.height - 6) / 10;
-      dummy.scale.set(s, s, s);
-      dummy.updateMatrix();
-      crowns.current!.setMatrixAt(i, dummy.matrix);
-      nuts.current!.setMatrixAt(i, dummy.matrix);
-      crowns.current!.setColorAt(i, leafColor.setHSL(0.28 + rand() * 0.05, 0.5 + rand() * 0.15, 0.3 + rand() * 0.08));
-    });
-    for (const m of [trunks, crowns, nuts]) m.current!.instanceMatrix.needsUpdate = true;
-    if (crowns.current!.instanceColor) crowns.current!.instanceColor.needsUpdate = true;
-  }, [palms, world]);
-
-  return (
-    <>
-      <instancedMesh ref={trunks} args={[geo.trunk, mats.trunk, palms.length]} castShadow receiveShadow />
-      <instancedMesh ref={crowns} args={[geo.leaves, mats.leaves, palms.length]} castShadow />
-      <instancedMesh ref={nuts} args={[geo.nuts, mats.nuts, palms.length]} />
-      <RigidBody type="fixed" colliders={false}>
-        {palms.map((palm, i) => (
-          <CylinderCollider key={i} args={[palm.height / 2, 0.3]} position={[palm.x, world.heightAt(palm.x, palm.z) + palm.height / 2, palm.z]} />
-        ))}
-      </RigidBody>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Hang động: va chạm vẫn là khối hộp, phần nhìn thấy là đá lởm chởm phủ ngoài.
 // ---------------------------------------------------------------------------
 
@@ -477,133 +349,6 @@ function Volcano({ room }: { room: IslandRoom }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Trại: lửa bập bùng, tàn lửa bay, vòng đá, khúc gỗ, lều. Thuyền neo ngoài bờ.
-// ---------------------------------------------------------------------------
-
-const EMBERS = 18;
-
-function Campfire() {
-  const ground = heightAt(CAMP.x, CAMP.z);
-  const flames = useRef<Group>(null);
-  const light = useRef<PointLight>(null);
-  const embers = useRef<InstancedMesh>(null);
-  const dummy = useMemo(() => new Object3D(), []);
-  const seeds = useMemo(() => {
-    const rand = mulberry32(31);
-    return Array.from({ length: EMBERS }, () => ({ o: rand(), a: rand() * Math.PI * 2, r: rand() * 0.4 }));
-  }, []);
-
-  useFrame(({ clock }) => {
-    const t = clock.elapsedTime;
-    flames.current?.children.forEach((f, i) => {
-      const k = 1 + Math.sin(t * (9 + i * 2.3) + i) * 0.12 + Math.sin(t * 17 + i * 5) * 0.06;
-      f.scale.set(1, k, 1);
-      f.rotation.y = t * (0.8 + i * 0.3);
-    });
-    if (light.current) light.current.intensity = (14 + Math.sin(t * 11) * 2.5 + Math.sin(t * 23) * 1.5) * (0.5 + sky.night * 1.2);
-    const mesh = embers.current;
-    if (!mesh) return;
-    seeds.forEach((s, i) => {
-      const life = (t * 0.45 + s.o) % 1;
-      dummy.position.set(CAMP.x + Math.cos(s.a + t) * (s.r + life * 0.5), ground + 0.4 + life * 3.2, CAMP.z + Math.sin(s.a + t) * (s.r + life * 0.5));
-      dummy.scale.setScalar(0.05 * (1 - life));
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-  });
-
-  return (
-    <group>
-      <group ref={flames} position={[CAMP.x, ground + 0.15, CAMP.z]}>
-        {[
-          [0, 1.3, 0.55, "#ff8a1f"],
-          [0.18, 0.9, 0.35, "#ffb347"],
-          [-0.16, 0.8, 0.32, "#ffd27a"],
-          [0, 0.55, 0.28, "#fff1c2"],
-        ].map(([x, h, r, c], i) => (
-          <mesh key={i} position={[x as number, (h as number) / 2, 0]}>
-            <coneGeometry args={[r as number, h as number, 6]} />
-            <meshStandardMaterial color={c as string} emissive={c as string} emissiveIntensity={2.6} toneMapped={false} flatShading />
-          </mesh>
-        ))}
-      </group>
-      <pointLight ref={light} position={[CAMP.x, ground + 1.6, CAMP.z]} color="#ffa052" distance={18} castShadow={false} />
-      <instancedMesh ref={embers} args={[undefined, undefined, EMBERS]} frustumCulled={false}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial color="#ffb347" toneMapped={false} />
-      </instancedMesh>
-      {/* Vòng đá quanh lửa. */}
-      {Array.from({ length: 9 }, (_, i) => {
-        const a = (i / 9) * Math.PI * 2;
-        return (
-          <mesh key={i} position={[CAMP.x + Math.cos(a) * 0.95, ground + 0.12, CAMP.z + Math.sin(a) * 0.95]} rotation={[i, i * 2, 0]} castShadow>
-            <dodecahedronGeometry args={[0.22, 0]} />
-            <meshStandardMaterial color="#77716b" flatShading />
-          </mesh>
-        );
-      })}
-      {/* Củi cháy dở chụm giữa. */}
-      {[0, 1, 2].map((i) => (
-        <mesh key={i} position={[CAMP.x, ground + 0.15, CAMP.z]} rotation={[0, (i / 3) * Math.PI, Math.PI / 2 - 0.25]}>
-          <cylinderGeometry args={[0.07, 0.09, 1.2, 5]} />
-          <meshStandardMaterial color="#3a2616" flatShading />
-        </mesh>
-      ))}
-      {/* Khúc gỗ ngồi quanh. */}
-      {[0, 1, 2, 3].map((i) => {
-        const a = (i / 4) * Math.PI * 2 + 0.4;
-        return (
-          <mesh key={i} position={[CAMP.x + Math.cos(a) * 2.4, ground + 0.22, CAMP.z + Math.sin(a) * 2.4]} rotation={[0, -a, Math.PI / 2]} castShadow receiveShadow>
-            <cylinderGeometry args={[0.24, 0.26, 1.8, 7]} />
-            <meshStandardMaterial color="#7a5230" flatShading />
-          </mesh>
-        );
-      })}
-    </group>
-  );
-}
-
-/** Lều chữ A: hai mái nghiêng và hai đầu tam giác, dựng thẳng từ đỉnh (khỏi xoay hình trụ cho rối). */
-function tentGeometry(width: number, height: number, depth: number): BufferGeometry {
-  const w = width / 2;
-  const d = depth / 2;
-  // prettier-ignore
-  const v = [
-    // mái trái
-    -w, 0, -d,   0, height, -d,   0, height, d,
-    -w, 0, -d,   0, height, d,   -w, 0, d,
-    // mái phải
-    w, 0, d,   0, height, d,   0, height, -d,
-    w, 0, d,   0, height, -d,   w, 0, -d,
-    // đầu sau và cửa trước
-    -w, 0, -d,   w, 0, -d,   0, height, -d,
-    w, 0, d,   -w, 0, d,   0, height, d,
-  ];
-  const g = new BufferGeometry();
-  g.setAttribute("position", new BufferAttribute(new Float32Array(v), 3));
-  g.computeVertexNormals();
-  return g;
-}
-
-function Tent({ x, z, rot, color }: { x: number; z: number; rot: number; color: string }) {
-  const y = heightAt(x, z);
-  const geometry = useMemo(() => tentGeometry(2.4, 1.7, 2.8), []);
-  return (
-    <group position={[x, y - 0.05, z]} rotation-y={rot}>
-      <mesh geometry={geometry} castShadow receiveShadow>
-        <meshStandardMaterial color={color} flatShading roughness={0.9} side={DoubleSide} />
-      </mesh>
-      {/* Cửa lều tối màu ở đầu trước. */}
-      <mesh position={[0, 0.45, 1.41]}>
-        <planeGeometry args={[0.7, 0.9]} />
-        <meshStandardMaterial color="#2a1d12" side={DoubleSide} />
-      </mesh>
-    </group>
-  );
-}
-
 function Boat({ room }: { room: IslandRoom }) {
   const hull = useRoomSnapshot(room, (s) => s.hull);
   const boat = useRef<Group>(null);
@@ -663,7 +408,7 @@ export function Island({ room, world }: { room: IslandRoom; world: World }) {
       <WindClock />
       <Terrain world={world} />
       <Water world={world} />
-      <Palms world={world} />
+      <Trees room={room} world={world} />
       <Vegetation world={world} />
       <Structures world={world} />
       <Points room={room} world={world} />
@@ -671,9 +416,7 @@ export function Island({ room, world }: { room: IslandRoom; world: World }) {
       <SeaLife world={world} />
       <Cave />
       <Volcano room={room} />
-      <Campfire />
-      <Tent x={CAMP.x - 7} z={CAMP.z - 4} rot={0.6} color="#c9a36a" />
-      <Tent x={CAMP.x + 7.5} z={CAMP.z - 2} rot={-0.8} color="#7b8f5a" />
+      <Camp room={room} world={world} />
       <Boat room={room} />
     </>
   );

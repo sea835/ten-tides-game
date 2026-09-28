@@ -3121,3 +3121,258 @@ kbd {
   width: 130px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- Đồ cầm tay, đánh nhau, trạng thái ---------- */
+
+/* Thanh đồ nghề giữa đáy màn hình: món đang cầm sáng viền vàng, gợi ý cách dùng nằm ngay trên. */
+.hotbar-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 620px);
+  min-width: 300px;
+  pointer-events: none;
+}
+.hotbar-hint {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(8, 20, 29, 0.55);
+  font-size: 12px;
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.hotbar-hint strong {
+  color: var(--accent-hi);
+}
+.hotbar-hint kbd {
+  height: 16px;
+  min-width: 16px;
+  font-size: 10px;
+}
+.hotbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+.hotbar .slot {
+  width: 58px;
+  height: 44px;
+  padding: 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--raise);
+  border: 1px solid transparent;
+  color: var(--text);
+  font-size: 10.5px;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+}
+.hotbar .slot:hover {
+  background: var(--raise-hover);
+}
+.hotbar .slot.active {
+  border-color: var(--accent);
+  background: rgba(242, 180, 65, 0.16);
+  box-shadow: 0 0 0 2px rgba(242, 180, 65, 0.25);
+}
+.hotbar .slot-name {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.prompt.victim {
+  border-color: var(--danger);
+  color: #ffb3a8;
+  box-shadow:
+    0 0 0 3px rgba(255, 122, 102, 0.25),
+    var(--shadow);
+}
+.prompt.victim svg {
+  color: var(--danger);
+}
+.prompt.build {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 560px;
+  border-radius: 16px;
+  border-color: var(--danger);
+}
+.prompt.build.ok {
+  border-color: var(--success);
+}
+.prompt kbd {
+  height: 20px;
+  min-width: 20px;
+  font-size: 11px;
+}
+.prompt-text {
+  white-space: nowrap;
+}
+.prompt-text kbd + kbd {
+  margin-left: 3px;
+}
+
+/* Chữ tượng thanh bay lên khi đánh trúng, chặt cây, săn thú: to, nghiêng, viền đen kiểu truyện tranh. */
+.fx-word {
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  text-align: center;
+  font-family: "Bangers", "Impact", system-ui, sans-serif;
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: 1px;
+  color: #ffe066;
+  -webkit-text-stroke: 1.5px #2a1405;
+  text-shadow:
+    2px 3px 0 #2a1405,
+    0 0 14px rgba(255, 200, 80, 0.45);
+  animation: fx-pop 1.25s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}
+.fx-word small {
+  display: block;
+  margin-top: -4px;
+  font-size: 20px;
+  color: #ff5a4a;
+  -webkit-text-stroke: 1px #2a0505;
+}
+.fx-word.kill {
+  font-size: 40px;
+  color: #ff3b3b;
+}
+.fx-word.chop {
+  color: #f0c27a;
+}
+.fx-word.miss {
+  font-size: 22px;
+  color: #d8e2e8;
+}
+.fx-word.eat {
+  font-size: 24px;
+  color: #9ef07a;
+}
+.fx-word.build {
+  color: #ffd27a;
+}
+.fx-word.splash {
+  color: #aee8ff;
+}
+.fx-word.poof {
+  color: #ffffff;
+}
+@keyframes fx-pop {
+  0% {
+    transform: translateY(0) scale(0.4) rotate(-14deg);
+    opacity: 1;
+  }
+  15% {
+    transform: translateY(-14px) scale(1.25) rotate(-6deg);
+    opacity: 1;
+  }
+  35% {
+    transform: translateY(-24px) scale(1) rotate(-4deg);
+  }
+  100% {
+    transform: translateY(-70px) scale(0.9) rotate(3deg);
+    opacity: 0;
+  }
+}
+
+/* Mù: tối sầm, chỉ còn khe sáng nhỏ giữa màn hình. Chóng mặt: viền nhoè tím lảo đảo. Choáng: sao bay. */
+.status-blind {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.55) 0%, #000 42%);
+  transition: opacity 0.5s ease;
+}
+.status-dizzy {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(140, 90, 220, 0.32) 78%);
+  animation: dizzy-wobble 2.2s ease-in-out infinite;
+}
+@keyframes dizzy-wobble {
+  0%,
+  100% {
+    transform: rotate(-3deg) scale(1.02);
+  }
+  50% {
+    transform: rotate(3deg) scale(1.06);
+  }
+}
+.status-stun {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 30px;
+  color: #ffe066;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.status-stun span {
+  animation: stun-orbit 0.9s linear infinite;
+}
+.status-stun span:nth-child(2) {
+  animation-delay: -0.3s;
+}
+.status-stun span:nth-child(3) {
+  animation-delay: -0.6s;
+}
+.status-stun em {
+  font-style: normal;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+@keyframes stun-orbit {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-10px) rotate(180deg) scale(0.7);
+  }
+  100% {
+    transform: translateY(0) rotate(360deg) scale(1);
+  }
+}
+
+@media (max-width: 1100px) {
+  .hotbar-wrap {
+    max-width: calc(100vw - 32px);
+    bottom: 200px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-dizzy,
+  .status-stun span {
+    animation: none;
+  }
+}

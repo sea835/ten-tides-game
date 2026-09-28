@@ -18,6 +18,7 @@ import {
   ROLE_NIGHT_ACTIONS,
   SABOTAGE_DAMAGE,
   SABOTAGE_GUARDED,
+  SHELTER_MORALE,
   SIGNAL_SEEN_CHANCE,
   SLEEP_MORALE,
   STARVING_DAMAGE,
@@ -277,6 +278,13 @@ export function resolveNight(state: GameState, config: GameConfig) {
     const amount = Math.min(100 - state.hull, work);
     state.hull += amount;
     if (amount > 0) effects.push({ type: "repair", amount });
+  }
+  // Đủ chỗ ngủ có mái che cho cả trại thì ai cũng ngủ ngon hơn.
+  if (campers.length > 0 && state.shelter >= campers.length) {
+    for (const id of campers) {
+      const p = state.players[id]!;
+      p.morale = clamp(p.morale + SHELTER_MORALE, 0, 100);
+    }
   }
   for (const id of doing("sleep")) {
     const p = state.players[id]!;

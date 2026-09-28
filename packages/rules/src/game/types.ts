@@ -89,6 +89,9 @@ export const INCIDENT_CHANCE = 0.35;
 /** Tín hiệu của cướp biển đôi khi để lại dấu vết mà cả trại thấy. */
 export const SIGNAL_SEEN_CHANCE = 0.25;
 
+/** Đủ chỗ ngủ có mái che cho mọi người quanh đống lửa thì ai cũng thêm chừng này Tinh thần mỗi đêm. */
+export const SHELTER_MORALE = 5;
+
 // ---------- Kho báu & thuyền ----------
 
 /** Tiến độ kho báu đạt mức này thì biết chính xác chỗ đào. */
@@ -188,7 +191,7 @@ export interface EncounterEffects {
   gainItem?: string;
 }
 
-export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning"] as const;
+export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning", "attack", "fall", "hunt"] as const;
 export type EncounterSource = (typeof ENCOUNTER_SOURCES)[number];
 /** Giới hạn mỗi hệ quả của một lần chạm trán, phòng server tính nhầm. */
 export const ENCOUNTER_EFFECT_LIMIT = 60;
@@ -249,7 +252,8 @@ export type LogEntry =
       /** Né được bẫy: không chịu hệ quả nào. */
       dodged: boolean;
     }
-  | { kind: "departure"; day: number; aboard: string[]; leftBehind: string[]; hull: number; withTreasure: boolean };
+  | { kind: "departure"; day: number; aboard: string[]; leftBehind: string[]; hull: number; withTreasure: boolean }
+  | { kind: "build"; day: number; playerId: string; building: string };
 
 export interface GameState {
   seed: number;
@@ -289,6 +293,10 @@ export interface GameState {
 
   /** Easter egg đã tìm thấy, điểm bất thường đã chạm, bẫy đã sập (theo id trên bản đồ). */
   discovered: string[];
+  /** Kẻ phản bội kết liễu ai, ngày nào. Bí mật: chỉ lộ ở màn lật bài. */
+  kills: { day: number; by: string; target: string }[];
+  /** Số chỗ ngủ có mái che ở trại (chòi, nhà sàn đã dựng). */
+  shelter: number;
 
   /** Cửa hàng của ván này (một bộ đồ ngẫu nhiên theo seed). */
   shop: string[];
@@ -339,6 +347,16 @@ export type GameAction =
    * Server đã kiểm tra vị trí và tính hệ quả từ danh mục thế giới. `once`: thứ chỉ dùng được một lần
    * trong ván (easter egg, điểm bất thường, bẫy), engine từ chối nếu đã có người dùng.
    */
+  /** Thả (đặt xuống đất hoặc ném đi) một món trong balo. Server lo chỗ món đó rơi xuống. */
+  | { type: "drop"; playerId: string; uid: string }
+  /** Nhặt một món dưới đất (hoặc rơi ra từ thú, cây) vào balo; balo đầy thì không nhặt được. */
+  | { type: "pickup"; playerId: string; itemId: string }
+  /** Ăn, uống hoặc dùng ngay một món có tác dụng. */
+  | { type: "consume"; playerId: string; uid: string }
+  /** Kẻ phản bội kết liễu một người đứng sát bên, mỗi ngày một lần. Server đã kiểm tra khoảng cách. */
+  | { type: "assassinate"; playerId: string; target: string }
+  /** Dựng công trình ở trại: tiêu vật liệu trong balo, thêm chỗ ngủ có mái che. */
+  | { type: "build"; playerId: string; building: string; cost: Record<string, number>; shelter: number }
   | {
       type: "encounter";
       playerId: string;

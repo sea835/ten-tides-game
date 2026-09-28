@@ -32,6 +32,7 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
   const avatar = useRef<Group>(null);
   const [connected, setConnected] = useState(player.connected);
   const [alive, setAlive] = useState(player.alive);
+  const [held, setHeld] = useState(player.held);
   // Ngồi trong lõi đám cỏ cao là đang nấp: giấu bảng tên (bản đồ nhỏ cũng giấu chấm).
   const [pose, setPose] = useState<"stand" | "sit" | "hidden">("stand");
   const bubble = useBubble(id);
@@ -51,13 +52,14 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
     }
     if (player.connected !== connected) setConnected(player.connected);
     if (player.alive !== alive) setAlive(player.alive);
+    if (player.held !== held) setHeld(player.held);
     const nextPose = !player.sitting ? "stand" : world.inTallGrass(player.x, player.z) ? "hidden" : "sit";
     if (nextPose !== pose) setPose(nextPose);
   });
 
   return (
     <group ref={root} position={[player.x, player.y, player.z]}>
-      <Character ref={avatar} color={player.color} opacity={alive && connected ? 1 : 0.35} carrying={carrying} motion={() => player} />
+      <Character ref={avatar} color={player.color} opacity={alive && connected ? 1 : 0.35} carrying={carrying} held={alive ? held : ""} motion={() => player} />
       {bubble && (
         <Html position={[0, 2.9, 0]} center zIndexRange={[5, 0]} className="bubble" style={{ "--c": player.color } as CSSProperties}>
           {bubble}

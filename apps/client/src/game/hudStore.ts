@@ -5,7 +5,8 @@ import type { ZoneId } from "@tentides/rules";
 
 export interface NearTarget {
   id: string;
-  kind: "poi" | "creature";
+  /** poi: easter egg, điểm bất thường · creature: thú thân thiện · item: đồ dưới đất · tree: leo cây · camp: nhổ trại. */
+  kind: "poi" | "creature" | "item" | "tree" | "camp";
   label: string;
 }
 
@@ -27,6 +28,14 @@ interface HudState {
   /** Đang ngồi; `hidden` là ngồi trong lõi đám cỏ cao, người khác không thấy tên và chấm trên bản đồ. */
   sitting: boolean;
   hidden: boolean;
+  /** Đang leo cây. */
+  climbing: boolean;
+  /** Kẻ phản bội đứng sát sau lưng ai đó: nhấn F để kết liễu. */
+  victim: { id: string; name: string } | null;
+  /** Chế độ dựng nhà: đang chọn công trình nào (rỗng là không dựng). */
+  build: string;
+  /** Chỗ dựng hợp lệ không (bóng xanh hay đỏ). */
+  buildOk: boolean;
 }
 
 let state: HudState = {
@@ -40,6 +49,10 @@ let state: HudState = {
   atDigSite: false,
   sitting: false,
   hidden: false,
+  climbing: false,
+  victim: null,
+  build: "",
+  buildOk: false,
 };
 const listeners = new Set<() => void>();
 
@@ -49,7 +62,10 @@ export function getHud(): HudState {
 
 export function setHud(patch: Partial<HudState>) {
   const next = { ...state, ...patch };
-  const same = (k: keyof HudState) => next[k] === state[k] || (k === "nearTarget" && next.nearTarget?.id === state.nearTarget?.id);
+  const same = (k: keyof HudState) =>
+    next[k] === state[k] ||
+    (k === "nearTarget" && next.nearTarget?.id === state.nearTarget?.id && next.nearTarget?.label === state.nearTarget?.label) ||
+    (k === "victim" && next.victim?.id === state.victim?.id);
   if ((Object.keys(next) as (keyof HudState)[]).every(same)) return;
   state = next;
   listeners.forEach((l) => l());

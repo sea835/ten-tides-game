@@ -90,6 +90,10 @@ function toLogEntry(entry: LogEntry): LogEntryState {
         out.effects.push(effect);
       }
       break;
+    case "build":
+      out.playerId = entry.playerId;
+      out.building = entry.building;
+      break;
     case "departure":
       out.players.push(...entry.aboard);
       out.others.push(...entry.leftBehind);
@@ -189,6 +193,15 @@ export function syncState(target: IslandState, game: GameState) {
         loot.itemId = itemId;
         reveal.loot.push(loot);
       }
+    }
+    // Những lần kẻ phản bội kết liễu, chỉ lộ ở màn lật bài.
+    for (const k of game.kills) {
+      const record = new NightRecordState();
+      record.day = k.day;
+      record.playerId = k.by;
+      record.action = "assassinate";
+      record.target = k.target;
+      reveal.nights.push(record);
     }
     for (const n of game.nightHistory) {
       const record = new NightRecordState();

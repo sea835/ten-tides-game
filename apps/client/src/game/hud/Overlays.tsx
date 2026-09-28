@@ -1,6 +1,27 @@
 import { useEffect, useState } from "react";
-import { Armchair, Ban, Check, ChevronDown, Copy, EyeOff, Gem, Hand, Keyboard, LogOut, Pause, Search, Shovel, Skull, Sparkles, TriangleAlert } from "lucide-react";
-import { ENDING_LABELS, NIGHT_ACTION_LABELS, ROLE_LABELS, content } from "@tentides/content";
+import {
+  Armchair,
+  Ban,
+  Check,
+  ChevronDown,
+  Copy,
+  EyeOff,
+  Flame,
+  Gem,
+  Hammer,
+  Hand,
+  Keyboard,
+  LogOut,
+  Package,
+  Pause,
+  Search,
+  Shovel,
+  Skull,
+  Sparkles,
+  TreePalm,
+  TriangleAlert,
+} from "lucide-react";
+import { ENDING_LABELS, NIGHT_ACTION_LABELS, ROLE_LABELS, content, worldCatalog } from "@tentides/content";
 import { Messages, type EncounterMessage, type RejectedMessage } from "@tentides/protocol";
 import { DIG_ITEM, type EndingId, type NightActionId, type RoleId, type Winner } from "@tentides/rules";
 import { itemName } from "./format.ts";
@@ -10,12 +31,63 @@ import { useHud } from "../hudStore.ts";
 import { isTyping } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { localEnv } from "../shared.ts";
+import { usePrivate } from "../privateStore.ts";
 import { Avatar } from "./ui.tsx";
 
+const TARGET_ICON = { poi: Search, creature: Hand, item: Package, tree: TreePalm, camp: Flame } as const;
+
+/** Đang chọn chỗ dựng nhà: tên công trình, vật liệu cần (có đủ chưa), chỗ này dựng được không. */
+function BuildPrompt({ kind, ok }: { kind: string; ok: boolean }) {
+  const view = usePrivate();
+  const def = worldCatalog.buildings.get(kind);
+  if (!def) return null;
+  const have = (id: string) => (view?.bag ?? []).filter((b) => b.itemId === id).length;
+  const enough = Object.entries(def.cost).every(([id, n]) => have(id) >= n);
+  return (
+    <div className={ok && enough ? "prompt build ok" : "prompt build"}>
+      <Hammer size={16} aria-hidden />
+      <strong>{def.name}</strong>
+      <span className="hint">
+        {Object.entries(def.cost)
+          .map(([id, n]) => `${itemName(id)} ${have(id)}/${n}`)
+          .join(" · ")}
+        {def.shelter > 0 && ` · ngủ ${def.shelter} người`}
+      </span>
+      <span className="hint prompt-text">
+        {!ok ? "Không dựng được ở đây (quá xa lửa trại, vướng cây hay nhà khác)" : !enough ? "Thiếu vật liệu" : "Chuột trái: dựng"} · lăn chuột: xoay · <kbd>V</kbd> đổi ·{" "}
+        <kbd>Esc</kbd> thôi
+      </span>
+    </div>
+  );
+}
+
 export function InteractPrompt({ room }: { room: IslandRoom }) {
-  const { nearAnchor, atDigSite, nearTarget } = useHud();
+  const { nearAnchor, atDigSite, nearTarget, climbing, victim, build, buildOk } = useHud();
   const cardId = useRoomSnapshot(room, (s) => (nearAnchor ? (s.anchors.get(nearAnchor)?.cardId ?? null) : null));
   const hasShovel = useRoomSnapshot(room, (s) => [...(s.players.get(myId(room))?.items ?? [])].includes(DIG_ITEM));
+  if (build) return <BuildPrompt kind={build} ok={buildOk} />;
+  if (climbing) {
+    return (
+      <div className="prompt">
+        <TreePalm size={16} aria-hidden />
+        <span className="prompt-text">
+          Leo cây · <kbd>W</kbd>
+          <kbd>S</kbd> lên xuống · <kbd>A</kbd>
+          <kbd>D</kbd> vòng quanh · <kbd>Space</kbd> nhảy · <kbd>E</kbd> buông
+        </span>
+      </div>
+    );
+  }
+  if (victim) {
+    return (
+      <div className="prompt victim">
+        <kbd>F</kbd>
+        <Skull size={16} aria-hidden />
+        Kết liễu {victim.name}
+        <span className="hint"> · một lần mỗi ngày, không ai biết là bạn</span>
+      </div>
+    );
+  }
   if (atDigSite) {
     return (
       <div className={hasShovel ? "prompt treasure" : "prompt"}>
@@ -29,7 +101,10 @@ export function InteractPrompt({ room }: { room: IslandRoom }) {
     return (
       <div className="prompt">
         <kbd>E</kbd>
-        {nearTarget.kind === "creature" ? <Hand size={16} aria-hidden /> : <Search size={16} aria-hidden />}
+        {(() => {
+          const Icon = TARGET_ICON[nearTarget.kind];
+          return <Icon size={16} aria-hidden />;
+        })()}
         {nearTarget.label}
       </div>
     );
@@ -182,7 +257,12 @@ const KEYS: [string, string][] = [
   ["Shift", "Chạy"],
   ["Space", "Nhảy · ngoi lên"],
   ["C", "Ngồi · giữ để lặn"],
-  ["E", "Sự kiện · đào · xem xét"],
+  ["E", "Sự kiện · đào · nhặt · leo cây"],
+  ["Chuột trái", "Đánh · chặt · ăn · trồng"],
+  ["Giữ chuột phải", "Ném món đang cầm"],
+  ["Q · lăn chuột", "Đổi món cầm"],
+  ["X", "Đặt đồ xuống"],
+  ["V", "Dựng nhà"],
   ["B", "Xem balo"],
   ["J", "Sổ truyện"],
   ["Enter", "Chat"],
@@ -252,7 +332,7 @@ const WINNER_TEXT: Record<Winner, string> = {
   none: "Không ai thắng",
 };
 
-const TRAITOR_ACTIONS = new Set(["sabotage", "signal", "forge", "pocket"]);
+const TRAITOR_ACTIONS = new Set(["sabotage", "signal", "forge", "pocket", "assassinate"]);
 
 /** Màn lật bài: kết thúc, vai của mọi người, hành động từng đêm, đồ bỏ túi. Khoảnh khắc "hoá ra là mày!". */
 export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
@@ -353,7 +433,7 @@ export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => 
                       .filter((n) => n.day === d)
                       .map((n, i) => (
                         <div key={i} className={TRAITOR_ACTIONS.has(n.action) ? "traitor-act" : ""}>
-                          {end.players.find((p) => p.id === n.who)?.name}: {NIGHT_ACTION_LABELS[n.action]?.title ?? n.action}
+                          {end.players.find((p) => p.id === n.who)?.name}: {n.action === ("assassinate" as NightActionId) ? "Kết liễu giữa ban ngày" : (NIGHT_ACTION_LABELS[n.action]?.title ?? n.action)}
                           {n.target && ` → ${n.target}`}
                         </div>
                       ))}

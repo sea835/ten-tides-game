@@ -47,6 +47,13 @@ export const EffectsSchema = z
   .partial()
   .strict();
 
+/** Hiệu ứng thời gian thực (giây): choáng (đứng hình), chóng mặt (đi loạng choạng), mù (tối sầm mắt). */
+export const StatusSchema = z
+  .object({ stun: z.number().positive().max(6), dizzy: z.number().positive().max(12), blind: z.number().positive().max(10) })
+  .partial()
+  .strict();
+export type StatusEffects = z.infer<typeof StatusSchema>;
+
 /** Thái độ: thân thiện (lại gần được, tương tác được), trung tính (lảng tránh), nguy hiểm (tấn công khi tới gần). */
 export const TEMPERS = ["friendly", "neutral", "hostile"] as const;
 export type Temper = (typeof TEMPERS)[number];
@@ -74,14 +81,33 @@ export const CreatureSchema = z.object({
   /** Bán kính phát hiện người chơi: nguy hiểm thì lao tới, trung tính thì bỏ chạy. */
   aggro: z.number().positive().optional(),
   chaseSpeed: z.number().positive().optional(),
-  attack: z.object({ effects: EffectsSchema, cooldown: z.number().positive() }).optional(),
+  attack: z.object({ effects: EffectsSchema, cooldown: z.number().positive(), status: StatusSchema.optional() }).optional(),
   /** Người mang một trong những món này thì bị cắn nhẹ hơn và con vật bỏ chạy lâu hơn. */
   deterredBy: z.array(id).optional(),
   /** Sinh vật thân thiện: nhấn E để vuốt ve, mỗi người mỗi con một lần mỗi ngày. */
   interact: z.object({ effects: EffectsSchema, text: z.string().min(1) }).optional(),
   blurb: z.string().min(1),
+  /** Máu: hết thì chết, rơi đồ. */
+  hp: z.int().positive(),
+  /** Đồ rơi ra khi chết, mỗi món một cơ hội riêng. */
+  drops: z.array(z.object({ item: id, chance: z.number().min(0).max(1) })),
+  /** climb: trèo lên cây trốn · fly: bay vút lên · dive: lặn sâu xuống đáy. */
+  abilities: z.array(z.enum(["climb", "fly", "dive"])),
 });
 export type Creature = z.infer<typeof CreatureSchema>;
+
+export const BuildingSchema = z.object({
+  id,
+  name: z.string().min(1),
+  /** Vật liệu cần (id đồ → số lượng). */
+  cost: z.record(id, z.int().positive()),
+  /** Ngủ được bao nhiêu người. */
+  shelter: z.int().min(0),
+  /** Kích thước nền (ngang, sâu), mét. */
+  size: z.tuple([z.number().positive(), z.number().positive()]),
+  blurb: z.string().min(1),
+});
+export type BuildingDef = z.infer<typeof BuildingSchema>;
 
 export const PoiSchema = z.object({
   id,
@@ -115,6 +141,7 @@ export const WorldCatalogSchema = z.object({
   creatures: z.array(CreatureSchema).min(1),
   pois: z.array(PoiSchema).min(1),
   traps: z.array(TrapSchema).min(1),
+  buildings: z.array(BuildingSchema).min(1),
   names: z.object({
     islets: z.array(z.string().min(1)).min(8),
     caves: z.array(z.string().min(1)).min(4),
@@ -124,6 +151,7 @@ export const WorldCatalogSchema = z.object({
 
 export interface WorldCatalog {
   creatures: ReadonlyMap<string, Creature>;
+  buildings: ReadonlyMap<string, BuildingDef>;
   pois: ReadonlyMap<string, PoiDef>;
   traps: ReadonlyMap<string, TrapDef>;
   names: { islets: readonly string[]; caves: readonly string[]; mines: readonly string[] };
@@ -154,6 +182,10 @@ export function loadWorldCatalog(raw: unknown, itemIds: ReadonlySet<string>): Wo
     for (const item of c.deterredBy ?? []) if (!itemIds.has(item)) throw new Error(`Sinh vật ${c.id}: tham chiếu đồ không tồn tại "${item}"`);
     checkItems(`Sinh vật ${c.id}`, c.attack?.effects);
     checkItems(`Sinh vật ${c.id}`, c.interact?.effects);
+    for (const d of c.drops) if (!itemIds.has(d.item)) throw new Error(`Sinh vật ${c.id}: rơi ra đồ không tồn tại "${d.item}"`);
+  }
+  for (const b of data.buildings) {
+    for (const item of Object.keys(b.cost)) if (!itemIds.has(item)) throw new Error(`Công trình ${b.id}: vật liệu không tồn tại "${item}"`);
   }
   for (const p of data.pois) {
     if (p.kind === "egg" && (!p.effects || !p.text)) throw new Error(`Easter egg ${p.id}: thiếu hệ quả hoặc lời kể`);
@@ -164,6 +196,7 @@ export function loadWorldCatalog(raw: unknown, itemIds: ReadonlySet<string>): Wo
   for (const t of data.traps) checkItems(`Bẫy ${t.id}`, t.effects);
   return {
     creatures: index("Sinh vật", data.creatures),
+    buildings: index("Công trình", data.buildings),
     pois: index("Điểm bí mật", data.pois),
     traps: index("Bẫy", data.traps),
     names: data.names,

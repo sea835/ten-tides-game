@@ -8,6 +8,7 @@ import { CharacterCreator } from "./CharacterCreator.tsx";
 import { PhaseClock, PhaseSplash } from "./Clock.tsx";
 import { EventCard } from "./EventCard.tsx";
 import { Feed } from "./Feed.tsx";
+import { Hotbar, StatusOverlay } from "./Hands.tsx";
 import { EncounterToast, EndScreen, EnvironmentOverlay, InteractPrompt, KeyHints, PausedOverlay, PostureBadge, Toast } from "./Overlays.tsx";
 import { PhaseBanner } from "./PhaseBanner.tsx";
 import { RoomPanel } from "./RoomPanel.tsx";
@@ -25,6 +26,7 @@ export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }
   return (
     <div className={`hud phase-${phase}`}>
       {!fullscreen && <EnvironmentOverlay room={room} />}
+      {!fullscreen && <StatusOverlay room={room} />}
       {!fullscreen && (
         <>
           <RoomPanel room={room} onLeave={onLeave} />
@@ -35,6 +37,7 @@ export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }
           <Feed room={room} />
           <KeyHints />
           <InteractPrompt room={room} />
+          <Hotbar room={room} />
           <PostureBadge />
           <EventCard room={room} />
           <Campfire room={room} />

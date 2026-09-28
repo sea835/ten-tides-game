@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ANCHORS, CAMP, CAVE, LAKE, MAP_HALF_SIZE, TREASURE_SITES, VOLCANO, isletEdge, shoreRadius, structureToWorld, worldCatalog, type World } from "@tentides/content";
+import { ANCHORS, CAVE, LAKE, MAP_HALF_SIZE, TREASURE_SITES, VOLCANO, isletEdge, shoreRadius, structureToWorld, worldCatalog, type World } from "@tentides/content";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { useWorld } from "../world.ts";
@@ -39,6 +39,7 @@ export function Minimap({ room }: { room: IslandRoom }) {
   );
   const view = useRoomSnapshot(room, (s) => ({
     site: s.treasureSite && !s.treasureDug ? s.treasureSite : "",
+    camp: s.campPacked ? null : { x: Math.round(s.campX), z: Math.round(s.campZ) },
     // Làm tròn vị trí để bản đồ chỉ vẽ lại khi ai đó đi được một đoạn.
     // Người khác đang ngồi nấp trong cỏ cao thì không hiện chấm.
     players: [...s.players.entries()]
@@ -82,7 +83,7 @@ export function Minimap({ room }: { room: IslandRoom }) {
           {s.kind === "cave" ? <polygon points="-7,5 0,-7 7,5" className="mm-cave" /> : <rect x={-5} y={-5} width={10} height={10} className="mm-mine" />}
         </g>
       ))}
-      <circle cx={CAMP.x} cy={CAMP.z} r={6} className="mm-camp" />
+      {view.camp && <circle cx={view.camp.x} cy={view.camp.z} r={6} className="mm-camp" />}
       {world.pois
         .filter((p) => found.has(p.id))
         .map((p) => (

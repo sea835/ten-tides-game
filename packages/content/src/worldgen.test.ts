@@ -95,6 +95,19 @@ describe("worldgen", () => {
     }
   });
 
+  it("cây leo được, chặt được: id không trùng, mọc trên đất liền, không đè lên hang hay trại", () => {
+    for (const seed of SEEDS.slice(0, 20)) {
+      const w = generateWorld(seed);
+      expect(w.trees.filter((t) => t.kind === "broadleaf").length).toBeGreaterThan(20);
+      expect(new Set(w.trees.map((t) => t.id)).size).toBe(w.trees.length);
+      for (const t of w.trees) {
+        expect(w.heightAt(t.x, t.z), `${seed} ${t.id}`).toBeGreaterThan(0.3);
+        expect(w.structureAt(t.x, t.z)).toBeNull();
+        expect(Math.hypot(t.x - CAMP.x, t.z - CAMP.z)).toBeGreaterThan(8);
+      }
+    }
+  });
+
   it("bẫy theo seed bí mật: đổi seed bí mật thì đổi chỗ, không nằm trong trại", () => {
     const w = generateWorld(99);
     const a = generateTraps(w, 1);
@@ -109,11 +122,19 @@ describe("worldgen", () => {
   });
 
   it("danh mục báo lỗi khi tham chiếu đồ không có thật", () => {
-    const raw = JSON.parse(JSON.stringify({ ...worldCatalog, creatures: [...worldCatalog.creatures.values()], pois: [...worldCatalog.pois.values()], traps: [...worldCatalog.traps.values()] }));
+    const raw = JSON.parse(
+      JSON.stringify({
+        ...worldCatalog,
+        creatures: [...worldCatalog.creatures.values()],
+        pois: [...worldCatalog.pois.values()],
+        traps: [...worldCatalog.traps.values()],
+        buildings: [...worldCatalog.buildings.values()],
+      }),
+    );
     raw.pois[0].effects = { gainItem: "unicorn" };
     raw.pois[0].kind = "egg";
     raw.pois[0].text = "x";
-    const items = new Set(["rope", "machete", "flintlock", "torch", "lantern", "spyglass", "compass", "gunpowder", "matches", "amulet"]);
+    const items = new Set(["rope", "machete", "flintlock", "torch", "lantern", "spyglass", "compass", "gunpowder", "matches", "amulet", "raw_meat", "feather", "coconut", "hide", "bone", "ink_sac", "fish", "crystal_shard", "wood"]);
     expect(() => loadWorldCatalog(raw, items)).toThrow(/unicorn/);
   });
 });
