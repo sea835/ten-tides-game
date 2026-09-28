@@ -28,6 +28,7 @@ import {
   ChatMessage,
   ChooseMessage,
   EVENT_TIMEOUT_SECONDS,
+  AwardState,
   ChronicleState,
   CreatureState,
   INTERACT_RADIUS,
@@ -52,6 +53,7 @@ import {
   type ChatBroadcast,
   type ChatChannel,
   type CorrectMessage,
+  type FxMessage,
   type EncounterMessage,
   type RejectedMessage,
   type TimedPhase,
@@ -70,7 +72,8 @@ import {
   type GameAction,
   type GameState,
 } from "@tentides/rules";
-import { chronicle, createPremise, narrateDawn, narrateDusk, narratePrivate, type Premise, type StoryContext } from "@tentides/story";
+import { chronicle, createPremise, diaryPage, narrateDawn, narrateDusk, narratePrivate, type Premise, type StoryContext } from "@tentides/story";
+import { computeAwards } from "./awards.ts";
 import { GameLogWriter, type GameLogFile } from "./gameLog.ts";
 import { Hazards, type HazardEvent } from "./hazards.ts";
 import { playerIdFromToken } from "./identity.ts";
@@ -85,6 +88,8 @@ const RECONNECT_SECONDS = 60;
 const REALTIME_STEP_MS = 100;
 /** Sai số khoảng cách khi mở thẻ: vị trí trên server trễ hơn client một chút. */
 const TRIGGER_TOLERANCE = 1.5;
+/** Mỗi trang nhật ký nhặt được thêm chừng này tiến độ kho báu. */
+const PAGE_TREASURE = 4;
 /** Co giãn thời lượng các pha khi dev, vd. PHASE_SCALE=0.1 để một ngày chỉ còn 30 giây. */
 const PHASE_SCALE = Number(process.env.PHASE_SCALE ?? 1);
 
@@ -314,6 +319,21 @@ export class IslandRoom extends Room<{ state: IslandState }> {
         const outcome = def.outcomes?.[poi.outcome];
         const effects = outcome?.effects ?? def.effects ?? {};
         this.encounter(id, poi.kind, poi.id, def.id, effects, { once: true }, { title: def.name, text: outcome?.text ?? def.text ?? "" }, client);
+        return;
+      }
+      // Trang nhật ký của người xưa: chỉ hiện đúng ngày của nó; nhặt được thì thêm manh mối và ghi vào sổ truyện riêng.
+      const page = this.world.pages.find((p) => p.id === targetId);
+      if (page) {
+        const ctx = this.storyContext();
+        if (page.day !== this.game.day || !ctx) return this.reject(client, "Ở đây chẳng có gì cả.");
+        if (!near(page.x, page.y, page.z)) return this.reject(client, "Hãy lại gần hơn.");
+        if (this.game.discovered.includes(page.id)) return this.reject(client, "Đã có người nhặt trang này rồi.");
+        const { title, text } = diaryPage(ctx, page.day);
+        if (this.encounter(id, "page", page.id, "diary_page", { treasure: PAGE_TREASURE }, { once: true }, { title, text }, client)) {
+          this.privateStory.set(id, [...(this.privateStory.get(id) ?? []), { day: this.game.day, text: `${title}. ${text}` }]);
+          this.sendPrivate();
+          this.broadcast(Messages.fx, { kind: "page", x: page.x, y: page.y + 1, z: page.z, word: "SỘT SOẠT" } satisfies FxMessage);
+        }
         return;
       }
       const creature = this.wildlife.active(this.game.day).find((c) => c.id === targetId);
@@ -695,9 +715,11 @@ export class IslandRoom extends Room<{ state: IslandState }> {
    * hoàng hôn và lúc kết thúc, bộ sinh trộn tổ hợp đó với sự thật engine đã ghi để viết lời kể.
    */
   private tellStory(phase: string) {
-    if (phase === "create") this.premise = createPremise(this.game.seed, this.game.playerOrder, storyLibrary);
-    if (!this.premise) return;
-    const ctx: StoryContext = { seed: this.game.seed, premise: this.premise, library: storyLibrary, state: this.game, config: gameConfig };
+    if (phase === "create") {
+      this.premise = createPremise(this.game.seed, this.game.playerOrder, storyLibrary, { id: this.game.twist, player: this.game.twistPlayer });
+    }
+    const ctx = this.storyContext();
+    if (!ctx) return;
     const day = this.game.day;
     const publish = (kind: string, lines: string[]) => {
       const line = new StoryLineState();
@@ -716,12 +738,26 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     }
     if (phase === "night" || phase === "ended") publish("dusk", narrateDusk(ctx, day));
     if (phase === "ended") {
-      const c = chronicle(ctx);
+      const awards = computeAwards(this.game, this.playCtl.feats);
+      this.state.reveal.awards.clear();
+      for (const a of awards) {
+        const award = new AwardState();
+        award.playerId = a.playerId;
+        award.title = a.title;
+        award.detail = a.detail;
+        this.state.reveal.awards.push(award);
+      }
+      const c = chronicle(ctx, awards);
       const target = new ChronicleState();
       target.title = c.title;
       target.paragraphs.push(...c.paragraphs);
       this.state.chronicle = target;
     }
+  }
+
+  private storyContext(): StoryContext | null {
+    if (!this.premise) return null;
+    return { seed: this.game.seed, premise: this.premise, library: storyLibrary, state: this.game, config: gameConfig };
   }
 
   /** Ai cần bấm sẵn sàng: lúc chuẩn bị và bình minh là mọi người còn sống; ban đêm là người quanh đống lửa. */

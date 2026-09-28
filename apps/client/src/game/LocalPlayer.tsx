@@ -21,6 +21,7 @@ import { myId, type IslandRoom } from "../net.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { getHud, setHud, type NearTarget } from "./hudStore.ts";
 import { isTyping, keys, look } from "./input.ts";
+import { getHands } from "./handsStore.ts";
 import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
@@ -158,6 +159,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       else if (nearTarget?.kind === "item") room.send(Messages.pickup, { id: nearTarget.id });
       else if (nearTarget?.kind === "tree") room.send(Messages.climb, { treeId: nearTarget.id });
       else if (nearTarget?.kind === "camp") room.send(Messages.packCamp);
+      else if (nearTarget?.kind === "campfire") room.send(Messages.campfire);
       else if (nearTarget) room.send(Messages.interact, { targetId: nearTarget.id });
     };
     window.addEventListener("keydown", onKey);
@@ -492,9 +494,18 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
     }
   }
   if (best) return best;
-  // Lửa trại lúc sáng sớm hay ban ngày: nhổ trại vác đi chỗ khác.
-  if (!state.campPacked && state.phase !== "dusk" && Math.hypot(state.campX - x, state.campZ - z) <= 3.5) {
-    return { id: "camp", kind: "camp", label: "Nhổ lửa trại mang đi" };
+  // Trang nhật ký của hôm nay, chưa ai nhặt.
+  for (const page of world.pages) {
+    if (page.day !== state.day || found.has(page.id) || Math.abs(page.y - y) > 3) continue;
+    if (Math.hypot(page.x - x, page.z - z) <= INTERACT_RADIUS) return { id: page.id, kind: "page", label: "Nhặt trang nhật ký" };
+  }
+  // Cạnh lửa trại: đang cầm đồ ăn thì nướng hoặc góp vào kho; sáng sớm hay ban ngày thì nhổ trại vác đi chỗ khác.
+  if (!state.campPacked && Math.hypot(state.campX - x, state.campZ - z) <= CAMPFIRE_REACH) {
+    const held = getPrivate()?.bag.find((b) => b.uid === getHands());
+    const def = held && content.items.get(held.itemId);
+    if (def?.cook) return { id: "campfire", kind: "campfire", label: `Nướng ${def.name.toLowerCase()}` };
+    if (def?.ration) return { id: "campfire", kind: "campfire", label: `Góp ${def.name.toLowerCase()} vào kho (+${def.ration} khẩu phần)` };
+    if (state.phase !== "dusk" && Math.hypot(state.campX - x, state.campZ - z) <= 3.5) return { id: "camp", kind: "camp", label: "Nhổ lửa trại mang đi" };
   }
   // Cây đủ lớn: leo lên.
   bestDist = CLIMB_REACH;
@@ -508,6 +519,9 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
   }
   return best;
 }
+
+/** Đứng cách lửa trại chừng này thì nướng, góp kho được (server kiểm tra lại). */
+const CAMPFIRE_REACH = 4;
 
 /** Kẻ phản bội (đúng lúc được ra tay) đứng sát ai đó: người đó có thể bị kết liễu bằng F. */
 function nearestVictim(room: IslandRoom, x: number, y: number, z: number): { id: string; name: string } | null {

@@ -94,6 +94,23 @@ function toLogEntry(entry: LogEntry): LogEntryState {
       out.playerId = entry.playerId;
       out.building = entry.building;
       break;
+    case "twist":
+      out.defId = entry.twist;
+      out.playerId = entry.playerId ?? "";
+      break;
+    case "outside":
+      out.playerId = entry.playerId;
+      out.defId = entry.event;
+      out.roll = entry.result.roll;
+      out.total = entry.result.total;
+      out.dc = entry.result.dc;
+      out.success = entry.result.success;
+      break;
+    case "stash":
+      out.playerId = entry.playerId;
+      out.defId = entry.itemId;
+      out.amount = entry.amount;
+      break;
     case "departure":
       out.players.push(...entry.aboard);
       out.others.push(...entry.leftBehind);

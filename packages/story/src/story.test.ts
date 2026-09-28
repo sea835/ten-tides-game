@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { gameConfig, storyLibrary } from "@tentides/content";
 import { playBotGame, type GameState } from "@tentides/rules";
-import { chronicle, createPremise, narrateDawn, narrateDusk, narratePrivate, type StoryContext } from "./index.ts";
+import { chronicle, createPremise, diaryPage, narrateDawn, narrateDusk, narratePrivate, type StoryContext } from "./index.ts";
 
 function storyOf(seed: number, players = 5): { ctx: StoryContext; state: GameState } {
   const { state } = playBotGame(seed, players, gameConfig);
-  const premise = createPremise(state.seed, state.playerOrder, storyLibrary);
+  const premise = createPremise(state.seed, state.playerOrder, storyLibrary, { id: state.twist, player: state.twistPlayer });
   return { ctx: { seed: state.seed, premise, library: storyLibrary, state, config: gameConfig }, state };
 }
 
@@ -14,8 +14,10 @@ function allText(ctx: StoryContext, days: number): string[] {
   for (let day = 1; day <= days; day++) {
     out.push(...narrateDawn(ctx, day), ...narrateDusk(ctx, day));
     for (const id of ctx.state.playerOrder) out.push(...narratePrivate(ctx, id, day));
+    const page = diaryPage(ctx, day);
+    out.push(page.title, page.text);
   }
-  const c = chronicle(ctx);
+  const c = chronicle(ctx, [{ playerId: ctx.state.playerOrder[0]!, title: "Tiều phu", detail: "đốn 3 cây" }]);
   out.push(c.title, ...c.paragraphs);
   return out;
 }
@@ -104,5 +106,44 @@ describe("cốt truyện theo seed", () => {
     expect(dusk.match(/heo rừng/gi)?.length ?? 0).toBeLessThanOrEqual(1);
     for (const line of [...narrateDusk(ctx, 1), ...chronicle(ctx).paragraphs]) expect(line).not.toMatch(/[{}]|undefined|null/);
     expect(chronicle(ctx).paragraphs.join(" ").toLowerCase()).toContain("xác tàu cổ");
+  });
+});
+
+describe("cơ chế cốt truyện", () => {
+  it("cốt truyện dựng quanh đúng biến cố engine đã chọn, và bình minh ngày 5 kể cả hệ quả", () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const { ctx, state } = storyOf(seed, 4);
+      expect(ctx.premise.twist).toBe(state.twist);
+      if (state.day >= 5) {
+        const dawn = narrateDawn(ctx, 5);
+        expect(dawn.length).toBeGreaterThan(3);
+        for (const line of dawn) expect(line).not.toMatch(/[{}]|undefined|null/);
+      }
+    }
+  });
+
+  it("mỗi ngày một trang nhật ký khác, không lộ biến cố ngày 5", () => {
+    const { ctx } = storyOf(5);
+    const texts = new Set<string>();
+    for (let day = 1; day <= 10; day++) {
+      const page = diaryPage(ctx, day);
+      expect(page.text).not.toMatch(/[{}]|undefined|null/);
+      texts.add(page.text);
+      const twist = storyLibrary.elements.find((e) => e.id === ctx.premise.twist)!;
+      expect(page.text).not.toContain(twist.lines[0]!.slice(0, 20));
+    }
+    expect(texts.size).toBeGreaterThanOrEqual(7);
+  });
+
+  it("kể lại chuyện đêm ngủ ngoài và việc góp lương thực", () => {
+    const { ctx, state } = storyOf(9, 4);
+    const [a] = state.playerOrder as [string];
+    state.log.push(
+      { kind: "outside", day: 1, playerId: a, event: "beast_prowl", result: { roll: 15, modifiers: [], total: 18, dc: 12, success: true } },
+      { kind: "stash", day: 1, playerId: a, itemId: "coconut", amount: 1 },
+    );
+    expect(narrateDusk(ctx, 1).join(" ")).toContain("trái dừa");
+    expect(narrateDawn(ctx, 2).join(" ").toLowerCase()).toContain("thú rình");
+    expect(narratePrivate(ctx, a, 2).join(" ")).toContain("Đêm qua bạn ngủ ngoài trại");
   });
 });

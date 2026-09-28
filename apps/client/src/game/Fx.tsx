@@ -31,6 +31,8 @@ const TONE: Record<FxMessage["kind"], string> = {
   build: "build",
   splash: "splash",
   shoot: "hit",
+  cook: "eat",
+  page: "build",
 };
 
 /** Màu vụn văng ra và số lượng theo loại hiệu ứng. */
@@ -45,6 +47,8 @@ const BURST: Partial<Record<FxMessage["kind"], { color: string; count: number; s
   eat: { color: "#ffe0a0", count: 6, speed: 1.5, size: 0.05, up: 1.5 },
   plant: { color: "#6b4a2a", count: 8, speed: 1.5, size: 0.08, up: 2 },
   shoot: { color: "#cfcfcf", count: 12, speed: 2, size: 0.18, up: 1 },
+  cook: { color: "#ffb347", count: 14, speed: 1.2, size: 0.07, up: 3.5 },
+  page: { color: "#f3e7c4", count: 10, speed: 1.6, size: 0.12, up: 2.2 },
 };
 
 const MAX_BITS = 260;
@@ -83,7 +87,7 @@ export function Fx() {
       for (let i = 0; i < burst.count; i++) {
         const a = Math.random() * Math.PI * 2;
         const s = burst.speed * (0.4 + Math.random() * 0.6);
-        const float = fx.kind === "poof" || fx.kind === "shoot";
+        const float = fx.kind === "poof" || fx.kind === "shoot" || (fx.kind === "cook" && i % 2 === 0);
         bits.current.push({
           x: fx.x,
           y: fx.y - (fx.kind === "fell" ? -2 : 0.3),
@@ -94,7 +98,7 @@ export function Fx() {
           life: 0,
           max: float ? 1.2 : 0.9 + Math.random() * 0.4,
           size: burst.size * (0.6 + Math.random() * 0.8),
-          color: new Color(burst.color),
+          color: new Color(fx.kind === "cook" && i % 2 === 0 ? "#d9d4cc" : burst.color),
           float,
         });
       }

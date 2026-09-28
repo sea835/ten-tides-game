@@ -36,6 +36,7 @@ import {
 } from "@tentides/protocol";
 import { ENCOUNTER_PHASES, canAssassinate, hasMaterials, type EncounterEffects, type EncounterSource, type GameAction, type GameState } from "@tentides/rules";
 import { Play, pickTarget, type Target } from "./play.ts";
+import type { Feat, Feats } from "./awards.ts";
 import type { Wildlife } from "./wildlife.ts";
 
 // Nối hệ thống tương tác (play.ts) vào phòng chơi: nhận lệnh của người chơi, kiểm tra, đưa hệ quả vào engine luật,
@@ -73,6 +74,8 @@ const HUNT_FRIEND_MORALE = -8;
 const SHARK_AFTER = 8;
 const SHARK_CHANCE_PER_SECOND = 0.05;
 const TOLERANCE = 1.5;
+/** Đứng cách lửa trại chừng này thì nướng, góp kho được. */
+export const CAMPFIRE_REACH = 4;
 
 export class PlayController {
   play: Play;
@@ -109,6 +112,15 @@ export class PlayController {
     return this.play.standingTrees().filter((t) => this.play.climbable(t));
   }
 
+  /** Những gì từng người làm trên đảo, để trao danh hiệu cuối ván. */
+  readonly feats = new Map<string, Feats>();
+
+  private feat(playerId: string, feat: Feat, n = 1) {
+    const f = this.feats.get(playerId) ?? {};
+    f[feat] = (f[feat] ?? 0) + n;
+    this.feats.set(playerId, f);
+  }
+
   register() {
     const h = this.host;
     h.onMessage(Messages.hold, HoldMessage, (client, { uid }) => this.onHold(client, uid));
@@ -119,6 +131,7 @@ export class PlayController {
     h.onMessage(Messages.pickup, PickupMessage, (client, { id }) => this.onPickup(client, id));
     h.onMessage(Messages.climb, ClimbMessage, (client, { treeId }) => this.onClimb(client, treeId));
     h.onMessage(Messages.packCamp, (client) => this.onPackCamp(client));
+    h.onMessage(Messages.campfire, (client) => this.onCampfire(client));
     h.onMessage(Messages.build, BuildMessage, (client, m) => this.onBuild(client, m.kind, m.x, m.z, m.rot));
     h.onMessage(Messages.assassinate, AssassinateMessage, (client, { target }) => this.onAssassinate(client, target));
   }
@@ -222,6 +235,8 @@ export class PlayController {
       const attackerName = h.state.players.get(attacker)?.name ?? "Ai đó";
       const weaponName = weapon === "fists" ? "nắm đấm" : (content.items.get(weapon)?.name.toLowerCase() ?? "một vật gì đó");
       if (stats.damage > 0) {
+        this.feat(attacker, "damage", stats.damage);
+        this.feat(target.id, "hurt", stats.damage);
         h.encounter(target.id, "attack", attacker, weapon, { hp: -stats.damage }, {}, {
           title: `${attackerName} đánh bạn!`,
           text: `Một đòn ${weaponName} trúng người bạn. Đau điếng.`,
@@ -243,6 +258,7 @@ export class PlayController {
     const kill = wildlife.damage(target.id, stats.damage, { id: attacker, x: from.x, z: from.z }, stats.stun ?? 0);
     this.fx({ kind: "hit", x: target.x, y: target.y + 0.8, z: target.z, word, amount: stats.damage });
     if (!kill) return;
+    this.feat(attacker, "beasts");
     this.fx({ kind: "poof", x: creature.x, y: creature.y + 0.5, z: creature.z, word: "PHỰT!" });
     // Thú chết dưới nước thì đồ chìm xuống đáy; trên cây thì rơi xuống gốc.
     this.play.scatter(kill.drops, creature.x, creature.z);
@@ -276,6 +292,7 @@ export class PlayController {
     this.fx({ kind: "chop", x: best.x, y: from.y + 1.2, z: best.z, word: power >= 20 ? "CỐC!" : "CỘC", treeId: best.id });
     if (!result) return;
     const dir = Math.atan2(best.x - from.x, best.z - from.z);
+    this.feat(id, "trees");
     this.fx({ kind: "fell", x: best.x, y: result.felled.y, z: best.z, dir, treeId: best.id, word: "RẮC RẮC... ẦM!" });
     // Gỗ, dừa, cây giống rơi dọc theo thân cây đổ.
     const reach = result.felled.height * 0.6;
@@ -286,6 +303,7 @@ export class PlayController {
   /** Đang leo mà cây bị đốn: rơi xuống, mất Máu theo độ cao, choáng váng một lúc. */
   private fall(playerId: string, height: number, self = false) {
     const h = this.host;
+    this.feat(playerId, "falls");
     const p = h.state.players.get(playerId);
     if (!p) return;
     const ground = h.world().heightAt(p.x, p.z);
@@ -313,6 +331,7 @@ export class PlayController {
     if (!this.host.dispatch({ type: "drop", playerId: a.id, uid: held.uid }, client)) return;
     this.play.held.delete(a.id);
     const stats = content.items.get(held.itemId)?.throw ?? { damage: 2, word: "BỐP!" };
+    this.feat(a.id, "throws");
     this.play.throw(a.id, held.itemId, { x: a.player.x, y: a.player.y, z: a.player.z }, yaw, pitch, power, stats);
     this.act(a.id, "throw");
   }
@@ -343,6 +362,36 @@ export class PlayController {
 
   // ------------------------------------------------------------------ dùng đồ: ăn, trồng cây, đặt lửa trại
 
+  /** Đứng ở lửa trại với món đang cầm: nướng (thịt, cá sống) hoặc góp vào kho lương thực chung. */
+  private onCampfire(client: Client) {
+    const a = this.actor(client, { allowTied: true });
+    if (!a) return;
+    const h = this.host;
+    const camp = this.play.camp;
+    if (camp.packed || Math.hypot(a.player.x - camp.x, a.player.z - camp.z) > CAMPFIRE_REACH + TOLERANCE) {
+      return h.reject(client, "Phải đứng cạnh lửa trại.");
+    }
+    const held = this.heldItem(a.id);
+    const def = held && content.items.get(held.itemId);
+    if (!held || !def) return h.reject(client, "Cầm món muốn nướng hay góp vào kho trên tay trước (Q).");
+    const at = { x: camp.x, y: h.world().heightAt(camp.x, camp.z) + 1.4, z: camp.z };
+    if (def.cook) {
+      if (!h.dispatch({ type: "cook", playerId: a.id, uid: held.uid }, client)) return;
+      this.feat(a.id, "cooked");
+      this.act(a.id, "chop");
+      this.fx({ kind: "cook", ...at, word: "XÈO XÈO!" });
+      return;
+    }
+    if (def.ration) {
+      if (!h.dispatch({ type: "stash", playerId: a.id, uid: held.uid }, client)) return;
+      this.play.held.delete(a.id);
+      this.feat(a.id, "stashed", def.ration);
+      this.fx({ kind: "eat", ...at, word: `+${def.ration} KHẨU PHẦN` });
+      return;
+    }
+    h.reject(client, "Món này không nướng hay góp vào kho được.");
+  }
+
   private onUse(client: Client, x: number, z: number) {
     const a = this.actor(client, { allowTied: true });
     if (!a) return;
@@ -365,6 +414,7 @@ export class PlayController {
       if (!h.dispatch({ type: "drop", playerId: a.id, uid: held.uid }, client)) return;
       this.play.held.delete(a.id);
       this.play.plant(def.plant, x, z);
+      this.feat(a.id, "planted");
       this.act(a.id, "chop");
       this.fx({ kind: "plant", x, y: h.world().heightAt(x, z) + 0.5, z, word: "TRỒNG!" });
       return;
@@ -453,6 +503,7 @@ export class PlayController {
       return h.reject(client, `Cần ${need} trong balo.`);
     }
     if (!h.dispatch({ type: "build", playerId: a.id, building: kind, cost: def.cost, shelter: def.shelter }, client)) return;
+    this.feat(a.id, "built");
     this.play.buildings.set(this.play.id("h"), { kind, dx: x - camp.x, dz: z - camp.z, rot });
     this.act(a.id, "chop");
     this.fx({ kind: "build", x, y: ground + 1.5, z, word: "CỘC CỘC CỘC!" });
@@ -475,6 +526,7 @@ export class PlayController {
     if (!this.play.climbable(tree)) return h.reject(client, "Cây còn non quá, leo gãy mất.");
     if (Math.hypot(tree.x - a.player.x, tree.z - a.player.z) > CLIMB_REACH + TOLERANCE) return h.reject(client, "Hãy lại sát gốc cây.");
     if (a.player.y < WATER_LEVEL - 0.5) return h.reject(client, "Đang bơi thì leo sao được.");
+    if (this.play.climbers.get(id) !== treeId) this.feat(id, "climbs");
     this.play.climbers.set(id, treeId);
   }
 

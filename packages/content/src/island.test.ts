@@ -35,6 +35,11 @@ describe("anchors", () => {
       cave_tunnel: "cave",
       volcano_slope: "volcano",
       crater_rim: "volcano",
+      shipwreck: "beach",
+      jungle_ruin: "beach",
+      cliff_nest: "beach",
+      hot_spring: "volcano",
+      camp_edge: "beach",
     };
     for (const a of ANCHORS) {
       expect(a.zone, a.id).toBe(expected[a.type]);

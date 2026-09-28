@@ -3,7 +3,7 @@ import { nextFloat, nextInt, shuffle } from "../rng.ts";
 import { activePairs, lookupFrom } from "./backpack.ts";
 import { ALCOHOLIC_MORALE, GREEDY_SNACK_CHANCE } from "./character.ts";
 import { checkDeaths } from "./endings.ts";
-import { isOverweight } from "./events.ts";
+import { applyOutcome, checkModifiers, effectiveDc, isOverweight } from "./events.ts";
 import { removeItemAt } from "./inventory.ts";
 import {
   DAILY_HUNGER,
@@ -18,6 +18,7 @@ import {
   ROLE_NIGHT_ACTIONS,
   SABOTAGE_DAMAGE,
   SABOTAGE_GUARDED,
+  OUTSIDE_MORALE,
   SHELTER_MORALE,
   SIGNAL_SEEN_CHANCE,
   SLEEP_MORALE,
@@ -25,6 +26,7 @@ import {
   TRAITOR_ACTIONS,
   clamp,
   fail,
+  weatherOf,
   type GameConfig,
   type GameState,
   type IncidentEffect,
@@ -59,15 +61,37 @@ export function nightfall(state: GameState, atCamp: string[], config: GameConfig
     } else {
       sleptOutside.push(id);
       // Có lều thì ngủ ngoài đỡ khổ.
-      if (!p.items.includes("tent")) {
-        p.morale = clamp(p.morale - 15, 0, 100);
-        p.hp = clamp(p.hp - 10, 0, p.maxHp);
-      }
+      if (!p.items.includes("tent")) p.morale = clamp(p.morale - OUTSIDE_MORALE, 0, 100);
     }
   }
   state.log.push({ kind: "dusk", day: state.day, sleptOutside });
+  for (const id of sleptOutside) outsideNight(state, state.players[id]!, config);
   state.phase = "night";
   return checkDeaths(state);
+}
+
+/** Người ngủ ngoài trại gặp một chuyện trong đêm (hợp thời tiết), qua được phép kiểm tra thì đỡ hoặc còn được lợi. */
+function outsideNight(state: GameState, p: PlayerSheet, config: GameConfig) {
+  if (!p.alive) return;
+  const weather = weatherOf(state);
+  const pool = (config.outsideEvents ?? []).filter((e) => !e.weather || (weather && e.weather.includes(weather)));
+  if (pool.length === 0) {
+    p.hp = clamp(p.hp - 10, 0, p.maxHp);
+    return;
+  }
+  const pick = nextInt(state.rng, 0, pool.length - 1);
+  state.rng = pick.rng;
+  const event = pool[pick.value]!;
+  const choice = { check: event.check };
+  const rolled = rollCheck(state.rng, {
+    stat: event.check.stat,
+    dc: effectiveDc(event.check.dc, state.difficulty),
+    stats: p.stats,
+    modifiers: checkModifiers(p, choice, config),
+  });
+  state.rng = rolled.rng;
+  applyOutcome(state, rolled.result.success ? event.onSuccess : event.onFail, p, [p.id], config);
+  state.log.push({ kind: "outside", day: state.day, playerId: p.id, event: event.id, result: rolled.result });
 }
 
 export function aliveCampers(state: GameState): string[] {

@@ -7,10 +7,14 @@ import {
   Hammer,
   Moon,
   PawPrint,
+  ScrollText,
   Sailboat,
   Skull,
   Sparkles,
   Sunset,
+  Tent,
+  UtensilsCrossed,
+  Zap,
   Swords,
   TreePalm,
   TriangleAlert,
@@ -39,6 +43,9 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   death: Skull,
   encounter: Sparkles,
   build: Hammer,
+  twist: Zap,
+  outside: Tent,
+  stash: UtensilsCrossed,
 };
 
 const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
@@ -51,6 +58,19 @@ const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
   attack: Swords,
   fall: TreePalm,
   hunt: PawPrint,
+  page: ScrollText,
+};
+
+/** Tên ngắn của biến cố ngày 5 cho dòng nhật ký (lời kể đầy đủ nằm ở bản kể bình minh). */
+const TWIST_TITLES: Record<string, string> = {
+  half_taken: "có người đã tới trước, một phần kho báu đã mất",
+  map_reversed: "bản đồ phải đọc ngược",
+  hider_alive: "người giấu kho báu có lẽ vẫn còn sống",
+  other_party: "một đoàn thám hiểm khác trên đảo",
+  volcano_early: "núi lửa tỉnh giấc sớm",
+  treasure_trap: "kho báu có cơ quan bẫy",
+  oars_missing: "mái chèo dự phòng biến mất",
+  blood_relation: "cái tên trên vật chứng là họ hàng của một người trong đoàn",
 };
 
 const EFFECT_WORDS: Record<string, string> = { hp: "Máu", morale: "Tinh thần", hunger: "No", stamina: "Sức bền", food: "lương thực", treasure: "kho báu" };
@@ -85,6 +105,8 @@ function encounterLine(e: LogEntryState, name: (id: string) => string): Line {
       return { day: e.day, ok: false, text: `${who} ngã từ trên cây bị đốn${tail}` };
     case "hunt":
       return { day: e.day, ok: false, text: `${who} giết ${creature?.name.toLowerCase() ?? "một con vật hiền lành"}${tail}` };
+    case "page":
+      return { day: e.day, ok: true, text: `${who} nhặt được một trang nhật ký cũ${tail}` };
     default:
       return { day: e.day, ok: false, text: `${who} suýt đuối nước${tail}` };
   }
@@ -151,6 +173,16 @@ function describe(e: LogEntryState, s: IslandState): Line {
   if (e.kind === "build") {
     const b = worldCatalog.buildings.get(e.building);
     return { day: e.day, ok: true, text: `${name(e.playerId)} dựng ${b?.name.toLowerCase() ?? "một công trình"} ở trại` };
+  }
+  if (e.kind === "twist") {
+    return { day: e.day, ok: false, text: `Biến cố: ${TWIST_TITLES[e.defId] ?? "một phát hiện làm thay đổi tất cả"}${e.playerId ? ` (${name(e.playerId)})` : ""}` };
+  }
+  if (e.kind === "outside") {
+    const title = content.nights.get(e.defId)?.title.toLowerCase() ?? "khó ngủ";
+    return { day: e.day, ok: e.success, text: `${name(e.playerId)} ngủ ngoài, gặp ${title}: ${e.total} / ${e.dc} ${e.success ? "✓" : "✗"}` };
+  }
+  if (e.kind === "stash") {
+    return { day: e.day, ok: true, text: `${name(e.playerId)} góp ${itemName(e.defId).toLowerCase()} vào kho (+${e.amount} khẩu phần)` };
   }
   if (e.kind === "dig") return { day: e.day, ok: true, text: `${name(e.playerId)} đã đào được rương kho báu!` };
   if (e.kind === "departure") {

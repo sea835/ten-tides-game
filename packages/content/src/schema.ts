@@ -46,6 +46,10 @@ export const ItemSchema = z.object({
   build: z.boolean().optional(),
   /** Bộ lửa trại: đặt xuống là dời trại tới đó. */
   camp: z.boolean().optional(),
+  /** Góp vào kho lương thực chung ở lửa trại thì được chừng này khẩu phần. */
+  ration: z.int().positive().max(5).optional(),
+  /** Nướng trên lửa trại thì thành món này. */
+  cook: id.optional(),
 });
 export type Item = z.infer<typeof ItemSchema>;
 
@@ -105,6 +109,19 @@ export const EventCardSchema = z.object({
   narrativeHooks: z.array(z.string().min(1)),
 });
 export type EventCard = z.infer<typeof EventCardSchema>;
+
+/** Chuyện xảy ra trong đêm với người ngủ ngoài trại. Hệ quả không được làm người đó lạc cả ngày hôm sau. */
+export const OutsideEventSchema = z.object({
+  id,
+  title: z.string().min(1),
+  weather: z.array(z.enum(WEATHER_IDS)).optional(),
+  check: Check,
+  onSuccess: Outcome.omit({ lostUntilDusk: true, setFlag: true }),
+  onFail: Outcome.omit({ lostUntilDusk: true, setFlag: true }),
+  successText: z.string().min(1),
+  failText: z.string().min(1),
+});
+export type OutsideEvent = z.infer<typeof OutsideEventSchema>;
 
 // Bảo đảm dữ liệu đã kiểm tra khớp với kiểu mà engine luật dùng.
 type Assignable<T extends U, U> = T;

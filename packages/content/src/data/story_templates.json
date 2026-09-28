@@ -205,5 +205,64 @@
   "build": [
     "{name} dựng xong {thing} ở trại; đêm nay có chỗ chui ra chui vào.",
     "Trại có thêm {thing}, công của {name}."
+  ],
+  "twist_effect_half_taken": [
+    "Mất trắng một phần công sức dò tìm, nhưng những dấu đào cũ trong phế tích có thể chỉ ra phần còn lại."
+  ],
+  "twist_effect_map_reversed": [
+    "Mọi phỏng đoán lệch hướng hết, trừ khi ai đó mang bản đồ tới cửa hang mà đọc lại cho đúng."
+  ],
+  "twist_effect_hider_alive": [
+    "Từ nay ai đi ngang phế tích trong rừng cũng nên để mắt tới những bóng người giữa các cột đá."
+  ],
+  "twist_effect_other_party": [
+    "Đoàn kia bỏ lại chút lương thực, và trại của họ gần xác tàu có khi còn nhiều thứ hơn."
+  ],
+  "twist_effect_volcano_early": [
+    "Núi lửa sôi sục hơn hẳn, và sườn núi lộ ra những lối đi mới giữa dung nham."
+  ],
+  "twist_effect_treasure_trap": [
+    "Trước khi đào, cả đoàn nên tìm cách vô hiệu cái cơ quan chôn dưới lớp tro nóng trên sườn núi."
+  ],
+  "twist_effect_oars_missing": [
+    "Thuyền yếu đi trông thấy. Ai đó nên canh chừng mặt biển gần trại."
+  ],
+  "twist_effect_blood_relation": [
+    "{player} bỗng thấy mình có lý do để ở lại tới cùng, và nhớ ra vài câu chuyện cũ của gia đình."
+  ],
+  "outside_recap": [
+    "Sáng ra, {name} lần về trại sau một đêm {event}.",
+    "{name} về trại với vẻ mặt của người vừa trải qua một đêm {event}."
+  ],
+  "private_outside": [
+    "Đêm qua bạn ngủ ngoài trại: {event}. {text}"
+  ],
+  "private_twist": [
+    "Cái tên ấy cứ ám lấy bạn. Có lẽ số phận đã đưa bạn tới hòn đảo này."
+  ],
+  "stash": [
+    "{names} mang về góp vào kho: {items}.",
+    "Kho lương thực đầy thêm nhờ {names}: {items}."
+  ],
+  "page_title": [
+    "Trang nhật ký rách",
+    "Trang giấy ố vàng",
+    "Mảnh nhật ký"
+  ],
+  "page_text": [
+    "Nét chữ nguệch ngoạc, mực đã phai: “{line}”",
+    "Trang giấy chỉ còn đọc được vài dòng: “{line}”",
+    "Ai đó đã viết vội bằng than: “{line}”"
+  ],
+  "page_found": [
+    "{name} nhặt được một trang nhật ký cũ.",
+    "Một trang nhật ký của người xưa rơi vào tay {name}."
+  ],
+  "chronicle_awards": [
+    "Về sau, cả đoàn vẫn nhắc mãi: {awards}.",
+    "Những danh hiệu không ai muốn nhận mà ai cũng nhớ: {awards}."
+  ],
+  "award_line": [
+    "{name} là {title} ({detail})"
   ]
 }

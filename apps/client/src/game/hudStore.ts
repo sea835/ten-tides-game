@@ -5,8 +5,11 @@ import type { ZoneId } from "@tentides/rules";
 
 export interface NearTarget {
   id: string;
-  /** poi: easter egg, điểm bất thường · creature: thú thân thiện · item: đồ dưới đất · tree: leo cây · camp: nhổ trại. */
-  kind: "poi" | "creature" | "item" | "tree" | "camp";
+  /**
+   * poi: easter egg, điểm bất thường · creature: thú thân thiện · item: đồ dưới đất · tree: leo cây · camp: nhổ trại ·
+   * page: trang nhật ký · campfire: nướng hay góp món đang cầm vào kho.
+   */
+  kind: "poi" | "creature" | "item" | "tree" | "camp" | "page" | "campfire";
   label: string;
 }
 

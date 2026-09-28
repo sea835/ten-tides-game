@@ -20,6 +20,8 @@ function usage(itemId: string): string[] {
   else if (def.melee) out.push(`Chuột trái: đánh (${def.melee.damage} sát thương)${def.chop ? " · chặt cây" : ""}`);
   else out.push(`Chuột trái: đánh như tay không (${meleeOf("").damage})`);
   out.push(def.throw ? `Giữ chuột phải: ném (${def.throw.damage} sát thương)` : "Giữ chuột phải: ném đi");
+  if (def.cook) out.push("E ở lửa trại: nướng chín");
+  else if (def.ration) out.push(`E ở lửa trại: góp vào kho (+${def.ration} khẩu phần)`);
   return out;
 }
 

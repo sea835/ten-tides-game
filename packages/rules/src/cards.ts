@@ -76,4 +76,21 @@ export interface ItemDef {
   loot?: boolean;
   /** Ăn, uống hoặc dùng ngay thì được gì (món đồ mất đi). `dizzy` là hiệu ứng thời gian thực, engine bỏ qua. */
   eat?: { hunger?: number; hp?: number; morale?: number; stamina?: number; dizzy?: number };
+  /** Góp vào kho lương thực chung thì được chừng này khẩu phần. */
+  ration?: number;
+  /** Nướng trên lửa trại thì thành món này. */
+  cook?: string;
+}
+
+/** Chuyện xảy ra trong đêm với người ngủ ngoài trại: một phép kiểm tra, hệ quả áp cho người đó (và cả đội với lương thực, kho báu). */
+export interface OutsideEvent {
+  id: string;
+  title: string;
+  /** Chỉ xảy ra khi thời tiết đêm đó là một trong số này. */
+  weather?: WeatherId[];
+  check: Check;
+  onSuccess: Outcome;
+  onFail: Outcome;
+  successText: string;
+  failText: string;
 }

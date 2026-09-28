@@ -108,6 +108,17 @@ describe("worldgen", () => {
     }
   });
 
+  it("trang nhật ký: mỗi ngày một trang, trên cạn hoặc trong hang, cách xa nhau", () => {
+    for (const seed of SEEDS.slice(0, 20)) {
+      const w = generateWorld(seed);
+      expect(w.pages.map((p) => p.day)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      for (const p of w.pages) {
+        if (!w.structureAt(p.x, p.z)) expect(w.heightAt(p.x, p.z), `${seed} ${p.id}`).toBeGreaterThan(0.2);
+        for (const q of w.pages) if (q !== p) expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeGreaterThan(19);
+      }
+    }
+  });
+
   it("bẫy theo seed bí mật: đổi seed bí mật thì đổi chỗ, không nằm trong trại", () => {
     const w = generateWorld(99);
     const a = generateTraps(w, 1);

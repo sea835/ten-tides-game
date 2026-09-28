@@ -1,0 +1,250 @@
+[
+  {
+    "id": "cold_night",
+    "title": "Đêm lạnh buốt",
+    "check": {
+      "stat": "strength",
+      "dc": 11,
+      "itemBonus": {
+        "tent": 5,
+        "matches": 2,
+        "torch": 2,
+        "rum": 2
+      }
+    },
+    "onSuccess": {
+      "morale": -2
+    },
+    "onFail": {
+      "hp": -10,
+      "morale": -6
+    },
+    "successText": "Bạn nhóm được một đống lửa nhỏ, co ro qua đêm.",
+    "failText": "Gió đêm lạnh thấu xương, bạn run cầm cập tới sáng."
+  },
+  {
+    "id": "rain_soak",
+    "title": "Mưa dầm cả đêm",
+    "weather": [
+      "rain",
+      "storm"
+    ],
+    "check": {
+      "stat": "strength",
+      "dc": 12,
+      "itemBonus": {
+        "tent": 6
+      }
+    },
+    "onSuccess": {
+      "stamina": -10
+    },
+    "onFail": {
+      "hp": -12,
+      "morale": -10
+    },
+    "successText": "Bạn chui vào một hốc đá, chỉ ướt mỗi đôi chân.",
+    "failText": "Mưa quất suốt đêm. Sáng ra người bạn tím tái."
+  },
+  {
+    "id": "beast_prowl",
+    "title": "Thú rình quanh chỗ ngủ",
+    "check": {
+      "stat": "nerve",
+      "dc": 12,
+      "itemBonus": {
+        "torch": 3,
+        "flintlock": 3,
+        "machete": 2,
+        "spear": 2,
+        "axe": 2
+      }
+    },
+    "onSuccess": {
+      "gainItem": "raw_meat",
+      "morale": 3
+    },
+    "onFail": {
+      "hp": -15,
+      "morale": -5
+    },
+    "successText": "Một con thú mò tới. Bạn vùng dậy đánh đuổi, sáng ra còn được một tảng thịt.",
+    "failText": "Một con thú mò tới cắn vào chân rồi bỏ chạy trong bóng tối."
+  },
+  {
+    "id": "crabs",
+    "title": "Cua bò kín người",
+    "check": {
+      "stat": "dexterity",
+      "dc": 10,
+      "itemBonus": {
+        "fishing_net": 3
+      }
+    },
+    "onSuccess": {
+      "food": 1
+    },
+    "onFail": {
+      "morale": -8
+    },
+    "successText": "Bạn tóm được cả một túi cua. Sáng ra mang về góp vào kho.",
+    "failText": "Cả đêm cua bò lên người, bạn không chợp mắt được phút nào."
+  },
+  {
+    "id": "stars",
+    "title": "Trời đầy sao",
+    "weather": [
+      "sunny",
+      "cloudy"
+    ],
+    "check": {
+      "stat": "intellect",
+      "dc": 10,
+      "itemBonus": {
+        "spyglass": 3,
+        "compass": 2,
+        "old_map": 2
+      }
+    },
+    "onSuccess": {
+      "treasure": 6,
+      "morale": 6
+    },
+    "onFail": {
+      "morale": -2
+    },
+    "successText": "Nằm ngắm sao, bạn nhận ra chòm sao trên bản đồ cũ chỉ đúng về một góc đảo.",
+    "failText": "Sao đẹp quá, bạn nằm ngắm tới sáng mà chẳng ngủ."
+  },
+  {
+    "id": "whispers",
+    "title": "Tiếng thì thầm trong rừng",
+    "check": {
+      "stat": "nerve",
+      "dc": 12,
+      "itemBonus": {
+        "amulet": 4,
+        "lantern": 2
+      }
+    },
+    "onSuccess": {
+      "treasure": 8
+    },
+    "onFail": {
+      "morale": -14
+    },
+    "successText": "Bạn nín thở lắng nghe. Tiếng thì thầm nhắc đi nhắc lại một địa danh trên đảo.",
+    "failText": "Tiếng thì thầm gọi đúng tên bạn. Bạn nhắm tịt mắt tới sáng."
+  },
+  {
+    "id": "high_tide",
+    "title": "Thủy triều lên",
+    "check": {
+      "stat": "dexterity",
+      "dc": 11,
+      "itemBonus": {
+        "rope": 2
+      }
+    },
+    "onSuccess": {
+      "morale": -2
+    },
+    "onFail": {
+      "loseRandomItem": 1,
+      "morale": -5
+    },
+    "successText": "Nước dâng tới mắt cá thì bạn kịp ôm đồ chạy lên chỗ cao.",
+    "failText": "Sóng liếm vào tận chỗ nằm, cuốn đi một món trong balo."
+  },
+  {
+    "id": "fireflies",
+    "title": "Rừng đom đóm",
+    "weather": [
+      "sunny",
+      "cloudy",
+      "fog"
+    ],
+    "check": {
+      "stat": "charisma",
+      "dc": 6
+    },
+    "onSuccess": {
+      "morale": 10
+    },
+    "onFail": {
+      "morale": -2
+    },
+    "successText": "Cả khu rừng lập lòe đom đóm. Lần đầu tiên từ khi dạt vào đảo, bạn thấy lòng thật yên.",
+    "failText": "Đom đóm bay vào tận mũi, bạn hắt hơi cả đêm."
+  },
+  {
+    "id": "fog_wander",
+    "title": "Mộng du trong sương",
+    "weather": [
+      "fog"
+    ],
+    "check": {
+      "stat": "intellect",
+      "dc": 12,
+      "itemBonus": {
+        "compass": 4,
+        "lantern": 2
+      }
+    },
+    "onSuccess": {
+      "treasure": 5
+    },
+    "onFail": {
+      "stamina": -25,
+      "morale": -6
+    },
+    "successText": "Bạn tỉnh giấc giữa sương, đứng ngay trước một tảng đá có khắc dấu.",
+    "failText": "Sáng ra bạn thấy mình nằm cách chỗ ngủ cả trăm bước, chân tay rã rời."
+  },
+  {
+    "id": "night_quake",
+    "title": "Đất rung giữa đêm",
+    "weather": [
+      "quake"
+    ],
+    "check": {
+      "stat": "dexterity",
+      "dc": 12
+    },
+    "onSuccess": {
+      "treasure": 6
+    },
+    "onFail": {
+      "hp": -15
+    },
+    "successText": "Bạn lăn kịp ra khỏi chỗ đá lở. Một khe nứt mới mở ra lộ lớp đất có dấu đào xưa.",
+    "failText": "Đá lở trúng lưng. Bạn nằm bất động tới tận sáng."
+  },
+  {
+    "id": "mosquitoes",
+    "title": "Muỗi",
+    "weather": [
+      "rain",
+      "cloudy",
+      "sunny"
+    ],
+    "check": {
+      "stat": "strength",
+      "dc": 10,
+      "itemBonus": {
+        "tent": 5,
+        "rum": 2,
+        "torch": 2
+      }
+    },
+    "onSuccess": {
+      "morale": -1
+    },
+    "onFail": {
+      "hp": -5,
+      "morale": -6
+    },
+    "successText": "Bạn hun khói đuổi muỗi, ngủ được một giấc.",
+    "failText": "Muỗi đốt sưng vù cả mặt."
+  }
+]

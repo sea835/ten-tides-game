@@ -160,6 +160,13 @@ export const ANCHORS: readonly Anchor[] = [
   anchor("slope_south", "volcano_slope", { x: VOLCANO.x, z: VOLCANO.z + 25 }),
   anchor("slope_west", "volcano_slope", { x: VOLCANO.x - 25, z: VOLCANO.z }),
   anchor("crater_rim", "crater_rim", { x: VOLCANO.x, z: VOLCANO.z + 9 }),
+  anchor("wreck_north", "shipwreck", beachPoint(-120, 7)),
+  anchor("wreck_east", "shipwreck", beachPoint(-5, 6)),
+  anchor("ruin_east", "jungle_ruin", { x: 25, z: 30 }),
+  anchor("ruin_west", "jungle_ruin", { x: -62, z: 45 }),
+  anchor("cliff_northwest", "cliff_nest", beachPoint(-160, 7)),
+  anchor("hot_spring", "hot_spring", { x: VOLCANO.x + 32, z: VOLCANO.z + 24 }),
+  anchor("camp_edge", "camp_edge", { x: CAMP.x + 14, z: CAMP.z - 8 }),
 ];
 
 /** Bán kính đứng đào quanh chỗ giấu kho báu. */

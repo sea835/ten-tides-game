@@ -52,6 +52,14 @@ if (values.verbose) {
       console.log(`  Ngày ${e.day} · ${name(e.playerId)} · ${e.source} ${e.defId} (${e.refId})${e.dodged ? " · né được" : ""}${effects ? ` · ${effects}` : ""}${e.gained ? ` · nhặt ${e.gained}` : ""}`);
     } else if (e.kind === "departure") {
       console.log(`  Ngày ${e.day} · rời đảo: ${e.aboard.map(name).join(", ") || "không ai"} · bỏ lại ${e.leftBehind.map(name).join(", ") || "không ai"} · thuyền ${e.hull} · ${e.withTreasure ? "có" : "không có"} kho báu`);
+    } else if (e.kind === "build") {
+      console.log(`  Ngày ${e.day} · ${name(e.playerId)} dựng ${e.building}`);
+    } else if (e.kind === "twist") {
+      console.log(`  Ngày ${e.day} · biến cố: ${e.twist}${e.playerId ? ` (${name(e.playerId)})` : ""}`);
+    } else if (e.kind === "outside") {
+      console.log(`  Ngày ${e.day} · ${name(e.playerId)} ngủ ngoài · ${e.event}: ${e.result.total} vs ${e.result.dc} ${e.result.success ? "✓" : "✗"}`);
+    } else if (e.kind === "stash") {
+      console.log(`  Ngày ${e.day} · ${name(e.playerId)} góp ${e.itemId} (+${e.amount} khẩu phần)`);
     } else {
       console.log(`  Ngày ${e.day} · ${name(e.playerId)} gục ngã`);
     }

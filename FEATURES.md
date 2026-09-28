@@ -46,7 +46,7 @@
 | B8 | Xong | Đồng đội thấy đồ ngoài ngăn bí mật (rê chuột lên tên trong danh sách) |
 | R1–R4 | Xong | Tỷ lệ % trước khi chọn (tính cả đồ, xuất thân, tật xấu, vùng, quá tải); phân rã xúc xắc; nhật ký đầy đủ; PRNG có seed |
 | A1–A7 | Xong (theo hướng mới) | Bộ sinh truyện theo seed: kể sau khi engine đã chốt kết quả, không bao giờ treo hay chậm, lời kể ngắn, tách chung/riêng, chỉ đọc nhật ký của engine nên không mâu thuẫn; sổ truyện (phím J) để đọc lại |
-| C1 | Một phần | Ưu tiên thẻ chưa gặp; kho mới 12 thẻ nên vẫn lặp |
+| C1 | Xong | Ưu tiên thẻ chưa gặp; kho 57 thẻ trên 12 loại điểm (19 điểm), mỗi loại điểm có thẻ cho mọi hồi; thẻ theo thời tiết và chuỗi thẻ nối nhau qua cờ (vd. nhật ký thuyền trưởng ở xác tàu mở cửa đá trong phế tích) |
 | C2 | Xong | 8 xuất thân, 6 tật xấu |
 | C3 | Xong | zod kiểm tra thẻ, đồ, yếu tố truyện, mẫu câu và mọi tham chiếu |
 | T1 | Xong | `pnpm --filter @tentides/server sim` in phân phối kết thúc kèm khoảng tin cậy, nhịp, đường cong theo ngày, tần suất thẻ, tỷ lệ thành công từng lựa chọn |
@@ -72,9 +72,15 @@
 | P7 | Xong | Bơi xa bờ ở vùng nước sâu một lúc thì có thể bị cá mập tìm tới |
 | P8 | Xong | Dựng chòi lá, nhà sàn, hàng rào (V) bằng gỗ, da quanh lửa trại; đủ chỗ ngủ thì cả trại được cộng Tinh thần ban đêm. Nhổ lửa trại mang đi (E) rồi đặt lại (chuột trái): cả khu nhà dời theo |
 | P9 | Xong | Thêm cây rừng sinh theo seed (leo, chặt được), chuối rừng, dứa dại, cỏ biển, dây leo; bụi rậm, dương xỉ, cỏ dày hơn |
+| G1 | Xong | Biến cố ngày 5: 8 biến cố, engine chọn lúc bắt đầu ván và giữ bí mật; hệ quả thật (kho báu, thuyền, lương thực, núi lửa, Tinh thần) và mở khoá thẻ nối tiếp; cốt truyện dựng quanh đúng biến cố đó |
+| G2 | Xong | Ngủ ngoài trại: 11 chuyện đêm (theo thời tiết) có phép kiểm tra, lều, đuốc, súng... cộng điểm; kể lại lúc bình minh và trong lời kể riêng |
+| G3 | Xong | Nướng thịt, cá ở lửa trại; góp dừa, cá, thịt, lương khô vào kho lương thực chung |
+| G4 | Xong | Trang nhật ký mỗi ngày một trang theo seed bản đồ, mỗi trang hé một mảnh cốt truyện, +4 kho báu, lưu vào sổ truyện riêng |
+| G5 | Xong | 16 danh hiệu cuối ván trên màn lật bài và trong biên niên sử |
+| V1 | Xong | Thời tiết nhìn thấy được: mây, mưa, bão có gió giật và sấm chớp, sương mù, động đất; đom đóm đêm quang; bụi chân, gợn nước; cảnh cố định cho xác tàu, phế tích, mỏm đá tổ chim, suối nước nóng |
 | M7 | Xong | Seed bản đồ công khai, chủ phòng nhập hoặc gieo lại ở sảnh chờ; seed của engine luật không còn gửi xuống client |
 
-Cân bằng hiện tại (bot, 3.000 ván 4–6 người): phe đội thắng 57,6%, không ai thắng 22,5%, phản bội thắng 32,9% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%.
+Cân bằng hiện tại (bot, 3.000 ván 4–6 người, 7 thẻ mỗi ngày): phe đội thắng 53,7%, không ai thắng 26,4%, phản bội thắng 33,0% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%. Bot chưa biết nướng, góp lương thực hay nhặt trang nhật ký, nên ván người thật sẽ dư dả hơn một chút.
 
 ## Quyết định đã chốt
 
@@ -375,7 +381,7 @@ Khớp giai đoạn 2 (MVP) trong PROJECT.md; mỗi mục ghi **phiên bản t�
 | Slay the Spire | 52 event (12 chỉ hồi 1, 16 chỉ hồi 2, 8 chỉ hồi 3, 16 dùng chung) | Mỗi event tối đa 1 lần mỗi lượt chơi; ước khoảng 10–15 event mỗi lượt | HIGH (số event), LOW (số mỗi lượt) |
 | Eldritch Horror | 272 location encounter (tính cả bản mở rộng) | Theo vùng màu | MEDIUM |
 | Backpack Battles | Shop bày 5 món mỗi vòng, reroll 1 vàng × 4 lần rồi 2 vàng, giữ chỗ được | Không áp dụng | HIGH |
-| Tài liệu TEN TIDES | Prototype giấy: 30 thẻ; MVP 3D: 60 thẻ gắn điểm, 40 đồ. Graybox hiện có 12 thẻ, 11 đồ, 12 điểm thuộc 7 loại | Engine đặt tối đa 6 thẻ mỗi ngày (`MAX_CARDS_PER_DAY`) | Nguồn nội bộ |
+| Tài liệu TEN TIDES | Prototype giấy: 30 thẻ; MVP 3D: 60 thẻ gắn điểm, 40 đồ. Hiện có 57 thẻ, 38 đồ, 19 điểm thuộc 12 loại | Engine đặt tối đa 7 thẻ mỗi ngày (`MAX_CARDS_PER_DAY`) | Nguồn nội bộ |
 
 **Quy tắc ngón tay cái (MEDIUM-LOW, suy luận):** các game trên có kho khoảng **3 lần** số lần rút mỗi ván thì chơi nhiều buổi vẫn thấy mới. Để một ván không lặp mà vẫn có lựa chọn, kho cần tối thiểu khoảng **1,5 lần** số lần rút, vì bộ lọc (vùng × hồi × thời tiết × đồ mang theo) chia kho ra nhiều ngăn nhỏ.
 

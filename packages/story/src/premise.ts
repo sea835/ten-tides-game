@@ -32,7 +32,16 @@ function draw<T>(voice: Voice, pool: readonly T[], n: number): T[] {
   return out;
 }
 
-export function createPremise(seed: number, playerIds: readonly string[], library: StoryLibrary): Premise {
+/**
+ * `twist`: biến cố ngày 5 engine luật đã chọn (và người bị cuốn vào). Có thì cốt truyện dựng quanh đúng biến cố đó,
+ * để lời kể khớp với hệ quả thật trong ván.
+ */
+export function createPremise(
+  seed: number,
+  playerIds: readonly string[],
+  library: StoryLibrary,
+  twist?: { id: string; player: string | null },
+): Premise {
   const voice = new Voice(seed, "premise");
   const hider = voice.pick(byCategory(library, "hider"));
   // Động cơ phải hợp với người giấu (vd. "chôn cùng người yêu" cần người giấu có thẻ tình yêu).
@@ -41,7 +50,9 @@ export function createPremise(seed: number, playerIds: readonly string[], librar
   const omenFor = (act: number) => voice.pick(byCategory(library, "omen").filter((o) => o.act === act)).id;
   const [npcA, npcB] = draw(voice, byCategory(library, "npc"), 2) as [StoryElement, StoryElement];
   const [relicA, relicB] = draw(voice, byCategory(library, "relic"), 2) as [StoryElement, StoryElement];
-  const twist = voice.pick(byCategory(library, "twist"));
+  const twists = byCategory(library, "twist");
+  const chosen = voice.pick(twists);
+  const twistElement = (twist && twists.find((t) => t.id === twist.id)) || chosen;
 
   const pairs: [string, string][] = [];
   for (let i = 0; i < playerIds.length; i++) for (let j = i + 1; j < playerIds.length; j++) pairs.push([playerIds[i]!, playerIds[j]!]);
@@ -60,9 +71,10 @@ export function createPremise(seed: number, playerIds: readonly string[], librar
     secret: voice.pick(byCategory(library, "secret")).id,
     npcs: [npcA.id, npcB.id],
     omens: [omenFor(1), omenFor(2), omenFor(3)],
-    twist: twist.id,
+    twist: twistElement.id,
     relics: [relicA.id, relicB.id],
     bonds,
-    twistPlayer: twist.lines.some((l) => l.includes("{player}")) && playerIds.length > 0 ? voice.pick(playerIds) : null,
+    twistPlayer:
+      twist?.player ?? (twistElement.lines.some((l) => l.includes("{player}")) && playerIds.length > 0 ? voice.pick(playerIds) : null),
   };
 }

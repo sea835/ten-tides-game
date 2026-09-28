@@ -655,5 +655,2568 @@
       "dung nham",
       "manh mối cuối cùng"
     ]
+  },
+  {
+    "id": "coconut_grove_03",
+    "title": "Bầy khỉ cướp dừa",
+    "intro": "Một bầy khỉ ngồi vắt vẻo trên ngọn dừa, tay ôm trái, mắt dán vào balo của bạn.",
+    "acts": [
+      1,
+      2
+    ],
+    "anchorType": "coconut_grove",
+    "choices": [
+      {
+        "id": "trade",
+        "label": "Ném cho chúng mẩu lương khô",
+        "check": {
+          "stat": "charisma",
+          "dc": 10,
+          "itemBonus": {
+            "hardtack": 3
+          }
+        },
+        "onSuccess": {
+          "food": 2,
+          "morale": 5
+        },
+        "onFail": {
+          "food": -1
+        },
+        "successText": "Con đầu đàn chộp mẩu lương khô rồi ném xuống cả chùm dừa. Giao dịch sòng phẳng.",
+        "failText": "Chúng ăn mẩu lương khô rồi cười khanh khách, không ném lại trái nào."
+      },
+      {
+        "id": "scare",
+        "label": "Hò hét dọa chúng",
+        "check": {
+          "stat": "nerve",
+          "dc": 11,
+          "itemBonus": {
+            "slingshot": 3,
+            "flintlock": 2
+          }
+        },
+        "onSuccess": {
+          "food": 1,
+          "gainItem": "coconut"
+        },
+        "onFail": {
+          "hp": -6,
+          "morale": -5
+        },
+        "successText": "Bầy khỉ chạy tán loạn, đánh rơi mấy trái dừa ngay dưới chân bạn.",
+        "failText": "Cả bầy ném dừa xuống đáp trả. Một trái trúng ngay trán."
+      }
+    ],
+    "narrativeHooks": [
+      "bầy khỉ tinh quái",
+      "dừa bay vèo vèo"
+    ]
+  },
+  {
+    "id": "coconut_grove_04",
+    "title": "Võng của ai?",
+    "intro": "Giữa hai gốc dừa có một chiếc võng bện bằng xơ dừa, còn ấm như vừa có người nằm.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "coconut_grove",
+    "choices": [
+      {
+        "id": "rest",
+        "label": "Nằm nghỉ một lát",
+        "check": {
+          "stat": "nerve",
+          "dc": 9,
+          "itemBonus": {
+            "amulet": 2
+          }
+        },
+        "onSuccess": {
+          "stamina": 25,
+          "morale": 10
+        },
+        "onFail": {
+          "morale": -10,
+          "lostUntilDusk": true
+        },
+        "successText": "Gió biển ru bạn ngủ một giấc ngắn. Tỉnh dậy thấy người nhẹ bẫng.",
+        "failText": "Bạn ngủ quên tới xế chiều, tỉnh dậy chẳng biết mình đang ở đâu."
+      },
+      {
+        "id": "inspect",
+        "label": "Xem xét dấu vết quanh võng",
+        "check": {
+          "stat": "intellect",
+          "dc": 12,
+          "itemBonus": {
+            "spyglass": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 10
+        },
+        "onFail": {
+          "stamina": -10
+        },
+        "successText": "Trên thân cây có vết khắc hình mũi tên, chỉ thẳng về phía núi lửa.",
+        "failText": "Bạn lục lọi mãi chỉ thấy vỏ dừa và kiến."
+      }
+    ],
+    "narrativeHooks": [
+      "chiếc võng đung đưa",
+      "hơi ấm lạ"
+    ]
+  },
+  {
+    "id": "coconut_grove_05",
+    "title": "Cây dừa bị sét đánh",
+    "intro": "Một cây dừa cháy đen từ ngọn xuống gốc, thân nứt toác, bên trong lộ ra thứ gì đó lấp lánh.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "coconut_grove",
+    "requires": {
+      "weather": [
+        "storm",
+        "rain",
+        "cloudy"
+      ]
+    },
+    "choices": [
+      {
+        "id": "split",
+        "label": "Chẻ thân cây ra",
+        "check": {
+          "stat": "strength",
+          "dc": 12,
+          "itemBonus": {
+            "axe": 4,
+            "machete": 2
+          }
+        },
+        "onSuccess": {
+          "gainItem": "wood",
+          "treasure": 10
+        },
+        "onFail": {
+          "hp": -8
+        },
+        "successText": "Thân cây tách đôi. Trong ruột là một đồng xu cổ và cả đống gỗ khô.",
+        "failText": "Lưỡi dao bật lại, cứa một đường vào tay."
+      },
+      {
+        "id": "reach",
+        "label": "Thò tay vào khe nứt",
+        "check": {
+          "stat": "dexterity",
+          "dc": 11
+        },
+        "onSuccess": {
+          "treasure": 8
+        },
+        "onFail": {
+          "hp": -5,
+          "morale": -5
+        },
+        "successText": "Bạn móc ra được một mảnh bản đồ cháy dở.",
+        "failText": "Trong khe có một con rết to bằng ngón tay cái."
+      }
+    ],
+    "narrativeHooks": [
+      "mùi gỗ cháy",
+      "vết sét"
+    ]
+  },
+  {
+    "id": "coconut_grove_06",
+    "title": "Cua dừa khổng lồ",
+    "intro": "Một con cua dừa to bằng cái nồi đang kẹp gãy trái dừa như bẻ bánh quy.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "coconut_grove",
+    "choices": [
+      {
+        "id": "hunt",
+        "label": "Bắt nó làm bữa tối",
+        "check": {
+          "stat": "strength",
+          "dc": 13,
+          "itemBonus": {
+            "spear": 3,
+            "fishing_net": 3
+          }
+        },
+        "onSuccess": {
+          "food": 3,
+          "gainItem": "raw_meat"
+        },
+        "onFail": {
+          "hp": -12
+        },
+        "successText": "Sau một trận vật lộn, con cua nằm gọn trong lưới. Tối nay cả trại được một bữa ra trò.",
+        "failText": "Cái càng kẹp vào ống chân. Bạn phải bỏ chạy, mặt mũi tái mét."
+      },
+      {
+        "id": "follow",
+        "label": "Lặng lẽ theo nó về hang",
+        "check": {
+          "stat": "dexterity",
+          "dc": 11
+        },
+        "onSuccess": {
+          "food": 1,
+          "treasure": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Hang cua đầy vỏ dừa và một chiếc cúc áo bằng bạc có khắc chữ.",
+        "failText": "Nó quay lại nhìn bạn, rồi lặn mất dưới cát."
+      }
+    ],
+    "narrativeHooks": [
+      "càng cua khổng lồ",
+      "tiếng vỏ dừa vỡ"
+    ]
+  },
+  {
+    "id": "shore_drift_03",
+    "title": "Chai thư trôi dạt",
+    "intro": "Một chiếc chai nút sáp lăn lóc trong bọt sóng. Bên trong cuộn một mảnh giấy ố vàng.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "shore_drift",
+    "choices": [
+      {
+        "id": "read",
+        "label": "Mở ra đọc",
+        "check": {
+          "stat": "intellect",
+          "dc": 10,
+          "itemBonus": {
+            "lantern": 1,
+            "old_map": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 10,
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Lá thư tả một cái cây mọc nghiêng và con số bảy. Ai đó đã tới đây trước bạn.",
+        "failText": "Nước biển đã làm nhòe gần hết. Bạn chỉ đọc được đúng một chữ: 'chạy'."
+      },
+      {
+        "id": "keep",
+        "label": "Giữ nguyên, mang về trại",
+        "check": {
+          "stat": "charisma",
+          "dc": 8
+        },
+        "onSuccess": {
+          "morale": 10
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Cả trại xúm lại đoán già đoán non. Lần đầu tiên sau nhiều ngày có tiếng cười.",
+        "failText": "Không ai buồn quan tâm. Cái chai nằm lăn lóc bên đống lửa."
+      }
+    ],
+    "narrativeHooks": [
+      "chai thư",
+      "nét mực phai"
+    ]
+  },
+  {
+    "id": "shore_drift_04",
+    "title": "Mảnh buồm rách",
+    "intro": "Một tấm buồm lớn mắc vào mỏm đá, phần phật trong gió như muốn bay đi.",
+    "acts": [
+      1,
+      2
+    ],
+    "anchorType": "shore_drift",
+    "choices": [
+      {
+        "id": "salvage",
+        "label": "Gỡ tấm buồm về vá thuyền",
+        "check": {
+          "stat": "dexterity",
+          "dc": 11,
+          "itemBonus": {
+            "rope": 3,
+            "machete": 2
+          }
+        },
+        "onSuccess": {
+          "hull": 12
+        },
+        "onFail": {
+          "hp": -8
+        },
+        "successText": "Tấm buồm còn tốt. Đủ để vá cái lỗ lớn nhất trên mạn thuyền.",
+        "failText": "Bạn trượt chân trên rêu, đầu gối đập xuống đá."
+      },
+      {
+        "id": "shelter",
+        "label": "Căng làm mái che",
+        "check": {
+          "stat": "strength",
+          "dc": 9
+        },
+        "onSuccess": {
+          "morale": 10,
+          "gainItem": "hide"
+        },
+        "onFail": {
+          "stamina": -10
+        },
+        "successText": "Dưới tấm buồm, bạn còn tìm thấy một tấm da thuộc cuộn gọn.",
+        "failText": "Gió giật tấm buồm khỏi tay bạn, bay mất ra biển."
+      }
+    ],
+    "narrativeHooks": [
+      "cánh buồm rách",
+      "gió giật"
+    ]
+  },
+  {
+    "id": "shore_drift_05",
+    "title": "Sóng dữ cuốn đồ",
+    "intro": "Sóng bão đánh tung bọt trắng xóa. Giữa những con sóng lấp ló một cái rương nhỏ.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "shore_drift",
+    "requires": {
+      "weather": [
+        "storm"
+      ]
+    },
+    "choices": [
+      {
+        "id": "wade",
+        "label": "Lội ra vớt",
+        "check": {
+          "stat": "strength",
+          "dc": 14,
+          "itemBonus": {
+            "rope": 3
+          }
+        },
+        "onSuccess": {
+          "gainItem": "gunpowder",
+          "treasure": 10
+        },
+        "onFail": {
+          "hp": -15,
+          "loseRandomItem": 1
+        },
+        "successText": "Bạn ôm được cái rương vào bờ. Bên trong là thuốc súng khô và một mảnh da vẽ đường bờ biển.",
+        "failText": "Con sóng quật bạn xuống. Khi bò được vào bờ, balo đã nhẹ đi một món."
+      },
+      {
+        "id": "wait",
+        "label": "Chờ sóng đánh vào",
+        "check": {
+          "stat": "intellect",
+          "dc": 11,
+          "itemBonus": {
+            "spyglass": 2
+          }
+        },
+        "onSuccess": {
+          "food": 1
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Rương vỡ trên đá, chỉ còn vớt được ít lương khô.",
+        "failText": "Sóng cuốn cái rương ra xa mãi, rồi mất hút."
+      }
+    ],
+    "narrativeHooks": [
+      "sóng bão",
+      "rương trôi"
+    ]
+  },
+  {
+    "id": "shore_drift_06",
+    "title": "Cá mắc cạn",
+    "intro": "Nước rút để lại cả một vũng cá quẫy đành đạch trên cát.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "shore_drift",
+    "choices": [
+      {
+        "id": "grab",
+        "label": "Bắt bằng tay",
+        "check": {
+          "stat": "dexterity",
+          "dc": 10,
+          "itemBonus": {
+            "fishing_net": 4,
+            "spear": 2
+          }
+        },
+        "onSuccess": {
+          "food": 2,
+          "gainItem": "fish"
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Bạn gom được một ôm cá, con nào cũng béo núc.",
+        "failText": "Cá trơn tuột khỏi tay, bạn ngã sõng soài xuống vũng nước."
+      },
+      {
+        "id": "share",
+        "label": "Gọi cả trại ra cùng bắt",
+        "check": {
+          "stat": "charisma",
+          "dc": 9
+        },
+        "onSuccess": {
+          "food": 1,
+          "morale": 8
+        },
+        "onFail": {
+          "food": -1
+        },
+        "successText": "Cả trại ra bắt cá, cười nói om sòm như đi hội.",
+        "failText": "Mọi người tới muộn. Mấy con chim biển đã xơi sạch từ trước."
+      }
+    ],
+    "narrativeHooks": [
+      "cá quẫy",
+      "nước rút"
+    ]
+  },
+  {
+    "id": "lake_shore_03",
+    "title": "Sương giăng mặt hồ",
+    "intro": "Sương mù phủ kín mặt hồ. Từ giữa hồ vọng lại tiếng mái chèo khua nước, dù chẳng ai có thuyền.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "lake_shore",
+    "requires": {
+      "weather": [
+        "fog"
+      ]
+    },
+    "choices": [
+      {
+        "id": "call",
+        "label": "Cất tiếng gọi",
+        "check": {
+          "stat": "charisma",
+          "dc": 12,
+          "itemBonus": {
+            "amulet": 3
+          }
+        },
+        "onSuccess": {
+          "treasure": 12,
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -15
+        },
+        "successText": "Tiếng chèo dừng lại. Một giọng khàn khàn đáp: 'dưới chân núi, phía mặt trời mọc'.",
+        "failText": "Không ai đáp. Tiếng chèo cứ tới gần, gần mãi, rồi im bặt ngay sau lưng bạn."
+      },
+      {
+        "id": "leave",
+        "label": "Bỏ đi thật nhanh",
+        "check": {
+          "stat": "nerve",
+          "dc": 8
+        },
+        "onSuccess": {
+          "stamina": -5
+        },
+        "onFail": {
+          "morale": -10,
+          "lostUntilDusk": true
+        },
+        "successText": "Bạn rời hồ, tim đập thình thịch.",
+        "failText": "Chạy mãi trong sương, bạn lạc tới tận chiều."
+      }
+    ],
+    "narrativeHooks": [
+      "tiếng chèo không thuyền",
+      "sương trắng"
+    ]
+  },
+  {
+    "id": "lake_shore_04",
+    "title": "Nước hồ đổi màu",
+    "intro": "Một mảng nước hồ chuyển sang màu đỏ gạch, bọt khí sủi lên lăn tăn.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "lake_shore",
+    "choices": [
+      {
+        "id": "sample",
+        "label": "Múc thử một ít",
+        "check": {
+          "stat": "intellect",
+          "dc": 12,
+          "itemBonus": {
+            "water_bottle": 2,
+            "lantern": 1
+          }
+        },
+        "onSuccess": {
+          "treasure": 10
+        },
+        "onFail": {
+          "hp": -10
+        },
+        "successText": "Là gỉ sắt. Dưới đáy chắc chắn có một khối sắt rất lớn, có lẽ là một cái rương.",
+        "failText": "Hơi nước bốc lên cay xè, bạn ho sặc sụa mãi."
+      },
+      {
+        "id": "avoid",
+        "label": "Tránh xa, báo cho cả đoàn",
+        "check": {
+          "stat": "charisma",
+          "dc": 8
+        },
+        "onSuccess": {
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Mọi người gật gù nghe bạn kể, ai cũng dặn nhau đừng uống nước chỗ đó.",
+        "failText": "Chẳng ai tin bạn. Có người còn bảo bạn say nắng."
+      }
+    ],
+    "narrativeHooks": [
+      "nước đỏ gạch",
+      "bọt khí"
+    ]
+  },
+  {
+    "id": "lake_shore_05",
+    "title": "Cá chình dưới gốc cây",
+    "intro": "Dưới gốc cây đổ nghiêng ra mặt hồ, một cái bóng dài ngoằng lượn qua lượn lại.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "lake_shore",
+    "choices": [
+      {
+        "id": "spear",
+        "label": "Đâm bằng giáo",
+        "check": {
+          "stat": "dexterity",
+          "dc": 12,
+          "itemBonus": {
+            "spear": 4,
+            "fishing_net": 2
+          }
+        },
+        "onSuccess": {
+          "food": 2,
+          "gainItem": "fish"
+        },
+        "onFail": {
+          "hp": -8
+        },
+        "successText": "Một phát trúng ngay. Con cá chình dài gần bằng người.",
+        "failText": "Con cá quẫy mạnh, kéo bạn ngã xuống nước."
+      },
+      {
+        "id": "net",
+        "label": "Chăng lưới chờ",
+        "check": {
+          "stat": "intellect",
+          "dc": 10,
+          "itemBonus": {
+            "fishing_net": 4,
+            "rope": 1
+          }
+        },
+        "onSuccess": {
+          "food": 1,
+          "morale": 5
+        },
+        "onFail": {
+          "stamina": -10
+        },
+        "successText": "Kiên nhẫn một hồi, lưới nặng trĩu.",
+        "failText": "Ngồi cả buổi, chỉ vớt được một chiếc giày rách."
+      }
+    ],
+    "narrativeHooks": [
+      "bóng cá dài",
+      "gốc cây đổ"
+    ]
+  },
+  {
+    "id": "cave_mouth_02",
+    "title": "Bức vẽ trên vách",
+    "intro": "Trên vách đá cửa hang có những hình người que đứng quanh một ngọn núi đang phun lửa.",
+    "acts": [
+      1,
+      2
+    ],
+    "anchorType": "cave_mouth",
+    "choices": [
+      {
+        "id": "study",
+        "label": "Chép lại hình vẽ",
+        "check": {
+          "stat": "intellect",
+          "dc": 10,
+          "itemBonus": {
+            "lantern": 2,
+            "matches": 1
+          }
+        },
+        "onSuccess": {
+          "treasure": 12,
+          "setFlag": "cave_paintings"
+        },
+        "onFail": {
+          "stamina": -10
+        },
+        "successText": "Bạn nhận ra một hình người đang chôn thứ gì đó dưới gốc cây.",
+        "failText": "Hình vẽ mờ quá, càng nhìn càng rối."
+      },
+      {
+        "id": "touch",
+        "label": "Chạm vào hình ngọn núi",
+        "check": {
+          "stat": "nerve",
+          "dc": 11,
+          "itemBonus": {
+            "amulet": 3
+          }
+        },
+        "onSuccess": {
+          "morale": 10
+        },
+        "onFail": {
+          "morale": -10,
+          "hp": -5
+        },
+        "successText": "Đá ấm lên dưới tay. Bạn thấy lòng can đảm lạ.",
+        "failText": "Một luồng khí nóng phả ra từ khe đá, bỏng rát cả tay."
+      }
+    ],
+    "narrativeHooks": [
+      "hình người que",
+      "đá ấm"
+    ]
+  },
+  {
+    "id": "cave_mouth_03",
+    "title": "Đàn dơi xuất hang",
+    "intro": "Chiều muộn, hàng nghìn con dơi ùa ra khỏi hang như một dòng khói đen.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "cave_mouth",
+    "choices": [
+      {
+        "id": "guano",
+        "label": "Nhặt phân dơi làm thuốc súng",
+        "check": {
+          "stat": "intellect",
+          "dc": 11,
+          "itemBonus": {
+            "gunpowder": 2
+          }
+        },
+        "onSuccess": {
+          "gainItem": "gunpowder"
+        },
+        "onFail": {
+          "hp": -6,
+          "morale": -5
+        },
+        "successText": "Phân dơi trộn với tro, bạn đã có một nắm thuốc súng tự chế.",
+        "failText": "Bạn bị cả đàn dơi quẹt qua mặt, người hôi rình."
+      },
+      {
+        "id": "wait",
+        "label": "Nép vào vách chờ chúng bay hết",
+        "check": {
+          "stat": "nerve",
+          "dc": 9
+        },
+        "onSuccess": {
+          "stamina": 10
+        },
+        "onFail": {
+          "morale": -8
+        },
+        "successText": "Đàn dơi bay qua như cơn gió. Bạn nhân lúc hang vắng nghỉ ngơi một chút.",
+        "failText": "Một con dơi mắc vào tóc bạn, giãy giụa mãi mới thoát."
+      }
+    ],
+    "narrativeHooks": [
+      "đàn dơi",
+      "dòng khói đen"
+    ]
+  },
+  {
+    "id": "cave_mouth_04",
+    "title": "Đọc ngược bản đồ",
+    "intro": "Khi xoay tấm bản đồ ngược lại, những ký hiệu khớp đúng với hình vòm cửa hang.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "cave_mouth",
+    "requires": {
+      "flags": [
+        "twist_map_reversed"
+      ]
+    },
+    "choices": [
+      {
+        "id": "align",
+        "label": "Căn bản đồ theo vòm hang",
+        "check": {
+          "stat": "intellect",
+          "dc": 11,
+          "itemBonus": {
+            "old_map": 3,
+            "compass": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 22
+        },
+        "onFail": {
+          "morale": -8
+        },
+        "successText": "Mọi thứ khớp vào nhau. Hướng đi đúng hóa ra ngược với tất cả những gì cả đoàn từng đoán.",
+        "failText": "Bạn xoay tới xoay lui tới hoa mắt."
+      },
+      {
+        "id": "ask",
+        "label": "Rủ người khác cùng xem",
+        "check": {
+          "stat": "charisma",
+          "dc": 10
+        },
+        "onSuccess": {
+          "treasure": 12,
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Hai cái đầu tốt hơn một. Cả hai cùng nhận ra lối đi.",
+        "failText": "Hai người cãi nhau về hướng bắc tới tận trưa."
+      }
+    ],
+    "narrativeHooks": [
+      "ký hiệu ngược",
+      "vòm hang"
+    ]
+  },
+  {
+    "id": "cave_tunnel_02",
+    "title": "Tiếng nước chảy sâu",
+    "intro": "Sâu trong đường hầm có tiếng nước chảy róc rách, và một làn gió mát lạ lùng.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "cave_tunnel",
+    "choices": [
+      {
+        "id": "follow",
+        "label": "Lần theo tiếng nước",
+        "check": {
+          "stat": "nerve",
+          "dc": 12,
+          "itemBonus": {
+            "lantern": 3,
+            "torch": 2,
+            "rope": 1
+          }
+        },
+        "onSuccess": {
+          "treasure": 15,
+          "morale": 5
+        },
+        "onFail": {
+          "hp": -10,
+          "lostUntilDusk": true
+        },
+        "successText": "Bạn tới một mạch nước ngầm. Trên vách có vết khắc của người xưa, chỉ lối lên núi lửa.",
+        "failText": "Đuốc tắt. Bạn mò mẫm trong bóng tối tới tận chiều mới thấy ánh sáng."
+      },
+      {
+        "id": "drink",
+        "label": "Hứng nước mang về",
+        "check": {
+          "stat": "dexterity",
+          "dc": 9,
+          "itemBonus": {
+            "water_bottle": 3,
+            "water_barrel": 3
+          }
+        },
+        "onSuccess": {
+          "hunger": 10,
+          "morale": 8
+        },
+        "onFail": {
+          "stamina": -10
+        },
+        "successText": "Nước mát lạnh và ngọt lịm.",
+        "failText": "Bạn đánh đổ gần hết trên đường ra."
+      }
+    ],
+    "narrativeHooks": [
+      "mạch nước ngầm",
+      "gió mát trong hang"
+    ]
+  },
+  {
+    "id": "cave_tunnel_03",
+    "title": "Xương người và cây đèn",
+    "intro": "Một bộ xương ngồi dựa vách, tay còn ôm cây đèn dầu đã gỉ. Cạnh đó là một cái túi da.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "cave_tunnel",
+    "choices": [
+      {
+        "id": "search",
+        "label": "Lục cái túi da",
+        "check": {
+          "stat": "nerve",
+          "dc": 11,
+          "itemBonus": {
+            "lantern": 2,
+            "amulet": 2
+          }
+        },
+        "onSuccess": {
+          "gainItem": "old_map",
+          "treasure": 10
+        },
+        "onFail": {
+          "morale": -15
+        },
+        "successText": "Trong túi là một tấm bản đồ gấp tư và vài dòng nhật ký.",
+        "failText": "Bạn vừa chạm vào, bộ xương đổ sụp. Bạn hét lên và bỏ chạy."
+      },
+      {
+        "id": "bury",
+        "label": "Chôn cất tử tế",
+        "check": {
+          "stat": "charisma",
+          "dc": 9,
+          "itemBonus": {
+            "shovel": 3
+          }
+        },
+        "onSuccess": {
+          "morale": 15
+        },
+        "onFail": {
+          "stamina": -15
+        },
+        "successText": "Bạn đắp một nấm mộ nhỏ. Lòng nhẹ nhõm lạ thường.",
+        "failText": "Nền đá cứng quá, bạn đành phủ tạm mấy hòn đá lên."
+      }
+    ],
+    "narrativeHooks": [
+      "bộ xương",
+      "cây đèn gỉ"
+    ]
+  },
+  {
+    "id": "cave_tunnel_04",
+    "title": "Hầm sụp vì động đất",
+    "intro": "Mặt đất rung lên từng cơn. Đá vụn rơi lả tả từ trần hầm.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "cave_tunnel",
+    "requires": {
+      "weather": [
+        "quake"
+      ]
+    },
+    "choices": [
+      {
+        "id": "run",
+        "label": "Chạy thật nhanh ra ngoài",
+        "check": {
+          "stat": "dexterity",
+          "dc": 12
+        },
+        "onSuccess": {
+          "stamina": -10
+        },
+        "onFail": {
+          "hp": -20
+        },
+        "successText": "Bạn lao ra cửa hang đúng lúc đoạn hầm phía sau sụp xuống.",
+        "failText": "Một tảng đá rơi trúng vai. Bạn bò ra được, người đầy máu."
+      },
+      {
+        "id": "shelter",
+        "label": "Nép vào hốc đá",
+        "check": {
+          "stat": "nerve",
+          "dc": 11,
+          "itemBonus": {
+            "amulet": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 15
+        },
+        "onFail": {
+          "hp": -12,
+          "lostUntilDusk": true
+        },
+        "successText": "Khi bụi lắng xuống, vách đá sụp để lộ một căn hầm nhỏ đầy đồ gốm cổ.",
+        "failText": "Lối ra bị lấp. Tới chiều bạn mới đào được một khe để chui ra."
+      }
+    ],
+    "narrativeHooks": [
+      "đá rơi",
+      "mặt đất rung"
+    ]
+  },
+  {
+    "id": "volcano_slope_03",
+    "title": "Suối lưu huỳnh",
+    "intro": "Một dòng nước vàng khè chảy ra từ sườn núi, bốc mùi trứng thối.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "volcano_slope",
+    "choices": [
+      {
+        "id": "collect",
+        "label": "Lấy lưu huỳnh làm thuốc súng",
+        "check": {
+          "stat": "intellect",
+          "dc": 11,
+          "itemBonus": {
+            "matches": 2
+          }
+        },
+        "onSuccess": {
+          "gainItem": "gunpowder"
+        },
+        "onFail": {
+          "hp": -8
+        },
+        "successText": "Lưu huỳnh trộn than củi, bạn có ngay một gói thuốc súng.",
+        "failText": "Hơi độc làm bạn chóng mặt, ngã ngồi xuống đất."
+      },
+      {
+        "id": "heal",
+        "label": "Ngâm chân chữa vết thương",
+        "check": {
+          "stat": "nerve",
+          "dc": 10
+        },
+        "onSuccess": {
+          "hp": 15
+        },
+        "onFail": {
+          "hp": -5,
+          "morale": -5
+        },
+        "successText": "Nước ấm và khoáng làm mọi vết xước dịu hẳn.",
+        "failText": "Nước nóng hơn bạn tưởng. Hai bàn chân đỏ lựng."
+      }
+    ],
+    "narrativeHooks": [
+      "mùi trứng thối",
+      "nước vàng khè"
+    ]
+  },
+  {
+    "id": "volcano_slope_04",
+    "title": "Dòng dung nham mới",
+    "intro": "Một dòng dung nham mới cắt ngang con đường mòn quen thuộc, đá hai bên còn đỏ rực.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "volcano_slope",
+    "requires": {
+      "flags": [
+        "twist_volcano_early"
+      ]
+    },
+    "choices": [
+      {
+        "id": "jump",
+        "label": "Nhảy qua chỗ hẹp",
+        "check": {
+          "stat": "dexterity",
+          "dc": 13,
+          "itemBonus": {
+            "rope": 3
+          }
+        },
+        "onSuccess": {
+          "treasure": 18
+        },
+        "onFail": {
+          "hp": -20
+        },
+        "successText": "Bạn tiếp đất ở bờ bên kia. Dòng dung nham vừa làm lộ ra một bậc đá khắc chữ.",
+        "failText": "Bạn trượt chân, bỏng một bên ống quyển."
+      },
+      {
+        "id": "wait",
+        "label": "Chờ dung nham nguội",
+        "check": {
+          "stat": "intellect",
+          "dc": 10
+        },
+        "onSuccess": {
+          "treasure": 8
+        },
+        "onFail": {
+          "stamina": -15
+        },
+        "successText": "Đá nguội đi, bạn nhặt được một mảnh gốm vỡ có vẽ con rắn.",
+        "failText": "Chờ mãi dung nham vẫn không nguội. Cả buổi chiều trôi qua vô ích."
+      }
+    ],
+    "narrativeHooks": [
+      "dung nham đỏ rực",
+      "đường mòn bị cắt"
+    ]
+  },
+  {
+    "id": "volcano_slope_05",
+    "title": "Cơ quan dưới cát nóng",
+    "intro": "Dưới lớp tro nóng lộ ra một cái đĩa đá khắc vòng tròn, xung quanh là những lỗ nhỏ tối om.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "volcano_slope",
+    "requires": {
+      "flags": [
+        "twist_treasure_trap"
+      ]
+    },
+    "choices": [
+      {
+        "id": "disarm",
+        "label": "Tìm cách vô hiệu cơ quan",
+        "check": {
+          "stat": "intellect",
+          "dc": 13,
+          "itemBonus": {
+            "hammer": 2,
+            "old_map": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 15,
+          "setFlag": "trap_disarmed"
+        },
+        "onFail": {
+          "hp": -20
+        },
+        "successText": "Bạn chèn một hòn đá vào khe. Tiếng lách cách tắt hẳn. Cái bẫy canh kho báu đã hết răng.",
+        "failText": "Hàng loạt mũi tên tre bắn ra từ các lỗ. Một mũi găm vào vai bạn."
+      },
+      {
+        "id": "mark",
+        "label": "Đánh dấu rồi tránh xa",
+        "check": {
+          "stat": "charisma",
+          "dc": 9
+        },
+        "onSuccess": {
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Bạn cắm cọc cảnh báo cho cả đoàn.",
+        "failText": "Không ai để ý tới cái cọc của bạn."
+      }
+    ],
+    "narrativeHooks": [
+      "đĩa đá",
+      "mũi tên tre"
+    ]
+  },
+  {
+    "id": "crater_rim_02",
+    "title": "Mắt núi lửa",
+    "intro": "Từ mép miệng núi nhìn xuống, dung nham cuộn sôi như một con mắt đỏ rực đang mở.",
+    "acts": [
+      3
+    ],
+    "anchorType": "crater_rim",
+    "choices": [
+      {
+        "id": "offer",
+        "label": "Ném bùa hộ mệnh xuống",
+        "check": {
+          "stat": "nerve",
+          "dc": 10,
+          "itemBonus": {
+            "amulet": 6
+          }
+        },
+        "onSuccess": {
+          "morale": 20,
+          "treasure": 10
+        },
+        "onFail": {
+          "morale": -15
+        },
+        "successText": "Dung nham lặng đi một thoáng. Bạn thấy như có ai vừa gật đầu.",
+        "failText": "Không có gì xảy ra. Bạn thấy mình thật ngớ ngẩn."
+      },
+      {
+        "id": "look",
+        "label": "Nhìn kỹ vách miệng núi",
+        "check": {
+          "stat": "intellect",
+          "dc": 12,
+          "itemBonus": {
+            "spyglass": 4
+          }
+        },
+        "onSuccess": {
+          "treasure": 20
+        },
+        "onFail": {
+          "hp": -10
+        },
+        "successText": "Trên vách có một cái hốc được đục đẽo, dẫn xuống lòng núi.",
+        "failText": "Hơi nóng táp vào mặt, lông mày bạn cháy xém."
+      }
+    ],
+    "narrativeHooks": [
+      "mắt đỏ rực",
+      "hơi nóng táp mặt"
+    ]
+  },
+  {
+    "id": "crater_rim_03",
+    "title": "Tiếng trống trong lòng núi",
+    "intro": "Từ lòng núi vọng lên tiếng trống đều đều, mỗi lúc một nhanh.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "crater_rim",
+    "choices": [
+      {
+        "id": "count",
+        "label": "Đếm nhịp trống",
+        "check": {
+          "stat": "intellect",
+          "dc": 11
+        },
+        "onSuccess": {
+          "treasure": 12
+        },
+        "onFail": {
+          "morale": -10
+        },
+        "successText": "Nhịp trống lặp lại một con số: bảy. Bạn chợt nhớ tới những ký hiệu trên bản đồ.",
+        "failText": "Nhịp trống làm bạn đau đầu như búa bổ."
+      },
+      {
+        "id": "flee",
+        "label": "Chạy xuống núi",
+        "check": {
+          "stat": "strength",
+          "dc": 9
+        },
+        "onSuccess": {
+          "stamina": -10
+        },
+        "onFail": {
+          "hp": -10
+        },
+        "successText": "Bạn chạy một mạch xuống chân núi, không dám ngoái lại.",
+        "failText": "Bạn vấp đá, lăn mấy vòng xuống sườn núi."
+      }
+    ],
+    "narrativeHooks": [
+      "tiếng trống",
+      "lòng núi"
+    ]
+  },
+  {
+    "id": "shipwreck_01",
+    "title": "Xác tàu mắc cạn",
+    "intro": "Một con tàu buồm nằm nghiêng trên bãi cát, mạn tàu mục nát, cửa khoang hé mở.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "shipwreck",
+    "choices": [
+      {
+        "id": "hold",
+        "label": "Chui xuống khoang hàng",
+        "check": {
+          "stat": "nerve",
+          "dc": 11,
+          "itemBonus": {
+            "lantern": 3,
+            "torch": 2
+          }
+        },
+        "onSuccess": {
+          "food": 2,
+          "gainItem": "rope"
+        },
+        "onFail": {
+          "hp": -10
+        },
+        "successText": "Khoang hàng còn mấy thùng lương khô chưa ướt và một cuộn dây thừng tốt.",
+        "failText": "Sàn khoang sụp. Bạn rơi xuống nước lạnh ngắt, xước cả người."
+      },
+      {
+        "id": "planks",
+        "label": "Gỡ ván về vá thuyền",
+        "check": {
+          "stat": "strength",
+          "dc": 10,
+          "itemBonus": {
+            "hammer": 3,
+            "axe": 2
+          }
+        },
+        "onSuccess": {
+          "hull": 10,
+          "gainItem": "wood"
+        },
+        "onFail": {
+          "stamina": -15
+        },
+        "successText": "Ván tàu cũ mà chắc. Đủ để vá thuyền và còn dư một khúc.",
+        "failText": "Đinh gỉ bám chặt, cậy mãi không ra tấm nào."
+      }
+    ],
+    "narrativeHooks": [
+      "xác tàu nghiêng",
+      "khoang hàng tối"
+    ]
+  },
+  {
+    "id": "shipwreck_02",
+    "title": "Nhật ký thuyền trưởng",
+    "intro": "Trong buồng lái đổ nát, một cuốn sổ bìa da nằm kẹt dưới bánh lái.",
+    "acts": [
+      1,
+      2
+    ],
+    "anchorType": "shipwreck",
+    "requires": {
+      "notFlags": [
+        "wreck_logbook"
+      ]
+    },
+    "choices": [
+      {
+        "id": "read",
+        "label": "Đọc cuốn nhật ký",
+        "check": {
+          "stat": "intellect",
+          "dc": 11,
+          "itemBonus": {
+            "lantern": 2,
+            "old_map": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 10,
+          "setFlag": "wreck_logbook"
+        },
+        "onFail": {
+          "morale": -8
+        },
+        "successText": "Trang cuối viết: 'Cửa đá trong rừng chỉ mở cho ai biết tên con tàu'. Bên dưới là tên con tàu.",
+        "failText": "Nước biển đã làm dính chặt các trang. Bạn chỉ đọc được lời than thở về thời tiết."
+      },
+      {
+        "id": "take",
+        "label": "Cất vào balo đọc sau",
+        "check": {
+          "stat": "dexterity",
+          "dc": 9
+        },
+        "onSuccess": {
+          "morale": 5,
+          "setFlag": "wreck_logbook"
+        },
+        "onFail": {
+          "loseRandomItem": 1
+        },
+        "successText": "Bạn nhét cuốn sổ vào balo, chờ tối về trại đọc cho cả nhóm nghe.",
+        "failText": "Bạn trượt chân trên sàn nghiêng, một món trong balo văng xuống khe tàu."
+      }
+    ],
+    "narrativeHooks": [
+      "cuốn sổ bìa da",
+      "bánh lái gãy"
+    ]
+  },
+  {
+    "id": "shipwreck_03",
+    "title": "Ổ bạch tuộc trong khoang",
+    "intro": "Một cái xúc tu dài thò ra khỏi lỗ thủng trên mạn tàu, quờ quạng tìm thứ gì đó.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "shipwreck",
+    "choices": [
+      {
+        "id": "fight",
+        "label": "Chặt đứt xúc tu",
+        "check": {
+          "stat": "strength",
+          "dc": 12,
+          "itemBonus": {
+            "machete": 3,
+            "axe": 3,
+            "spear": 2
+          }
+        },
+        "onSuccess": {
+          "food": 2,
+          "gainItem": "ink_sac"
+        },
+        "onFail": {
+          "hp": -12,
+          "morale": -5
+        },
+        "successText": "Con bạch tuộc rút lui, để lại một khúc xúc tu to tướng và túi mực.",
+        "failText": "Cái xúc tu quấn lấy chân, quật bạn xuống sàn tàu."
+      },
+      {
+        "id": "sneak",
+        "label": "Lẻn qua lấy chiếc rương",
+        "check": {
+          "stat": "dexterity",
+          "dc": 13
+        },
+        "onSuccess": {
+          "treasure": 12,
+          "gainItem": "compass"
+        },
+        "onFail": {
+          "hp": -8,
+          "loseRandomItem": 1
+        },
+        "successText": "Bạn rút được chiếc rương nhỏ ra trong khi con vật đang ngủ. Trong đó là một chiếc la bàn đồng.",
+        "failText": "Con bạch tuộc tỉnh dậy, phun mực kín mặt bạn."
+      }
+    ],
+    "narrativeHooks": [
+      "xúc tu",
+      "túi mực"
+    ]
+  },
+  {
+    "id": "shipwreck_04",
+    "title": "Khẩu thần công gỉ sét",
+    "intro": "Trên boong tàu còn một khẩu thần công, nòng chĩa thẳng ra biển.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "shipwreck",
+    "choices": [
+      {
+        "id": "fire",
+        "label": "Nạp thuốc bắn một phát",
+        "check": {
+          "stat": "nerve",
+          "dc": 12,
+          "itemBonus": {
+            "gunpowder": 4,
+            "matches": 2
+          }
+        },
+        "onSuccess": {
+          "morale": 15,
+          "setFlag": "cannon_fired"
+        },
+        "onFail": {
+          "hp": -15
+        },
+        "successText": "ĐÙNG! Tiếng nổ vang khắp đảo. Chim bay rợp trời, cả trại reo hò.",
+        "failText": "Nòng pháo nổ tung, mảnh gỉ văng khắp nơi."
+      },
+      {
+        "id": "scrap",
+        "label": "Tháo lấy sắt",
+        "check": {
+          "stat": "strength",
+          "dc": 11,
+          "itemBonus": {
+            "hammer": 3
+          }
+        },
+        "onSuccess": {
+          "hull": 8
+        },
+        "onFail": {
+          "stamina": -15
+        },
+        "successText": "Mấy cái đai sắt đủ để gia cố mũi thuyền.",
+        "failText": "Sắt gỉ vụn ra từng mảng, chẳng dùng được gì."
+      }
+    ],
+    "narrativeHooks": [
+      "thần công gỉ",
+      "boong tàu nghiêng"
+    ]
+  },
+  {
+    "id": "shipwreck_05",
+    "title": "Trại của đoàn kia",
+    "intro": "Sau xác tàu có dấu lửa trại còn ấm, mấy chiếc lều vải và thùng hàng ghi tên một đoàn thám hiểm khác.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "shipwreck",
+    "requires": {
+      "flags": [
+        "twist_other_party"
+      ]
+    },
+    "choices": [
+      {
+        "id": "trade",
+        "label": "Chờ họ về để trao đổi",
+        "check": {
+          "stat": "charisma",
+          "dc": 12,
+          "itemBonus": {
+            "rum": 3
+          }
+        },
+        "onSuccess": {
+          "food": 3,
+          "morale": 10
+        },
+        "onFail": {
+          "morale": -10,
+          "loseRandomItem": 1
+        },
+        "successText": "Họ về tới, mệt mỏi và thân thiện. Đổi được mấy khẩu phần lấy vài câu chuyện.",
+        "failText": "Họ về tới, nghi ngờ và hung hăng. Bạn phải bỏ lại một món mới đi được."
+      },
+      {
+        "id": "raid",
+        "label": "Lấy trộm thùng hàng",
+        "check": {
+          "stat": "dexterity",
+          "dc": 13
+        },
+        "onSuccess": {
+          "food": 4,
+          "treasure": 8
+        },
+        "onFail": {
+          "hp": -15,
+          "morale": -10
+        },
+        "successText": "Bạn vác được một thùng lương khô và tấm bản đồ họ đánh dấu dở.",
+        "failText": "Một tiếng súng nổ. Viên đạn sượt qua tai bạn."
+      }
+    ],
+    "narrativeHooks": [
+      "đoàn thám hiểm khác",
+      "lửa trại còn ấm"
+    ]
+  },
+  {
+    "id": "jungle_ruin_01",
+    "title": "Cổng đá phủ rêu",
+    "intro": "Giữa rừng rậm sừng sững một cổng đá phủ kín rêu, hai bên là tượng hai con rắn quấn nhau.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "jungle_ruin",
+    "choices": [
+      {
+        "id": "clear",
+        "label": "Phát quang dây leo",
+        "check": {
+          "stat": "strength",
+          "dc": 10,
+          "itemBonus": {
+            "machete": 3,
+            "axe": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 8,
+          "gainItem": "wood"
+        },
+        "onFail": {
+          "stamina": -15
+        },
+        "successText": "Dây leo rơi xuống để lộ hàng chữ khắc: con số bảy lặp lại ba lần.",
+        "failText": "Dây leo dai như chão. Bạn mỏi nhừ mà chẳng phát được bao nhiêu."
+      },
+      {
+        "id": "read",
+        "label": "Giải mã hình khắc",
+        "check": {
+          "stat": "intellect",
+          "dc": 12,
+          "itemBonus": {
+            "old_map": 2,
+            "lantern": 1
+          }
+        },
+        "onSuccess": {
+          "treasure": 14
+        },
+        "onFail": {
+          "morale": -8
+        },
+        "successText": "Hai con rắn chỉ về hai hướng: một về hồ, một về núi lửa.",
+        "failText": "Những hình khắc càng nhìn càng giống đang chuyển động."
+      }
+    ],
+    "narrativeHooks": [
+      "cổng đá",
+      "rắn quấn nhau"
+    ]
+  },
+  {
+    "id": "jungle_ruin_02",
+    "title": "Cửa đá biết tên con tàu",
+    "intro": "Cánh cửa đá cuối phế tích có một vòng chữ xoay được, như một ổ khóa khổng lồ.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "jungle_ruin",
+    "requires": {
+      "flags": [
+        "wreck_logbook"
+      ]
+    },
+    "choices": [
+      {
+        "id": "spell",
+        "label": "Xoay đúng tên con tàu",
+        "check": {
+          "stat": "intellect",
+          "dc": 9,
+          "itemBonus": {
+            "old_map": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 25,
+          "morale": 10
+        },
+        "onFail": {
+          "morale": -10
+        },
+        "successText": "Cánh cửa rít lên rồi trượt sang một bên. Bên trong là căn phòng vẽ kín bản đồ đảo.",
+        "failText": "Bạn xoay nhầm một chữ. Cửa kẹt cứng, không nhúc nhích."
+      },
+      {
+        "id": "force",
+        "label": "Dùng sức đẩy",
+        "check": {
+          "stat": "strength",
+          "dc": 15,
+          "itemBonus": {
+            "hammer": 3,
+            "gunpowder": 4
+          }
+        },
+        "onSuccess": {
+          "treasure": 20
+        },
+        "onFail": {
+          "hp": -15
+        },
+        "successText": "Cánh cửa bật mở trong một tiếng rầm, bụi mù mịt.",
+        "failText": "Bạn đẩy tới trật cả vai."
+      }
+    ],
+    "narrativeHooks": [
+      "vòng chữ đá",
+      "căn phòng bản đồ"
+    ]
+  },
+  {
+    "id": "jungle_ruin_03",
+    "title": "Bàn thờ bỏ hoang",
+    "intro": "Một bàn thờ đá ngập lá mục, trên đặt một cái bát đồng đựng nước mưa.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "jungle_ruin",
+    "choices": [
+      {
+        "id": "pray",
+        "label": "Thắp hương cầu may",
+        "check": {
+          "stat": "charisma",
+          "dc": 9,
+          "itemBonus": {
+            "matches": 2,
+            "amulet": 2
+          }
+        },
+        "onSuccess": {
+          "morale": 15
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Khói hương bay thẳng lên. Bạn thấy lòng bình yên lạ.",
+        "failText": "Diêm ướt, bạn quẹt mãi không cháy."
+      },
+      {
+        "id": "take_bowl",
+        "label": "Lấy cái bát đồng",
+        "check": {
+          "stat": "nerve",
+          "dc": 12
+        },
+        "onSuccess": {
+          "treasure": 10
+        },
+        "onFail": {
+          "hp": -10,
+          "morale": -10
+        },
+        "successText": "Dưới đáy bát có khắc hình một cái cây mọc ngược.",
+        "failText": "Vừa nhấc bát lên, một bầy ong vò vẽ ùa ra từ hốc đá."
+      }
+    ],
+    "narrativeHooks": [
+      "bàn thờ đá",
+      "bát đồng"
+    ]
+  },
+  {
+    "id": "jungle_ruin_04",
+    "title": "Bóng người trong phế tích",
+    "intro": "Một bóng người gầy gò, râu tóc bạc trắng lướt qua giữa những cột đá rồi dừng lại nhìn bạn.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "jungle_ruin",
+    "requires": {
+      "flags": [
+        "twist_hider_alive"
+      ]
+    },
+    "choices": [
+      {
+        "id": "talk",
+        "label": "Lên tiếng chào",
+        "check": {
+          "stat": "charisma",
+          "dc": 12,
+          "itemBonus": {
+            "rum": 3,
+            "hardtack": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 18,
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -15
+        },
+        "successText": "Ông lão chỉ tay về phía núi lửa, lẩm bẩm một câu vần. Chắc chắn đó là người đã giấu kho báu.",
+        "failText": "Ông lão nhe răng cười rồi biến mất. Tối đó bạn không ngủ được."
+      },
+      {
+        "id": "chase",
+        "label": "Đuổi theo",
+        "check": {
+          "stat": "dexterity",
+          "dc": 13
+        },
+        "onSuccess": {
+          "treasure": 12,
+          "gainItem": "amulet"
+        },
+        "onFail": {
+          "hp": -12,
+          "lostUntilDusk": true
+        },
+        "successText": "Ông ta chạy mất nhưng đánh rơi một chiếc bùa hộ mệnh bằng xương.",
+        "failText": "Bạn đuổi theo tới lạc giữa rừng."
+      }
+    ],
+    "narrativeHooks": [
+      "ông lão tóc trắng",
+      "cột đá"
+    ]
+  },
+  {
+    "id": "jungle_ruin_05",
+    "title": "Dấu đào cũ",
+    "intro": "Giữa phế tích có một cái hố đào dở từ rất lâu, cạnh hố là cán xẻng mục và mấy vỏ chai.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "jungle_ruin",
+    "requires": {
+      "flags": [
+        "twist_half_taken"
+      ]
+    },
+    "choices": [
+      {
+        "id": "trace",
+        "label": "Lần theo dấu vết của kẻ đào",
+        "check": {
+          "stat": "intellect",
+          "dc": 11,
+          "itemBonus": {
+            "compass": 2,
+            "spyglass": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 18
+        },
+        "onFail": {
+          "morale": -8
+        },
+        "successText": "Chúng đào sai chỗ. Từ vị trí cái hố, bạn đoán được phần kho báu còn lại nằm ở đâu.",
+        "failText": "Dấu vết mờ hết rồi. Bạn chỉ thấy hố và hố."
+      },
+      {
+        "id": "dig",
+        "label": "Đào tiếp cái hố",
+        "check": {
+          "stat": "strength",
+          "dc": 12,
+          "itemBonus": {
+            "shovel": 4
+          }
+        },
+        "onSuccess": {
+          "treasure": 10,
+          "gainItem": "bone"
+        },
+        "onFail": {
+          "stamina": -20
+        },
+        "successText": "Bạn đào trúng một cái hộp nhỏ, trong đó có một khúc xương khắc chữ.",
+        "failText": "Đào tới đâu cát sụt tới đó."
+      }
+    ],
+    "narrativeHooks": [
+      "hố đào cũ",
+      "cán xẻng mục"
+    ]
+  },
+  {
+    "id": "jungle_ruin_06",
+    "title": "Ngôi mộ mang họ quen",
+    "intro": "Một tấm bia đá nhỏ, trên bia khắc một cái họ mà ai đó trong đoàn nhận ra ngay.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "jungle_ruin",
+    "requires": {
+      "flags": [
+        "twist_blood_relation"
+      ]
+    },
+    "choices": [
+      {
+        "id": "honor",
+        "label": "Thắp nén hương",
+        "check": {
+          "stat": "charisma",
+          "dc": 9,
+          "itemBonus": {
+            "matches": 2
+          }
+        },
+        "onSuccess": {
+          "morale": 15,
+          "treasure": 8
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Dưới chân bia có một hộp thiếc đựng thư gia đình. Thư nhắc tới chỗ giấu đồ.",
+        "failText": "Gió thổi tắt nén hương, ba lần liền."
+      },
+      {
+        "id": "dig_grave",
+        "label": "Đào mộ lên xem",
+        "check": {
+          "stat": "nerve",
+          "dc": 13,
+          "itemBonus": {
+            "shovel": 3
+          }
+        },
+        "onSuccess": {
+          "treasure": 20
+        },
+        "onFail": {
+          "morale": -20
+        },
+        "successText": "Trong mộ không có xác, chỉ có một tấm bản đồ bọc sáp.",
+        "failText": "Bạn thấy mình vừa làm một việc có lỗi với người đã khuất."
+      }
+    ],
+    "narrativeHooks": [
+      "bia đá",
+      "cái họ quen"
+    ]
+  },
+  {
+    "id": "cliff_nest_01",
+    "title": "Tổ chim biển",
+    "intro": "Trên vách đá dựng đứng có hàng trăm tổ chim, trứng lốm đốm nằm san sát.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "cliff_nest",
+    "choices": [
+      {
+        "id": "climb",
+        "label": "Trèo lên lấy trứng",
+        "check": {
+          "stat": "dexterity",
+          "dc": 12,
+          "itemBonus": {
+            "rope": 3
+          }
+        },
+        "onSuccess": {
+          "food": 3,
+          "gainItem": "feather"
+        },
+        "onFail": {
+          "hp": -15
+        },
+        "successText": "Bạn trèo lên, gom đầy mũ trứng mà không làm vỡ quả nào.",
+        "failText": "Một con chim lao vào mặt. Bạn buông tay, trượt xuống mấy mét."
+      },
+      {
+        "id": "feathers",
+        "label": "Nhặt lông vũ dưới chân vách",
+        "check": {
+          "stat": "intellect",
+          "dc": 8
+        },
+        "onSuccess": {
+          "gainItem": "feather",
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Lông vũ trắng muốt, làm bút chép bản đồ thì tuyệt.",
+        "failText": "Toàn lông ướt, dính đầy phân chim."
+      }
+    ],
+    "narrativeHooks": [
+      "tổ chim",
+      "vách đá dựng đứng"
+    ]
+  },
+  {
+    "id": "cliff_nest_02",
+    "title": "Chim ưng giữ tổ",
+    "intro": "Một con chim ưng to lớn đậu trên mỏm đá, dưới chân nó có vật gì sáng lấp lánh.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "cliff_nest",
+    "choices": [
+      {
+        "id": "distract",
+        "label": "Ném đồ nhử nó bay đi",
+        "check": {
+          "stat": "dexterity",
+          "dc": 11,
+          "itemBonus": {
+            "slingshot": 4
+          }
+        },
+        "onSuccess": {
+          "treasure": 12
+        },
+        "onFail": {
+          "hp": -10
+        },
+        "successText": "Con chim bay vút đi. Thứ lấp lánh là một chiếc nhẫn vàng khắc tên người giấu kho báu.",
+        "failText": "Con chim sà xuống cào một đường trên cánh tay bạn."
+      },
+      {
+        "id": "watch",
+        "label": "Quan sát hướng bay",
+        "check": {
+          "stat": "intellect",
+          "dc": 10,
+          "itemBonus": {
+            "spyglass": 3
+          }
+        },
+        "onSuccess": {
+          "treasure": 8
+        },
+        "onFail": {
+          "stamina": -10
+        },
+        "successText": "Nó bay về phía một cây đại thụ trong rừng, cây duy nhất có cành mọc chúc xuống.",
+        "failText": "Mắt bạn mỏi nhừ mà nó vẫn đứng im như tượng."
+      }
+    ],
+    "narrativeHooks": [
+      "chim ưng",
+      "nhẫn vàng"
+    ]
+  },
+  {
+    "id": "cliff_nest_03",
+    "title": "Gió giật trên vách",
+    "intro": "Gió bão quất vào vách đá rít lên từng hồi. Một sợi dây thừng cũ đung đưa từ trên mỏm xuống.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "cliff_nest",
+    "requires": {
+      "weather": [
+        "storm",
+        "rain"
+      ]
+    },
+    "choices": [
+      {
+        "id": "grab",
+        "label": "Leo theo sợi dây",
+        "check": {
+          "stat": "strength",
+          "dc": 13,
+          "itemBonus": {
+            "rope": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 15
+        },
+        "onFail": {
+          "hp": -18
+        },
+        "successText": "Trên mỏm có một hốc đá nhỏ giấu gói giấy dầu. Bên trong là một trang bản đồ.",
+        "failText": "Dây đứt. Bạn rơi xuống bãi đá."
+      },
+      {
+        "id": "anchor",
+        "label": "Buộc lại dây cho chắc",
+        "check": {
+          "stat": "intellect",
+          "dc": 9
+        },
+        "onSuccess": {
+          "setFlag": "cliff_rope",
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Bạn buộc lại dây vào một mỏm đá chắc. Hôm khác lên sẽ an toàn hơn.",
+        "failText": "Gió thổi tung sợi dây, không sao với tới được."
+      }
+    ],
+    "narrativeHooks": [
+      "gió rít",
+      "dây thừng cũ"
+    ]
+  },
+  {
+    "id": "hot_spring_01",
+    "title": "Suối nước nóng",
+    "intro": "Một vũng nước nóng nghi ngút khói giữa các tảng đá đen, nước trong vắt nhìn thấy tận đáy.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "hot_spring",
+    "choices": [
+      {
+        "id": "soak",
+        "label": "Ngâm mình thư giãn",
+        "check": {
+          "stat": "nerve",
+          "dc": 8
+        },
+        "onSuccess": {
+          "hp": 15,
+          "morale": 15,
+          "stamina": 20
+        },
+        "onFail": {
+          "hp": -5
+        },
+        "successText": "Mọi mỏi mệt tan biến. Bạn ngâm tới khi ngón tay nhăn nheo.",
+        "failText": "Nước nóng quá, bạn nhảy ra như tôm luộc."
+      },
+      {
+        "id": "eggs",
+        "label": "Luộc trứng chim trong suối",
+        "check": {
+          "stat": "intellect",
+          "dc": 10,
+          "itemBonus": {
+            "fishing_net": 2
+          }
+        },
+        "onSuccess": {
+          "food": 2
+        },
+        "onFail": {
+          "food": -1
+        },
+        "successText": "Trứng chín đều tăm tắp. Cả trại có bữa sáng ngon lành.",
+        "failText": "Rổ trứng tuột tay chìm xuống đáy suối."
+      }
+    ],
+    "narrativeHooks": [
+      "hơi nóng nghi ngút",
+      "đá đen"
+    ]
+  },
+  {
+    "id": "hot_spring_02",
+    "title": "Mạch nước phun",
+    "intro": "Mặt đất rung lên, rồi một cột nước sôi phụt thẳng lên trời cao hơn ngọn dừa.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "hot_spring",
+    "requires": {
+      "weather": [
+        "quake",
+        "storm"
+      ]
+    },
+    "choices": [
+      {
+        "id": "time",
+        "label": "Canh nhịp phun để vào hốc",
+        "check": {
+          "stat": "intellect",
+          "dc": 12,
+          "itemBonus": {
+            "compass": 1,
+            "spyglass": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 15
+        },
+        "onFail": {
+          "hp": -15
+        },
+        "successText": "Giữa hai lần phun, bạn chui vào hốc đá và thấy dấu tay người in trên vách.",
+        "failText": "Bạn tính sai một nhịp. Nước sôi xối xuống lưng."
+      },
+      {
+        "id": "back",
+        "label": "Lùi ra xa",
+        "check": {
+          "stat": "nerve",
+          "dc": 7
+        },
+        "onSuccess": {
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Cột nước đẹp như một ngọn pháo hoa bằng hơi nước.",
+        "failText": "Bạn hoảng quá, chạy vấp ngã sóng soài."
+      }
+    ],
+    "narrativeHooks": [
+      "cột nước sôi",
+      "mặt đất rung"
+    ]
+  },
+  {
+    "id": "hot_spring_03",
+    "title": "Tinh thể trong suối",
+    "intro": "Dưới đáy suối nóng, những khối pha lê tím mọc thành chùm, lấp lánh dưới ánh nắng.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "hot_spring",
+    "choices": [
+      {
+        "id": "pry",
+        "label": "Cạy một khối lên",
+        "check": {
+          "stat": "strength",
+          "dc": 11,
+          "itemBonus": {
+            "hammer": 3,
+            "axe": 1
+          }
+        },
+        "onSuccess": {
+          "gainItem": "crystal_shard",
+          "treasure": 6
+        },
+        "onFail": {
+          "hp": -10
+        },
+        "successText": "Bạn cạy được một mảnh pha lê to bằng nắm tay, ấm như có hơi thở.",
+        "failText": "Nước nóng làm bỏng rộp hai bàn tay."
+      },
+      {
+        "id": "study",
+        "label": "Ngắm kỹ những chùm pha lê",
+        "check": {
+          "stat": "intellect",
+          "dc": 10,
+          "itemBonus": {
+            "lantern": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 10
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Chúng mọc thành hình mũi tên, chỉ đúng về một hướng.",
+        "failText": "Ánh phản chiếu làm bạn hoa mắt."
+      }
+    ],
+    "narrativeHooks": [
+      "pha lê tím",
+      "đáy suối"
+    ]
+  },
+  {
+    "id": "camp_edge_01",
+    "title": "Dấu chân quanh trại",
+    "intro": "Sáng ra, quanh trại có một vòng dấu chân trần, to hơn chân bất kỳ ai trong đoàn.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "camp_edge",
+    "choices": [
+      {
+        "id": "track",
+        "label": "Lần theo dấu chân",
+        "check": {
+          "stat": "intellect",
+          "dc": 11,
+          "itemBonus": {
+            "spyglass": 2
+          }
+        },
+        "onSuccess": {
+          "treasure": 8,
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -10
+        },
+        "successText": "Dấu chân dẫn tới một hốc cây, trong đó có ai đó để lại mấy trái chuối chín.",
+        "failText": "Dấu chân biến mất giữa bãi cát như người kia biết bay."
+      },
+      {
+        "id": "fence",
+        "label": "Rào lại trại",
+        "check": {
+          "stat": "strength",
+          "dc": 10,
+          "itemBonus": {
+            "axe": 2,
+            "hammer": 2
+          }
+        },
+        "onSuccess": {
+          "morale": 10,
+          "gainItem": "wood"
+        },
+        "onFail": {
+          "stamina": -15
+        },
+        "successText": "Hàng rào dựng xong, cả trại ngủ yên hơn hẳn.",
+        "failText": "Dựng mãi hàng rào vẫn xiêu vẹo."
+      }
+    ],
+    "narrativeHooks": [
+      "dấu chân trần",
+      "vòng quanh trại"
+    ]
+  },
+  {
+    "id": "camp_edge_02",
+    "title": "Cãi nhau vì khẩu phần",
+    "intro": "Hai người trong đoàn to tiếng với nhau quanh thùng lương thực.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "camp_edge",
+    "choices": [
+      {
+        "id": "mediate",
+        "label": "Đứng ra hòa giải",
+        "check": {
+          "stat": "charisma",
+          "dc": 11,
+          "itemBonus": {
+            "rum": 2
+          }
+        },
+        "onSuccess": {
+          "morale": 15
+        },
+        "onFail": {
+          "morale": -10,
+          "food": -1
+        },
+        "successText": "Bạn nói vài câu đùa, cả hai phá lên cười rồi bắt tay nhau.",
+        "failText": "Cuộc cãi vã thành xô xát. Thùng lương thực đổ nhào."
+      },
+      {
+        "id": "recount",
+        "label": "Kiểm đếm lại kho",
+        "check": {
+          "stat": "intellect",
+          "dc": 10
+        },
+        "onSuccess": {
+          "food": 1,
+          "morale": 5
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Hóa ra có một khẩu phần bị đếm sót. Chuyện nhỏ, qua rồi.",
+        "failText": "Kiểm đi kiểm lại vẫn thiếu. Ai đó đang ăn vụng."
+      }
+    ],
+    "narrativeHooks": [
+      "thùng lương thực",
+      "to tiếng"
+    ]
+  },
+  {
+    "id": "camp_edge_03",
+    "title": "Mưa dột lều",
+    "intro": "Mưa như trút. Nước chảy thành dòng qua giữa trại, tro bếp trôi lềnh bềnh.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "camp_edge",
+    "requires": {
+      "weather": [
+        "rain",
+        "storm"
+      ]
+    },
+    "choices": [
+      {
+        "id": "ditch",
+        "label": "Đào rãnh thoát nước",
+        "check": {
+          "stat": "strength",
+          "dc": 10,
+          "itemBonus": {
+            "shovel": 3
+          }
+        },
+        "onSuccess": {
+          "morale": 10
+        },
+        "onFail": {
+          "hp": -5,
+          "morale": -5
+        },
+        "successText": "Nước rút ra biển. Cả trại khô ráo trở lại.",
+        "failText": "Rãnh đào xong thì mưa đã ngập tới mắt cá."
+      },
+      {
+        "id": "collect",
+        "label": "Hứng nước mưa",
+        "check": {
+          "stat": "intellect",
+          "dc": 9,
+          "itemBonus": {
+            "water_barrel": 3,
+            "water_bottle": 2
+          }
+        },
+        "onSuccess": {
+          "hunger": 10,
+          "morale": 5
+        },
+        "onFail": {
+          "stamina": -5
+        },
+        "successText": "Thùng nào cũng đầy nước ngọt. Tối nay khỏi lo khát.",
+        "failText": "Gió thổi lật hết mấy cái bát hứng."
+      }
+    ],
+    "narrativeHooks": [
+      "mưa như trút",
+      "tro bếp trôi"
+    ]
+  },
+  {
+    "id": "camp_edge_04",
+    "title": "Mái chèo trôi dạt",
+    "intro": "Một mái chèo trôi lềnh bềnh cách bờ chừng năm chục sải, đúng loại mái chèo đã mất trên thuyền.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "camp_edge",
+    "requires": {
+      "flags": [
+        "twist_oars_missing"
+      ]
+    },
+    "choices": [
+      {
+        "id": "swim",
+        "label": "Bơi ra vớt",
+        "check": {
+          "stat": "strength",
+          "dc": 12,
+          "itemBonus": {
+            "rope": 2
+          }
+        },
+        "onSuccess": {
+          "hull": 15
+        },
+        "onFail": {
+          "hp": -12
+        },
+        "successText": "Bạn kéo được mái chèo về. Trên cán có vết dao khắc, như ai đó cố tình thả trôi.",
+        "failText": "Sóng đẩy mái chèo ra xa, bạn bơi về kiệt sức."
+      },
+      {
+        "id": "spot",
+        "label": "Canh xem nó trôi đi đâu",
+        "check": {
+          "stat": "intellect",
+          "dc": 10,
+          "itemBonus": {
+            "spyglass": 3
+          }
+        },
+        "onSuccess": {
+          "hull": 8
+        },
+        "onFail": {
+          "morale": -5
+        },
+        "successText": "Mái chèo mắc vào ghềnh đá gần bờ. Chờ nước rút là lấy được.",
+        "failText": "Chớp mắt một cái, mái chèo đã biến mất."
+      }
+    ],
+    "narrativeHooks": [
+      "mái chèo",
+      "vết dao khắc"
+    ]
+  },
+  {
+    "id": "camp_edge_05",
+    "title": "Người khách lạ lúc bình minh",
+    "intro": "Một người đàn ông ướt sũng ngồi bên đống lửa của trại, hơ tay, như thể vẫn luôn ngồi đó.",
+    "acts": [
+      1,
+      2,
+      3
+    ],
+    "anchorType": "camp_edge",
+    "choices": [
+      {
+        "id": "welcome",
+        "label": "Mời khách ăn cùng",
+        "check": {
+          "stat": "charisma",
+          "dc": 10,
+          "itemBonus": {
+            "hardtack": 2,
+            "rum": 2
+          }
+        },
+        "onSuccess": {
+          "morale": 10,
+          "treasure": 10
+        },
+        "onFail": {
+          "food": -1
+        },
+        "successText": "Ông ta ăn xong, kể về một con tàu chìm và cái cây mọc ngược, rồi đi về phía biển.",
+        "failText": "Ông ta ăn sạch một khẩu phần rồi lặng lẽ bỏ đi."
+      },
+      {
+        "id": "question",
+        "label": "Tra hỏi ông ta",
+        "check": {
+          "stat": "nerve",
+          "dc": 12,
+          "itemBonus": {
+            "flintlock": 3
+          }
+        },
+        "onSuccess": {
+          "treasure": 12
+        },
+        "onFail": {
+          "morale": -10
+        },
+        "successText": "Ông ta run rẩy khai ra hướng đi của đoàn thám hiểm năm xưa.",
+        "failText": "Ông ta nhìn bạn rất lâu rồi nói: 'kẻ phản bội đang ngồi cạnh anh đấy'."
+      }
+    ],
+    "narrativeHooks": [
+      "người khách ướt sũng",
+      "đống lửa buổi sớm"
+    ]
+  },
+  {
+    "id": "shore_drift_07",
+    "title": "Thuyền nan của đoàn kia",
+    "intro": "Một chiếc thuyền nan kéo lên bờ, mái chèo gác ngang, không một bóng người.",
+    "acts": [
+      2,
+      3
+    ],
+    "anchorType": "shore_drift",
+    "requires": {
+      "flags": [
+        "twist_other_party"
+      ]
+    },
+    "choices": [
+      {
+        "id": "borrow",
+        "label": "Mượn mái chèo",
+        "check": {
+          "stat": "dexterity",
+          "dc": 11
+        },
+        "onSuccess": {
+          "hull": 12
+        },
+        "onFail": {
+          "morale": -8
+        },
+        "successText": "Mái chèo vừa vặn với thuyền của đoàn.",
+        "failText": "Chủ thuyền về tới, quát tháo ầm ĩ. Bạn đành trả lại."
+      },
+      {
+        "id": "wait_owner",
+        "label": "Chờ chủ thuyền về",
+        "check": {
+          "stat": "charisma",
+          "dc": 11,
+          "itemBonus": {
+            "rum": 2
+          }
+        },
+        "onSuccess": {
+          "food": 2,
+          "treasure": 6
+        },
+        "onFail": {
+          "stamina": -10
+        },
+        "successText": "Họ về, chia cho bạn ít cá khô và một tin đồn về kho báu.",
+        "failText": "Chờ tới trưa không ai về."
+      }
+    ],
+    "narrativeHooks": [
+      "thuyền nan",
+      "không một bóng người"
+    ]
   }
 ]

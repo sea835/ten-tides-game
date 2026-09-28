@@ -1,4 +1,4 @@
-// Tương tác với đồ vật và với nhau ngoài thẻ sự kiện: thả, nhặt, ăn đồ; dựng nhà; kẻ phản bội kết liễu.
+// Tương tác với đồ vật và với nhau ngoài thẻ sự kiện: thả, nhặt, ăn, nướng đồ, góp vào kho; dựng nhà; kẻ phản bội kết liễu.
 // Server làm trọng tài thời gian thực (ai đứng đâu, đồ rơi chỗ nào); engine giữ balo, chỉ số và bí mật.
 
 import { ENCOUNTER_PHASES } from "./encounters.ts";
@@ -83,5 +83,28 @@ export function build(state: GameState, playerId: string, building: string, cost
   }
   state.shelter += Math.max(0, Math.min(8, Math.round(shelter)));
   state.log.push({ kind: "build", day: state.day, playerId, building });
+  return state;
+}
+
+/** Góp đồ ăn kiếm được (dừa, cá, thịt...) vào kho lương thực chung. */
+export function stash(state: GameState, playerId: string, uid: string, config: GameConfig): GameState {
+  const p = actor(state, playerId, HANDS_PHASES);
+  const itemId = p.bag.find((b) => b.uid === uid)?.itemId ?? fail("Món này không có trong balo");
+  const amount = config.items.find((i) => i.id === itemId)?.ration ?? 0;
+  if (amount <= 0) fail("Món này không góp vào kho lương thực được");
+  takeFromBag(p, uid);
+  state.food += amount;
+  state.log.push({ kind: "stash", day: state.day, playerId, itemId, amount });
+  return state;
+}
+
+/** Nướng một món trên lửa trại: món sống thành món chín, nằm nguyên chỗ cũ trong balo. */
+export function cook(state: GameState, playerId: string, uid: string, config: GameConfig): GameState {
+  const p = actor(state, playerId, HANDS_PHASES);
+  const placed = p.bag.find((b) => b.uid === uid) ?? fail("Món này không có trong balo");
+  const result = config.items.find((i) => i.id === placed.itemId)?.cook ?? fail("Món này không nướng được");
+  if (!config.items.some((i) => i.id === result)) fail("Không có món này");
+  placed.itemId = result;
+  syncItems(p);
   return state;
 }

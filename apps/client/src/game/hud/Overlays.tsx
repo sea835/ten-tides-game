@@ -14,12 +14,15 @@ import {
   LogOut,
   Package,
   Pause,
+  ScrollText,
   Search,
   Shovel,
   Skull,
   Sparkles,
+  Trophy,
   TreePalm,
   TriangleAlert,
+  UtensilsCrossed,
 } from "lucide-react";
 import { ENDING_LABELS, NIGHT_ACTION_LABELS, ROLE_LABELS, content, worldCatalog } from "@tentides/content";
 import { Messages, type EncounterMessage, type RejectedMessage } from "@tentides/protocol";
@@ -34,7 +37,7 @@ import { localEnv } from "../shared.ts";
 import { usePrivate } from "../privateStore.ts";
 import { Avatar } from "./ui.tsx";
 
-const TARGET_ICON = { poi: Search, creature: Hand, item: Package, tree: TreePalm, camp: Flame } as const;
+const TARGET_ICON = { poi: Search, creature: Hand, item: Package, tree: TreePalm, camp: Flame, page: ScrollText, campfire: UtensilsCrossed } as const;
 
 /** Đang chọn chỗ dựng nhà: tên công trình, vật liệu cần (có đủ chưa), chỗ này dựng được không. */
 function BuildPrompt({ kind, ok }: { kind: string; ok: boolean }) {
@@ -358,6 +361,7 @@ export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       signals: s.reveal.signals,
       deceit: s.reveal.deceit,
       chronicle: { title: s.chronicle.title, paragraphs: [...s.chronicle.paragraphs] },
+      awards: [...s.reveal.awards].map((a) => ({ name: name(a.playerId), color: s.players.get(a.playerId)?.color ?? "#888", title: a.title, detail: a.detail })),
     };
   });
   const [copied, setCopied] = useState(false);
@@ -442,6 +446,26 @@ export function EndScreen({ room, onLeave }: { room: IslandRoom; onLeave: () => 
               </details>
             )}
             {end.loot.length > 0 && <p className="hint">Đồ kẻ lừa đảo bỏ túi: {end.loot.join(" · ")}</p>}
+            {end.awards.length > 0 && (
+              <div className="awards">
+                <div className="label">
+                  <Trophy size={13} aria-hidden /> Danh hiệu
+                </div>
+                <div className="award-grid">
+                  {end.awards.map((a) => (
+                    <div key={a.title} className="award">
+                      <Avatar name={a.name} color={a.color} size="sm" />
+                      <div>
+                        <strong>{a.title}</strong>
+                        <div className="hint">
+                          {a.name} · {a.detail}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           {end.chronicle.title && (

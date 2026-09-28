@@ -185,6 +185,8 @@ interface Spot {
   r: number;
 }
 
+const LANDMARK_TYPES = new Set(["shipwreck", "jungle_ruin", "cliff_nest", "hot_spring"]);
+
 const nearCamp = (x: number, z: number, d: number) => Math.hypot(x - CAMP.x, z - CAMP.z) < d;
 const inLake = (x: number, z: number) => Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.radius + 1;
 
@@ -196,8 +198,9 @@ function placer(world: World) {
     const s = world.surface(x, z);
     return s.island === "islet" ? s.inland * 2.5 : s.inland;
   };
+  // Chừa chỗ cho cảnh cố định ở điểm sự kiện (xác tàu, phế tích, suối nước nóng, mỏm đá tổ chim).
   const clearOfPoints = (x: number, z: number, d: number) =>
-    ANCHORS.every((a) => Math.hypot(a.x - x, a.z - z) > d) && TREASURE_SITES.every((t) => Math.hypot(t.x - x, t.z - z) > d) && world.isClear(x, z, d);
+    ANCHORS.every((a) => Math.hypot(a.x - x, a.z - z) > d + (LANDMARK_TYPES.has(a.type) ? 7 : 0)) && TREASURE_SITES.every((t) => Math.hypot(t.x - x, t.z - z) > d) && world.isClear(x, z, d);
   /** Đất có cỏ mọc: trong đảo, không phải sườn núi lửa, hang, đảo đá hay đảo cát đen, không dưới nước. */
   const grassy = (x: number, z: number, h: number) => {
     if (h < 0.6 || h > 9 || inland(x, z) < 12 || inLake(x, z)) return false;

@@ -133,17 +133,22 @@ export interface ClimbTree {
   yaw: number;
 }
 
-let felledCache = { key: "", set: new Set<string>() };
+/** Cây của bản đồ (tính một lần cho mỗi thế giới và mỗi lần có cây bị đốn, vì độ cao địa hình tính khá tốn). */
+let standingCache: { world: World | null; key: string; trees: ClimbTree[] } = { world: null, key: "", trees: [] };
 
 export function climbTrees(room: IslandRoom, world: World): ClimbTree[] {
   const key = room.state.stumps.join(",");
-  if (key !== felledCache.key) felledCache = { key, set: new Set(room.state.stumps) };
-  const out: ClimbTree[] = [];
-  for (const t of world.trees) {
-    if (felledCache.set.has(t.id)) continue;
-    const palmy = t.kind === "palm";
-    out.push({ id: t.id, kind: t.kind, x: t.x, y: world.heightAt(t.x, t.z), z: t.z, height: t.height, sway: palmy ? 1 + (t.lean + 0.25) * 0.3 : 0, yaw: pose(t).yaw });
+  if (standingCache.world !== world || standingCache.key !== key) {
+    const felled = new Set(room.state.stumps);
+    const trees: ClimbTree[] = [];
+    for (const t of world.trees) {
+      if (felled.has(t.id)) continue;
+      const palmy = t.kind === "palm";
+      trees.push({ id: t.id, kind: t.kind, x: t.x, y: world.heightAt(t.x, t.z), z: t.z, height: t.height, sway: palmy ? 1 + (t.lean + 0.25) * 0.3 : 0, yaw: pose(t).yaw });
+    }
+    standingCache = { world, key, trees };
   }
+  const out = [...standingCache.trees];
   for (const [id, p] of room.state.plants) {
     if (p.growth < CLIMBABLE_GROWTH) continue;
     const palmy = p.kind === "palm";

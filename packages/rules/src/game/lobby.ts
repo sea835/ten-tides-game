@@ -1,4 +1,5 @@
 import { nextFloat, nextInt, shuffle, type RngState } from "../rng.ts";
+import { chooseTwist } from "./twists.ts";
 import type { Stats } from "../stats.ts";
 import { WEATHER_WEIGHTS } from "../weather.ts";
 import { BASE_BUDGET } from "./backpack.ts";
@@ -95,6 +96,7 @@ export function start(state: GameState, difficulty: Difficulty, config: GameConf
   state.rng = stock.rng;
   const count = Math.max(1, Math.round(config.items.filter((i) => !i.loot).length * SHOP_SHARE) - 1);
   state.shop = [DIG_ITEM, ...stock.value.slice(0, count)].filter((id) => config.items.some((i) => i.id === id));
+  chooseTwist(state);
 
   state.phase = "create";
   return state;

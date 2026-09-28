@@ -31,6 +31,7 @@ import { Wildlife } from "./Wildlife.tsx";
 import { SeaLife } from "./SeaLife.tsx";
 import { Trees } from "./Trees.tsx";
 import { Camp } from "./Camp.tsx";
+import { Landmarks } from "./Landmarks.tsx";
 
 // ---------------------------------------------------------------------------
 // Địa hình
@@ -417,6 +418,7 @@ export function Island({ room, world }: { room: IslandRoom; world: World }) {
       <Cave />
       <Volcano room={room} />
       <Camp room={room} world={world} />
+      <Landmarks world={world} />
       <Boat room={room} />
     </>
   );

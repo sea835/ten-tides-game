@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BACKGROUNDS, DIFFICULTIES, TOTAL_DAYS, createGame, rationVoteNeeded, reduce, successChance, type FlawId, type GameAction, type GameState } from "./game/index.ts";
+import { BACKGROUNDS, DIFFICULTIES, OUTSIDE_MORALE, TOTAL_DAYS, createGame, rationVoteNeeded, reduce, successChance, type FlawId, type GameAction, type GameState } from "./game/index.ts";
 import { STAT_IDS } from "./stats.ts";
 import { testConfig as config } from "./testConfig.ts";
 
@@ -65,7 +65,8 @@ describe("vòng ngày", () => {
     s = reduce(s, { type: "advance", atCamp: ["a"] }, config);
     expect(s.phase).toBe("night");
     expect(s.campers).toEqual(["a"]);
-    expect(s.players.b!.morale).toBe(before.b!.morale - 15);
+    // Không có chuyện đêm nào trong bộ nội dung test: chỉ mất Tinh thần vì ngủ ngoài và 10 Máu vì lạnh.
+    expect(s.players.b!.morale).toBe(before.b!.morale - OUTSIDE_MORALE);
     expect(s.players.b!.hp).toBe(before.b!.hp - 10);
     expect(s.players.a!.hp).toBe(before.a!.hp);
     expect(s.log.at(-1)).toMatchObject({ kind: "dusk", sleptOutside: ["b"] });

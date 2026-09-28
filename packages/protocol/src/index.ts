@@ -166,7 +166,7 @@ export const LogEntryState = schema(
     nominee: t.string().default(""),
     /** encounter: egg, anomaly, trap, creature, friend, drowning */
     source: t.string().default(""),
-    /** encounter: id trên bản đồ và id trong danh mục thế giới */
+    /** encounter: id trên bản đồ và id trong danh mục thế giới · twist: biến cố · outside: chuyện đêm · stash: món góp vào kho */
     refId: t.string().default(""),
     defId: t.string().default(""),
     /** encounter: né được bẫy */
@@ -207,6 +207,17 @@ export const NightRecordState = schema(
 );
 export type NightRecordState = SchemaType<typeof NightRecordState>;
 
+/** Danh hiệu cuối ván (vui là chính): ai, danh hiệu gì, vì sao. */
+export const AwardState = schema(
+  {
+    playerId: t.string().default(""),
+    title: t.string().default(""),
+    detail: t.string().default(""),
+  },
+  "AwardState",
+);
+export type AwardState = SchemaType<typeof AwardState>;
+
 export const LootState = schema(
   {
     playerId: t.string().default(""),
@@ -224,6 +235,7 @@ export const RevealState = schema(
     signals: t.uint8().default(0),
     deceit: t.uint8().default(0),
     tied: t.array("string"),
+    awards: t.array(AwardState),
   },
   "RevealState",
 );
@@ -460,7 +472,7 @@ export const AssassinateMessage = z.object({ target: id });
 
 /** Server gửi cho mọi người để vẽ hiệu ứng: trúng đòn, trượt, chặt cây, cây đổ, thú chết, ăn uống... */
 export interface FxMessage {
-  kind: "hit" | "miss" | "chop" | "fell" | "poof" | "kill" | "eat" | "plant" | "build" | "splash" | "shoot";
+  kind: "hit" | "miss" | "chop" | "fell" | "poof" | "kill" | "eat" | "plant" | "build" | "splash" | "shoot" | "cook" | "page";
   x: number;
   y: number;
   z: number;
@@ -576,6 +588,8 @@ export const Messages = {
   pickup: "pickup",
   climb: "climb",
   packCamp: "packCamp",
+  /** Nướng hoặc góp vào kho món đang cầm, khi đứng cạnh lửa trại. */
+  campfire: "campfire",
   build: "build",
   assassinate: "assassinate",
   fx: "fx",

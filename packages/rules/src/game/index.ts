@@ -6,7 +6,7 @@
 import { advance } from "./day.ts";
 import { choose, dig, trigger } from "./events.ts";
 import { encounter } from "./encounters.ts";
-import { assassinate, build, consume, drop, pickup } from "./interactions.ts";
+import { assassinate, build, consume, cook, drop, pickup, stash } from "./interactions.ts";
 import { join, leave, start } from "./lobby.ts";
 import { buy, createCharacter, finishCreation, finishPacking, place, sell, unplace } from "./prep.ts";
 import { castBallot, chooseNightAction, emptyVotes, nominate, revealBallot, voteRation } from "./night.ts";
@@ -21,6 +21,7 @@ export { allowedNightActions, rationResult, rationVoteNeeded, tieResult } from "
 export { ENDING_WINNERS } from "./endings.ts";
 export { ENCOUNTER_PHASES } from "./encounters.ts";
 export { canAssassinate, hasMaterials } from "./interactions.ts";
+export { TWISTS, TWIST_DAY, TWIST_IDS, twistVolcano, type TwistId } from "./twists.ts";
 export { privateView, type PrivateView } from "./private.ts";
 
 export function createGame(seed: number): GameState {
@@ -56,6 +57,8 @@ export function createGame(seed: number): GameState {
     discovered: [],
     kills: [],
     shelter: 0,
+    twist: "",
+    twistPlayer: null,
     shop: [],
     nextUid: 1,
     treasureSite: "",
@@ -118,6 +121,10 @@ export function reduce(prev: GameState, action: GameAction, config: GameConfig):
       return assassinate(state, action.playerId, action.target);
     case "build":
       return build(state, action.playerId, action.building, action.cost, action.shelter);
+    case "stash":
+      return stash(state, action.playerId, action.uid, config);
+    case "cook":
+      return cook(state, action.playerId, action.uid, config);
   }
 }
 

@@ -11,6 +11,9 @@ import { Controls } from "./Controls.tsx";
 import { Fx } from "./Fx.tsx";
 import { listenFx } from "./fxStore.ts";
 import { GroundItems } from "./Items3D.tsx";
+import { Pages } from "./Pages.tsx";
+import { Trails } from "./Trails.tsx";
+import { Weather } from "./Weather.tsx";
 import { DayCycle } from "./DayCycle.tsx";
 import { toggleQuality, useQuality } from "./graphics.ts";
 import { Hud } from "./hud/Hud.tsx";
@@ -19,7 +22,7 @@ import { LocalPlayer } from "./LocalPlayer.tsx";
 import { RemotePlayers } from "./RemotePlayers.tsx";
 import { SkyDome } from "./Sky.tsx";
 import { bindInput, isTyping, look } from "./input.ts";
-import { debugCam, localEnv, localPosition } from "./shared.ts";
+import { debugCam, localEnv, localPosition, weatherFx } from "./shared.ts";
 import { useWorld } from "./world.ts";
 
 const HORIZON = "#c4e4f3";
@@ -30,7 +33,7 @@ function DebugHook({ room }: { room: IslandRoom }) {
   const scene = useThree((s) => s.scene);
   const world = useWorld(room);
   useEffect(() => {
-    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam } });
+    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx } });
   }, [room, camera, scene, world]);
   return null;
 }
@@ -112,6 +115,9 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <RemotePlayers room={room} />
           <Anchors room={room} />
           <GroundItems room={room} />
+          <Pages room={room} world={world} />
+          <Weather room={room} world={world} />
+          <Trails room={room} world={world} />
           <Fx />
           <DayCycle room={room} sun={sun} hemi={hemi} />
           <DebugHook room={room} />

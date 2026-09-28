@@ -120,7 +120,8 @@
     ],
     "eat": {
       "hunger": 20
-    }
+    },
+    "ration": 1
   },
   {
     "id": "flintlock",
@@ -540,7 +541,8 @@
       "damage": 6,
       "dizzy": 3,
       "word": "BỘP!"
-    }
+    },
+    "ration": 1
   },
   {
     "id": "wood",
@@ -624,7 +626,9 @@
       "hunger": 20,
       "hp": -4,
       "morale": -3
-    }
+    },
+    "ration": 1,
+    "cook": "cooked_meat"
   },
   {
     "id": "fish",
@@ -652,7 +656,9 @@
       "cooldown": 0.5,
       "dizzy": 1,
       "word": "CHÁT!"
-    }
+    },
+    "ration": 1,
+    "cook": "grilled_fish"
   },
   {
     "id": "feather",
@@ -786,5 +792,63 @@
     ],
     "loot": true,
     "camp": true
+  },
+  {
+    "id": "cooked_meat",
+    "name": "Thịt nướng",
+    "size": {
+      "w": 2,
+      "h": 2
+    },
+    "weightKg": 0.7,
+    "price": 0,
+    "tags": [
+      "meat"
+    ],
+    "hooks": [
+      "mùi thịt nướng thơm lừng",
+      "mỡ chảy xèo xèo"
+    ],
+    "loot": true,
+    "eat": {
+      "hunger": 35,
+      "hp": 6,
+      "morale": 6
+    },
+    "ration": 2,
+    "throw": {
+      "damage": 3,
+      "word": "BỊCH!"
+    }
+  },
+  {
+    "id": "grilled_fish",
+    "name": "Cá nướng",
+    "size": {
+      "w": 1,
+      "h": 3
+    },
+    "weightKg": 0.5,
+    "price": 0,
+    "tags": [
+      "fish"
+    ],
+    "hooks": [
+      "cá nướng lá chuối",
+      "khói thơm"
+    ],
+    "loot": true,
+    "eat": {
+      "hunger": 30,
+      "morale": 8
+    },
+    "ration": 2,
+    "melee": {
+      "damage": 2,
+      "reach": 1.6,
+      "cooldown": 0.5,
+      "dizzy": 1,
+      "word": "CHÁT!"
+    }
   }
 ]

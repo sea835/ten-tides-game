@@ -35,6 +35,8 @@ export function grain(x: number, z: number): number {
 // ---------------------------------------------------------------------------
 
 export const wind = { value: 0 };
+/** Gió mạnh hay nhẹ: bão thì cây cỏ lắc mạnh gấp mấy lần (Weather ghi). */
+export const windStrength = { value: 1 };
 
 /**
  * MeshStandardMaterial lay theo gió: đỉnh càng cao (theo y cục bộ) càng lắc nhiều.
@@ -50,8 +52,9 @@ export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMa
       shader.fragmentShader = shader.fragmentShader.replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\n  normal = normalize( vNormal );");
     }
     shader.uniforms.uWind = wind;
+    shader.uniforms.uWindStrength = windStrength;
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nuniform float uWind;")
+      .replace("#include <common>", "#include <common>\nuniform float uWind;\nuniform float uWindStrength;")
       .replace(
         "#include <begin_vertex>",
         /* glsl */ `#include <begin_vertex>
@@ -61,7 +64,7 @@ export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMa
           float phase = 0.0;
         #endif
         float k = max(0.0, position.y - ${from.toFixed(2)});
-        float sway = k * k * ${amount.toFixed(3)};
+        float sway = k * k * ${amount.toFixed(3)} * uWindStrength;
         transformed.x += sin(uWind * 1.3 + phase) * sway;
         transformed.z += cos(uWind * 1.1 + phase * 1.7) * sway * 0.6;`,
       );
@@ -71,7 +74,8 @@ export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMa
 
 export function WindClock() {
   useFrame((_, dt) => {
-    wind.value += dt;
+    // Gió mạnh thì cây cỏ không chỉ lắc rộng hơn mà còn lắc nhanh hơn.
+    wind.value += dt * (0.6 + 0.4 * windStrength.value);
   });
   return null;
 }

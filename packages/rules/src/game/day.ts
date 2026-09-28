@@ -3,16 +3,19 @@ import { nextInt, shuffle } from "../rng.ts";
 import { autoResolve } from "./events.ts";
 import { departure } from "./endings.ts";
 import { nightfall, resolveNight } from "./night.ts";
+import { TWIST_DAY, applyTwist, twistVolcano } from "./twists.ts";
 import { MAX_CARDS_PER_DAY, TOTAL_DAYS, actOf, fail, isOver, weatherOf, type GameConfig, type GameState } from "./types.ts";
 
 export function beginDay(state: GameState, config: GameConfig): GameState {
   state.day++;
   state.phase = "dawn";
-  state.volcano = state.day * 10;
+  state.volcano = Math.min(99, state.day * 10 + twistVolcano(state));
   for (const p of Object.values(state.players)) {
     p.stamina = 100;
     p.rerolledToday = false;
   }
+  // Biến cố xảy ra trước khi chia thẻ, để thẻ nối tiếp của nó có thể xuất hiện ngay trong ngày.
+  if (state.day === TWIST_DAY) applyTwist(state);
   return dealCards(state, config);
 }
 

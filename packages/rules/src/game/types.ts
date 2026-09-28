@@ -1,4 +1,4 @@
-import type { AnchorDef, EventCard, ItemDef } from "../cards.ts";
+import type { AnchorDef, EventCard, ItemDef, OutsideEvent } from "../cards.ts";
 import type { CheckResult } from "../dice.ts";
 import type { RngState } from "../rng.ts";
 import type { Stats } from "../stats.ts";
@@ -11,8 +11,10 @@ export const TOTAL_DAYS = 10;
 export const RATIONS_PER_FOOD_ITEM = 1;
 /** Mang quá tải thì mỗi đêm đói thêm chừng này. */
 export const OVERWEIGHT_HUNGER = 10;
-export const MAX_CARDS_PER_DAY = 6;
+export const MAX_CARDS_PER_DAY = 7;
 export const DAILY_HUNGER = 25;
+/** Ngủ ngoài trại không có lều thì mất chừng này Tinh thần, rồi còn gặp chuyện trong đêm. */
+export const OUTSIDE_MORALE = 8;
 /** Một khẩu phần hồi chừng này điểm No. */
 export const MEAL_HUNGER = 25;
 export const STARVING_DAMAGE = 15;
@@ -191,7 +193,7 @@ export interface EncounterEffects {
   gainItem?: string;
 }
 
-export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning", "attack", "fall", "hunt"] as const;
+export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning", "attack", "fall", "hunt", "page"] as const;
 export type EncounterSource = (typeof ENCOUNTER_SOURCES)[number];
 /** Giới hạn mỗi hệ quả của một lần chạm trán, phòng server tính nhầm. */
 export const ENCOUNTER_EFFECT_LIMIT = 60;
@@ -253,7 +255,13 @@ export type LogEntry =
       dodged: boolean;
     }
   | { kind: "departure"; day: number; aboard: string[]; leftBehind: string[]; hull: number; withTreasure: boolean }
-  | { kind: "build"; day: number; playerId: string; building: string };
+  | { kind: "build"; day: number; playerId: string; building: string }
+  /** Biến cố lớn của ngày 5; `playerId` là người bị cuốn vào (nếu có). */
+  | { kind: "twist"; day: number; twist: string; playerId: string | null }
+  /** Một người ngủ ngoài trại gặp chuyện trong đêm. */
+  | { kind: "outside"; day: number; playerId: string; event: string; result: CheckResult }
+  /** Góp đồ ăn kiếm được vào kho lương thực chung. */
+  | { kind: "stash"; day: number; playerId: string; itemId: string; amount: number };
 
 export interface GameState {
   seed: number;
@@ -297,6 +305,9 @@ export interface GameState {
   kills: { day: number; by: string; target: string }[];
   /** Số chỗ ngủ có mái che ở trại (chòi, nhà sàn đã dựng). */
   shelter: number;
+  /** Biến cố ngày 5, chọn từ lúc bắt đầu ván và giữ bí mật tới khi xảy ra; `twistPlayer` là người bị cuốn vào. */
+  twist: string;
+  twistPlayer: string | null;
 
   /** Cửa hàng của ván này (một bộ đồ ngẫu nhiên theo seed). */
   shop: string[];
@@ -317,6 +328,8 @@ export interface GameConfig {
   items: readonly ItemDef[];
   /** Các chỗ kho báu có thể nằm; mỗi ván chọn một theo seed. */
   treasureSites: readonly { id: string }[];
+  /** Chuyện có thể xảy ra với người ngủ ngoài trại. */
+  outsideEvents?: readonly OutsideEvent[];
   /** Ghi đè xác suất sự cố tự nhiên mỗi đêm (unit test đặt 0 để kết quả không phụ thuộc may rủi). */
   incidentChance?: number;
 }
@@ -357,6 +370,10 @@ export type GameAction =
   | { type: "assassinate"; playerId: string; target: string }
   /** Dựng công trình ở trại: tiêu vật liệu trong balo, thêm chỗ ngủ có mái che. */
   | { type: "build"; playerId: string; building: string; cost: Record<string, number>; shelter: number }
+  /** Góp một món ăn được vào kho lương thực chung. Server đã kiểm tra người đó đứng ở lửa trại. */
+  | { type: "stash"; playerId: string; uid: string }
+  /** Nướng một món trên lửa trại (thịt sống thành thịt nướng...). Server đã kiểm tra đứng ở lửa trại. */
+  | { type: "cook"; playerId: string; uid: string }
   | {
       type: "encounter";
       playerId: string;

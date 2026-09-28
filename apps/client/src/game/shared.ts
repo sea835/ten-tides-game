@@ -35,3 +35,9 @@ export const climbRequest = { treeId: "" };
 
 /** Vừa đánh hay ném theo hướng camera: LocalPlayer quay người về hướng này một lúc. */
 export const localAim = { yaw: 0, at: 0 };
+
+/**
+ * Thời tiết đang hiện trên màn hình (0–1, chuyển dần khi đổi ngày), Weather ghi mỗi khung hình để bầu trời,
+ * ánh sáng, sương mù, gió đọc theo: độ phủ mây, mưa, sương, bão, động đất, và chớp (lóe sáng trong tích tắc).
+ */
+export const weatherFx = { cloud: 0.15, rain: 0, fog: 0, storm: 0, quake: 0, flash: 0 };

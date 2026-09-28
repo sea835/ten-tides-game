@@ -44,7 +44,7 @@ export function isOverweight(player: Pick<PlayerSheet, "stats" | "bag">, config:
  * Các khoản cộng/trừ cho phép kiểm tra, hiện công khai cạnh xúc xắc: đồ đang mang, xuất thân, tật xấu,
  * đồ đặt cạnh nhau trong balo, quá tải và trạng thái xấu.
  */
-export function checkModifiers(player: CheckingPlayer, choice: CardChoice, config: GameConfig, zone?: ZoneId): Modifier[] {
+export function checkModifiers(player: CheckingPlayer, choice: Pick<CardChoice, "check">, config: GameConfig, zone?: ZoneId): Modifier[] {
   const modifiers: Modifier[] = [];
   const stat = choice.check.stat;
   for (const [itemId, bonus] of Object.entries(choice.check.itemBonus ?? {})) {
@@ -174,7 +174,7 @@ export function autoResolve(state: GameState, anchorId: string, config: GameConf
   return choose(state, placed.participants[0]!, anchorId, card.choices[0]!.id, config);
 }
 
-function applyOutcome(state: GameState, outcome: Outcome, chooser: PlayerSheet, participantIds: string[], config: GameConfig) {
+export function applyOutcome(state: GameState, outcome: Outcome, chooser: PlayerSheet, participantIds: string[], config: GameConfig) {
   const present = participantIds.map((id) => state.players[id]!);
   // Có y sĩ bỏ nghề ở đó thì chữa trị hiệu quả gấp đôi; có thợ săn thì kiếm thêm được thức ăn.
   const heal = present.some((p) => p.background === "ex_medic") ? 2 : 1;

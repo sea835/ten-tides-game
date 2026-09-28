@@ -119,6 +119,16 @@ export interface Poi {
   structure: string | null;
 }
 
+/** Trang nhật ký của người xưa: mỗi ngày một trang ở một chỗ khác, nội dung do bộ sinh truyện viết. */
+export interface DiaryPage {
+  id: string;
+  day: number;
+  x: number;
+  y: number;
+  z: number;
+  rot: number;
+}
+
 export interface CreatureSpawn {
   id: string;
   species: string;
@@ -163,6 +173,8 @@ export interface World {
   reefs: readonly Reef[];
   structures: readonly Structure[];
   pois: readonly Poi[];
+  /** Trang nhật ký, mỗi ngày một trang. */
+  pages: readonly DiaryPage[];
   spawns: readonly CreatureSpawn[];
   /** Mọi cây dừa: dừa đảo chính (trừ cây nằm trên nền hang, hầm) và dừa trên các đảo nhỏ. */
   palms: readonly Palm[];
@@ -470,6 +482,7 @@ export function generateWorld(seed: number, catalog: WorldCatalog = worldCatalog
     reefs,
     structures,
     pois: [],
+    pages: [],
     spawns: [],
     palms: [],
     trees: [],
@@ -493,8 +506,42 @@ export function generateWorld(seed: number, catalog: WorldCatalog = worldCatalog
     ...world.palms.map((p, i): Tree => ({ id: `p${i}`, kind: "palm", x: p.x, z: p.z, height: p.height, lean: p.lean })),
     ...generateBroadleaf(makeRand(subSeed(seed, "trees")), world),
   ];
+  world.pages = generatePages(makeRand(subSeed(seed, "pages")), world);
   world.spawns = generateSpawns(makeRand(subSeed(seed, "creatures")), world, catalog);
   return world;
+}
+
+/** Chỗ trang nhật ký của từng ngày: mấy ngày đầu gần trại, về sau xa dần (lên đồi, vào hang, ra đảo nhỏ, lên núi lửa). */
+const PAGE_HABITATS: readonly Habitat[] = ["palm", "beach", "forest", "hilltop", "cave", "forest", "islet", "volcano", "mine", "hilltop"];
+
+function generatePages(rand: Rand, world: World): DiaryPage[] {
+  const pages: DiaryPage[] = [];
+  const taken = new Set<string>();
+  for (let day = 1; day <= PAGE_HABITATS.length; day++) {
+    const habitats = [PAGE_HABITATS[day - 1]!, "forest", "beach"] as const;
+    let spot: Spot | null = null;
+    for (const hab of habitats) {
+      for (let tries = 0; tries < 12 && !spot; tries++) {
+        const s = sampleHabitat(rand, world, hab, taken);
+        if (!s) continue;
+        const clear =
+          world.trees.every((t) => Math.hypot(t.x - s.x, t.z - s.z) > 2.5) && pages.every((p) => Math.hypot(p.x - s.x, p.z - s.z) > 20);
+        if (clear) spot = s;
+      }
+      if (spot) break;
+    }
+    if (!spot) continue;
+    if (spot.structure) taken.add(`${spot.structure.id}:${spot.cell}`);
+    pages.push({
+      id: `page${day}`,
+      day,
+      x: spot.x,
+      y: spot.structure ? spot.structure.floor : world.heightAt(spot.x, spot.z),
+      z: spot.z,
+      rot: rand() * Math.PI * 2,
+    });
+  }
+  return pages;
 }
 
 function generateIslets(rand: Rand, catalog: WorldCatalog): Islet[] {

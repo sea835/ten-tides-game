@@ -2,7 +2,7 @@ import { useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Color, Fog, type DirectionalLight, type HemisphereLight } from "three";
 import type { IslandRoom } from "../net.ts";
-import { localEnv, localPosition, sky } from "./shared.ts";
+import { localEnv, localPosition, sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
 
 const PALETTE = {
@@ -22,6 +22,11 @@ const MOON_SKY = new Color("#4a6aa8");
 const UNDERWATER_DAY = new Color("#1d6f86");
 const UNDERWATER_NIGHT = new Color("#04161f");
 const underwaterFog = new Color();
+/** Trời âm u: màu mây mưa pha vào bầu trời và sương mù. */
+const OVERCAST = new Color("#8f9aa3");
+const STORM_SKY = new Color("#4b5560");
+const MIST = new Color("#c9d3d8");
+const grey = new Color();
 
 /** Mặt trời lặn vào lúc này trong ngày (0–1); phần sau là đêm. */
 const SUNSET = 0.82;
@@ -80,6 +85,18 @@ export function DayCycle({
 
     const top = skyUniforms.uTop.value.copy(PALETTE.nightTop).lerp(PALETTE.duskTop, dusk).lerp(PALETTE.dayTop, day);
     const horizon = skyUniforms.uHorizon.value.copy(PALETTE.nightHorizon).lerp(PALETTE.duskHorizon, dusk).lerp(PALETTE.dayHorizon, day);
+    // Mây dày thì trời xám lại (ban đêm vẫn tối như thường); sương mù thì chân trời trắng đục.
+    const w = weatherFx;
+    const overcast = Math.max(0, w.cloud - 0.3) / 0.7;
+    grey.copy(OVERCAST).lerp(STORM_SKY, w.storm).multiplyScalar(0.25 + 0.75 * (1 - night));
+    top.lerp(grey, overcast * (0.75 + 0.2 * w.storm));
+    horizon.lerp(grey, overcast * (0.55 + 0.3 * w.storm));
+    if (w.fog > 0) horizon.lerp(grey.copy(MIST).multiplyScalar(0.2 + 0.8 * (1 - night)), w.fog * 0.8);
+    // Chớp: cả bầu trời lóe trắng trong tích tắc.
+    if (w.flash > 0) {
+      top.lerp(MIST, w.flash * 0.8);
+      horizon.lerp(MIST, w.flash * 0.8);
+    }
     skyUniforms.uSunColor.value.copy(SUN_WARM).lerp(SUN_NOON, day);
     skyUniforms.uNight.value = night;
     if (localEnv.underwater) {
@@ -94,9 +111,10 @@ export function DayCycle({
     } else {
       if (scene.fog instanceof Fog) {
         scene.fog.color.copy(horizon);
-        scene.fog.near = 70;
-        // Ban đêm sương mù dày hơn một chút cho thấy tối.
-        scene.fog.far = 280 - 80 * night;
+        // Ban đêm sương mù dày hơn một chút cho thấy tối; trời sương, mưa thì nhìn không xa.
+        const murk = Math.max(w.fog, w.rain * 0.55);
+        scene.fog.near = 70 - 62 * murk;
+        scene.fog.far = (280 - 80 * night) * (1 - 0.76 * murk);
       }
       if (scene.background instanceof Color) scene.background.copy(horizon);
     }
@@ -110,11 +128,11 @@ export function DayCycle({
     const light = sun.current;
     if (light) {
       if (t < SUNSET) {
-        light.intensity = (0.6 + 2.1 * Math.pow(elevation, 0.6)) * shade;
+        light.intensity = (0.6 + 2.1 * Math.pow(elevation, 0.6)) * shade * (1 - 0.6 * overcast - 0.2 * w.storm) + w.flash * 3;
         light.color.copy(SUN_WARM).lerp(SUN_NOON, day);
         light.position.copy(localPosition).addScaledVector(sunDir, 80);
       } else {
-        light.intensity = 0.45 * shade;
+        light.intensity = 0.45 * shade * (1 - 0.5 * overcast) + w.flash * 3;
         light.color.copy(MOON);
         light.position.set(localPosition.x - 30, localPosition.y + 45, localPosition.z + 20);
       }
@@ -124,7 +142,7 @@ export function DayCycle({
     const h = hemi.current;
     if (h) {
       // Sáng sớm, chạng vạng và ban đêm vẫn phải đủ sáng để đi lại (đêm có ánh trăng xanh nhạt).
-      h.intensity = (0.75 + 0.25 * dusk + 0.4 * day) * shade * (localEnv.underwater ? 0.7 : 1);
+      h.intensity = (0.75 + 0.25 * dusk + 0.4 * day) * shade * (localEnv.underwater ? 0.7 : 1) * (1 - 0.15 * overcast) + w.flash * 1.5;
       h.color.copy(horizon).lerp(MOON_SKY, night * 0.7).lerp(top, 0.25 * day);
       h.groundColor.copy(GROUND_NIGHT).lerp(GROUND_DAY, 0.3 + 0.7 * day);
     }

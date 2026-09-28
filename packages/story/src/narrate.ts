@@ -12,7 +12,7 @@ import {
   type StoryElement,
   type StoryLibrary,
 } from "@tentides/content";
-import { TOTAL_DAYS, isTraitor, type GameConfig, type GameState, type IncidentEffect, type LogEntry } from "@tentides/rules";
+import { TOTAL_DAYS, TWIST_DAY, isTraitor, twistVolcano, type GameConfig, type GameState, type IncidentEffect, type LogEntry } from "@tentides/rules";
 import type { Premise } from "./premise.ts";
 import { Voice, capitalize, fill, joinNames, uncapitalize } from "./text.ts";
 
@@ -22,6 +22,13 @@ export interface StoryContext {
   library: StoryLibrary;
   state: GameState;
   config: GameConfig;
+}
+
+/** Danh hiệu cuối ván (server tính từ những gì người chơi làm trên đảo), để biên niên sử nhắc tới. */
+export interface Award {
+  playerId: string;
+  title: string;
+  detail: string;
 }
 
 export interface Chronicle {
@@ -134,7 +141,14 @@ function encounterLine(t: Teller, e: Extract<LogEntry, { kind: "encounter" }>): 
       return t.line("encounter_fall", vars);
     case "hunt":
       return t.line("encounter_hunt", vars);
+    case "page":
+      return t.line("page_found", vars);
   }
+}
+
+/** Tên chuyện đêm ngủ ngoài (viết thường), để chèn vào câu. */
+function outsideTitle(config: GameConfig, id: string): string {
+  return (config.outsideEvents?.find((e) => e.id === id)?.title ?? "khó ngủ").toLocaleLowerCase("vi");
 }
 
 /** Bản kể bình minh: truyền thuyết (ngày đầu), thời tiết, núi lửa, điềm báo, nhân vật phụ, twist, chuyện đêm qua, ai đang ra sao. */
@@ -149,8 +163,8 @@ export function narrateDawn(ctx: StoryContext, day: number): string[] {
   const weather = state.weather[day - 1];
   const weatherLine = ctx.library.elements.find((e) => e.category === "weather" && e.weather === weather);
   out.push(`${t.line("day_open", { day })} ${weatherLine ? t.elementLine(weatherLine.id) : ""}`.trim());
-  // Núi lửa thức dần theo ngày (mức lúc bình minh là số ngày × 10).
-  const volcano = day * 10;
+  // Núi lửa thức dần theo ngày (mức lúc bình minh là số ngày × 10, cộng thêm nếu biến cố làm nó tỉnh sớm).
+  const volcano = day * 10 + twistVolcano({ twist: state.twist, day });
   out.push(t.line(volcano <= 30 ? "volcano_calm" : volcano <= 60 ? "volcano_stirring" : "volcano_angry"));
 
   // Điềm báo mở đầu mỗi hồi.
@@ -165,7 +179,13 @@ export function narrateDawn(ctx: StoryContext, day: number): string[] {
     const relic = t.element(relicDay);
     out.push(t.line("relic_found", { finder: t.name(t.voice.pick(alive)), relic: relic.name ?? "", relicLine: t.elementLine(relicDay, { relic: relic.name ?? "" }) }));
   }
-  if (day === 5) out.push(t.line("twist_intro", { twist: t.elementLine(premise.twist) }));
+  if (day === TWIST_DAY) {
+    out.push(t.line("twist_intro", { twist: t.elementLine(premise.twist) }));
+    // Hệ quả thật của biến cố (engine đã áp): chỉ kể khi biến cố đã thực sự xảy ra trong nhật ký.
+    const happened = entriesOf(state, "twist", day)[0];
+    const key = `twist_effect_${happened?.twist ?? ""}`;
+    if (happened && ctx.library.templates[key]) out.push(t.line(key, { player: happened.playerId ? t.name(happened.playerId) : "" }));
+  }
   if (day === TOTAL_DAYS) out.push(t.line("last_day"));
 
   // Chuyện đêm qua.
@@ -174,6 +194,9 @@ export function narrateDawn(ctx: StoryContext, day: number): string[] {
   else if (night?.nominee) out.push(t.line("night_recap_tie_failed", { name: t.name(night.nominee) }));
   if (night && night.ration !== "normal") {
     out.push(t.line("night_recap_hungry", { ration: night.ration === "half" ? "ăn dè, hai người chung một phần" : "nhịn đói để giữ kho" }));
+  }
+  for (const e of entriesOf(state, "outside", day - 1)) {
+    out.push(t.line("outside_recap", { name: t.name(e.playerId), event: outsideTitle(ctx.config, e.event) }));
   }
   const incidents = entriesOf(state, "incident", day - 1).flatMap((e) => e.effects);
   if (incidents.length > 0) {
@@ -228,6 +251,12 @@ export function narrateDusk(ctx: StoryContext, day: number): string[] {
     out.push(encounterLine(t, e));
   }
   for (const e of entriesOf(state, "build", day)) out.push(t.line("build", { name: t.name(e.playerId), thing: encounterThing(e.building) }));
+  const stashed = entriesOf(state, "stash", day);
+  if (stashed.length > 0) {
+    const names = [...new Set(stashed.map((e) => t.name(e.playerId)))];
+    const items = [...new Set(stashed.map((e) => itemName(config, e.itemId)))];
+    out.push(t.line("stash", { names: joinNames(names), items: joinNames(items) }));
+  }
   for (const e of entriesOf(state, "dig", day)) out.push(t.line("dig", { name: t.name(e.playerId) }));
   for (const e of entriesOf(state, "death", day)) out.push(t.line("death", { name: t.name(e.playerId) }));
   const dusk = entriesOf(state, "dusk", day)[0];
@@ -255,6 +284,12 @@ export function narratePrivate(ctx: StoryContext, playerId: string, day: number)
   } else if (day % 3 === 2) {
     out.push(t.line("private_background", { background: bg.title.toLowerCase(), hook: t.voice.pick(bg.hooks) }));
   }
+  // Đêm qua ngủ ngoài: kể lại đúng chuyện đã xảy ra với mình.
+  for (const e of entriesOf(ctx.state, "outside", day - 1).filter((x) => x.playerId === playerId)) {
+    const event = ctx.config.outsideEvents?.find((x) => x.id === e.event);
+    if (event) out.push(t.line("private_outside", { event: event.title.toLocaleLowerCase("vi"), text: e.result.success ? event.successText : event.failText }));
+  }
+  if (day === TWIST_DAY && entriesOf(ctx.state, "twist", day).some((e) => e.playerId === playerId)) out.push(t.line("private_twist"));
   if (isTraitor(p.role) && day % 2 === 1) out.push(t.line("private_traitor"));
   if (p.role === "nurse" && day % 2 === 0) out.push(t.line("private_nurse"));
   if (p.hp < p.maxHp * 0.4) out.push(t.line("private_hurt"));
@@ -262,8 +297,23 @@ export function narratePrivate(ctx: StoryContext, playerId: string, day: number)
   return out;
 }
 
+/**
+ * Trang nhật ký rải trên đảo, mỗi ngày một trang: mỗi trang hé thêm một mảnh cốt truyện của ván
+ * (người giấu, động cơ, vật chứng, bí mật của đảo, kho báu...). Không bao giờ lộ vai ẩn hay biến cố trước ngày 5.
+ */
+export function diaryPage(ctx: StoryContext, day: number): { title: string; text: string } {
+  const t = new Teller(ctx, new Voice(ctx.seed, "page", day));
+  const p = ctx.premise;
+  const order = [p.hider, p.motive, p.relics[0], p.secret, p.treasure, p.npcs[1], p.relics[1], p.secret, p.motive, p.treasure];
+  const id = order[(Math.max(1, day) - 1) % order.length]!;
+  const e = t.element(id);
+  const vars = { relic: e.category === "relic" ? (e.name ?? "") : "", npc: e.category === "npc" ? (e.name ?? "") : "" };
+  // Câu của yếu tố viết ở giọng người kể; trang nhật ký trích lại nguyên văn.
+  return { title: t.line("page_title"), text: t.line("page_text", { line: t.elementLine(id, vars) }) };
+}
+
 /** Biên niên sử một trang: tên đoàn, truyền thuyết, thành viên, khoảnh khắc đáng nhớ, kẻ phản bội, lời kết. */
-export function chronicle(ctx: StoryContext): Chronicle {
+export function chronicle(ctx: StoryContext, awards: readonly Award[] = []): Chronicle {
   const t = new Teller(ctx, new Voice(ctx.seed, "chronicle"));
   const { state, config, premise } = ctx;
   const crew = `Đoàn ${t.voice.pick(ctx.library.templates.crew_adj!)}`;
@@ -304,6 +354,10 @@ export function chronicle(ctx: StoryContext): Chronicle {
   if (secrets.length > 0) {
     const things = [...new Set(secrets.map((e) => encounterThing(e.defId)))];
     moments.push(t.line("chronicle_discoveries", { count: secrets.length, things: joinNames(things.slice(0, 4)) }));
+  }
+  if (awards.length > 0) {
+    const lines = awards.slice(0, 4).map((a) => fill(t.voice.pick(ctx.library.templates.award_line!), { name: t.name(a.playerId), title: a.title.toLocaleLowerCase("vi"), detail: a.detail }));
+    moments.push(t.line("chronicle_awards", { awards: lines.join("; ") }));
   }
   if (moments.length > 0) paragraphs.push(moments.join(" "));
 

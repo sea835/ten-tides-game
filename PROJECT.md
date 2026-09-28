@@ -34,7 +34,8 @@ Toàn bộ game diễn ra trên một hòn đảo 3D, góc nhìn thứ ba, phong
 
 - Vị trí kho báu, chọn từ 6–8 điểm ứng viên rải khắp đảo.
 - Chỗ có dừa, cá, đồ trôi dạt; hang nào mở, hang nào sập.
-- Thời tiết từng ngày và ngày núi lửa bắt đầu thức giấc.
+- Thời tiết từng ngày và ngày núi lửa bắt đầu thức giấc. Thời tiết hiện ngay trên đảo: mây dày mỏng, mưa, bão có gió giật và sấm chớp, sương mù che tầm nhìn, động đất rung từng đợt.
+- Biến cố ngày 5 và những thẻ sự kiện nối tiếp của nó.
 - Điểm hẹn của băng cướp biển và vịnh nhỏ nơi kẻ lừa đảo hẹn giao dịch.
 
 **Núi lửa là đồng hồ đếm ngược.** Mức hoạt động của núi lửa tăng dần theo ngày, và hết ngày 10 thì phun trào. Ai chưa lên thuyền rời đảo sẽ kẹt lại, nên giới hạn 10 ngày có lý do nằm ngay trong thế giới game.
@@ -197,6 +198,10 @@ Balo là lưới 16x16 (256 ô); mỗi món đồ là một khối hình chiếm
 }
 ```
 
+**Biến cố ngày 5 là cơ chế, không chỉ là lời kể.** Lúc bắt đầu ván, engine chọn một trong 8 biến cố và giữ bí mật; bình minh ngày 5 nó xảy ra với hệ quả thật (mất tiến độ kho báu, thuyền hư, núi lửa tỉnh sớm...) và dựng một cờ mở khoá những thẻ sự kiện nối tiếp chỉ có trong biến cố đó (gặp ông lão trong phế tích, gỡ cơ quan dưới tro nóng, trao đổi với đoàn thám hiểm kia...). Bộ sinh truyện dựng cả cốt truyện của ván quanh đúng biến cố engine đã chọn, nên điều được kể và điều xảy ra luôn khớp nhau. Thẻ cũng nối với nhau qua cờ: đọc được nhật ký thuyền trưởng ở xác tàu thì mới mở được cửa đá trong phế tích.
+
+**Ngủ ngoài trại là một sự kiện.** Ai không kịp về trại gặp một chuyện trong đêm hợp với thời tiết (thú rình, mưa dầm, thủy triều lên, tiếng thì thầm, trời đầy sao...), có phép kiểm tra như thẻ sự kiện; lều, đuốc, súng, la bàn giúp được. Sáng ra cả đoàn nghe kể, riêng người đó được kể kỹ hơn.
+
 **Đạo diễn độ căng.** Engine giữ một đường cong độ căng mục tiêu theo ngày, có nhịp nghỉ xen kẽ. Đội đang quá khỏe thì rút thẻ khó hơn; đội sắp chết cả loạt ở hồi 1 thì rút thẻ hồi phục — cùng ý tưởng với AI Director trong Left 4 Dead.
 
 **Tài nguyên chung của đội:** Tiến độ kho báu (0–100), Mức hoạt động núi lửa, Độ bền thuyền, Lương thực chung. Tiến độ tăng nhờ manh mối, đọc đúng bản đồ và khám phá đúng vùng, và nó thu hẹp dần các điểm ứng viên trên map. Đạt 100 là biết chính xác chỗ đào, nhưng vẫn cần người mang xẻng tới đó và một chiếc thuyền đủ tốt để rời đảo.
@@ -235,6 +240,10 @@ Mỗi yếu tố có thẻ và điều kiện (hồi, vùng, thời tiết, kế
 3. **Mỗi hoàng hôn**, bộ sinh kể lại cả ngày từ nhật ký xúc xắc: ai gặp chuyện gì ở đâu, thành hay bại, nhờ món đồ nào, ai đào được kho báu, ai gục, ai không kịp về trại.
 4. **Mỗi người có lời kể riêng**, viết ở ngôi "bạn", dựa trên dòng tự mô tả, xuất thân, tật xấu, quan hệ với người khác và vai của mình. Server chỉ gửi phần này cho đúng người đó.
 5. **Cuối ván**, bộ sinh viết biên niên sử một trang: tên đoàn, truyền thuyết, thành viên, khoảnh khắc đáng nhớ, kẻ phản bội là ai, và lời kết.
+
+**Trang nhật ký trên đảo.** Mỗi ngày có một trang nhật ký của người xưa nằm ở một chỗ theo seed bản đồ, mấy ngày đầu gần trại rồi xa dần (lên đồi, vào hang, ra đảo nhỏ, lên núi lửa). Nhặt được thì thêm manh mối kho báu và đọc được một mảnh cốt truyện của ván (người giấu, động cơ, vật chứng, bí mật của đảo...), trang đó lưu vào sổ truyện của người nhặt.
+
+**Danh hiệu cuối ván.** Màn lật bài và biên niên sử trao danh hiệu cho những việc làm đáng nhớ trên đảo (Thợ săn, Tiều phu, Bạn thân của trọng lực, Nam châm hút bẫy, Người nuôi cả trại...), mỗi người một danh hiệu, không ảnh hưởng thắng thua.
 
 **Mẫu câu viết trọn câu.** Mỗi câu trong thư viện và trong bộ mẫu câu là một câu tiếng Việt hoàn chỉnh, chỉ chừa chỗ trống cho tên người, tên đồ và tên nơi. Nhờ vậy câu ghép ra luôn đúng ngữ pháp. Mỗi lời kể dùng một luồng random riêng (seed của ván + loại lời kể + ngày + người), nên lời kể không phụ thuộc thứ tự tính toán. Test tự động chạy hàng trăm ván để bảo đảm không câu nào sót chỗ trống, không câu nào lộ vai ẩn.
 
