@@ -302,7 +302,11 @@ export type LogEntry =
   /** Trao tay một món cho người khác. */
   | { kind: "give"; day: number; playerId: string; target: string; itemId: string }
   /** Góp đồ ăn kiếm được vào kho lương thực chung. */
-  | { kind: "stash"; day: number; playerId: string; itemId: string; amount: number };
+  | { kind: "stash"; day: number; playerId: string; itemId: string; amount: number }
+  /** Chế tạo một món từ nguyên liệu trong balo. */
+  | { kind: "craft"; day: number; playerId: string; itemId: string }
+  /** Đóng ván vá thuyền ở lửa trại. */
+  | { kind: "repair"; day: number; playerId: string; itemId: string; amount: number };
 
 export interface GameState {
   seed: number;
@@ -432,6 +436,9 @@ export type GameAction =
   | { type: "stash"; playerId: string; uid: string }
   /** Nướng một món trên lửa trại (thịt sống thành thịt nướng...). Server đã kiểm tra đứng ở lửa trại. */
   | { type: "cook"; playerId: string; uid: string }
+  /** `atFire`: server xác nhận người chơi đang đứng cạnh lửa trại (công thức cần lửa). */
+  | { type: "craft"; playerId: string; itemId: string; atFire?: boolean }
+  | { type: "repair"; playerId: string; uid: string }
   | {
       type: "encounter";
       playerId: string;

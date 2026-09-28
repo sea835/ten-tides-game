@@ -297,9 +297,9 @@ const MODELS: Record<string, Model> = {
 
 const geometries: Record<Shape, BufferGeometry> = {
   box: new BoxGeometry(1, 1, 1),
-  ball: new IcosahedronGeometry(1, 0),
-  cone: new ConeGeometry(1, 1, 5),
-  cyl: new CylinderGeometry(1, 1, 1, 5),
+  ball: new IcosahedronGeometry(1, 2),
+  cone: new ConeGeometry(1, 1, 10),
+  cyl: new CylinderGeometry(1, 1, 1, 10),
   gem: new OctahedronGeometry(1, 0),
 };
 

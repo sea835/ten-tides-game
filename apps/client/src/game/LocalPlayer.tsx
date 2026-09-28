@@ -18,6 +18,7 @@ import {
 } from "@tentides/content";
 import { INTERACT_RADIUS, MAX_RUN_SPEED, Messages, type CorrectMessage, type KnockMessage, type MoveMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
+import { getCameraView } from "./camera.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { getHud, setHud, type NearTarget } from "./hudStore.ts";
 import { isTyping, keys, look } from "./input.ts";
@@ -59,6 +60,10 @@ const CAM_HEIGHT_SIT = 1.0;
 const SPRINT_RECOVER_AT = 25;
 const OVERWEIGHT_SPEED = 0.8;
 const CAMERA_MIN_DISTANCE = 1.2;
+/** Góc nhìn thứ nhất: mắt cách chân chừng này khi đứng, ngồi, bơi. */
+const EYE_HEIGHT = 1.72;
+const EYE_HEIGHT_SIT = 1.05;
+const EYE_HEIGHT_SWIM = 1.45;
 const SEND_INTERVAL = 1 / 15;
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.4;
@@ -341,8 +346,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (Math.abs(knock.vx) + Math.abs(knock.vz) < 0.05) knock.vx = knock.vz = 0;
     rb.setNextKinematicTranslation(next);
 
-    // Vừa đánh hay ném: quay mặt theo hướng camera cho đòn đi đúng chỗ mình nhắm.
-    if (!s.climb && performance.now() - localAim.at < AIM_FACE_MS) s.facing = localAim.yaw + Math.PI;
+    // Vừa đánh hay ném: quay mặt theo hướng camera cho đòn đi đúng chỗ mình nhắm. Góc thứ nhất thì luôn nhìn theo camera.
+    if (!s.climb && (getCameraView() === "first" || performance.now() - localAim.at < AIM_FACE_MS)) s.facing = (getCameraView() === "first" ? look.yaw : localAim.yaw) + Math.PI;
 
     if (avatar.current) {
       const current = avatar.current.rotation.y;
@@ -350,8 +355,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       avatar.current.rotation.y = current + diff * Math.min(1, dt * 12);
     }
 
-    // Camera góc nhìn thứ ba, bám mượt theo nhân vật.
+    // Camera góc nhìn thứ ba, bám mượt theo nhân vật; hoặc góc nhìn thứ nhất, đặt ngay mắt.
     const feetY = next.y - FEET_OFFSET;
+    const firstPerson = getCameraView() === "first";
+    if (avatar.current) avatar.current.visible = !firstPerson;
     s.camHeight += ((s.sitting ? CAM_HEIGHT_SIT : CAM_HEIGHT_STAND) - s.camHeight) * Math.min(1, dt * 6);
     camTarget.set(next.x, feetY + s.camHeight, next.z);
     const horizontal = Math.cos(look.pitch) * CAMERA_DISTANCE;
@@ -370,10 +377,19 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const minCamY = (headUnder ? world.heightAt(camPos.x, camPos.z) : Math.max(world.heightAt(camPos.x, camPos.z), WATER_LEVEL + 0.25)) + 0.5;
     if (camPos.y < minCamY) camPos.y = minCamY;
     if (headUnder && camPos.y > WATER_LEVEL - 0.3) camPos.y = WATER_LEVEL - 0.3;
-    // Khung hình đầu đặt thẳng vào chỗ, không để camera bay từ giữa đảo tới.
-    if (blocked || firstFrame) state.camera.position.copy(camPos);
-    else state.camera.position.lerp(camPos, Math.min(1, dt * 10));
-    state.camera.lookAt(camTarget);
+    if (firstPerson) {
+      // Mắt ở trên đỉnh đầu một chút, nhìn theo yaw/pitch (pitch dương là cúi xuống).
+      const eyeY = feetY + (s.sitting ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : EYE_HEIGHT);
+      state.camera.position.set(next.x, eyeY, next.z);
+      camDir.set(-Math.sin(look.yaw) * Math.cos(look.pitch), -Math.sin(look.pitch), -Math.cos(look.yaw) * Math.cos(look.pitch));
+      camTarget.copy(state.camera.position).add(camDir);
+      state.camera.lookAt(camTarget);
+    } else {
+      // Khung hình đầu đặt thẳng vào chỗ, không để camera bay từ giữa đảo tới.
+      if (blocked || firstFrame) state.camera.position.copy(camPos);
+      else state.camera.position.lerp(camPos, Math.min(1, dt * 10));
+      state.camera.lookAt(camTarget);
+    }
     // Rung màn hình (bị đánh, cây đổ sát bên) và nghiêng ngả khi chóng mặt.
     if (shake.amount > 0.005) {
       const a = shake.amount * 0.35;
@@ -520,6 +536,7 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
   if (!state.campPacked && Math.hypot(state.campX - x, state.campZ - z) <= CAMPFIRE_REACH) {
     const held = getPrivate()?.bag.find((b) => b.uid === getHands());
     const def = held && content.items.get(held.itemId);
+    if (def?.hull) return { id: "campfire", kind: "campfire", label: `Đóng ${def.name.toLowerCase()} vào thuyền (+${def.hull} thân thuyền)` };
     if (def?.cook) return { id: "campfire", kind: "campfire", label: `Nướng ${def.name.toLowerCase()}` };
     if (def?.ration) return { id: "campfire", kind: "campfire", label: `Góp ${def.name.toLowerCase()} vào kho (+${def.ration} khẩu phần)` };
     if (state.phase !== "dusk" && Math.hypot(state.campX - x, state.campZ - z) <= 3.5) return { id: "camp", kind: "camp", label: "Nhổ lửa trại mang đi" };

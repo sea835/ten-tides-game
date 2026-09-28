@@ -169,6 +169,9 @@ function fxSound(fx: FxMessage) {
       return play("bubbles", { at });
     case "give":
       return play("pickup", { at });
+    case "craft":
+    case "repair":
+      return play("hammer", { at });
   }
 }
 

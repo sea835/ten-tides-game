@@ -16,7 +16,12 @@
       "vách đá",
       "hang sâu",
       "trói tù binh"
-    ]
+    ],
+    "craft": {
+      "needs": {
+        "hide": 2
+      }
+    }
   },
   {
     "id": "machete",
@@ -295,7 +300,13 @@
     "hooks": [
       "kéo lưới ở hồ",
       "lưới vướng vật lạ"
-    ]
+    ],
+    "craft": {
+      "needs": {
+        "rope": 1,
+        "wood": 1
+      }
+    }
   },
   {
     "id": "compass",
@@ -414,6 +425,12 @@
       "cooldown": 0.7,
       "blind": 1.5,
       "word": "XÈO!"
+    },
+    "craft": {
+      "needs": {
+        "wood": 1
+      },
+      "fire": true
     }
   },
   {
@@ -467,6 +484,12 @@
     "throw": {
       "damage": 20,
       "word": "VÚT!"
+    },
+    "craft": {
+      "needs": {
+        "wood": 1,
+        "stone": 1
+      }
     }
   },
   {
@@ -491,6 +514,12 @@
       "cooldown": 1.1,
       "dizzy": 2,
       "word": "BÉP!"
+    },
+    "craft": {
+      "needs": {
+        "wood": 1,
+        "hide": 1
+      }
     }
   },
   {
@@ -791,7 +820,13 @@
       "dời trại tới nơi an toàn hơn"
     ],
     "loot": true,
-    "camp": true
+    "camp": true,
+    "craft": {
+      "needs": {
+        "wood": 3,
+        "stone": 2
+      }
+    }
   },
   {
     "id": "cooked_meat",
@@ -849,6 +884,168 @@
       "cooldown": 0.5,
       "dizzy": 1,
       "word": "CHÁT!"
+    }
+  },
+  {
+    "id": "stone_axe",
+    "name": "Rìu đá",
+    "size": {
+      "w": 2,
+      "h": 3
+    },
+    "weightKg": 2,
+    "price": 0,
+    "tags": [
+      "tool",
+      "cut"
+    ],
+    "hooks": [
+      "lưỡi đá buộc vào cán gỗ",
+      "đốn cây kiểu người tiền sử"
+    ],
+    "loot": true,
+    "melee": {
+      "damage": 12,
+      "reach": 2,
+      "cooldown": 0.9,
+      "stun": 0.4,
+      "word": "BỐP!"
+    },
+    "chop": 24,
+    "craft": {
+      "needs": {
+        "wood": 1,
+        "stone": 2
+      }
+    }
+  },
+  {
+    "id": "bone_knife",
+    "name": "Dao xương",
+    "size": {
+      "w": 1,
+      "h": 2
+    },
+    "weightKg": 0.3,
+    "price": 0,
+    "tags": [
+      "weapon",
+      "cut"
+    ],
+    "hooks": [
+      "mài xương thành lưỡi",
+      "nhỏ mà sắc"
+    ],
+    "loot": true,
+    "melee": {
+      "damage": 8,
+      "reach": 1.7,
+      "cooldown": 0.45,
+      "word": "XOẸT!"
+    },
+    "chop": 10,
+    "craft": {
+      "needs": {
+        "bone": 1,
+        "stone": 1
+      }
+    }
+  },
+  {
+    "id": "poultice",
+    "name": "Thuốc đắp",
+    "size": {
+      "w": 1,
+      "h": 2
+    },
+    "weightKg": 0.2,
+    "price": 0,
+    "tags": [
+      "medical"
+    ],
+    "hooks": [
+      "cơm dừa giã với da thú đắp vết thương",
+      "mùi hăng hắc"
+    ],
+    "loot": true,
+    "eat": {
+      "hp": 18,
+      "morale": 2
+    },
+    "craft": {
+      "needs": {
+        "coconut": 1,
+        "hide": 1
+      }
+    }
+  },
+  {
+    "id": "skewer",
+    "name": "Xiên nướng",
+    "size": {
+      "w": 1,
+      "h": 4
+    },
+    "weightKg": 0.9,
+    "price": 0,
+    "tags": [
+      "meat"
+    ],
+    "hooks": [
+      "thịt và cá xiên que nướng than",
+      "bữa tiệc giữa đảo hoang"
+    ],
+    "loot": true,
+    "eat": {
+      "hunger": 50,
+      "hp": 10,
+      "morale": 10
+    },
+    "ration": 3,
+    "throw": {
+      "damage": 3,
+      "word": "BỊCH!"
+    },
+    "craft": {
+      "needs": {
+        "raw_meat": 1,
+        "fish": 1,
+        "wood": 1
+      },
+      "fire": true
+    }
+  },
+  {
+    "id": "boat_plank",
+    "name": "Ván vá thuyền",
+    "size": {
+      "w": 2,
+      "h": 5
+    },
+    "weightKg": 3,
+    "price": 0,
+    "tags": [
+      "wood",
+      "repair"
+    ],
+    "hooks": [
+      "ghép gỗ chèn đá cho chắc",
+      "vá lỗ thủng trên thân thuyền"
+    ],
+    "loot": true,
+    "hull": 5,
+    "melee": {
+      "damage": 8,
+      "reach": 2,
+      "cooldown": 0.9,
+      "stun": 0.6,
+      "word": "BỐP!"
+    },
+    "craft": {
+      "needs": {
+        "wood": 3,
+        "stone": 1
+      }
     }
   }
 ]

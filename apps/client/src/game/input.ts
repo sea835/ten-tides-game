@@ -1,5 +1,7 @@
 // Bàn phím và chuột. Giữ trong biến module để useFrame đọc mỗi khung hình mà không re-render React.
 
+import { clampPitch } from "./camera.ts";
+
 export const keys = new Set<string>();
 
 /** Góc camera: yaw quay quanh nhân vật, pitch ngẩng lên/cúi xuống. */
@@ -27,7 +29,7 @@ export function bindInput(canvas: HTMLElement): () => void {
   const onMouseMove = (e: MouseEvent) => {
     if (document.pointerLockElement !== canvas) return;
     look.yaw -= e.movementX * MOUSE_SENSITIVITY;
-    look.pitch = Math.min(1.2, Math.max(-0.2, look.pitch + e.movementY * MOUSE_SENSITIVITY));
+    look.pitch = clampPitch(look.pitch + e.movementY * MOUSE_SENSITIVITY);
   };
 
   window.addEventListener("keydown", onKeyDown);

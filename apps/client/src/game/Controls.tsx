@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { content, worldCatalog } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
+import { aimPitchFrom, clampPitch, toggleCameraView } from "./camera.ts";
 import { getHands, setHands } from "./handsStore.ts";
 import { getHud, setHud } from "./hudStore.ts";
 import { isTyping, look } from "./input.ts";
@@ -22,9 +23,9 @@ export const TOUCH_CYCLE = "tentides:cycle";
 /** Công trình chọn lần lượt khi bấm V (rỗng là thôi dựng). */
 const BUILD_CYCLE = ["", ...worldCatalog.buildings.keys()];
 
-/** Góc ngắm lên xuống suy ra từ góc camera: camera mặc định (0,35) là ngắm ngang. */
+/** Góc ngắm lên xuống suy ra từ góc camera (xem camera.ts). */
 function aimPitch(): number {
-  return Math.max(-0.6, Math.min(0.9, 0.35 - look.pitch));
+  return aimPitchFrom(look.pitch);
 }
 
 export function Controls({ room }: { room: IslandRoom }) {
@@ -123,6 +124,10 @@ export function Controls({ room }: { room: IslandRoom }) {
           if (to && getHands()) room.send(Messages.give, { target: to.id });
           break;
         }
+        case "KeyT":
+          toggleCameraView();
+          look.pitch = clampPitch(look.pitch);
+          break;
         case "KeyK":
           room.send(Messages.star);
           break;

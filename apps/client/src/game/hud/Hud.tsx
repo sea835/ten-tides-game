@@ -5,13 +5,14 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { BackpackViewer, PackingScreen } from "./Backpack.tsx";
 import { Campfire, GhostChat, LobbyChat } from "./Campfire.tsx";
 import { CharacterCreator } from "./CharacterCreator.tsx";
+import { Crafting } from "./Crafting.tsx";
 import { PhaseClock, PhaseSplash } from "./Clock.tsx";
 import { EventCard } from "./EventCard.tsx";
 import { Feed } from "./Feed.tsx";
 import { Hotbar, StatusOverlay } from "./Hands.tsx";
 import { TouchControls } from "./TouchControls.tsx";
 import { EncounterToast, EndScreen, EnvironmentOverlay, InteractPrompt, KeyHints, PausedOverlay, PostureBadge, Toast } from "./Overlays.tsx";
-import { Objectives, Tips, WaypointMarker } from "./Objectives.tsx";
+import { Crosshair, Objectives, Tips, WaypointMarker } from "./Objectives.tsx";
 import { PhaseBanner } from "./PhaseBanner.tsx";
 import { RoomPanel } from "./RoomPanel.tsx";
 import { SelfPanel } from "./SelfPanel.tsx";
@@ -29,6 +30,7 @@ export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }
     <div className={`hud phase-${phase}`}>
       {/* Mũi tên chỉ đường nằm dưới mọi khung HUD. */}
       {!fullscreen && <WaypointMarker />}
+      {!fullscreen && <Crosshair />}
       {!fullscreen && <EnvironmentOverlay room={room} />}
       {!fullscreen && <StatusOverlay room={room} />}
       {!fullscreen && (
@@ -51,6 +53,7 @@ export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }
           <LobbyChat room={room} />
           <GhostChat room={room} />
           <BackpackViewer room={room} />
+          <Crafting room={room} />
           <Journal room={room} />
         </>
       )}

@@ -112,9 +112,14 @@ function toLogEntry(entry: LogEntry): LogEntryState {
       out.defId = entry.itemId;
       break;
     case "stash":
+    case "repair":
       out.playerId = entry.playerId;
       out.defId = entry.itemId;
       out.amount = entry.amount;
+      break;
+    case "craft":
+      out.playerId = entry.playerId;
+      out.defId = entry.itemId;
       break;
     case "departure":
       out.players.push(...entry.aboard);

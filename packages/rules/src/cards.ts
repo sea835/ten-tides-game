@@ -80,6 +80,16 @@ export interface ItemDef {
   ration?: number;
   /** Nướng trên lửa trại thì thành món này. */
   cook?: string;
+  /** Công thức chế tạo ra món này từ đồ trong balo. */
+  craft?: Recipe;
+  /** Góp ở lửa trại để vá thuyền: thêm chừng này độ bền thân thuyền. */
+  hull?: number;
+}
+
+/** Công thức chế tạo: nguyên liệu mất đi (id đồ → số lượng); `fire`: phải đứng cạnh lửa trại. */
+export interface Recipe {
+  needs: Record<string, number>;
+  fire?: boolean;
 }
 
 /** Chuyện xảy ra trong đêm với người ngủ ngoài trại: một phép kiểm tra, hệ quả áp cho người đó (và cả đội với lương thực, kho báu). */

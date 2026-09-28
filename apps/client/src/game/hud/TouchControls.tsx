@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowBigUp, Backpack, BookOpen, Hand, HandHeart, Map as MapIcon, Repeat, Skull, Star, Swords, Target, TreePalm } from "lucide-react";
+import { ArrowBigUp, Backpack, Camera, Hammer, BookOpen, Hand, HandHeart, Map as MapIcon, Repeat, Skull, Star, Swords, Target, TreePalm } from "lucide-react";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
+import { clampPitch, toggleCameraView, useCameraView } from "../camera.ts";
 import { TOUCH_CYCLE, TOUCH_PRIMARY, TOUCH_THROW } from "../Controls.tsx";
 import { useHud } from "../hudStore.ts";
+import { TOUCH_CRAFT } from "./Crafting.tsx";
 import { keys, look } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 
@@ -102,7 +104,7 @@ function LookPad() {
         const l = last.current;
         if (!l || l.id !== e.pointerId) return;
         look.yaw -= (e.clientX - l.x) * LOOK_SENSITIVITY;
-        look.pitch = Math.min(1.2, Math.max(-0.2, look.pitch + (e.clientY - l.y) * LOOK_SENSITIVITY));
+        look.pitch = clampPitch(look.pitch + (e.clientY - l.y) * LOOK_SENSITIVITY);
         last.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
       }}
       onPointerUp={() => (last.current = null)}
@@ -142,6 +144,7 @@ export function TouchControls({ room }: { room: IslandRoom }) {
   const { nearTarget, nearAnchor, atDigSite, victim, giveTo, swimming, climbing } = useHud();
   const active = useRoomSnapshot(room, (s) => ["dawn", "explore", "dusk"].includes(s.phase) && (s.players.get(myId(room))?.alive ?? false));
   const throwStart = useRef(0);
+  const view = useCameraView();
   if (!touch || !active) return null;
   const canInteract = !!(nearTarget || nearAnchor || atDigSite || climbing);
   return (
@@ -150,8 +153,10 @@ export function TouchControls({ room }: { room: IslandRoom }) {
       <Stick />
       <div className="touch-top">
         <Button label="Balo" icon={Backpack} onDown={() => tap("KeyB")} />
+        <Button label="Chế tạo" icon={Hammer} onDown={() => window.dispatchEvent(new Event(TOUCH_CRAFT))} />
         <Button label="Sổ" icon={BookOpen} onDown={() => tap("KeyJ")} />
         <Button label="Đổi món" icon={Repeat} onDown={() => window.dispatchEvent(new Event(TOUCH_CYCLE))} />
+        <Button label={view === "first" ? "Sau lưng" : "Mắt nhìn"} icon={Camera} onDown={toggleCameraView} />
         <Button label="Bản đồ" icon={MapIcon} onDown={() => document.querySelector(".hud")?.classList.toggle("show-map")} />
         <Button label="⭐" icon={Star} onDown={() => room.send(Messages.star)} />
       </div>

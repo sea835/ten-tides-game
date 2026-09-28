@@ -300,7 +300,9 @@ const KEYS: [string, string][] = [
   ["V", "Dựng nhà"],
   ["G", "Đưa món đang cầm cho người bên cạnh"],
   ["K", "Đánh dấu ⭐ khoảnh khắc"],
+  ["T", "Đổi góc nhìn: sau lưng · bằng mắt"],
   ["B", "Xem balo"],
+  ["R", "Chế tạo đồ (gỗ, đá, da, xương...)"],
   ["J", "Sổ truyện"],
   ["Enter", "Chat"],
   ["M · N", "Tắt âm thanh · tắt nhạc"],
@@ -309,7 +311,7 @@ const KEYS: [string, string][] = [
 ];
 const HELP_KEY = "tentides.help";
 /** Vài phím cần nhất cho người mới; phần còn lại mở bằng "Tất cả phím". */
-const ESSENTIAL_KEYS = new Set(["WASD", "Shift", "E", "Chuột trái", "Q · lăn chuột", "B"]);
+const ESSENTIAL_KEYS = new Set(["WASD", "Shift", "E", "Chuột trái", "Q · lăn chuột", "B", "R", "T"]);
 
 /** Bảng phím tắt, H để bật tắt. Lần đầu chơi thì mở sẵn, lần sau nhớ lựa chọn của người chơi. */
 export function KeyHints() {

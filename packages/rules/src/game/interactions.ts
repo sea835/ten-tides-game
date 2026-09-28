@@ -98,6 +98,50 @@ export function stash(state: GameState, playerId: string, uid: string, config: G
   return state;
 }
 
+/** Còn thiếu nguyên liệu gì cho công thức (id đồ → thiếu mấy món); rỗng là đủ. */
+export function missingMaterials(items: readonly string[], needs: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [item, n] of Object.entries(needs)) {
+    const have = items.filter((i) => i === item).length;
+    if (have < n) out[item] = n - have;
+  }
+  return out;
+}
+
+/**
+ * Chế tạo: bỏ nguyên liệu, món mới tự vào chỗ trống trong balo. Balo không còn chỗ (kể cả sau khi bỏ nguyên liệu)
+ * thì không làm gì. Ban đêm quanh đống lửa vẫn chế tạo được.
+ */
+export function craft(state: GameState, playerId: string, itemId: string, atFire: boolean, config: GameConfig): GameState {
+  const p = actor(state, playerId, HANDS_PHASES);
+  const recipe = config.items.find((i) => i.id === itemId)?.craft ?? fail("Món này không chế tạo được");
+  if (recipe.fire && !atFire) fail("Phải đứng cạnh lửa trại mới làm được món này");
+  if (!hasMaterials(p, recipe.needs)) fail("Không đủ nguyên liệu");
+  const before = p.bag.slice();
+  for (const [item, n] of Object.entries(recipe.needs)) {
+    for (let k = 0; k < n; k++) takeFromBag(p, p.bag.find((b) => b.itemId === item)!.uid);
+  }
+  if (!gainItem(state, p, itemId, config)) {
+    p.bag = before;
+    syncItems(p);
+    fail("Balo không còn chỗ cho món mới");
+  }
+  state.log.push({ kind: "craft", day: state.day, playerId, itemId });
+  return state;
+}
+
+/** Góp ván ở lửa trại để vá thuyền. */
+export function repair(state: GameState, playerId: string, uid: string, config: GameConfig): GameState {
+  const p = actor(state, playerId, HANDS_PHASES);
+  const itemId = p.bag.find((b) => b.uid === uid)?.itemId ?? fail("Món này không có trong balo");
+  const amount = config.items.find((i) => i.id === itemId)?.hull ?? 0;
+  if (amount <= 0) fail("Món này không vá thuyền được");
+  takeFromBag(p, uid);
+  state.hull = clamp(state.hull + amount, 0, 100);
+  state.log.push({ kind: "repair", day: state.day, playerId, itemId, amount });
+  return state;
+}
+
 /** Nướng một món trên lửa trại: món sống thành món chín, nằm nguyên chỗ cũ trong balo. */
 export function cook(state: GameState, playerId: string, uid: string, config: GameConfig): GameState {
   const p = actor(state, playerId, HANDS_PHASES);

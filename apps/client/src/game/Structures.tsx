@@ -109,12 +109,12 @@ function buildStructure(s: Structure, slabs: Slab[]): Dressing {
   roofGeo.computeVertexNormals();
 
   const batch = new Batch();
-  const boulder = new DodecahedronGeometry(1, 0);
-  const cone = new ConeGeometry(1, 1, 5);
+  const boulder = new DodecahedronGeometry(1, 1);
+  const cone = new ConeGeometry(1, 1, 10);
   const box = new BoxGeometry(1, 1, 1);
-  const cyl = new CylinderGeometry(1, 1, 1, 6);
+  const cyl = new CylinderGeometry(1, 1, 1, 12);
   const gem = new OctahedronGeometry(1, 0);
-  const ball = new SphereGeometry(1, 6, 4);
+  const ball = new SphereGeometry(1, 12, 8);
   const ore = ORE_COLORS[hashString(s.name) % ORE_COLORS.length]!;
 
   // Vỏ ngoài: tảng đá (hang) hoặc gò đất phủ cỏ (hầm mỏ) chất lên trần, cho giống một quả đồi.

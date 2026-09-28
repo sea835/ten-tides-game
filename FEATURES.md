@@ -63,7 +63,7 @@
 | M4 | Xong | 18 easter egg và 9 điểm bất thường trong danh mục; mỗi ván rải chừng 15 egg và 5–7 điểm bất thường, vắng vài cái để ván sau còn thứ tìm. Nhấn E để xem xét; kết quả của điểm bất thường định sẵn theo seed. Ghi vào nhật ký, bộ sinh truyện kể lúc hoàng hôn và trong biên niên sử |
 | M5 | Xong | 9 loại bẫy, rải theo seed bí mật của server; né theo thuộc tính; sập rồi mới lộ trên bản đồ |
 | M6 | Xong | 19 loài sinh vật: thân thiện (vuốt ve được), trung tính (bỏ chạy), nguy hiểm (đuổi cắn, sợ dao, súng, đuốc); quen thuộc từ ngày 1, lạ từ ngày 2, biến dị từ ngày 4–6 khi núi lửa thức |
-| P1 | Xong | 36 món đồ (thêm rìu, giáo, ná và 13 món nhặt được như đá, dừa, gỗ, thịt, da, lông, túi mực, bộ lửa trại). Cầm món bất kỳ trong balo (thanh đồ nghề, Q/lăn chuột), đặt xuống đất (X), ném (giữ chuột phải), nhặt (E) |
+| P1 | Xong | 43 món đồ (thêm 5 món chế tạo; trước đó thêm rìu, giáo, ná và 13 món nhặt được như đá, dừa, gỗ, thịt, da, lông, túi mực, bộ lửa trại). Cầm món bất kỳ trong balo (thanh đồ nghề, Q/lăn chuột), đặt xuống đất (X), ném (giữ chuột phải), nhặt (E) |
 | P2 | Xong | Đánh gần, bắn, ném có sát thương và chữ tượng thanh riêng từng món; số Máu mất, mảnh vụn, rung màn hình, bật lùi. Kẻ phản bội kết liễu một đòn (F), mỗi ngày một lần, bí mật tới màn lật bài |
 | P3 | Xong | Leo cây: ôm thân, trèo lên tụt xuống, vòng quanh, nhảy ra; dáng chổng mông lắc lư khi trèo |
 | P4 | Xong | Cây dừa và cây rừng chặt được (rơi gỗ, dừa, cây giống), trồng lại bằng mầm dừa hay cây giống, lớn dần; đang leo mà cây đổ thì té mất Máu, chóng mặt |
@@ -80,13 +80,16 @@
 | G7 | Xong | Bù xui công khai: trượt 2 lần liền thì "Quyết tâm +1", 4 lần thì +2, hiện trong tỷ lệ % trước khi chọn |
 | G8 | Xong | Khảo sát kín mỗi đêm "bạn nghi ai" và nút ⭐ đánh dấu khoảnh khắc (K); màn lật bài hiện "đêm N: x/y người nghi đúng" và danh sách khoảnh khắc |
 | G9 | Xong | Điều khiển cảm ứng: cần gạt, vuốt để xoay camera, nút đánh, ném, nhảy, lặn, dùng, đưa, kết liễu; balo chạm-chọn, chạm-đặt; HUD gọn trên màn nhỏ |
-| G5 | Xong | 16 danh hiệu cuối ván trên màn lật bài và trong biên niên sử |
+| G5 | Xong | 18 danh hiệu cuối ván (thêm Thợ thủ công, Thợ đóng thuyền) trên màn lật bài và trong biên niên sử |
 | V1 | Xong | Thời tiết nhìn thấy được: mây, mưa, bão có gió giật và sấm chớp, sương mù, động đất; đom đóm đêm quang; bụi chân, gợn nước; cảnh cố định cho xác tàu, phế tích, mỏm đá tổ chim, suối nước nóng |
 | E1 | Xong | Nhảy vào hồ dung nham chết ngay; giẫm vào lửa trại bỏng từng nhịp, bị hất ra; đuối nước thật: hết hơi thì ngoi chậm, mất Máu nhanh, kiệt sức hay quá tải thì chìm dần. Lời kể và nhật ký nói đúng nguyên nhân cái chết |
 | A1 | Xong | Âm thanh tổng hợp bằng Web Audio: tiếng động hành động, bước chân theo mặt đất, nền môi trường theo vị trí, thời tiết và giờ, ù dưới nước, tiếng giao diện, nhạc nền tự sinh; M tắt tiếng, N tắt nhạc |
 | U1 | Xong | Bảng "Việc hôm nay": sự kiện còn lại, lương thực cho đêm nay, trang nhật ký, tiến độ kho báu, giờ về trại; mũi tên chỉ đường (sự kiện gần nhất, chỗ đào khi có xẻng, lửa trại lúc sắp tối hay khi vác rương) |
 | U2 | Xong | Mẹo theo ngữ cảnh, mỗi mẹo một lần (lần đầu vào đảo, gần sự kiện, cây, đồ dưới đất, lửa trại, đói, bơi, hoàng hôn, lộ chỗ đào, thành hồn ma), có nút tắt hẳn; bảng phím tắt rút còn 6 phím; ban đêm 3 bước, lựa chọn phụ thu gọn |
 | V2 | Xong | Vân chất liệu sinh tại chỗ (gỗ, đá, lá, vải, cát, cỏ, vách đá, đất) phủ mọi vật theo toạ độ kèm bump; địa hình trộn theo từng đỉnh; người, thú, đồ cầm tay dính vân theo vật; đồ hoạ Thấp tắt vân |
+| V3 | Xong | Đồ họa mượt: địa hình chung đỉnh (màu, pháp tuyến, trọng số vân nội suy mượt, pháp tuyến tính từ độ cao nên không lộ mép ô); mọi khối được làm mịn pháp tuyến theo góc gãy 75° (khối đa diện, thân trụ ít cạnh tròn lại, hộp giữ cạnh); người, thú, cây, đồ nhiều cạnh hơn; vân nhẹ và mềm hơn |
+| V4 | Xong | Hai góc nhìn (T): sau lưng và bằng mắt; góc thứ nhất có chấm ngắm, tay và món đang cầm, ngắm đúng hướng nhìn, ngẩng lên được |
+| P10 | Xong | Chế tạo (R): 11 công thức từ đồ nhặt trên đảo, 5 món mới (rìu đá, dao xương, thuốc đắp, xiên nướng, ván vá thuyền); công thức cần lửa phải đứng cạnh lửa trại (ban đêm ngồi quanh lửa cũng được); ván vá thuyền +5 thân thuyền; nhật ký, lời kể hoàng hôn và danh hiệu |
 | M7 | Xong | Seed bản đồ công khai, chủ phòng nhập hoặc gieo lại ở sảnh chờ; seed của engine luật không còn gửi xuống client |
 
 Cân bằng hiện tại (bot, 3.000 ván 4–6 người, 6 thẻ mỗi ngày; bot biết hái dừa góp kho và nhặt trang nhật ký): phe đội thắng 54,5%, không ai thắng 24,1%, phản bội thắng 35,5% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%.

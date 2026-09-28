@@ -37,6 +37,8 @@ const TONE: Record<FxMessage["kind"], string> = {
   burn: "hit",
   drown: "splash",
   give: "eat",
+  craft: "build",
+  repair: "build",
 };
 
 /** Màu vụn văng ra và số lượng theo loại hiệu ứng. */
@@ -57,6 +59,8 @@ const BURST: Partial<Record<FxMessage["kind"], { color: string; count: number; s
   burn: { color: "#ff9a2a", count: 16, speed: 1.8, size: 0.09, up: 4 },
   drown: { color: "#cfefff", count: 12, speed: 0.8, size: 0.09, up: 2 },
   give: { color: "#ffe9a8", count: 10, speed: 1.2, size: 0.06, up: 2.5 },
+  craft: { color: "#d8c08a", count: 14, speed: 2.2, size: 0.08, up: 3 },
+  repair: { color: "#b98a55", count: 18, speed: 3, size: 0.1, up: 3 },
 };
 
 const MAX_BITS = 260;

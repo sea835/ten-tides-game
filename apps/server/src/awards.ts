@@ -3,7 +3,7 @@
 
 import type { GameState } from "@tentides/rules";
 
-export const FEATS = ["damage", "hurt", "beasts", "trees", "planted", "falls", "throws", "built", "climbs", "cooked", "stashed"] as const;
+export const FEATS = ["damage", "hurt", "beasts", "trees", "planted", "falls", "throws", "built", "climbs", "cooked", "stashed", "crafted", "repaired"] as const;
 export type Feat = (typeof FEATS)[number];
 export type Feats = Partial<Record<Feat, number>>;
 
@@ -26,6 +26,8 @@ const AWARDS: readonly AwardDef[] = [
   { feat: "falls", title: "Bạn thân của trọng lực", detail: (n) => `té từ trên cây ${n} lần` },
   { feat: "built", title: "Kiến trúc sư", detail: (n) => `dựng ${n} công trình` },
   { feat: "pages", title: "Nhà sử học", detail: (n) => `nhặt ${n} trang nhật ký` },
+  { feat: "repaired", title: "Thợ đóng thuyền", detail: (n) => `vá thuyền thêm ${n}` },
+  { feat: "crafted", title: "Thợ thủ công", detail: (n) => `chế tạo ${n} món` },
   { feat: "stashed", title: "Người nuôi cả trại", detail: (n) => `góp ${n} khẩu phần` },
   { feat: "cooked", title: "Đầu bếp đảo hoang", detail: (n) => `nướng ${n} món` },
   { feat: "planted", title: "Người trồng rừng", detail: (n) => `trồng ${n} cây` },

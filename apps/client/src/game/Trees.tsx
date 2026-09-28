@@ -32,7 +32,7 @@ const TRUNK_BEND = 0.9;
 export const bend = (t: number) => TRUNK_BEND * t * t;
 
 function buildTrunk(): BufferGeometry {
-  const g = new CylinderGeometry(0.17, 0.3, 1, 6, 6);
+  const g = new CylinderGeometry(0.17, 0.3, 1, 10, 6);
   g.translate(0, 0.5, 0);
   const p = g.attributes.position!;
   for (let i = 0; i < p.count; i++) {
@@ -84,7 +84,7 @@ function buildCrown(): { leaves: BufferGeometry; nuts: BufferGeometry } {
   }
   const leaves = mergeGeometries(fronds)!;
   const nutParts = [0, 1, 2].map((i) => {
-    const s = new SphereGeometry(0.2, 5, 4);
+    const s = new SphereGeometry(0.2, 8, 6);
     const a = (i / 3) * Math.PI * 2;
     s.translate(Math.cos(a) * 0.22, -0.25, Math.sin(a) * 0.22);
     return s.toNonIndexed();
@@ -101,7 +101,7 @@ function canopy(): BufferGeometry {
     [1.5, -0.4, 0.4, 1.6],
     [-1.3, -0.3, -0.6, 1.7],
     [0.2, 0.9, -0.3, 1.5],
-  ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 0).translate(x!, y!, z!));
+  ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 1).translate(x!, y!, z!));
   const g = mergeGeometries(parts)!;
   g.computeVertexNormals();
   return g;
@@ -172,9 +172,9 @@ export function climbTop(tree: ClimbTree): number {
 
 const palm = { trunk: buildTrunk(), ...buildCrown() };
 const shared = {
-  trunk: new CylinderGeometry(0.22, 0.38, 1, 7).translate(0, 0.5, 0),
+  trunk: new CylinderGeometry(0.22, 0.38, 1, 12).translate(0, 0.5, 0),
   canopy: canopy(),
-  stump: new CylinderGeometry(0.28, 0.36, 0.45, 7).translate(0, 0.2, 0),
+  stump: new CylinderGeometry(0.28, 0.36, 0.45, 12).translate(0, 0.2, 0),
 };
 const mats = {
   palmTrunk: detailed(swayMaterial({ color: "#8b6b43", flatShading: true, roughness: 1 }, 0.004), "bark"),

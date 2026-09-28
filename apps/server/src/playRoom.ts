@@ -22,6 +22,7 @@ import {
   BuildingState,
   ClimbMessage,
   GroundItemState,
+  CraftMessage,
   GiveMessage,
   HoldMessage,
   Messages,
@@ -132,6 +133,7 @@ export class PlayController {
     h.onMessage(Messages.throw, ThrowMessage, (client, m) => this.onThrow(client, m.yaw, m.pitch, m.power));
     h.onMessage(Messages.drop, (client) => this.onDrop(client));
     h.onMessage(Messages.give, GiveMessage, (client, { target }) => this.onGive(client, target));
+    h.onMessage(Messages.craft, CraftMessage, (client, { itemId }) => this.onCraft(client, itemId));
     h.onMessage(Messages.use, UseMessage, (client, m) => this.onUse(client, m.x, m.z));
     h.onMessage(Messages.pickup, PickupMessage, (client, { id }) => this.onPickup(client, id));
     h.onMessage(Messages.climb, ClimbMessage, (client, { treeId }) => this.onClimb(client, treeId));
@@ -411,6 +413,14 @@ export class PlayController {
       this.fx({ kind: "cook", ...at, word: "XÈO XÈO!" });
       return;
     }
+    if (def.hull) {
+      if (!h.dispatch({ type: "repair", playerId: a.id, uid: held.uid }, client)) return;
+      this.play.held.delete(a.id);
+      this.feat(a.id, "repaired", def.hull);
+      this.act(a.id, "chop");
+      this.fx({ kind: "repair", ...at, word: `+${def.hull} THÂN THUYỀN` });
+      return;
+    }
     if (def.ration) {
       if (!h.dispatch({ type: "stash", playerId: a.id, uid: held.uid }, client)) return;
       this.play.held.delete(a.id);
@@ -419,6 +429,24 @@ export class PlayController {
       return;
     }
     h.reject(client, "Món này không nướng hay góp vào kho được.");
+  }
+
+  /** Chế tạo từ đồ trong balo; công thức cần lửa thì phải đứng cạnh lửa trại (hay đang ngồi quanh lửa ban đêm). */
+  private onCraft(client: Client, itemId: string) {
+    const a = this.actor(client, { allowTied: true });
+    if (!a) return;
+    const h = this.host;
+    const def = content.items.get(itemId);
+    if (!def?.craft) return h.reject(client, "Món này không chế tạo được.");
+    const camp = this.play.camp;
+    const atFire =
+      (!camp.packed && Math.hypot(a.player.x - camp.x, a.player.z - camp.z) <= CAMPFIRE_REACH + TOLERANCE) ||
+      (h.state.phase === "night" && [...h.state.campers].includes(a.id));
+    if (def.craft.fire && !atFire) return h.reject(client, `${def.name} phải làm cạnh lửa trại.`);
+    if (!h.dispatch({ type: "craft", playerId: a.id, itemId, atFire }, client)) return;
+    this.feat(a.id, "crafted");
+    this.act(a.id, "chop");
+    this.fx({ kind: "craft", x: a.player.x, y: a.player.y + 1.6, z: a.player.z, word: `${def.name.toUpperCase()}!` });
   }
 
   private onUse(client: Client, x: number, z: number) {

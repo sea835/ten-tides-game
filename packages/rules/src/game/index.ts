@@ -6,7 +6,7 @@
 import { advance } from "./day.ts";
 import { choose, dig, trigger } from "./events.ts";
 import { encounter } from "./encounters.ts";
-import { assassinate, build, consume, cook, drop, give, pickup, stash } from "./interactions.ts";
+import { assassinate, build, consume, cook, craft, drop, give, pickup, repair, stash } from "./interactions.ts";
 import { join, leave, start } from "./lobby.ts";
 import { buy, createCharacter, finishCreation, finishPacking, place, sell, unplace } from "./prep.ts";
 import { castBallot, chooseGhostAction, chooseNightAction, emptyVotes, nominate, revealBallot, star, suspect, voteRation } from "./night.ts";
@@ -20,7 +20,7 @@ export { anchorZone, canAct, checkModifiers, effectiveDc, isBusy, isOverweight, 
 export { allowedNightActions, rationResult, rationVoteNeeded, tieResult } from "./night.ts";
 export { ENDING_WINNERS } from "./endings.ts";
 export { ENCOUNTER_PHASES } from "./encounters.ts";
-export { canAssassinate, hasMaterials } from "./interactions.ts";
+export { canAssassinate, hasMaterials, missingMaterials } from "./interactions.ts";
 export { TWISTS, TWIST_DAY, TWIST_IDS, twistVolcano, type TwistId } from "./twists.ts";
 export { privateView, type PrivateView } from "./private.ts";
 
@@ -187,6 +187,10 @@ function apply(state: GameState, action: GameAction, config: GameConfig): GameSt
       return give(state, action.playerId, action.target, action.uid, config);
     case "cook":
       return cook(state, action.playerId, action.uid, config);
+    case "craft":
+      return craft(state, action.playerId, action.itemId, action.atFire ?? false, config);
+    case "repair":
+      return repair(state, action.playerId, action.uid, config);
   }
 }
 

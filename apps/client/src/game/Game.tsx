@@ -8,6 +8,7 @@ import type { DirectionalLight, HemisphereLight, PointLight } from "three";
 import type { IslandRoom } from "../net.ts";
 import { Anchors } from "./Anchors.tsx";
 import { Controls } from "./Controls.tsx";
+import { FirstPersonHands } from "./FirstPerson.tsx";
 import { Fx } from "./Fx.tsx";
 import { listenFx } from "./fxStore.ts";
 import { GroundItems } from "./Items3D.tsx";
@@ -116,6 +117,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
             <LocalPlayer room={room} world={world} />
           </Physics>
           <PlayerLight />
+          <FirstPersonHands room={room} />
           <RemotePlayers room={room} />
           <Anchors room={room} />
           <GroundItems room={room} />

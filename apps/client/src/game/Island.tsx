@@ -160,8 +160,8 @@ interface TerrainChunk {
 
 /**
  * Dựng địa hình từ world.heightAt() theo từng ô: ô có đất hay đáy nông dùng lưới mịn, ô toàn biển sâu dùng lưới thưa.
- * Mép ô mịn giáp ô thưa được nắn thẳng theo ô thưa để không hở khe. Mỗi ô có bản chỉ số cho va chạm
- * và bản tách mặt để tô màu phẳng kiểu low-poly.
+ * Mép ô mịn giáp ô thưa được nắn thẳng theo ô thưa để không hở khe. Mỗi ô dùng chung một lưới cho va chạm
+ * và cho hình vẽ; màu, pháp tuyến và trọng số vân tính theo đỉnh nên mặt đất chuyển mượt.
  */
 function buildTerrain(world: World): TerrainChunk[] {
   const count = (MAP_HALF_SIZE * 2) / CHUNK;
@@ -225,37 +225,39 @@ function buildTerrain(world: World): TerrainChunk[] {
           k += 6;
         }
       }
+      // Lưới dùng chung đỉnh: pháp tuyến và màu nội suy mượt giữa các đỉnh (không còn tô phẳng từng mặt).
       const grid = new BufferGeometry();
       grid.setAttribute("position", new BufferAttribute(verts, 3));
       grid.setIndex(new BufferAttribute(indices, 1));
-      // Trọng số vân theo đỉnh (lưới còn chung đỉnh nên mỗi điểm chỉ tính một lần).
-      grid.computeVertexNormals();
-      const gnorm = grid.attributes.normal!;
-      const splat = new Float32Array((cells + 1) * (cells + 1) * 4);
-      for (let v = 0; v < gnorm.count; v++) {
-        const w = splatAt(world, verts[v * 3]!, verts[v * 3 + 2]!, verts[v * 3 + 1]!, 1 - Math.abs(gnorm.getY(v)));
-        splat.set(w, v * 4);
+      const count = (cells + 1) * (cells + 1);
+      const normals = new Float32Array(count * 3);
+      const colors = new Float32Array(count * 3);
+      const splat = new Float32Array(count * 4);
+      const e = FINE;
+      for (let v = 0; v < count; v++) {
+        const x = verts[v * 3]!;
+        const y = verts[v * 3 + 1]!;
+        const z = verts[v * 3 + 2]!;
+        // Pháp tuyến tính thẳng từ độ cao thế giới nên hai ô cạnh nhau khớp nhau, không lộ đường nối.
+        const nx = heightOn(x - e, z) - heightOn(x + e, z);
+        const nz = heightOn(x, z - e) - heightOn(x, z + e);
+        const len = Math.hypot(nx, 2 * e, nz);
+        normals[v * 3] = nx / len;
+        normals[v * 3 + 1] = (2 * e) / len;
+        normals[v * 3 + 2] = nz / len;
+        const slope = 1 - (2 * e) / len;
+        faceColor(world, tint, x, z, y, slope);
+        // Lệch màu rất nhẹ theo chỗ, cho đỡ phẳng lì.
+        tint.multiplyScalar(0.96 + 0.06 * grain(x, z));
+        tint.toArray(colors, v * 3);
+        splat.set(splatAt(world, x, z, y, slope), v * 4);
       }
+      grid.setAttribute("normal", new BufferAttribute(normals, 3));
+      grid.setAttribute("color", new BufferAttribute(colors, 3));
       grid.setAttribute("splat", new BufferAttribute(splat, 4));
-      grid.deleteAttribute("normal");
-      const flat = grid.toNonIndexed();
-      flat.computeVertexNormals();
-      const fpos = flat.attributes.position!;
-      const fnorm = flat.attributes.normal!;
-      const colors = new Float32Array(fpos.count * 3);
-      for (let v = 0; v < fpos.count; v += 3) {
-        const fx = (fpos.getX(v) + fpos.getX(v + 1) + fpos.getX(v + 2)) / 3;
-        const fy = (fpos.getY(v) + fpos.getY(v + 1) + fpos.getY(v + 2)) / 3;
-        const fz = (fpos.getZ(v) + fpos.getZ(v + 1) + fpos.getZ(v + 2)) / 3;
-        faceColor(world, tint, fx, fz, fy, 1 - Math.abs(fnorm.getY(v)));
-        // Lệch màu nhẹ từng mặt cho ra chất low-poly.
-        tint.multiplyScalar(0.93 + 0.1 * grain(fx, fz));
-        for (let q = 0; q < 3; q++) tint.toArray(colors, (v + q) * 3);
-      }
-      flat.setAttribute("color", new BufferAttribute(colors, 3));
-      flat.computeBoundingSphere();
-      grid.dispose();
-      chunks.push({ geometry: flat, colliderVertices: verts, colliderIndices: indices });
+      grid.userData.smooth = true;
+      grid.computeBoundingSphere();
+      chunks.push({ geometry: grid, colliderVertices: verts, colliderIndices: indices });
     }
   }
   return chunks;
@@ -264,9 +266,9 @@ function buildTerrain(world: World): TerrainChunk[] {
 function Terrain({ world }: { world: World }) {
   const chunks = useMemo(() => buildTerrain(world), [world]);
   const material = useMemo(() => {
-    const m = detailed(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }), "grass");
+    const m = detailed(new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), "grass");
     m.userData.detailSplat = true;
-    m.userData.detailBump = 0.6;
+    m.userData.detailBump = 0.35;
     return m;
   }, []);
   useEffect(() => () => chunks.forEach((c) => c.geometry.dispose()), [chunks]);

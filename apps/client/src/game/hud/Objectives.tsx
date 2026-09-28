@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Circle, Lightbulb, Navigation, X } from "lucide-react";
-import { ANCHORS, TREASURE_SITES } from "@tentides/content";
-import { DIG_ITEM, TREASURE_REVEAL } from "@tentides/rules";
+import { ANCHORS, TREASURE_SITES, content } from "@tentides/content";
+import { DIG_ITEM, TREASURE_REVEAL, missingMaterials } from "@tentides/rules";
 import { myId, type IslandRoom } from "../../net.ts";
+import { useCameraView } from "../camera.ts";
 import { guide, type GuideTarget } from "../guide.ts";
 import { useHud } from "../hudStore.ts";
+import { usePrivate } from "../privateStore.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { useWorld } from "../world.ts";
 import { useTouchDevice } from "./TouchControls.tsx";
@@ -130,6 +132,11 @@ export function Objectives({ room }: { room: IslandRoom }) {
   );
 }
 
+/** Góc nhìn thứ nhất: chấm ngắm giữa màn hình. */
+export function Crosshair() {
+  return useCameraView() === "first" ? <div className="crosshair" aria-hidden /> : null;
+}
+
 /** Mũi tên chỉ đường; vị trí do WaypointTracker (trong cảnh 3D) ghi mỗi khung hình. */
 export function WaypointMarker() {
   const ref = useRef<HTMLDivElement>(null);
@@ -151,6 +158,7 @@ export function WaypointMarker() {
 // ---------------------------------------------------------------------------- mẹo theo ngữ cảnh
 
 const TIPS_KEY = "tentides.tips";
+const CRAFTABLE = [...content.items.values()].filter((i) => i.craft);
 
 interface Tip {
   id: string;
@@ -197,6 +205,10 @@ const TIPS: Record<string, Tip> = {
     id: "treasure",
     text: () => "Đã biết chỗ đào kho báu (cột sáng đỏ)! Ai có xẻng tới đó đào, rồi vác rương về trại. Kẻ phản bội sẽ tìm cách cướp.",
   },
+  craft: {
+    id: "craft",
+    text: (t) => `Bạn đã đủ nguyên liệu chế tạo! Bấm ${t ? "nút Chế tạo" : "R"} để làm rìu đá, giáo, đuốc, ván vá thuyền... từ gỗ, đá, da, xương nhặt được.`,
+  },
   dead: {
     id: "dead",
     text: () => "Bạn đã thành hồn ma. Vẫn đi xem được; ban đêm có thể phù hộ hoặc quấy người sống, và nói chuyện với các hồn khác.",
@@ -233,6 +245,9 @@ export function Tips({ room }: { room: IslandRoom }) {
       site: !!st.treasureSite && !st.treasureDug,
     };
   });
+  const priv = usePrivate();
+  const bagItems = priv?.bag.map((b) => b.itemId) ?? [];
+  const canCraft = CRAFTABLE.some((item) => Object.keys(missingMaterials(bagItems, item.craft!.needs)).length === 0);
   const seen = useRef(readSeen());
   const [tip, setTip] = useState<Tip | null>(null);
 
@@ -251,6 +266,7 @@ export function Tips({ room }: { room: IslandRoom }) {
       if (swimming) wanted.push("swim");
       if (s.hungry) wanted.push("hungry");
       if (s.site) wanted.push("treasure");
+      if (canCraft) wanted.push("craft");
     }
   }
   const next = wanted.find((id) => !seen.current.has(id) && !seen.current.has("*"));

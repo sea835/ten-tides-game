@@ -272,6 +272,14 @@ export function narrateDusk(ctx: StoryContext, day: number): string[] {
     const items = [...new Set(stashed.map((e) => itemName(config, e.itemId)))];
     out.push(t.line("stash", { names: joinNames(names), items: joinNames(items) }));
   }
+  const crafted = entriesOf(state, "craft", day);
+  if (crafted.length > 0) {
+    const names = [...new Set(crafted.map((e) => t.name(e.playerId)))];
+    const items = [...new Set(crafted.map((e) => itemName(config, e.itemId).toLowerCase()))];
+    out.push(t.line("craft", { names: joinNames(names), items: joinNames(items) }));
+  }
+  const repaired = entriesOf(state, "repair", day);
+  if (repaired.length > 0) out.push(t.line("repair", { names: joinNames([...new Set(repaired.map((e) => t.name(e.playerId)))]) }));
   for (const e of entriesOf(state, "dig", day)) out.push(t.line("dig", { name: t.name(e.playerId) }));
   for (const e of entriesOf(state, "death", day)) out.push(deathLine(t, state, e));
   const dusk = entriesOf(state, "dusk", day)[0];

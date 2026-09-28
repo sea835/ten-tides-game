@@ -244,6 +244,14 @@
     "{names} mang về góp vào kho: {items}.",
     "Kho lương thực đầy thêm nhờ {names}: {items}."
   ],
+  "craft": [
+    "{names} ngồi đẽo gọt cả buổi, làm ra {items}.",
+    "Từ mấy thứ nhặt nhạnh trên đảo, {names} chế được {items}."
+  ],
+  "repair": [
+    "{names} đóng thêm ván vào thân thuyền; con thuyền bớt rỉ nước.",
+    "Tiếng búa gõ bên bờ: {names} vá thuyền thêm được một đoạn."
+  ],
   "page_title": [
     "Trang nhật ký rách",
     "Trang giấy ố vàng",

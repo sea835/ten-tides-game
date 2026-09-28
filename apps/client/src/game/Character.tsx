@@ -194,7 +194,7 @@ export function Character({
         ].map(([r, x], i) => (
           <group key={i} ref={r as typeof legL} position={[x as number, 0.82, 0]}>
             <mesh castShadow position-y={-0.4}>
-              <cylinderGeometry args={[0.1, 0.085, 0.8, 5]} />
+              <cylinderGeometry args={[0.1, 0.085, 0.8, 12]} />
               {mat(look.pants)}
             </mesh>
             <mesh castShadow position={[0, -0.8, 0.05]}>
@@ -207,18 +207,18 @@ export function Character({
         <group ref={butt} position={[0, 0.86, -0.1]}>
           {[-0.1, 0.1].map((x) => (
             <mesh key={x} position={[x, 0, -0.04]} castShadow>
-              <icosahedronGeometry args={[0.15, 1]} />
+              <icosahedronGeometry args={[0.15, 3]} />
               {mat(look.pants)}
             </mesh>
           ))}
         </group>
         {/* Thân áo. */}
         <mesh castShadow position-y={1.12}>
-          <cylinderGeometry args={[0.24, 0.28, 0.66, 6]} />
+          <cylinderGeometry args={[0.24, 0.28, 0.66, 16]} />
           {mat(color)}
         </mesh>
         <mesh castShadow position-y={1.45}>
-          <cylinderGeometry args={[0.16, 0.24, 0.08, 6]} />
+          <cylinderGeometry args={[0.16, 0.24, 0.08, 16]} />
           {mat(color)}
         </mesh>
         {/* Tay: xoay quanh vai. */}
@@ -228,11 +228,11 @@ export function Character({
         ].map(([r, x], i) => (
           <group key={i} ref={r as typeof armL} position={[x as number, 1.42, 0]} rotation-z={(i === 0 ? 1 : -1) * 0.12}>
             <mesh castShadow position-y={-0.28}>
-              <cylinderGeometry args={[0.075, 0.065, 0.56, 5]} />
+              <cylinderGeometry args={[0.075, 0.065, 0.56, 10]} />
               {mat(color)}
             </mesh>
             <mesh castShadow position-y={-0.6}>
-              <sphereGeometry args={[0.075, 5, 4]} />
+              <sphereGeometry args={[0.075, 10, 8]} />
               {mat(look.skin, "skin")}
             </mesh>
             {i === 1 && held && (
@@ -245,11 +245,11 @@ export function Character({
         ))}
         {/* Đầu, tóc, mắt (để thấy hướng nhìn). */}
         <mesh castShadow position-y={1.68}>
-          <icosahedronGeometry args={[0.2, 1]} />
+          <icosahedronGeometry args={[0.2, 3]} />
           {mat(look.skin, "skin")}
         </mesh>
         <mesh position={[0, 1.76, -0.03]} scale={[1, 0.75, 1]}>
-          <icosahedronGeometry args={[0.215, 1]} />
+          <icosahedronGeometry args={[0.215, 3]} />
           {mat(look.hair, "fur")}
         </mesh>
         {[-0.07, 0.07].map((x) => (

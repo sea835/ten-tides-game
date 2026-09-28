@@ -49,6 +49,11 @@ export function loadContent(raw: { items: unknown; cards: unknown; nights?: unkn
   }
   for (const item of items.values()) {
     if (item.cook) missingItem(`Đồ ${item.id} (nướng thành)`, item.cook);
+    for (const need of Object.keys(item.craft?.needs ?? {})) {
+      missingItem(`Đồ ${item.id} (nguyên liệu chế tạo)`, need);
+      if (need === item.id) throw new Error(`Đồ ${item.id}: không thể dùng chính nó làm nguyên liệu`);
+    }
+    if (item.craft && Object.keys(item.craft.needs).length === 0) throw new Error(`Đồ ${item.id}: công thức chế tạo không có nguyên liệu`);
   }
   for (const night of nights.values()) {
     const where = `Chuyện đêm ${night.id}`;
@@ -74,7 +79,7 @@ export const content: Content = loadContent({ items: itemsJson, cards: cardsJson
 export const gameConfig: GameConfig = {
   cards: [...content.cards.values()],
   anchors: ANCHORS,
-  items: [...content.items.values()].map(({ id, name, size, weightKg, price, tags, loot, eat, ration, cook }) => ({
+  items: [...content.items.values()].map(({ id, name, size, weightKg, price, tags, loot, eat, ration, cook, craft, hull }) => ({
     id,
     name,
     size,
@@ -85,6 +90,8 @@ export const gameConfig: GameConfig = {
     eat,
     ration,
     cook,
+    craft,
+    hull,
   })),
   treasureSites: TREASURE_SITES,
   outsideEvents: [...content.nights.values()],

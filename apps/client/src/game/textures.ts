@@ -8,11 +8,13 @@ import {
   RepeatWrapping,
   RGBAFormat,
   Vector4,
+  type BufferGeometry,
   type Material,
   type Object3D,
   type WebGLProgramParametersWithUniforms,
   type WebGLRenderer,
 } from "three";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 // Chất liệu cho mọi thứ trong cảnh: tám tấm vân (gỗ, đá, lá, vải, cát, cỏ, vách đá, đất) sinh tại chỗ bằng nhiễu
 // lặp liền mép, không tải file nào. Mỗi vật liệu được vá shader để phủ vân theo toạ độ (chiếu ba mặt, khỏi cần UV),
@@ -217,19 +219,19 @@ interface KindDef {
 }
 
 const KINDS: Record<DetailKind, KindDef> = {
-  wood: { a: [1, 0, 0, 0], b: [0, 0, 0, 0], scale: 0.45, strength: 0.32, bump: 0.7 },
-  bark: { a: [0.6, 0, 0, 0], b: [0, 0, 0.4, 0], scale: 0.7, strength: 0.35, bump: 1.1 },
-  rock: { a: [0, 1, 0, 0], b: [0, 0, 0, 0], scale: 0.25, strength: 0.32, bump: 1.2 },
-  leaf: { a: [0, 0, 1, 0], b: [0, 0, 0, 0], scale: 0.6, strength: 0.22, bump: 0.2 },
-  fabric: { a: [0, 0, 0, 1], b: [0, 0, 0, 0], scale: 0.9, strength: 0.16, bump: 0 },
-  sand: { a: [0, 0, 0, 0], b: [1, 0, 0, 0], scale: 0.25, strength: 0.18, bump: 0.3 },
-  grass: { a: [0, 0, 0, 0], b: [0, 1, 0, 0], scale: 0.3, strength: 0.28, bump: 0.3 },
-  cliff: { a: [0, 0, 0, 0], b: [0, 0, 1, 0], scale: 0.1, strength: 0.38, bump: 1.2 },
-  dirt: { a: [0, 0, 0, 0], b: [0, 0, 0, 1], scale: 0.35, strength: 0.32, bump: 1 },
-  fur: { a: [0, 0, 0, 0], b: [0, 1, 0, 0], scale: 1.6, strength: 0.14, bump: 0 },
-  skin: { a: [0, 0, 0.3, 0], b: [0.7, 0, 0, 0], scale: 2, strength: 0.05, bump: 0 },
-  metal: { a: [0, 0.4, 0, 0], b: [0, 0, 0, 0.6], scale: 0.8, strength: 0.2, bump: 0.3 },
-  paper: { a: [0, 0, 0, 0.5], b: [0.5, 0, 0, 0], scale: 1.2, strength: 0.08, bump: 0 },
+  wood: { a: [1, 0, 0, 0], b: [0, 0, 0, 0], scale: 0.35, strength: 0.2, bump: 0.3 },
+  bark: { a: [0.6, 0, 0, 0], b: [0, 0, 0.4, 0], scale: 0.5, strength: 0.22, bump: 0.45 },
+  rock: { a: [0, 1, 0, 0], b: [0, 0, 0, 0], scale: 0.18, strength: 0.22, bump: 0.5 },
+  leaf: { a: [0, 0, 1, 0], b: [0, 0, 0, 0], scale: 0.4, strength: 0.12, bump: 0 },
+  fabric: { a: [0, 0, 0, 1], b: [0, 0, 0, 0], scale: 0.7, strength: 0.08, bump: 0 },
+  sand: { a: [0, 0, 0, 0], b: [1, 0, 0, 0], scale: 0.14, strength: 0.1, bump: 0.15 },
+  grass: { a: [0, 0, 0, 0], b: [0, 1, 0, 0], scale: 0.16, strength: 0.14, bump: 0.1 },
+  cliff: { a: [0, 0, 0, 0], b: [0, 0, 1, 0], scale: 0.08, strength: 0.24, bump: 0.5 },
+  dirt: { a: [0, 0, 0, 0], b: [0, 0, 0, 1], scale: 0.25, strength: 0.18, bump: 0.35 },
+  fur: { a: [0, 0, 0, 0], b: [0, 1, 0, 0], scale: 1.2, strength: 0.07, bump: 0 },
+  skin: { a: [0, 0, 0.3, 0], b: [0.7, 0, 0, 0], scale: 1.5, strength: 0.03, bump: 0 },
+  metal: { a: [0, 0.4, 0, 0], b: [0, 0, 0, 0.6], scale: 0.6, strength: 0.12, bump: 0.15 },
+  paper: { a: [0, 0, 0, 0.5], b: [0.5, 0, 0, 0], scale: 1, strength: 0.05, bump: 0 },
 };
 
 export interface DetailOptions {
@@ -303,9 +305,9 @@ const FRAGMENT_COLOR = /* glsl */ `
   vec3 tenW = pow( abs( normalize( vDetailNormal ) ), vec3( 4.0 ) );
   tenW /= ( tenW.x + tenW.y + tenW.z + 1e-5 );
   vec3 tenP = vDetailPos * uDetailScale;
-  // Lệch mip một bậc: vân mềm hơn, đạo hàm (cho bump) đỡ lấm tấm.
-  vec4 tenA = texture2D( uDetailA, tenP.zy, 1.0 ) * tenW.x + texture2D( uDetailA, tenP.xz, 1.0 ) * tenW.y + texture2D( uDetailA, tenP.xy, 1.0 ) * tenW.z;
-  vec4 tenB = texture2D( uDetailB, tenP.zy, 1.0 ) * tenW.x + texture2D( uDetailB, tenP.xz, 1.0 ) * tenW.y + texture2D( uDetailB, tenP.xy, 1.0 ) * tenW.z;
+  // Lệch mip bậc rưỡi: vân mềm hơn, đạo hàm (cho bump) đỡ lấm tấm.
+  vec4 tenA = texture2D( uDetailA, tenP.zy, 1.5 ) * tenW.x + texture2D( uDetailA, tenP.xz, 1.5 ) * tenW.y + texture2D( uDetailA, tenP.xy, 1.5 ) * tenW.z;
+  vec4 tenB = texture2D( uDetailB, tenP.zy, 1.5 ) * tenW.x + texture2D( uDetailB, tenP.xz, 1.5 ) * tenW.y + texture2D( uDetailB, tenP.xy, 1.5 ) * tenW.z;
   #ifdef TEN_SPLAT
     vec4 tenMaskB = vSplat;
   #else
@@ -320,7 +322,7 @@ const FRAGMENT_COLOR = /* glsl */ `
   #ifdef TEN_SPLAT
     // Mảng lớn đậm nhạt trên địa hình để khỏi thấy vân lặp.
     float tenMacro = texture2D( uDetailB, vDetailPos.xz * 0.011 ).a;
-    diffuseColor.rgb *= 0.86 + 0.28 * tenMacro;
+    diffuseColor.rgb *= 0.9 + 0.2 * tenMacro;
   #endif
 `;
 
@@ -423,17 +425,59 @@ function ancestorKind(o: Object3D): DetailKind | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------- làm mịn hình khối
+
+/** Góc gãy: hai mặt kề nhau lệch dưới chừng này thì nối mượt (khối đa diện, thân trụ ít cạnh), trên thì giữ cạnh (hộp). */
+const CREASE = (75 * Math.PI) / 180;
+/** Hình dựng sẵn của three.js đã có pháp tuyến đúng (hộp giữ cạnh, trụ và cầu tròn mượt). */
+const NATIVE = new Set(["BoxGeometry", "PlaneGeometry", "CylinderGeometry", "SphereGeometry", "ConeGeometry", "CircleGeometry", "RingGeometry", "TorusGeometry", "CapsuleGeometry", "LatheGeometry"]);
+const smoothed = new WeakMap<BufferGeometry, BufferGeometry>();
+
+/** Pháp tuyến mượt cho một hình (dùng chung cho mọi vật cùng hình): khối đa diện, cây, đá ghép từ nhiều mảnh. */
+function smoothMesh(mesh: Mesh) {
+  const g = mesh.geometry;
+  if (!g || g.userData.smooth || NATIVE.has(g.type) || !g.attributes.position || !g.attributes.normal) return;
+  let out = smoothed.get(g);
+  if (!out) {
+    out = toCreasedNormals(g, CREASE);
+    out.userData.smooth = true;
+    g.userData.smooth = true;
+    if (out !== g) {
+      const copy = out;
+      g.addEventListener("dispose", () => copy.dispose());
+    }
+    smoothed.set(g, out);
+  }
+  if (out !== g) mesh.geometry = out;
+}
+
+/** Vật cố ý để cạnh sắc: đá quý, pha lê, đồ phát sáng. */
+function faceted(m: MeshStandardMaterial): boolean {
+  return !!m.userData.faceted || (m.emissiveIntensity > 0.2 && m.emissive.r + m.emissive.g + m.emissive.b > 0.05);
+}
+
 /**
- * Quét cảnh và phủ vân cho mọi vật liệu chuẩn chưa có: vật liệu tự khai báo `userData.detail`, hoặc nằm dưới nhóm
- * có khai báo, hoặc đoán theo màu. Gọi định kỳ (vật mới xuất hiện thì lần quét sau có vân).
+ * Quét cảnh: bỏ kiểu tô phẳng low-poly (pháp tuyến mượt, tô mượt), rồi phủ vân cho mọi vật liệu chuẩn chưa có:
+ * vật liệu tự khai báo `userData.detail`, hoặc nằm dưới nhóm có khai báo, hoặc đoán theo màu. Gọi định kỳ
+ * (vật mới xuất hiện thì lần quét sau có vân).
  */
 export function detailScene(root: Object3D) {
   root.traverse((o) => {
     if (!(o as Mesh).isMesh) return;
     const mesh = o as Mesh;
     const list: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    let smooth = list.length > 0 && !mesh.userData.faceted;
     for (const m of list) {
-      if (!(m instanceof MeshStandardMaterial) || skip(m)) continue;
+      if (!(m instanceof MeshStandardMaterial)) {
+        smooth = false;
+        continue;
+      }
+      if (faceted(m)) smooth = false;
+      else if (m.flatShading) {
+        m.flatShading = false;
+        m.needsUpdate = true;
+      }
+      if (skip(m)) continue;
       const declared = m.userData.detail as DetailKind | undefined;
       const group = declared ? null : ancestorKind(mesh);
       const kind = declared ?? group ?? (m.vertexColors ? "leaf" : guessKind(m.color));
@@ -445,6 +489,6 @@ export function detailScene(root: Object3D) {
         bump: m.userData.detailBump as number | undefined,
       });
     }
+    if (smooth) smoothMesh(mesh);
   });
 }
-

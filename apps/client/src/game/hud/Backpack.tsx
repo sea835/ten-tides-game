@@ -82,11 +82,11 @@ const TAG_ICONS: Record<string, LucideIcon> = {
   observe: Eye,
 };
 
-function itemColor(itemId: string): string {
+export function itemColor(itemId: string): string {
   return TAG_COLORS[lookup(itemId)?.tags[0] ?? ""] ?? "#5c677d";
 }
 
-function ItemIcon({ itemId, size = 14 }: { itemId: string; size?: number }) {
+export function ItemIcon({ itemId, size = 14 }: { itemId: string; size?: number }) {
   const Icon = TAG_ICONS[lookup(itemId)?.tags[0] ?? ""] ?? Package;
   return <Icon size={size} aria-hidden />;
 }

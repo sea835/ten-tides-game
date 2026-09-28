@@ -1,27 +1,5 @@
 import { useState } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  Dices,
-  Flame,
-  Gem,
-  Hammer,
-  HandHeart,
-  Moon,
-  PawPrint,
-  ScrollText,
-  Sailboat,
-  Skull,
-  Sparkles,
-  Sunset,
-  Tent,
-  UtensilsCrossed,
-  Zap,
-  Swords,
-  TreePalm,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, Dices, Flame, Gem, Hammer, HandHeart, Moon, PawPrint, Sailboat, ScrollText, Skull, Sparkles, Sunset, Swords, Tent, TreePalm, TriangleAlert, UtensilsCrossed, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { RATION_LABELS, content, worldCatalog } from "@tentides/content";
 import type { IslandState, LogEntryState } from "@tentides/protocol";
 import type { RationId } from "@tentides/rules";
@@ -49,6 +27,8 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   outside: Tent,
   stash: UtensilsCrossed,
   give: HandHeart,
+  craft: Wrench,
+  repair: Sailboat,
 };
 
 const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
@@ -196,6 +176,10 @@ export function describe(e: LogEntryState, s: IslandState): Line {
   }
   if (e.kind === "stash") {
     return { day: e.day, ok: true, text: `${name(e.playerId)} góp ${itemName(e.defId).toLowerCase()} vào kho (+${e.amount} khẩu phần)` };
+  }
+  if (e.kind === "craft") return { day: e.day, ok: true, text: `${name(e.playerId)} chế tạo ${itemName(e.defId).toLowerCase()}` };
+  if (e.kind === "repair") {
+    return { day: e.day, ok: true, text: `${name(e.playerId)} đóng ${itemName(e.defId).toLowerCase()} vào thân thuyền (+${e.amount})` };
   }
   if (e.kind === "dig") return { day: e.day, ok: true, text: `${name(e.playerId)} đã đào được rương kho báu!` };
   if (e.kind === "departure") {

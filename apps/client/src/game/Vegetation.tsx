@@ -118,7 +118,7 @@ function bush(): BufferGeometry {
     [-0.42, 0.34, -0.18, 0.5],
     [0.1, 0.32, -0.5, 0.42],
     [-0.1, 0.8, 0.1, 0.4],
-  ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 0).translate(x!, y!, z!));
+  ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 1).translate(x!, y!, z!));
   const g = mergeGeometries(parts)!;
   g.computeVertexNormals();
   return g;
@@ -455,10 +455,10 @@ export function Vegetation({ world }: { world: World }) {
       fern: fern(),
       bush: bush(),
       flower: new IcosahedronGeometry(0.1, 0),
-      rock: new DodecahedronGeometry(0.6, 0),
+      rock: new DodecahedronGeometry(0.6, 1),
       shell: new CylinderGeometry(0, 0.12, 0.08, 5),
-      driftwood: new CylinderGeometry(0.16, 0.2, 2.4, 6).rotateZ(Math.PI / 2).translate(0, 0.12, 0),
-      bananaStem: new CylinderGeometry(0.1, 0.16, 1.45, 6).translate(0, 0.72, 0),
+      driftwood: new CylinderGeometry(0.16, 0.2, 2.4, 10).rotateZ(Math.PI / 2).translate(0, 0.12, 0),
+      bananaStem: new CylinderGeometry(0.1, 0.16, 1.45, 10).translate(0, 0.72, 0),
       bananaLeaves: bananaLeaves(),
       pandan: grassClump(14, 4, 0.18, 0.14),
       beachGrass: grassClump(7, 5, 0.2, 0.05),

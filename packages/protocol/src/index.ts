@@ -478,7 +478,7 @@ export const AssassinateMessage = z.object({ target: id });
 
 /** Server gửi cho mọi người để vẽ hiệu ứng: trúng đòn, trượt, chặt cây, cây đổ, thú chết, ăn uống... */
 export interface FxMessage {
-  kind: "hit" | "miss" | "chop" | "fell" | "poof" | "kill" | "eat" | "plant" | "build" | "splash" | "shoot" | "cook" | "page" | "lava" | "burn" | "drown" | "give";
+  kind: "hit" | "miss" | "chop" | "fell" | "poof" | "kill" | "eat" | "plant" | "build" | "splash" | "shoot" | "cook" | "page" | "lava" | "burn" | "drown" | "give" | "craft" | "repair";
   x: number;
   y: number;
   z: number;
@@ -529,6 +529,8 @@ export const GhostActionMessage = z.object({ action: z.enum(GHOST_ACTION_IDS), t
 export const SuspectMessage = z.object({ target: id.nullable() });
 /** Trao món đang cầm cho người đứng cạnh. */
 export const GiveMessage = z.object({ target: id });
+/** Chế tạo một món theo công thức (id món muốn làm ra). */
+export const CraftMessage = z.object({ itemId: id });
 
 /** Thông tin riêng server gửi cho đúng một người: vai, hành động đêm, ghi chú, balo, lời kể riêng. */
 export type PrivateMessage = PrivateView & { story: { day: number; text: string }[] };
@@ -602,6 +604,7 @@ export const Messages = {
   /** Nướng hoặc góp vào kho món đang cầm, khi đứng cạnh lửa trại. */
   campfire: "campfire",
   give: "give",
+  craft: "craft",
   ghostAction: "ghostAction",
   suspect: "suspect",
   star: "star",

@@ -21,7 +21,7 @@ function Box({ s, p = [0, 0, 0], r = [0, 0, 0], c, e }: { s: V3; p?: V3; r?: V3;
 function Cyl({ r, h, p = [0, 0, 0], rot = [0, 0, 0], c, top, e }: { r: number; h: number; p?: V3; rot?: V3; c: string; top?: number; e?: number }) {
   return (
     <mesh position={p} rotation={rot} castShadow>
-      <cylinderGeometry args={[top ?? r, r, h, 6]} />
+      <cylinderGeometry args={[top ?? r, r, h, 12]} />
       <M c={c} e={e} />
     </mesh>
   );
@@ -30,7 +30,7 @@ function Cyl({ r, h, p = [0, 0, 0], rot = [0, 0, 0], c, top, e }: { r: number; h
 function Ball({ r, p = [0, 0, 0], s = [1, 1, 1], c, e }: { r: number; p?: V3; s?: V3; c: string; e?: number }) {
   return (
     <mesh position={p} scale={s} castShadow>
-      <icosahedronGeometry args={[r, 0]} />
+      <icosahedronGeometry args={[r, 2]} />
       <M c={c} e={e} />
     </mesh>
   );
@@ -168,6 +168,44 @@ const MODELS: Record<string, () => ReactNode> = {
       <Cyl r={0.01} h={0.1} p={[0, 0.22, 0]} c="#c9b98a" />
     </>
   ),
+  stone_axe: () => (
+    <>
+      <Cyl r={0.03} h={0.62} p={[0, 0.26, 0]} c={WOOD} />
+      <Ball r={0.09} p={[0.07, 0.55, 0]} s={[1.3, 0.8, 0.6]} c="#8a8580" />
+      <Cyl r={0.035} h={0.08} p={[0, 0.5, 0]} c="#c9b27a" />
+    </>
+  ),
+  bone_knife: () => (
+    <>
+      <Cyl r={0.025} h={0.12} p={[0, 0.05, 0]} c="#e8dcc0" />
+      <mesh position={[0, 0.2, 0]} castShadow>
+        <coneGeometry args={[0.035, 0.2, 8]} />
+        <M c="#f2ead6" />
+      </mesh>
+    </>
+  ),
+  poultice: () => (
+    <>
+      <Ball r={0.07} p={[0, 0.05, 0]} s={[1.3, 0.6, 1]} c="#6b8f3c" />
+      <Cyl r={0.012} h={0.14} p={[0, 0.05, 0]} rot={[0, 0, Math.PI / 2]} c="#c9b27a" />
+    </>
+  ),
+  skewer: () => (
+    <>
+      <Cyl r={0.01} h={0.7} p={[0, 0.3, 0]} c="#c9b27a" />
+      <Ball r={0.06} p={[0, 0.42, 0]} c="#7a3b22" />
+      <Ball r={0.055} p={[0, 0.54, 0]} s={[0.8, 1.2, 0.8]} c="#c9a15a" />
+      <Ball r={0.06} p={[0, 0.66, 0]} c="#7a3b22" />
+    </>
+  ),
+  boat_plank: () => (
+    <>
+      <Box s={[0.22, 0.9, 0.04]} p={[0, 0.45, 0]} c="#9a7048" />
+      <Box s={[0.22, 0.9, 0.04]} p={[0.23, 0.45, 0]} c="#8a6038" />
+      <Box s={[0.5, 0.06, 0.06]} p={[0.11, 0.2, 0.04]} c={DARK_WOOD} />
+      <Box s={[0.5, 0.06, 0.06]} p={[0.11, 0.7, 0.04]} c={DARK_WOOD} />
+    </>
+  ),
   rope: () => (
     <mesh position={[0, 0.06, 0]} rotation-x={Math.PI / 2}>
       <torusGeometry args={[0.12, 0.035, 5, 10]} />
@@ -189,4 +227,4 @@ export function ItemModel({ itemId, scale = 1 }: { itemId: string; scale?: numbe
 }
 
 /** Món dài (cầm như vũ khí) thì cầm dọc cánh tay; món nhỏ thì nắm gọn trong lòng bàn tay. */
-export const LONG_ITEMS = new Set(["machete", "axe", "spear", "flintlock", "torch", "hammer", "shovel", "wood", "bone", "slingshot", "fish", "feather"]);
+export const LONG_ITEMS = new Set(["stone_axe", "skewer", "boat_plank", "machete", "axe", "spear", "flintlock", "torch", "hammer", "shovel", "wood", "bone", "slingshot", "fish", "feather"]);

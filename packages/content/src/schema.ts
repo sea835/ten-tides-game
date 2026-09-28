@@ -50,6 +50,10 @@ export const ItemSchema = z.object({
   ration: z.int().positive().max(5).optional(),
   /** Nướng trên lửa trại thì thành món này. */
   cook: id.optional(),
+  /** Chế tạo từ đồ trong balo: nguyên liệu mất đi, `fire` là phải đứng cạnh lửa trại. */
+  craft: z.object({ needs: z.record(id, z.int().positive().max(5)), fire: z.boolean().optional() }).optional(),
+  /** Góp ở lửa trại để vá thuyền: thêm chừng này độ bền. */
+  hull: z.int().positive().max(20).optional(),
 });
 export type Item = z.infer<typeof ItemSchema>;
 
