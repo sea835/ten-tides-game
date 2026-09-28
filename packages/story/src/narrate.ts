@@ -143,7 +143,22 @@ function encounterLine(t: Teller, e: Extract<LogEntry, { kind: "encounter" }>): 
       return t.line("encounter_hunt", vars);
     case "page":
       return t.line("page_found", vars);
+    case "lava":
+      return t.line("encounter_lava", vars);
+    case "burn":
+      return t.line("encounter_burn", vars);
   }
+}
+
+/** Câu kể một người gục: chết vì dung nham, đuối nước hay lửa thì kể đúng như thế. */
+function deathLine(t: Teller, state: GameState, e: Extract<LogEntry, { kind: "death" }>): string {
+  const index = state.log.indexOf(e);
+  const before = state.log.slice(0, index < 0 ? state.log.length : index).reverse();
+  const last = before.find((x) => x.kind === "encounter" && x.playerId === e.playerId && x.day === e.day);
+  const cause = last?.kind === "encounter" && (last.effects.hp ?? 0) < 0 ? last.source : "";
+  const causes: Record<string, string> = { lava: "death_lava", drowning: "death_drown", burn: "death_burn" };
+  const key = causes[cause];
+  return t.line(key ?? "death", { name: t.name(e.playerId) });
 }
 
 /** Tên chuyện đêm ngủ ngoài (viết thường), để chèn vào câu. */
@@ -258,7 +273,7 @@ export function narrateDusk(ctx: StoryContext, day: number): string[] {
     out.push(t.line("stash", { names: joinNames(names), items: joinNames(items) }));
   }
   for (const e of entriesOf(state, "dig", day)) out.push(t.line("dig", { name: t.name(e.playerId) }));
-  for (const e of entriesOf(state, "death", day)) out.push(t.line("death", { name: t.name(e.playerId) }));
+  for (const e of entriesOf(state, "death", day)) out.push(deathLine(t, state, e));
   const dusk = entriesOf(state, "dusk", day)[0];
   if (dusk && dusk.sleptOutside.length > 0) out.push(t.line("slept_outside", { names: joinNames(dusk.sleptOutside.map((id) => t.name(id))) }));
   out.push(t.line("dusk_close"));
@@ -349,7 +364,7 @@ export function chronicle(ctx: StoryContext, awards: readonly Award[] = []): Chr
   }
   if (state.day >= 5) moments.push(t.elementLine(premise.twist));
   for (const e of allEntries(state, "dig")) moments.push(t.line("dig", { name: t.name(e.playerId) }));
-  for (const e of allEntries(state, "death")) moments.push(t.line("death", { name: t.name(e.playerId) }));
+  for (const e of allEntries(state, "death")) moments.push(deathLine(t, state, e));
   const secrets = allEntries(state, "encounter").filter((e) => e.source === "egg");
   if (secrets.length > 0) {
     const things = [...new Set(secrets.map((e) => encounterThing(e.defId)))];

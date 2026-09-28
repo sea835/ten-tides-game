@@ -264,5 +264,22 @@
   ],
   "award_line": [
     "{name} là {title} ({detail})"
+  ],
+  "encounter_lava": [
+    "{name} bước quá gần mép hồ dung nham, và hòn đảo nuốt trọn không để lại dấu vết.",
+    "Cả đoàn chỉ kịp thấy {name} trượt chân nơi miệng núi, rồi một cột khói bốc lên."
+  ],
+  "encounter_burn": [
+    "{name} giẫm thẳng vào đống lửa trại, nhảy dựng lên la oai oái.",
+    "Gấu quần {name} bén lửa vì đứng quá sát đống lửa trại."
+  ],
+  "death_lava": [
+    "{name} đã rơi xuống hồ dung nham. Không còn gì để chôn cất."
+  ],
+  "death_drown": [
+    "{name} đã chìm xuống làn nước xanh và không bao giờ ngoi lên nữa."
+  ],
+  "death_burn": [
+    "{name} gục bên đống lửa trại, người cháy sém."
   ]
 }

@@ -78,6 +78,8 @@
 | G4 | Xong | Trang nhật ký mỗi ngày một trang theo seed bản đồ, mỗi trang hé một mảnh cốt truyện, +4 kho báu, lưu vào sổ truyện riêng |
 | G5 | Xong | 16 danh hiệu cuối ván trên màn lật bài và trong biên niên sử |
 | V1 | Xong | Thời tiết nhìn thấy được: mây, mưa, bão có gió giật và sấm chớp, sương mù, động đất; đom đóm đêm quang; bụi chân, gợn nước; cảnh cố định cho xác tàu, phế tích, mỏm đá tổ chim, suối nước nóng |
+| E1 | Xong | Nhảy vào hồ dung nham chết ngay; giẫm vào lửa trại bỏng từng nhịp, bị hất ra; đuối nước thật: hết hơi thì ngoi chậm, mất Máu nhanh, kiệt sức hay quá tải thì chìm dần. Lời kể và nhật ký nói đúng nguyên nhân cái chết |
+| A1 | Xong | Âm thanh tổng hợp bằng Web Audio: tiếng động hành động, bước chân theo mặt đất, nền môi trường theo vị trí, thời tiết và giờ, ù dưới nước, tiếng giao diện, nhạc nền tự sinh; M tắt tiếng, N tắt nhạc |
 | M7 | Xong | Seed bản đồ công khai, chủ phòng nhập hoặc gieo lại ở sảnh chờ; seed của engine luật không còn gửi xuống client |
 
 Cân bằng hiện tại (bot, 3.000 ván 4–6 người, 7 thẻ mỗi ngày): phe đội thắng 53,7%, không ai thắng 26,4%, phản bội thắng 33,0% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%. Bot chưa biết nướng, góp lương thực hay nhặt trang nhật ký, nên ván người thật sẽ dư dả hơn một chút.

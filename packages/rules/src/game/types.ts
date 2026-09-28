@@ -193,7 +193,7 @@ export interface EncounterEffects {
   gainItem?: string;
 }
 
-export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning", "attack", "fall", "hunt", "page"] as const;
+export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning", "attack", "fall", "hunt", "page", "lava", "burn"] as const;
 export type EncounterSource = (typeof ENCOUNTER_SOURCES)[number];
 /** Giới hạn mỗi hệ quả của một lần chạm trán, phòng server tính nhầm. */
 export const ENCOUNTER_EFFECT_LIMIT = 60;
@@ -383,6 +383,8 @@ export type GameAction =
       effects: EncounterEffects;
       once?: boolean;
       dodged?: boolean;
+      /** Chết ngay tại chỗ (nhảy vào dung nham): không ai che chở được. */
+      fatal?: boolean;
     };
 
 export class RuleError extends Error {

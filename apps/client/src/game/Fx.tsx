@@ -33,6 +33,9 @@ const TONE: Record<FxMessage["kind"], string> = {
   shoot: "hit",
   cook: "eat",
   page: "build",
+  lava: "kill",
+  burn: "hit",
+  drown: "splash",
 };
 
 /** Màu vụn văng ra và số lượng theo loại hiệu ứng. */
@@ -49,6 +52,9 @@ const BURST: Partial<Record<FxMessage["kind"], { color: string; count: number; s
   shoot: { color: "#cfcfcf", count: 12, speed: 2, size: 0.18, up: 1 },
   cook: { color: "#ffb347", count: 14, speed: 1.2, size: 0.07, up: 3.5 },
   page: { color: "#f3e7c4", count: 10, speed: 1.6, size: 0.12, up: 2.2 },
+  lava: { color: "#ff6a1a", count: 40, speed: 6, size: 0.18, up: 9 },
+  burn: { color: "#ff9a2a", count: 16, speed: 1.8, size: 0.09, up: 4 },
+  drown: { color: "#cfefff", count: 12, speed: 0.8, size: 0.09, up: 2 },
 };
 
 const MAX_BITS = 260;
@@ -87,7 +93,7 @@ export function Fx() {
       for (let i = 0; i < burst.count; i++) {
         const a = Math.random() * Math.PI * 2;
         const s = burst.speed * (0.4 + Math.random() * 0.6);
-        const float = fx.kind === "poof" || fx.kind === "shoot" || (fx.kind === "cook" && i % 2 === 0);
+        const float = fx.kind === "poof" || fx.kind === "shoot" || fx.kind === "drown" || ((fx.kind === "cook" || fx.kind === "lava" || fx.kind === "burn") && i % 2 === 0);
         bits.current.push({
           x: fx.x,
           y: fx.y - (fx.kind === "fell" ? -2 : 0.3),
@@ -98,14 +104,14 @@ export function Fx() {
           life: 0,
           max: float ? 1.2 : 0.9 + Math.random() * 0.4,
           size: burst.size * (0.6 + Math.random() * 0.8),
-          color: new Color(fx.kind === "cook" && i % 2 === 0 ? "#d9d4cc" : burst.color),
+          color: new Color((fx.kind === "cook" || fx.kind === "burn") && i % 2 === 0 ? "#d9d4cc" : fx.kind === "lava" && i % 2 === 0 ? "#3a3530" : burst.color),
           float,
         });
       }
       if (bits.current.length > MAX_BITS) bits.current.splice(0, bits.current.length - MAX_BITS);
     }
     // Rung màn hình khi chuyện xảy ra ngay cạnh mình.
-    const strength = fx.kind === "kill" ? 0.5 : fx.kind === "fell" ? 0.45 : fx.kind === "hit" ? 0.25 : fx.kind === "shoot" ? 0.2 : 0;
+    const strength = fx.kind === "lava" ? 0.8 : fx.kind === "kill" ? 0.5 : fx.kind === "fell" ? 0.45 : fx.kind === "hit" || fx.kind === "burn" ? 0.25 : fx.kind === "shoot" ? 0.2 : 0;
     if (strength > 0 && d < 12) shake.amount = Math.min(0.8, shake.amount + strength * (1 - d / 12));
   });
 

@@ -13,6 +13,10 @@ export const CAMP = { x: 0, z: 80 } as const;
 export const LAKE = { x: -45, z: 5, radius: 16 } as const;
 export const CAVE = { x: 52, z: -18, radius: 12 } as const;
 export const VOLCANO = { x: -5, z: -62, radius: 42, height: 26, craterRadius: 7 } as const;
+/** Hồ dung nham giữa miệng núi lửa: rơi vào là chết. */
+export const LAVA = { x: VOLCANO.x, z: VOLCANO.z, radius: 3.6 } as const;
+/** Đứng trong đống lửa trại (bán kính này quanh tâm lửa) thì bỏng. */
+export const FIRE_RADIUS = 1.1;
 
 export const ZONE_LABELS: Record<ZoneId, string> = {
   beach: "Bãi biển & rừng dừa",

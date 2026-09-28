@@ -135,6 +135,21 @@ describe("cơ chế cốt truyện", () => {
     expect(texts.size).toBeGreaterThanOrEqual(7);
   });
 
+  it("chết vì dung nham hay đuối nước thì kể đúng nguyên nhân", () => {
+    const { ctx, state } = storyOf(13, 4);
+    const [a, b] = state.playerOrder as [string, string];
+    const base = { day: 2, gained: null, dodged: false };
+    state.log.push(
+      { kind: "encounter", ...base, playerId: a, source: "lava", refId: "volcano", defId: "lava", effects: { hp: -80 } },
+      { kind: "death", day: 2, playerId: a },
+      { kind: "encounter", ...base, playerId: b, source: "drowning", refId: "sea", defId: "drowning", effects: { hp: -10 } },
+      { kind: "death", day: 2, playerId: b },
+    );
+    const dusk = narrateDusk(ctx, 2).join(" ");
+    expect(dusk).toContain("hồ dung nham");
+    expect(dusk).toContain("làn nước xanh");
+  });
+
   it("kể lại chuyện đêm ngủ ngoài và việc góp lương thực", () => {
     const { ctx, state } = storyOf(9, 4);
     const [a] = state.playerOrder as [string];

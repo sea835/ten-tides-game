@@ -3409,3 +3409,23 @@ kbd {
 .award .hint {
   font-size: 11.5px;
 }
+
+/* Đang chìm khi bơi: cảnh báo đỏ nhấp nháy. */
+.posture.sinking {
+  border-color: var(--danger);
+  background: rgba(60, 12, 10, 0.88);
+  color: #ffc2b8;
+  animation: sink-pulse 0.9s ease-in-out infinite;
+}
+.posture.sinking svg {
+  color: var(--danger);
+}
+@keyframes sink-pulse {
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 122, 102, 0.35);
+  }
+}
+
+.icon-btn.off {
+  opacity: 0.45;
+}

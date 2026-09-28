@@ -33,6 +33,8 @@ interface HudState {
   hidden: boolean;
   /** Đang leo cây. */
   climbing: boolean;
+  /** Đang chìm khi bơi: hết hơi, kiệt sức hay mang quá nặng. */
+  sinking: "" | "breath" | "tired" | "heavy";
   /** Kẻ phản bội đứng sát sau lưng ai đó: nhấn F để kết liễu. */
   victim: { id: string; name: string } | null;
   /** Chế độ dựng nhà: đang chọn công trình nào (rỗng là không dựng). */
@@ -53,6 +55,7 @@ let state: HudState = {
   sitting: false,
   hidden: false,
   climbing: false,
+  sinking: "",
   victim: null,
   build: "",
   buildOk: false,

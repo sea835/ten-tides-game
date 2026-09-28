@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateTraps, generateWorld } from "@tentides/content";
+import { LAVA, generateTraps, generateWorld } from "@tentides/content";
 import { Hazards, breathSeconds } from "./hazards.ts";
 import { Wildlife, type Prey } from "./wildlife.ts";
 
@@ -70,6 +70,29 @@ describe("nguy hiểm của môi trường", () => {
     for (let t = 0; t < 4; t += 0.1) hazards.step(0.1, [{ ...diver, y: -1.3 }], true);
     expect(hazards.breath.get("d")).toBe(100);
     expect(breathSeconds(3, "old_sailor")).toBeGreaterThan(seconds);
+  });
+
+  it("rơi vào hồ dung nham thì chết ngay; đứng trên mép miệng núi thì không sao", () => {
+    const hazards = new Hazards(world, [], 1);
+    const y = world.heightAt(LAVA.x, LAVA.z);
+    const inLava = { id: "v", x: LAVA.x + 1, y, z: LAVA.z, alive: true, strength: 3, background: "gambler", stats: {} };
+    expect(hazards.step(0.1, [inLava], true).map((e) => e.kind)).toEqual(["lava"]);
+    const rim = { ...inLava, x: LAVA.x + 8, y: world.heightAt(LAVA.x + 8, LAVA.z) };
+    expect(hazards.step(0.1, [rim], true)).toHaveLength(0);
+    // Ban đêm (không trong giờ đi lại) thì không có gì xảy ra.
+    expect(hazards.step(0.1, [inLava], false)).toHaveLength(0);
+  });
+
+  it("đứng trong lửa trại thì bỏng ngay, rồi cứ gần một giây lại bỏng tiếp; lửa đã nhổ đi thì không sao", () => {
+    const hazards = new Hazards(world, [], 1);
+    const fire = { x: 0, z: 80, lit: true };
+    const camper = { id: "c", x: 0.3, y: world.heightAt(0.3, 80), z: 80, alive: true, strength: 3, background: "gambler", stats: {} };
+    expect(hazards.step(0.1, [camper], true, fire).map((e) => e.kind)).toEqual(["burn"]);
+    let burns = 0;
+    for (let t = 0; t < 2; t += 0.1) burns += hazards.step(0.1, [camper], true, fire).length;
+    expect(burns).toBe(2);
+    expect(hazards.step(0.1, [camper], true, { ...fire, lit: false })).toHaveLength(0);
+    expect(hazards.step(0.1, [{ ...camper, x: 3 }], true, fire)).toHaveLength(0);
   });
 
   it("giẫm lên bẫy thì bẫy sập đúng một lần", () => {

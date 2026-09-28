@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronUp,
   Dices,
+  Flame,
   Gem,
   Hammer,
   Moon,
@@ -59,6 +60,8 @@ const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
   fall: TreePalm,
   hunt: PawPrint,
   page: ScrollText,
+  lava: Flame,
+  burn: Flame,
 };
 
 /** Tên ngắn của biến cố ngày 5 cho dòng nhật ký (lời kể đầy đủ nằm ở bản kể bình minh). */
@@ -107,6 +110,10 @@ function encounterLine(e: LogEntryState, name: (id: string) => string): Line {
       return { day: e.day, ok: false, text: `${who} giết ${creature?.name.toLowerCase() ?? "một con vật hiền lành"}${tail}` };
     case "page":
       return { day: e.day, ok: true, text: `${who} nhặt được một trang nhật ký cũ${tail}` };
+    case "lava":
+      return { day: e.day, ok: false, text: `${who} rơi xuống hồ dung nham` };
+    case "burn":
+      return { day: e.day, ok: false, text: `${who} giẫm vào đống lửa trại${tail}` };
     default:
       return { day: e.day, ok: false, text: `${who} suýt đuối nước${tail}` };
   }

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Check, Crown, Link, Lock, LogOut, Pause, Play, Skull, WifiOff, X } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { Check, Crown, Link, Lock, LogOut, Music, Pause, Play, Skull, Volume2, VolumeX, WifiOff, X } from "lucide-react";
+import { audio } from "../sound/engine.ts";
 import { BACKGROUND_LABELS } from "@tentides/content";
 import { MAX_PLAYERS, Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -141,10 +142,26 @@ export function RoomPanel({ room, onLeave }: { room: IslandRoom; onLeave: () => 
               {s.paused ? <Play size={16} aria-hidden /> : <Pause size={16} aria-hidden />}
             </button>
           )}
+          <SoundButtons />
           <LeaveButton onLeave={onLeave} confirm={s.running} />
         </div>
       </header>
       {roster}
     </section>
+  );
+}
+
+/** Bật/tắt âm thanh (M) và nhạc nền (N). */
+function SoundButtons() {
+  const settings = useSyncExternalStore(audio.subscribe, () => audio.settings);
+  return (
+    <>
+      <button className={settings.music && !settings.muted ? "icon-btn" : "icon-btn off"} title={settings.music ? "Tắt nhạc (N)" : "Bật nhạc (N)"} onClick={() => audio.setMusic(!settings.music)}>
+        <Music size={15} aria-hidden />
+      </button>
+      <button className="icon-btn" title={settings.muted ? "Bật âm thanh (M)" : "Tắt âm thanh (M)"} onClick={() => audio.setMuted(!settings.muted)}>
+        {settings.muted ? <VolumeX size={16} aria-hidden /> : <Volume2 size={16} aria-hidden />}
+      </button>
+    </>
   );
 }

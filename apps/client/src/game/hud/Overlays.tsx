@@ -204,9 +204,23 @@ function useIndoor(): number {
   return value;
 }
 
-/** Nhãn tư thế: đang ngồi (nghỉ, hồi sức nhanh), hoặc đang nấp trong cỏ cao. */
+const SINKING_TEXT = {
+  breath: "Hết hơi! Đang đuối nước, giữ Space mà ngoi lên",
+  tired: "Kiệt sức, đang chìm dần. Giữ Space để đạp nước",
+  heavy: "Balo quá nặng, đang chìm! Giữ Space để đạp nước hoặc bỏ bớt đồ (X)",
+} as const;
+
+/** Nhãn tư thế: đang ngồi (nghỉ, hồi sức nhanh), hoặc đang nấp trong cỏ cao; bơi mà đang chìm thì cảnh báo. */
 export function PostureBadge() {
-  const { sitting, hidden } = useHud();
+  const { sitting, hidden, sinking } = useHud();
+  if (sinking) {
+    return (
+      <div className="posture sinking" role="alert">
+        <TriangleAlert size={15} aria-hidden />
+        {SINKING_TEXT[sinking]}
+      </div>
+    );
+  }
   if (!sitting) return null;
   return (
     <div className={hidden ? "posture hidden" : "posture"}>
@@ -269,6 +283,7 @@ const KEYS: [string, string][] = [
   ["B", "Xem balo"],
   ["J", "Sổ truyện"],
   ["Enter", "Chat"],
+  ["M · N", "Tắt âm thanh · tắt nhạc"],
   ["Esc", "Thả chuột"],
   ["1–4", "Chọn lựa chọn"],
 ];

@@ -7,6 +7,7 @@ import { getHud, setHud } from "./hudStore.ts";
 import { isTyping, look } from "./input.ts";
 import { usePrivate } from "./privateStore.ts";
 import { buildGhost, localAim, localPosition } from "./shared.ts";
+import { play } from "./sound/sfx.ts";
 
 // Điều khiển tay chân (khi đã khoá chuột vào cảnh 3D):
 // chuột trái đánh (hay ăn, trồng cây, đặt lửa trại, dựng nhà tuỳ món đang cầm), giữ rồi thả chuột phải để ném
@@ -73,6 +74,7 @@ export function Controls({ room }: { room: IslandRoom }) {
       localAim.yaw = look.yaw;
       localAim.at = performance.now();
       room.send(Messages.throw, { yaw: look.yaw, pitch: aimPitch(), power: 0.35 + power * 0.65 });
+      play("throw", { volume: 0.5 + power * 0.5 });
     };
     const onWheel = (e: WheelEvent) => {
       if (!locked()) return;

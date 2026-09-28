@@ -17,6 +17,7 @@ import { WATER_LEVEL, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { useQuality } from "./graphics.ts";
 import { mulberry32, windStrength } from "./nature.ts";
+import { play } from "./sound/sfx.ts";
 import { localEnv, localPosition, shake, sky, weatherFx } from "./shared.ts";
 
 // Thời tiết của ngày hiện ra trên trời và dưới đất: mây trôi (nhiều ít, trắng hay xám chì), mưa rơi quanh người,
@@ -233,6 +234,7 @@ function Lightning() {
     }
     if (s.thunderAt > 0 && t > s.thunderAt) {
       s.thunderAt = -1;
+      if (b) play("thunder", { at: { x: b.position.x, y: 20, z: b.position.z }, hearing: 450, volume: 1.2 * s.strength });
       shake.amount = Math.min(0.8, shake.amount + 0.18 * s.strength);
     }
   });
@@ -256,6 +258,7 @@ function Quake() {
     if (t > s.next) {
       s.start = t;
       s.next = t + 14 + Math.random() * 16;
+      play("rumble", { volume: 0.9 * weatherFx.quake });
     }
     const since = t - s.start;
     if (since < 2.2) shake.amount = Math.max(shake.amount, 0.35 * Math.sin((since / 2.2) * Math.PI) * weatherFx.quake);

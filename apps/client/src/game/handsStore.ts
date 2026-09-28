@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { Messages } from "@tentides/protocol";
 import type { IslandRoom } from "../net.ts";
+import { play } from "./sound/sfx.ts";
 
 // Món mình đang cầm trên tay (uid trong balo). Thanh đồ nghề đổi, điều khiển đọc; mỗi lần đổi báo server
 // để mọi người thấy món đó trên tay mình.
@@ -16,6 +17,7 @@ export function setHands(room: IslandRoom, next: string) {
   if (next === uid) return;
   uid = next;
   room.send(Messages.hold, { uid: next });
+  play("click", { bus: "ui" });
   listeners.forEach((l) => l());
 }
 

@@ -38,6 +38,10 @@ Toàn bộ game diễn ra trên một hòn đảo 3D, góc nhìn thứ ba, phong
 - Biến cố ngày 5 và những thẻ sự kiện nối tiếp của nó.
 - Điểm hẹn của băng cướp biển và vịnh nhỏ nơi kẻ lừa đảo hẹn giao dịch.
 
+**Đảo có thể giết người.** Hồ dung nham giữa miệng núi lửa: rơi xuống là chết ngay, không ai cứu được. Đống lửa trại: giẫm vào thì bỏng và bị hất ra. Biển: lặn quá sâu mà hết hơi thì ngoi lên rất chậm; bơi khi kiệt sức hay đeo balo quá nặng thì chìm dần, phải đạp nước mới nổi. Lời kể lúc hoàng hôn và biên niên sử kể đúng người đó chết vì đâu.
+
+**Âm thanh kể chuyện cùng hình ảnh.** Sóng to dần khi ra gần biển, gió rít trên núi, dế kêu khi đêm xuống, mưa rào, sấm tới sau chớp vài giây, lửa trại lách tách khi về gần trại, dung nham sôi ùng ục khi leo gần miệng núi, xuống nước thì mọi thứ ù đi. Nhạc nền tự sinh từ vài thang âm: sáng sủa ban ngày, trầm lại lúc hoàng hôn, buồn ban đêm, căng khi núi lửa sắp phun hay bão tới. Tất cả tổng hợp ngay trong trình duyệt, không có file âm thanh nào.
+
 **Núi lửa là đồng hồ đếm ngược.** Mức hoạt động của núi lửa tăng dần theo ngày, và hết ngày 10 thì phun trào. Ai chưa lên thuyền rời đảo sẽ kẹt lại, nên giới hạn 10 ngày có lý do nằm ngay trong thế giới game.
 
 **Easter egg.** Khoảng 15–20 điểm bí mật rải khắp đảo, không cần để thắng. Phần thưởng là mẩu truyện, trang phục, thành tựu hoặc một lợi thế nhỏ, để game không biến thành "phải tra wiki mới chơi được".

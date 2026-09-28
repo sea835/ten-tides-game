@@ -12,6 +12,8 @@ import { Fx } from "./Fx.tsx";
 import { listenFx } from "./fxStore.ts";
 import { GroundItems } from "./Items3D.tsx";
 import { Pages } from "./Pages.tsx";
+import { audio } from "./sound/engine.ts";
+import { Soundscape } from "./sound/Soundscape.tsx";
 import { Trails } from "./Trails.tsx";
 import { Weather } from "./Weather.tsx";
 import { DayCycle } from "./DayCycle.tsx";
@@ -33,7 +35,7 @@ function DebugHook({ room }: { room: IslandRoom }) {
   const scene = useThree((s) => s.scene);
   const world = useWorld(room);
   useEffect(() => {
-    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx } });
+    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx, audio } });
   }, [room, camera, scene, world]);
   return null;
 }
@@ -118,6 +120,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <Pages room={room} world={world} />
           <Weather room={room} world={world} />
           <Trails room={room} world={world} />
+          <Soundscape room={room} world={world} />
           <Fx />
           <DayCycle room={room} sun={sun} hemi={hemi} />
           <DebugHook room={room} />

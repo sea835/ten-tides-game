@@ -39,6 +39,11 @@ const SWIM_SPEED = 4.2;
 const SWIM_SPRINT_SPEED = 6.3;
 const DIVE_SPEED = 3.2;
 const ASCEND_SPEED = 3.4;
+/** Kiệt sức hay quá tải khi bơi: chìm chậm chừng này, đạp nước thì ngoi lên chậm chừng này. */
+const SINK_SPEED = 0.8;
+const SINK_ASCEND = 1.2;
+/** Mang quá tải mà đạp nước ngoi lên thì tốn sức bền chừng này mỗi giây. */
+const HEAVY_PADDLE_DRAIN = 9;
 /** Đầu cách chân chừng này: đầu dưới mặt nước là đang lặn (server tính hơi thở cùng mốc này). */
 const HEAD_HEIGHT = 1.5;
 const CAMERA_DISTANCE = 7;
@@ -110,6 +115,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     wobble: 0,
     /** Vừa bấm Space để nhảy khỏi cây (chờ server đồng ý thôi leo). */
     leap: false,
+    /** Đang chìm khi bơi: vì hết hơi, kiệt sức hay mang quá nặng (rỗng là nổi bình thường). */
+    sinking: "" as "" | "breath" | "tired" | "heavy",
   });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
@@ -291,10 +298,18 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         const surface = WATER_LEVEL - SWIM_FLOAT;
         const diving = !frozen && breath > 0 && (keys.has("KeyC") || keys.has("ControlLeft") || keys.has("ControlRight"));
         const ascending = !frozen && keys.has("Space");
+        // Kiệt sức hay mang quá nặng thì không nổi được nữa: chìm dần, phải đạp nước (Space) mới ngoi lên nổi,
+        // mà mang nặng thì đạp nước cũng tốn sức. Hết hơi thì hoảng loạn, ngoi lên rất chậm.
+        const heavy = !!sheet?.overweight;
+        const sinking = !diving && (s.exhausted || heavy);
         let target: number;
         if (diving) target = -DIVE_SPEED;
-        else if (ascending || breath === 0) target = ASCEND_SPEED;
+        else if (breath === 0) target = ascending ? SINK_ASCEND : 0.5;
+        else if (sinking) target = ascending ? SINK_ASCEND : -SINK_SPEED;
+        else if (ascending) target = ASCEND_SPEED;
         else target = feetNow < surface - 0.05 ? 1.6 : (surface - feetNow) * 4;
+        if (heavy && ascending) s.energy = Math.max(0, s.energy - HEAVY_PADDLE_DRAIN * dt);
+        s.sinking = breath === 0 ? "breath" : sinking ? (heavy ? "heavy" : "tired") : "";
         s.vy += (target - s.vy) * Math.min(1, dt * 6);
         // Không nhô khỏi mặt nước khi đang bơi (trừ khi tới chỗ nông thì lội lên bờ).
         if (feetNow + s.vy * dt > surface + 0.05 && s.vy > 0) s.vy = Math.max(0, (surface + 0.05 - feetNow) / dt);
@@ -396,6 +411,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       nearAnchor: anchor,
       nearTarget: frozen || anchor || s.climb ? null : nearestTarget(room, world, next.x, feetY, next.z),
       climbing: !!s.climb,
+      sinking: s.swimming ? s.sinking : "",
       victim: frozen || s.climb ? null : nearestVictim(room, next.x, feetY, next.z),
       sprint: Math.round(s.energy),
       atDigSite: !frozen && atDigSite(room, next.x, next.z),

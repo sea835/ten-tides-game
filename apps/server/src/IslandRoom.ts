@@ -54,6 +54,7 @@ import {
   type ChatChannel,
   type CorrectMessage,
   type FxMessage,
+  type KnockMessage,
   type EncounterMessage,
   type RejectedMessage,
   type TimedPhase,
@@ -525,6 +526,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
         stats: sheet!.stats,
       })),
       active,
+      { x: this.playCtl.play.camp.x, z: this.playCtl.play.camp.z, lit: !this.playCtl.play.camp.packed },
     );
     if (active) {
       for (const bite of bites) this.onBite(bite);
@@ -551,11 +553,34 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   }
 
   private onHazard(event: HazardEvent) {
+    const p = this.state.players.get(event.playerId);
     if (event.kind === "drowning") {
       this.encounter(event.playerId, "drowning", "sea", "drowning", event.effects, {}, {
         title: "Đuối nước",
         text: "Hết hơi, nước mặn tràn vào mũi. Mau ngoi lên!",
       });
+      if (p) this.broadcast(Messages.fx, { kind: "drown", x: p.x, y: p.y + 1.5, z: p.z, word: "ỤC ỤC...", amount: -(event.effects.hp ?? 0) } satisfies FxMessage);
+      return;
+    }
+    if (event.kind === "lava") {
+      if (p) this.broadcast(Messages.fx, { kind: "lava", x: p.x, y: p.y + 0.8, z: p.z, word: "XÈÈÈO!" } satisfies FxMessage);
+      this.encounter(event.playerId, "lava", "volcano", "lava", event.effects, { fatal: true }, {
+        title: "Rơi vào dung nham",
+        text: "Hơi nóng táp vào mặt, rồi không còn gì nữa. Hòn đảo đã nuốt trọn bạn.",
+      });
+      return;
+    }
+    if (event.kind === "burn") {
+      this.encounter(event.playerId, "burn", "camp", "campfire", event.effects, {}, {
+        title: "Bỏng!",
+        text: "Bạn giẫm thẳng vào đống lửa. Mùi khét bốc lên từ gấu quần.",
+      });
+      if (!p) return;
+      this.broadcast(Messages.fx, { kind: "burn", x: p.x, y: p.y + 1.4, z: p.z, word: "NÓNG! NÓNG!", amount: -(event.effects.hp ?? 0) } satisfies FxMessage);
+      // Bị lửa hất bật ra ngoài.
+      const camp = this.playCtl.play.camp;
+      const d = Math.hypot(p.x - camp.x, p.z - camp.z) || 1;
+      this.clientOf(event.playerId)?.send(Messages.knock, { dx: (p.x - camp.x) / d || 1, dz: (p.z - camp.z) / d, force: 10 } satisfies KnockMessage);
       return;
     }
     const trap = event.trap!;
@@ -582,7 +607,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     refId: string,
     defId: string,
     effects: EncounterEffects,
-    opts: { once?: boolean; dodged?: boolean },
+    opts: { once?: boolean; dodged?: boolean; fatal?: boolean },
     message: { title: string; text: string },
     client = this.clientOf(playerId),
   ): boolean {

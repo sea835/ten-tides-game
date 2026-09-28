@@ -1,4 +1,4 @@
-// Chạm trán ngoài thẻ sự kiện: easter egg, điểm bất thường, bẫy, sinh vật, đuối nước.
+// Chạm trán ngoài thẻ sự kiện: easter egg, điểm bất thường, bẫy, sinh vật, đuối nước, lửa, dung nham.
 // Server làm trọng tài thời gian thực (ai đứng đâu, con vật nào cắn ai, bẫy ở đâu) rồi đưa hệ quả đã tính
 // vào hành động; engine chỉ kiểm tra hợp lệ, áp hệ quả và ghi nhật ký cho bộ sinh truyện.
 
@@ -17,8 +17,14 @@ export function encounter(state: GameState, action: Extract<GameAction, { type: 
   if (!p.alive) fail("Người đã gục không chạm trán được");
   if (action.once && state.discovered.includes(action.refId)) fail("Đã có người tìm thấy chỗ này rồi");
 
-  const effects: EncounterEffects = action.dodged ? {} : action.effects;
-  if (effects.hp) p.hp = clamp(p.hp + limit(effects.hp), 0, p.maxHp);
+  const effects: EncounterEffects = action.dodged ? {} : { ...action.effects };
+  if (action.fatal) {
+    // Không ai kéo lại được: y tá che chở cũng vô ích, ghi đúng số Máu mất để kể lại.
+    effects.hp = -p.hp;
+    p.hp = 0;
+    p.protected = false;
+  }
+  if (effects.hp && !action.fatal) p.hp = clamp(p.hp + limit(effects.hp), 0, p.maxHp);
   if (effects.morale) p.morale = clamp(p.morale + limit(effects.morale), 0, 100);
   if (effects.hunger) p.hunger = clamp(p.hunger + limit(effects.hunger), 0, 100);
   if (effects.stamina) p.stamina = clamp(p.stamina + limit(effects.stamina), 0, 100);

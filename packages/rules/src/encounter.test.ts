@@ -34,6 +34,17 @@ describe("chạm trán ngoài bản đồ", () => {
     expect(() => reduce(s, bite, config)).toThrow(/gục/);
   });
 
+  it("nhảy vào dung nham thì chết ngay, y tá che chở cũng không cứu được; lửa trại chỉ làm bỏng", () => {
+    let s = play(DAWN);
+    s.players.a!.protected = true;
+    s = reduce(s, { type: "encounter", playerId: "a", source: "lava", refId: "volcano", defId: "lava", effects: { hp: -100 }, fatal: true }, config);
+    expect(s.players.a!.alive).toBe(false);
+    expect(s.log.find((e) => e.kind === "encounter" && e.source === "lava")).toMatchObject({ effects: { hp: -s.players.a!.maxHp } });
+    s = reduce(s, { type: "encounter", playerId: "b", source: "burn", refId: "camp", defId: "campfire", effects: { hp: -10 } }, config);
+    expect(s.players.b!.hp).toBe(s.players.b!.maxHp - 10);
+    expect(s.players.b!.alive).toBe(true);
+  });
+
   it("né được bẫy thì không mất gì nhưng bẫy vẫn tính là đã sập", () => {
     const s = play([...DAWN, { type: "encounter", playerId: "a", source: "trap", refId: "trap3", defId: "spike_pit", effects: { hp: -14 }, once: true, dodged: true }]);
     expect(s.players.a!.hp).toBe(s.players.a!.maxHp);
