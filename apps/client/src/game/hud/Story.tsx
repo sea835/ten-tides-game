@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BookOpen, EyeOff, Sunrise, Sunset } from "lucide-react";
 import type { IslandRoom } from "../../net.ts";
 import { isTyping } from "../input.ts";
 import { usePrivate } from "../privateStore.ts";
@@ -33,31 +34,44 @@ export function Journal({ room }: { room: IslandRoom }) {
   const days = [...new Set(lines.map((l) => l.day))];
   return (
     <div className="prep-screen" onClick={() => setOpen(false)}>
-      <div className="panel prep-card journal" onClick={(e) => e.stopPropagation()}>
+      <div className="prep-card journal" onClick={(e) => e.stopPropagation()}>
         <header className="prep-header">
+          <BookOpen size={22} aria-hidden />
           <h2>Sổ truyện</h2>
-          <span className="hint">J hoặc Esc để đóng</span>
+          <span className="hint">
+            <kbd>J</kbd> hoặc <kbd>Esc</kbd> để đóng
+          </span>
         </header>
-        {days.length === 0 && <p className="hint">Câu chuyện chưa bắt đầu.</p>}
-        {days.map((day) => (
-          <section key={day} className="journal-day">
-            <div className="label">Ngày {day}</div>
-            {lines
-              .filter((l) => l.day === day)
-              .map((l, i) => (
-                <p key={i}>
-                  <span className="feed-day">{l.kind === "dawn" ? "Bình minh" : "Hoàng hôn"}</span> {l.text}
-                </p>
-              ))}
-            {mine
-              .filter((l) => l.day === day)
-              .map((l, i) => (
-                <p key={`p${i}`} className="private-line">
-                  <span className="feed-day">Chỉ mình bạn</span> {l.text}
-                </p>
-              ))}
-          </section>
-        ))}
+        <div className="journal-pages">
+          {days.length === 0 && <p className="hint">Câu chuyện chưa bắt đầu.</p>}
+          {days.map((day) => (
+            <section key={day} className="journal-day">
+              <h3>Ngày {day}</h3>
+              {lines
+                .filter((l) => l.day === day)
+                .map((l, i) => (
+                  <p key={i}>
+                    <span className="journal-tag">
+                      {l.kind === "dawn" ? <Sunrise size={13} aria-hidden /> : <Sunset size={13} aria-hidden />}
+                      {l.kind === "dawn" ? "Bình minh" : "Hoàng hôn"}
+                    </span>
+                    {l.text}
+                  </p>
+                ))}
+              {mine
+                .filter((l) => l.day === day)
+                .map((l, i) => (
+                  <p key={`p${i}`} className="private-line">
+                    <span className="journal-tag">
+                      <EyeOff size={13} aria-hidden />
+                      Chỉ mình bạn
+                    </span>
+                    {l.text}
+                  </p>
+                ))}
+            </section>
+          ))}
+        </div>
       </div>
     </div>
   );

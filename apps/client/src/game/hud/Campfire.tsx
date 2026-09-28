@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { BedDouble, Check, EyeOff, Flame, Ghost, Lock, Moon, Send, Wheat } from "lucide-react";
 import { NIGHT_ACTION_LABELS, RATION_LABELS } from "@tentides/content";
 import { CHAT_MAX_LENGTH, Messages, type ChatChannel } from "@tentides/protocol";
 import { RATION_IDS } from "@tentides/rules";
@@ -7,12 +8,15 @@ import { useChat } from "../chatStore.ts";
 import { usePrivate } from "../privateStore.ts";
 import { isTyping } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
+import { useStory } from "./Story.tsx";
+import { Avatar, SectionLabel } from "./ui.tsx";
 
 const CHANNEL_TAGS: Partial<Record<ChatChannel, string>> = { ghost: "hồn ma" };
 
 /** Khung chat. Enter để gõ, Enter lần nữa để gửi, Esc để quay lại điều khiển nhân vật. */
 function ChatBox({ room, placeholder, channels }: { room: IslandRoom; placeholder: string; channels: ChatChannel[] }) {
   const lines = useChat().filter((l) => channels.includes(l.channel));
+  const colors = useRoomSnapshot(room, (s) => Object.fromEntries([...s.players.entries()].map(([id, p]) => [id, p.color])));
   const [text, setText] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -49,11 +53,11 @@ function ChatBox({ room, placeholder, channels }: { room: IslandRoom; placeholde
         {lines.map((l) => (
           <div key={l.id} className={l.from === me ? "chat-line mine" : "chat-line"}>
             {CHANNEL_TAGS[l.channel] && <span className="chat-tag">{CHANNEL_TAGS[l.channel]}</span>}
-            <strong>{l.name}:</strong> {l.text}
+            <strong style={{ "--c": colors[l.from] } as CSSProperties}>{l.name}</strong> {l.text}
           </div>
         ))}
       </div>
-      <form onSubmit={send}>
+      <form onSubmit={send} className="chat-form">
         <input
           ref={input}
           value={text}
@@ -62,6 +66,9 @@ function ChatBox({ room, placeholder, channels }: { room: IslandRoom; placeholde
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && e.currentTarget.blur()}
         />
+        <button className="icon-btn" disabled={!text.trim()} title="Gửi">
+          <Send size={16} aria-hidden />
+        </button>
       </form>
     </div>
   );
@@ -83,7 +90,7 @@ export function GhostChat({ room }: { room: IslandRoom }) {
   if (!ghost) return null;
   return (
     <section className="panel ghost-chat">
-      <div className="label">Hồn ma · ban đêm nghe được cả trại, nhưng chỉ hồn ma nghe thấy bạn</div>
+      <SectionLabel icon={Ghost}>Hồn ma · ban đêm nghe được cả trại, nhưng chỉ hồn ma nghe thấy bạn</SectionLabel>
       <ChatBox room={room} channels={["camp", "ghost"]} placeholder="Nhấn Enter để nói với các hồn ma khác" />
     </section>
   );
@@ -99,7 +106,9 @@ function Dots({ people }: { people: Person[] }) {
   return (
     <span className="voters">
       {people.map((c) => (
-        <span key={c.id} className="dot" title={c.name} style={{ background: c.color }} />
+        <span key={c.id} title={c.name}>
+          <Avatar name={c.name} color={c.color} size="xs" />
+        </span>
       ))}
     </span>
   );
@@ -133,6 +142,7 @@ export function Campfire({ room }: { room: IslandRoom }) {
   });
 
   const view = usePrivate();
+  const story = useStory(room, night?.day ?? 0, "dusk");
   // Chỉ con số người sẵn sàng là công khai; mình đã bấm hay chưa thì client tự nhớ, qua đêm mới thì quên.
   const [readyDay, setReadyDay] = useState(0);
   const amCamper = night?.amCamper ?? false;
@@ -145,7 +155,8 @@ export function Campfire({ room }: { room: IslandRoom }) {
   if (!night.amCamper) {
     return (
       <section className="panel campfire outside">
-        Bạn đang ngủ ngoài một mình. Không nghe được cả trại đang bàn gì, cũng không được chia phần ăn tối nay.
+        <Moon size={18} aria-hidden />
+        <span>Bạn đang ngủ ngoài một mình. Không nghe được cả trại đang bàn gì, cũng không được chia phần ăn tối nay.</span>
       </section>
     );
   }
@@ -165,76 +176,92 @@ export function Campfire({ room }: { room: IslandRoom }) {
 
   return (
     <section className="panel campfire">
+      <header className="campfire-head">
+        <Flame size={20} aria-hidden />
+        <h2>Quanh đống lửa</h2>
+        <span className="hint">
+          {night.campers.length} người ở trại · kho còn {night.food} khẩu phần
+        </span>
+      </header>
+      {story && <p className="story campfire-story">{story}</p>}
+      <div className="campfire-body">
       <div className="campfire-votes">
-        <div className="label">Khẩu phần · kho còn {night.food}</div>
-        {night.rationNeeded ? (
-          <>
-            <div className="hint">Không đủ mỗi người một phần ({night.campers.length} người). Cả trại bầu cách chia:</div>
-            <div className="vote-grid">
-              {RATION_IDS.map((id) => (
-                <button
-                  key={id}
-                  className={mine.ration === id ? "vote selected" : "vote"}
-                  onClick={() => room.send(Messages.ration, { choice: id })}
-                >
-                  <strong>{RATION_LABELS[id].title}</strong>
-                  <span>{RATION_LABELS[id].detail}</span>
-                  <Dots people={night.campers.filter((c) => c.ration === id)} />
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="hint">Đủ ăn: mỗi người một khẩu phần, khỏi phải bầu.</div>
-        )}
-
-        <div className="label">Trói người bị nghi · cần {needed} phiếu đồng ý</div>
-        {!tie.nominee && (
-          <>
-            <div className="hint">Nghi ai thì đề cử. Mỗi đêm chỉ đề cử được một lần.</div>
-            <div className="vote-grid">
-              {night.campers
-                .filter((c) => c.id !== me)
-                .map((c) => (
-                  <button key={c.id} className="vote" onClick={() => room.send(Messages.nominate, { target: c.id })}>
-                    <strong>Đề cử trói {c.name}</strong>
+        <div className="camp-section">
+          <SectionLabel icon={Wheat}>Khẩu phần</SectionLabel>
+          {night.rationNeeded ? (
+            <>
+              <div className="hint">Không đủ mỗi người một phần ({night.campers.length} người). Cả trại bầu cách chia:</div>
+              <div className="vote-grid three">
+                {RATION_IDS.map((id) => (
+                  <button
+                    key={id}
+                    className={mine.ration === id ? "vote selected" : "vote"}
+                    onClick={() => room.send(Messages.ration, { choice: id })}
+                  >
+                    <strong>{RATION_LABELS[id].title}</strong>
+                    <span>{RATION_LABELS[id].detail}</span>
+                    <Dots people={night.campers.filter((c) => c.ration === id)} />
                   </button>
                 ))}
+              </div>
+            </>
+          ) : (
+            <div className="hint">Đủ ăn: mỗi người một khẩu phần, khỏi phải bầu.</div>
+          )}
+        </div>
+
+        <div className="camp-section">
+          <SectionLabel icon={Lock}>Trói người bị nghi · cần {needed} phiếu đồng ý</SectionLabel>
+          {!tie.nominee && (
+            <>
+              <div className="hint">Nghi ai thì đề cử. Mỗi đêm chỉ đề cử được một lần.</div>
+              <div className="nominees">
+                {night.campers
+                  .filter((c) => c.id !== me)
+                  .map((c) => (
+                    <button key={c.id} className="nominee" title={`Đề cử trói ${c.name}`} onClick={() => room.send(Messages.nominate, { target: c.id })}>
+                      <Avatar name={c.name} color={c.color} size="sm" />
+                      <span>Đề cử trói {c.name}</span>
+                    </button>
+                  ))}
+              </div>
+            </>
+          )}
+          {tie.nominee && !tie.revealed && (
+            <>
+              <div className="hint">
+                {nameOf(tie.nominator)} đề cử trói <strong>{nameOf(tie.nominee)}</strong>. Phiếu kín, lật khi mọi người bầu xong.
+              </div>
+              <div className="vote-grid">
+                <button className="vote yes" disabled={iCast} onClick={() => room.send(Messages.ballot, { tie: true })}>
+                  <strong>Trói</strong>
+                </button>
+                <button className="vote no" disabled={iCast} onClick={() => room.send(Messages.ballot, { tie: false })}>
+                  <strong>Không trói</strong>
+                </button>
+              </div>
+              <div className="hint cast">
+                Đã bầu {tie.cast.length}/{night.campers.length} <Dots people={tie.cast} />
+                {iCast && " · bạn đã bỏ phiếu"}
+              </div>
+            </>
+          )}
+          {tie.revealed && (
+            <div className={tied ? "reveal tied" : "reveal"}>
+              <div>
+                Đồng ý trói {nameOf(tie.nominee)}: {tie.yes.map((p) => p.name).join(", ") || "không ai"}
+              </div>
+              <div>Không đồng ý: {tie.no.map((p) => p.name).join(", ") || "không ai"}</div>
+              <strong>{tied ? `${nameOf(tie.nominee)} sẽ bị trói tới hoàng hôn mai.` : "Không đủ phiếu, không trói ai."}</strong>
             </div>
-          </>
-        )}
-        {tie.nominee && !tie.revealed && (
-          <>
-            <div className="hint">
-              {nameOf(tie.nominator)} đề cử trói <strong>{nameOf(tie.nominee)}</strong>. Phiếu kín, lật khi mọi người bầu xong.
-            </div>
-            <div className="vote-grid">
-              <button className="vote" disabled={iCast} onClick={() => room.send(Messages.ballot, { tie: true })}>
-                <strong>Trói</strong>
-              </button>
-              <button className="vote" disabled={iCast} onClick={() => room.send(Messages.ballot, { tie: false })}>
-                <strong>Không trói</strong>
-              </button>
-            </div>
-            <div className="hint">
-              Đã bầu {tie.cast.length}/{night.campers.length} <Dots people={tie.cast} />
-              {iCast && " · bạn đã bỏ phiếu"}
-            </div>
-          </>
-        )}
-        {tie.revealed && (
-          <div className={tied ? "reveal tied" : "reveal"}>
-            <div>
-              Đồng ý trói {nameOf(tie.nominee)}: {tie.yes.map((p) => p.name).join(", ") || "không ai"}
-            </div>
-            <div>Không đồng ý: {tie.no.map((p) => p.name).join(", ") || "không ai"}</div>
-            <strong>{tied ? `${nameOf(tie.nominee)} sẽ bị trói tới hoàng hôn mai.` : "Không đủ phiếu, không trói ai."}</strong>
-          </div>
-        )}
+          )}
+        </div>
 
         {view && view.nightActions.length > 0 && (
-          <>
-            <div className="label secret">Việc làm đêm nay · chỉ mình bạn biết</div>
+          <div className="camp-section secret">
+            <SectionLabel icon={EyeOff} tone="secret">
+              Việc làm đêm nay · chỉ mình bạn biết
+            </SectionLabel>
             <div className="vote-grid">
               {view.nightActions
                 .filter((a) => a !== "protect")
@@ -263,14 +290,20 @@ export function Campfire({ room }: { room: IslandRoom }) {
               </div>
             )}
             <div className="hint">Không chọn gì thì coi như ngủ bù.</div>
-          </>
+          </div>
         )}
-
-        <button className={imReady ? "primary" : ""} onClick={toggleReady}>
-          {imReady ? "Đã sẵn sàng đi ngủ" : "Đi ngủ"} ({night.readyCount}/{night.readyNeeded})
+      </div>
+      <div className="campfire-chat">
+        <ChatBox room={room} channels={["camp"]} placeholder="Nhấn Enter để nói với cả trại" />
+        <button className={imReady ? "ready done" : "primary"} onClick={toggleReady}>
+          {imReady ? <Check size={16} aria-hidden /> : <BedDouble size={16} aria-hidden />}
+          {imReady ? "Đã sẵn sàng đi ngủ" : "Đi ngủ"}
+          <span className="count">
+            {night.readyCount}/{night.readyNeeded}
+          </span>
         </button>
       </div>
-      <ChatBox room={room} channels={["camp"]} placeholder="Nhấn Enter để nói với cả trại" />
+      </div>
     </section>
   );
 }

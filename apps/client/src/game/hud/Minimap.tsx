@@ -1,4 +1,4 @@
-import { ANCHORS, CAMP, CAVE, LAKE, TREASURE_SITES, VOLCANO, shoreRadius } from "@tentides/content";
+import { ANCHORS, CAMP, CAVE, LAKE, TREASURE_SITES, VOLCANO, inTallGrass, shoreRadius } from "@tentides/content";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 
@@ -14,7 +14,10 @@ export function Minimap({ room }: { room: IslandRoom }) {
   const view = useRoomSnapshot(room, (s) => ({
     site: s.treasureSite && !s.treasureDug ? s.treasureSite : "",
     // Làm tròn vị trí để bản đồ chỉ vẽ lại khi ai đó đi được một đoạn.
-    players: [...s.players.entries()].map(([id, p]) => ({
+    // Người khác đang ngồi nấp trong cỏ cao thì không hiện chấm.
+    players: [...s.players.entries()]
+      .filter(([id, p]) => id === me || !p.sitting || !inTallGrass(p.x, p.z))
+      .map(([id, p]) => ({
       id,
       x: Math.round(p.x / 2) * 2,
       z: Math.round(p.z / 2) * 2,

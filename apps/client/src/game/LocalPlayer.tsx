@@ -2,16 +2,16 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CapsuleCollider, RigidBody, useRapier, type RapierCollider, type RapierRigidBody } from "@react-three/rapier";
 import { Vector3, type Group } from "three";
-import { ANCHORS, ANCHOR_TRIGGER_RADIUS, CAMP, CAMP_RADIUS, DIG_RADIUS, TREASURE_SITES, heightAt, zoneAt } from "@tentides/content";
+import { ANCHORS, ANCHOR_TRIGGER_RADIUS, CAMP, CAMP_RADIUS, DIG_RADIUS, TREASURE_SITES, heightAt, inTallGrass, zoneAt } from "@tentides/content";
 import { MAX_RUN_SPEED, Messages, type CorrectMessage, type MoveMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { Character } from "./Character.tsx";
 import { getHud, setHud } from "./hudStore.ts";
 import { isTyping, keys, look } from "./input.ts";
-import { localPosition } from "./shared.ts";
+import { localMotion, localPosition } from "./shared.ts";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
 
-const WALK_SPEED = 4.5;
+const WALK_SPEED = 8;
 const GRAVITY = 25;
 const JUMP_SPEED = 8;
 /** Nước sâu hơn mức này thì chưa lội qua được (bơi sẽ làm sau, gắn với sức bền). */
@@ -21,6 +21,11 @@ const CAMERA_DISTANCE = 7;
 const SPRINT_DRAIN_BASE = 22;
 const SPRINT_DRAIN_PER_STRENGTH = 2.5;
 const SPRINT_REGEN = 12;
+/** Ngồi nghỉ thì hồi sức bền nhanh gấp chừng này lần. */
+const SIT_REGEN_BONUS = 2;
+/** Tâm camera (tính từ chân) khi đứng và khi ngồi. */
+const CAM_HEIGHT_STAND = 1.6;
+const CAM_HEIGHT_SIT = 1.0;
 const SPRINT_RECOVER_AT = 25;
 const OVERWEIGHT_SPEED = 0.8;
 const CAMERA_MIN_DISTANCE = 1.2;
@@ -56,7 +61,18 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
     };
   }, [world]);
 
-  const sim = useRef({ vy: 0, grounded: false, facing: me.rotY, sendTimer: 0, lastSent: "", started: false, energy: 100, exhausted: false });
+  const sim = useRef({
+    vy: 0,
+    grounded: false,
+    facing: me.rotY,
+    sendTimer: 0,
+    lastSent: "",
+    started: false,
+    energy: 100,
+    exhausted: false,
+    sitting: false,
+    camHeight: CAM_HEIGHT_STAND,
+  });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
   const camDir = useMemo(() => new Vector3(), []);
@@ -72,9 +88,15 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
   );
 
   // Nhấn E khi đứng cạnh một điểm sự kiện để mở thẻ. Server kiểm tra lại khoảng cách.
+  // Nhấn C để ngồi xuống hoặc đứng dậy.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "KeyE" || e.repeat || isTyping(e)) return;
+      if (e.repeat || isTyping(e)) return;
+      if (e.code === "KeyC") {
+        sim.current.sitting = !sim.current.sitting;
+        return;
+      }
+      if (e.code !== "KeyE") return;
       const { nearAnchor, atDigSite } = getHud();
       if (atDigSite) room.send(Messages.dig);
       else if (nearAnchor) room.send(Messages.trigger, { anchorId: nearAnchor });
@@ -103,6 +125,8 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
     const forward = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const strafe = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
     const inputScale = frozen ? 0 : 1;
+    // Bấm đi hoặc nhảy khi đang ngồi thì đứng dậy luôn.
+    if (s.sitting && !frozen && (forward !== 0 || strafe !== 0 || keys.has("Space"))) s.sitting = false;
 
     // Chạy nhanh tốn sức bền; Thể lực càng cao càng tốn ít. Cạn sức thì phải hồi lại một đoạn mới chạy tiếp.
     // Thanh hồi tối đa tới mức sức bền trong ngày (các sự kiện làm mệt sẽ kéo mức này xuống).
@@ -113,7 +137,7 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
       s.energy = Math.max(0, s.energy - (SPRINT_DRAIN_BASE - SPRINT_DRAIN_PER_STRENGTH * strength) * dt);
       if (s.energy === 0) s.exhausted = true;
     } else {
-      s.energy += SPRINT_REGEN * dt;
+      s.energy += SPRINT_REGEN * (s.sitting ? SIT_REGEN_BONUS : 1) * dt;
       if (s.exhausted && s.energy >= SPRINT_RECOVER_AT) s.exhausted = false;
     }
     s.energy = Math.min(s.energy, sheet?.stamina ?? 100);
@@ -171,7 +195,8 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
 
     // Camera góc nhìn thứ ba, bám mượt theo nhân vật.
     const feetY = next.y - FEET_OFFSET;
-    camTarget.set(next.x, feetY + 1.6, next.z);
+    s.camHeight += ((s.sitting ? CAM_HEIGHT_SIT : CAM_HEIGHT_STAND) - s.camHeight) * Math.min(1, dt * 6);
+    camTarget.set(next.x, feetY + s.camHeight, next.z);
     const horizontal = Math.cos(look.pitch) * CAMERA_DISTANCE;
     camPos.set(
       camTarget.x + Math.sin(look.yaw) * horizontal,
@@ -191,6 +216,9 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
     state.camera.lookAt(camTarget);
 
     localPosition.set(next.x, feetY, next.z);
+    localMotion.moving = moving;
+    localMotion.running = moving && running;
+    localMotion.sitting = s.sitting;
 
     setHud({
       zone: zoneAt(next.x, next.z),
@@ -198,13 +226,15 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
       nearAnchor: frozen ? null : nearestOpenAnchor(room, next.x, next.z),
       sprint: Math.round(s.energy),
       atDigSite: !frozen && atDigSite(room, next.x, next.z),
+      sitting: s.sitting,
+      hidden: s.sitting && inTallGrass(next.x, next.z),
     });
 
     s.sendTimer += dt;
     if (s.sendTimer >= SEND_INTERVAL) {
       s.sendTimer = 0;
-      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving };
-      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${moving}`;
+      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving, sitting: s.sitting };
+      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${moving},${s.sitting}`;
       if (key !== s.lastSent) {
         s.lastSent = key;
         room.send(Messages.move, msg);
@@ -216,11 +246,13 @@ export function LocalPlayer({ room }: { room: IslandRoom }) {
     <RigidBody ref={body} type="kinematicPosition" colliders={false} position={[spawn.x, spawn.y + FEET_OFFSET, spawn.z]}>
       <CapsuleCollider ref={collider} args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
       <group position-y={-FEET_OFFSET}>
-        <Carrier room={room}>{(carrying) => <Character ref={avatar} color={me.color} carrying={carrying} />}</Carrier>
+        <Carrier room={room}>{(carrying) => <Character ref={avatar} color={me.color} carrying={carrying} motion={readLocalMotion} />}</Carrier>
       </group>
     </RigidBody>
   );
 }
+
+const readLocalMotion = () => localMotion;
 
 function nearestOpenAnchor(room: IslandRoom, x: number, z: number): string | null {
   if (room.state.phase !== "explore") return null;

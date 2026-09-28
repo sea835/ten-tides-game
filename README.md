@@ -30,7 +30,7 @@ Mở hai tab (mỗi tab là một người chơi riêng), tab đầu bấm **T�
 
 Chủ phòng bấm **Bắt đầu ván** khi đủ người. Ván đã bắt đầu thì không ai vào thêm được.
 
-Điều khiển: bấm vào màn hình để khoá chuột, di chuột để xoay camera, WASD di chuyển, Shift chạy (tốn sức bền), Space nhảy, E mở điểm sự kiện hoặc đào kho báu, phím 1–4 chọn trong thẻ, B xem balo, J mở sổ truyện, Enter để chat, Esc thả chuột. Lúc xếp balo: kéo thả, R hoặc chuột phải để xoay, nhấp đúp để nhấc ra khay.
+Điều khiển: bấm vào màn hình để khoá chuột, di chuột để xoay camera, WASD di chuyển, Shift chạy (tốn sức bền), Space nhảy, C ngồi xuống/đứng dậy (ngồi hồi sức nhanh gấp đôi; ngồi trong đám cỏ cao là nấp: người khác không thấy tên và chấm của bạn trên bản đồ), E mở điểm sự kiện hoặc đào kho báu, phím 1–4 chọn trong thẻ, B xem balo, J mở sổ truyện, H bật/tắt bảng phím tắt, G đổi đồ họa Cao/Thấp (Thấp bỏ hậu kỳ, bớt cỏ cây, bóng đổ nhẹ hơn cho máy yếu), Enter để chat, Esc thả chuột. Lúc xếp balo: kéo thả, R hoặc chuột phải để xoay, nhấp đúp để nhấc ra khay.
 
 Test nhanh cả ván: `PHASE_SCALE=0.1 pnpm dev` thu mỗi ngày từ 5 phút xuống còn khoảng 30 giây. Ở chế độ dev, `window.__tentides` trong console trình duyệt cho xem room, vị trí và camera.
 

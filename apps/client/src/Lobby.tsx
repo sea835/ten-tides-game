@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { CalendarDays, DoorOpen, Drama, Plus, RotateCcw, Users } from "lucide-react";
 import { ROOM_CODE_LENGTH } from "@tentides/protocol";
 import { createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
 
@@ -51,40 +52,71 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
 
   return (
     <main className="lobby">
-      <h1>TEN TIDES</h1>
-      <p className="tagline">Chúng ta mang theo gì — và ai trong chúng ta thật sự đáng tin?</p>
+      <div className="sea" aria-hidden>
+        <div className="sun" />
+        <div className="isle" />
+        <div className="wave w1" />
+        <div className="wave w2" />
+        <div className="wave w3" />
+      </div>
 
-      <label className="field">
-        <span>Tên của bạn</span>
-        <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="vd. Hải" autoFocus />
-      </label>
+      <div className="lobby-inner">
+        <header className="lobby-hero">
+          <div className="kicker">Sinh tồn · hợp tác · phản bội</div>
+          <h1>TEN TIDES</h1>
+          <p className="tagline">Chúng ta mang theo gì, và ai trong chúng ta thật sự đáng tin?</p>
+          <ul className="facts">
+            <li>
+              <Users size={15} aria-hidden /> 2–6 người
+            </li>
+            <li>
+              <CalendarDays size={15} aria-hidden /> 10 ngày trên đảo
+            </li>
+            <li>
+              <Drama size={15} aria-hidden /> Có thể có kẻ phản bội
+            </li>
+          </ul>
+        </header>
 
-      {notice && <p className="notice">{notice}</p>}
+        <div className="lobby-card">
+          <label className="field">
+            <span className="label">Tên của bạn</span>
+            <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="vd. Hải" autoFocus />
+          </label>
 
-      {previous && (
-        <button className="primary" disabled={busy} onClick={() => void run(() => joinRoom(previous, name))}>
-          Vào lại phòng {previous}
-        </button>
-      )}
+          {notice && <p className="notice">{notice}</p>}
 
-      <button className={previous ? "" : "primary"} disabled={busy} onClick={() => void run(() => createRoom(name))}>
-        Tạo phòng mới
-      </button>
+          {previous && (
+            <button className="primary big" disabled={busy} onClick={() => void run(() => joinRoom(previous, name))}>
+              <RotateCcw size={18} aria-hidden /> Vào lại phòng {previous}
+            </button>
+          )}
 
-      <div className="divider">hoặc vào phòng của bạn bè</div>
+          <button className={previous ? "big" : "primary big"} disabled={busy} onClick={() => void run(() => createRoom(name))}>
+            <Plus size={18} aria-hidden /> Tạo phòng mới
+          </button>
 
-      <form className="join" onSubmit={onJoin}>
-        <input
-          className="code"
-          value={code}
-          maxLength={ROOM_CODE_LENGTH}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="MÃ"
-        />
-        <button disabled={busy || code.trim().length !== ROOM_CODE_LENGTH}>Vào phòng</button>
-      </form>
+          <div className="divider">
+            <span>hoặc vào phòng của bạn bè</span>
+          </div>
 
-      {error && <p className="error">{error}</p>}
+          <form className="join" onSubmit={onJoin}>
+            <input
+              className="code"
+              value={code}
+              maxLength={ROOM_CODE_LENGTH}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="MÃ"
+              aria-label="Mã phòng"
+            />
+            <button disabled={busy || code.trim().length !== ROOM_CODE_LENGTH}>
+              <DoorOpen size={18} aria-hidden /> Vào phòng
+            </button>
+          </form>
+
+          {error && <p className="error">{error}</p>}
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronDown, ChevronUp, Dices, Gem, Moon, Sailboat, Skull, Sunset, TriangleAlert, type LucideIcon } from "lucide-react";
 import { RATION_LABELS, content } from "@tentides/content";
 import type { IslandState, LogEntryState } from "@tentides/protocol";
 import type { RationId } from "@tentides/rules";
@@ -11,6 +12,16 @@ interface Line {
   ok: boolean;
   text: string;
 }
+
+const KIND_ICONS: Record<string, LucideIcon> = {
+  check: Dices,
+  dusk: Sunset,
+  night: Moon,
+  incident: TriangleAlert,
+  dig: Gem,
+  departure: Sailboat,
+  death: Skull,
+};
 
 function describe(e: LogEntryState, s: IslandState): Line {
   const name = (id: string) => s.players.get(id)?.name ?? "?";
@@ -81,23 +92,30 @@ function describe(e: LogEntryState, s: IslandState): Line {
   return { day: e.day, ok: false, text: `${name(e.playerId)} đã gục ngã.` };
 }
 
-/** Nhật ký công khai: 6 dòng gần nhất, bấm để xem lại cả ván. */
+/** Nhật ký công khai: vài dòng gần nhất, bấm để xem lại cả ván. */
 export function Feed({ room }: { room: IslandRoom }) {
   const [expanded, setExpanded] = useState(false);
-  const lines = useRoomSnapshot(room, (s) => [...s.log].map((e) => describe(e, s)));
+  const lines = useRoomSnapshot(room, (s) => [...s.log].map((e) => ({ ...describe(e, s), kind: e.kind })));
   if (lines.length === 0) return null;
-  const shown = expanded ? lines : lines.slice(-6);
+  const shown = expanded ? lines : lines.slice(-4);
   return (
     <section className={expanded ? "panel feed expanded" : "panel feed"}>
-      <button className="ghost feed-toggle" onClick={() => setExpanded(!expanded)}>
-        {expanded ? "Thu gọn" : `Xem cả nhật ký (${lines.length})`}
+      <button className="feed-toggle" onClick={() => setExpanded(!expanded)}>
+        <span>Nhật ký</span>
+        <span className="hint">{expanded ? "Thu gọn" : `${lines.length} dòng`}</span>
+        {expanded ? <ChevronDown size={14} aria-hidden /> : <ChevronUp size={14} aria-hidden />}
       </button>
       <div className="feed-lines">
-        {shown.map((l, i) => (
-          <div key={i} className={l.ok ? "feed-line ok" : "feed-line bad"}>
-            <span className="feed-day">N{l.day}</span> {l.text}
-          </div>
-        ))}
+        {shown.map((l, i) => {
+          const Icon = KIND_ICONS[l.kind] ?? TriangleAlert;
+          return (
+            <div key={expanded ? i : lines.length - shown.length + i} className={l.ok ? "feed-line ok" : "feed-line bad"}>
+              <Icon size={13} aria-hidden />
+              <span className="feed-day">N{l.day}</span>
+              <span>{l.text}</span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

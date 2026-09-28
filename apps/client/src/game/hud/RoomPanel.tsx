@@ -1,10 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Check, Crown, Link, Lock, LogOut, Pause, Play, Skull, WifiOff, X } from "lucide-react";
+import { BACKGROUND_LABELS } from "@tentides/content";
 import { MAX_PLAYERS, Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { Bar } from "./Bar.tsx";
-import { BACKGROUND_LABELS } from "@tentides/content";
 import { itemName } from "./format.ts";
+import { Avatar } from "./ui.tsx";
+
+/** Rời phòng giữa ván phải bấm hai lần, tránh lỡ tay bỏ cả đoàn. */
+function LeaveButton({ onLeave, confirm }: { onLeave: () => void; confirm: boolean }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <button
+      className={armed ? "icon-btn danger armed" : "icon-btn"}
+      title="Rời phòng"
+      onClick={() => (confirm && !armed ? setArmed(true) : onLeave())}
+    >
+      <LogOut size={16} aria-hidden />
+      {armed && <span>Bấm lần nữa để rời</span>}
+    </button>
+  );
+}
 
 export function RoomPanel({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const me = myId(room);
@@ -40,48 +62,89 @@ export function RoomPanel({ room, onLeave }: { room: IslandRoom; onLeave: () => 
     }
   }
 
-  return (
-    <section className="panel room">
-      <div className="label">Mã phòng</div>
-      <div className="room-code">{room.roomId}</div>
-      <button onClick={() => void copyInvite()}>{copied ? "Đã chép link!" : "Chép link mời"}</button>
-      <ul className="roster">
-        {s.roster.map((p) => (
-          <li
-            key={p.id}
-            className={p.connected && p.alive ? "" : "offline"}
-            title={[
-              BACKGROUND_LABELS[p.background as keyof typeof BACKGROUND_LABELS]?.title,
-              p.items.length ? `Mang theo: ${p.items.map(itemName).join(", ")}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n")}
-          >
+  const roster = (
+    <ul className="roster">
+      {s.roster.map((p) => (
+        <li
+          key={p.id}
+          className={[p.id === me && "me", !p.alive && "dead", !p.connected && "offline"].filter(Boolean).join(" ")}
+          title={
+            s.lobby
+              ? undefined
+              : [
+                  BACKGROUND_LABELS[p.background as keyof typeof BACKGROUND_LABELS]?.title,
+                  p.items.length ? `Mang theo: ${p.items.map(itemName).join(", ")}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n")
+          }
+        >
+          <Avatar name={p.name} color={p.color} size="sm" dim={!p.alive || !p.connected} />
+          <div className="roster-body">
             <div className="roster-name">
-              <span className="dot" style={{ background: p.color }} />
-              {p.name}
-              {p.id === me && " (bạn)"}
-              {p.host && " ★"}
-              {!p.alive && " · đã gục"}
-              {p.alive && p.tied && " · bị trói"}
-              {p.alive && !p.connected && " · mất kết nối"}
+              <span className="name">{p.name}</span>
+              {p.id === me && <span className="you">bạn</span>}
+              {p.host && <Crown size={13} className="i-host" aria-label="Chủ phòng" />}
+              {!p.alive && <Skull size={13} className="i-dead" aria-label="Đã gục" />}
+              {p.alive && p.tied && <Lock size={13} className="i-tied" aria-label="Bị trói" />}
+              {p.alive && !p.connected && <WifiOff size={13} className="i-off" aria-label="Mất kết nối" />}
               {s.isHost && s.lobby && p.id !== me && (
-                <button className="kick" title="Mời ra khỏi phòng" onClick={() => room.send(Messages.kick, { playerId: p.id })}>
-                  ✕
+                <button className="kick" title={`Mời ${p.name} ra khỏi phòng`} onClick={() => room.send(Messages.kick, { playerId: p.id })}>
+                  <X size={14} aria-hidden />
                 </button>
               )}
             </div>
-            {p.maxHp > 0 && <Bar value={p.hp} max={p.maxHp} color="#e4572e" />}
+            {!s.lobby && p.maxHp > 0 && <Bar value={p.hp} max={p.maxHp} color="var(--hp)" size="sm" />}
+          </div>
+        </li>
+      ))}
+      {s.lobby &&
+        Array.from({ length: MAX_PLAYERS - s.roster.length }, (_, i) => (
+          <li key={`empty${i}`} className="empty">
+            <span className="avatar sm slot" />
+            <span className="hint">Chỗ trống</span>
           </li>
         ))}
-      </ul>
-      <div className="label">
-        {s.roster.length}/{MAX_PLAYERS} người · ★ chủ phòng
-      </div>
-      {s.isHost && s.running && <button onClick={() => room.send(Messages.pause)}>{s.paused ? "Chơi tiếp" : "Tạm dừng"}</button>}
-      <button className="ghost" onClick={onLeave}>
-        Rời phòng
-      </button>
+    </ul>
+  );
+
+  if (s.lobby) {
+    return (
+      <section className="panel room lobby-room">
+        <div className="label">Mã phòng</div>
+        <div className="room-code">{room.roomId}</div>
+        <button onClick={() => void copyInvite()}>
+          {copied ? <Check size={16} aria-hidden /> : <Link size={16} aria-hidden />}
+          {copied ? "Đã chép link" : "Chép link mời"}
+        </button>
+        <div className="label">
+          Người chơi · {s.roster.length}/{MAX_PLAYERS}
+        </div>
+        {roster}
+        <button className="ghost" onClick={onLeave}>
+          <LogOut size={14} aria-hidden /> Rời phòng
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel room">
+      <header className="room-head">
+        <button className="room-chip" title="Chép link mời" onClick={() => void copyInvite()}>
+          {copied ? <Check size={13} aria-hidden /> : <Link size={13} aria-hidden />}
+          <span className="room-code">{room.roomId}</span>
+        </button>
+        <div className="room-actions">
+          {s.isHost && s.running && (
+            <button className="icon-btn" title={s.paused ? "Chơi tiếp" : "Tạm dừng"} onClick={() => room.send(Messages.pause)}>
+              {s.paused ? <Play size={16} aria-hidden /> : <Pause size={16} aria-hidden />}
+            </button>
+          )}
+          <LeaveButton onLeave={onLeave} confirm={s.running} />
+        </div>
+      </header>
+      {roster}
     </section>
   );
 }

@@ -2,17 +2,31 @@ import { useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Color, Fog, type DirectionalLight, type HemisphereLight } from "three";
 import type { IslandRoom } from "../net.ts";
-import { localPosition } from "./shared.ts";
+import { localPosition, sky } from "./shared.ts";
+import { skyUniforms } from "./Sky.tsx";
 
-const NIGHT = new Color("#0b1a2e");
-const TWILIGHT = new Color("#f2a37a");
-const DAY = new Color("#bfe3f5");
-const SUN_WARM = new Color("#ffc58a");
-const SUN_NOON = new Color("#fff6e5");
+const PALETTE = {
+  dayTop: new Color("#3d8fd1"),
+  dayHorizon: new Color("#c4e4f3"),
+  duskTop: new Color("#2c3c78"),
+  duskHorizon: new Color("#f39a68"),
+  nightTop: new Color("#030814"),
+  nightHorizon: new Color("#0e1c33"),
+};
+const SUN_WARM = new Color("#ffb070");
+const SUN_NOON = new Color("#fff4e0");
 const MOON = new Color("#8fb3ff");
+const GROUND_DAY = new Color("#c2a36b");
+const GROUND_NIGHT = new Color("#1a2130");
+const MOON_SKY = new Color("#4a6aa8");
 
 /** Mặt trời lặn vào lúc này trong ngày (0–1); phần sau là đêm. */
 const SUNSET = 0.82;
+
+function smoothstep(a: number, b: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
 
 /** Giờ trong ngày (0–1) suy ra từ pha hiện tại và thời gian còn lại của pha. */
 export function dayTime(phase: string, remaining: number, duration: number): number {
@@ -31,19 +45,18 @@ export function dayTime(phase: string, remaining: number, duration: number): num
   }
 }
 
-/** Đồng hồ mặt trời: vị trí, màu nắng, màu trời và sương mù chạy theo giờ trong ngày. */
+/** Đồng hồ mặt trời: vị trí, màu nắng, màu trời, sương mù và sao chạy theo giờ trong ngày. */
 export function DayCycle({
   room,
   sun,
-  sky,
+  hemi,
 }: {
   room: IslandRoom;
   sun: RefObject<DirectionalLight | null>;
-  sky: RefObject<HemisphereLight | null>;
+  hemi: RefObject<HemisphereLight | null>;
 }) {
   const scene = useThree((s) => s.scene);
   const timer = useRef({ timeLeft: -1, at: 0 });
-  const color = useRef(new Color());
 
   useFrame(() => {
     const state = room.state;
@@ -55,34 +68,49 @@ export function DayCycle({
 
     const u = Math.min(1, t / SUNSET);
     const elevation = t < SUNSET ? Math.sin(Math.PI * u) : 0;
+    const dusk = smoothstep(0, 0.12, elevation);
+    const day = smoothstep(0.15, 0.5, elevation);
+    const night = t >= SUNSET ? 1 : 1 - smoothstep(0, 0.1, elevation);
+    sky.time = t;
+    sky.elevation = elevation;
+    sky.night = night;
 
-    const c = color.current;
-    if (t >= SUNSET) c.copy(NIGHT);
-    else if (elevation < 0.45) c.copy(NIGHT).lerp(TWILIGHT, Math.min(1, elevation / 0.15)).lerp(DAY, Math.max(0, (elevation - 0.2) / 0.25));
-    else c.copy(DAY);
-    if (scene.background instanceof Color) scene.background.copy(c);
-    if (scene.fog instanceof Fog) scene.fog.color.copy(c);
+    const top = skyUniforms.uTop.value.copy(PALETTE.nightTop).lerp(PALETTE.duskTop, dusk).lerp(PALETTE.dayTop, day);
+    const horizon = skyUniforms.uHorizon.value.copy(PALETTE.nightHorizon).lerp(PALETTE.duskHorizon, dusk).lerp(PALETTE.dayHorizon, day);
+    skyUniforms.uSunColor.value.copy(SUN_WARM).lerp(SUN_NOON, day);
+    skyUniforms.uNight.value = night;
+    if (scene.fog instanceof Fog) {
+      scene.fog.color.copy(horizon);
+      // Ban đêm sương mù dày hơn một chút cho thấy tối.
+      scene.fog.far = 230 - 70 * night;
+    }
+    if (scene.background instanceof Color) scene.background.copy(horizon);
+
+    const azimuth = Math.PI * u;
+    const sunDir = skyUniforms.uSunDir.value.set(Math.cos(azimuth) * 70, 8 + elevation * 60, -25).normalize();
+    skyUniforms.uMoonDir.value.set(-30, 45, 20).normalize();
 
     const light = sun.current;
     if (light) {
       if (t < SUNSET) {
-        light.intensity = 0.2 + 2.2 * Math.pow(elevation, 0.6);
-        light.color.copy(SUN_WARM).lerp(SUN_NOON, elevation);
-        const azimuth = Math.PI * u;
-        light.position.set(
-          localPosition.x + Math.cos(azimuth) * 70,
-          localPosition.y + 8 + elevation * 60,
-          localPosition.z - 25,
-        );
+        light.intensity = 0.6 + 2.1 * Math.pow(elevation, 0.6);
+        light.color.copy(SUN_WARM).lerp(SUN_NOON, day);
+        light.position.copy(localPosition).addScaledVector(sunDir, 80);
       } else {
-        light.intensity = 0.35;
+        light.intensity = 0.45;
         light.color.copy(MOON);
-        light.position.set(localPosition.x - 30, localPosition.y + 60, localPosition.z + 20);
+        light.position.set(localPosition.x - 30, localPosition.y + 45, localPosition.z + 20);
       }
       light.target.position.copy(localPosition);
       light.target.updateMatrixWorld();
     }
-    if (sky.current) sky.current.intensity = 0.25 + 0.9 * elevation;
+    const h = hemi.current;
+    if (h) {
+      // Sáng sớm, chạng vạng và ban đêm vẫn phải đủ sáng để đi lại (đêm có ánh trăng xanh nhạt).
+      h.intensity = 0.75 + 0.25 * dusk + 0.4 * day;
+      h.color.copy(horizon).lerp(MOON_SKY, night * 0.7).lerp(top, 0.25 * day);
+      h.groundColor.copy(GROUND_NIGHT).lerp(GROUND_DAY, 0.3 + 0.7 * day);
+    }
   });
 
   return null;

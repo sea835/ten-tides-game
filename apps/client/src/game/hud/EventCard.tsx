@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Check, Timer, X } from "lucide-react";
 import { content } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -8,6 +9,7 @@ import { gameConfig } from "@tentides/content";
 import { anchorZone, effectiveDc, successChance, type BackgroundId, type Difficulty, type FlawId, type Stats } from "@tentides/rules";
 import { usePrivate } from "../privateStore.ts";
 import { describeCheck, describeOutcome, itemName, signed } from "./format.ts";
+import { Avatar } from "./ui.tsx";
 
 const RESULT_SECONDS = 12;
 
@@ -25,7 +27,17 @@ function Dice({ roll }: { roll: number }) {
       clearTimeout(stop);
     };
   }, [roll]);
-  return <div className={`dice ${face === roll ? "settled" : ""}`}>{face ?? "?"}</div>;
+  const settled = face === roll;
+  return (
+    <div className={settled ? "dice settled" : "dice rolling"} aria-label={settled ? `Ra ${roll}` : "Đang lăn"}>
+      <svg viewBox="0 0 100 100" aria-hidden>
+        <polygon points="50,3 93,27 93,73 50,97 7,73 7,27" className="body" />
+        <polygon points="50,24 80,70 20,70" className="face" />
+        <path d="M50,3 L50,24 M93,27 L50,24 M7,27 L50,24 M93,27 L80,70 M93,73 L80,70 M50,97 L80,70 M50,97 L20,70 M7,73 L20,70 M7,27 L20,70" className="edges" />
+      </svg>
+      <span>{face ?? "?"}</span>
+    </div>
+  );
 }
 
 function ActiveCard({ room, anchorId, cardId, participants, timeLeft }: {
@@ -36,7 +48,9 @@ function ActiveCard({ room, anchorId, cardId, participants, timeLeft }: {
   timeLeft: number;
 }) {
   const card = content.cards.get(cardId);
-  const names = useRoomSnapshot(room, (s) => participants.map((id) => s.players.get(id)?.name ?? "?"));
+  const people = useRoomSnapshot(room, (s) =>
+    participants.map((id) => ({ id, name: s.players.get(id)?.name ?? "?", color: s.players.get(id)?.color ?? "#888" })),
+  );
   // Phiếu của mình để tính tỷ lệ thành công: người bấm chọn chính là người tung xúc xắc.
   const pub = useRoomSnapshot(room, (s) => {
     const p = s.players.get(myId(room));
@@ -83,8 +97,16 @@ function ActiveCard({ room, anchorId, cardId, participants, timeLeft }: {
   return (
     <div className="event-card">
       <div className="event-meta">
-        <span>{names.join(", ")}</span>
-        <span className="event-timer">{timeLeft}s</span>
+        <span className="people">
+          {people.map((p) => (
+            <Avatar key={p.id} name={p.name} color={p.color} size="sm" />
+          ))}
+          {people.map((p) => p.name).join(", ")}
+        </span>
+        <span className={timeLeft <= 10 ? "event-timer urgent" : "event-timer"}>
+          <Timer size={14} aria-hidden />
+          {timeLeft}s
+        </span>
       </div>
       <h2>{card.title}</h2>
       <p className="event-intro">{card.intro}</p>
@@ -98,20 +120,25 @@ function ActiveCard({ room, anchorId, cardId, participants, timeLeft }: {
               <span className="choice-body">
                 <strong>{choice.label}</strong>
                 <span className="choice-check">
-                  <span className={chance >= 60 ? "chance good" : chance >= 35 ? "chance" : "chance bad"}>{chance}%</span>
                   {check.text}
                   {check.bonuses.map((b) => (
-                    <span key={b.label} className={b.have ? "bonus have" : "bonus"}>
+                    <span key={b.label} className={b.have ? "bonus have" : "bonus"} title={b.have ? "Bạn có món này" : "Bạn không có món này"}>
                       {b.label}
                     </span>
                   ))}
+                </span>
+              </span>
+              <span className={chance >= 60 ? "chance good" : chance >= 35 ? "chance" : "chance bad"} title="Tỷ lệ thành công nếu bạn tung">
+                <strong>{chance}%</strong>
+                <span className="chance-bar">
+                  <span style={{ width: `${chance}%` }} />
                 </span>
               </span>
             </button>
           );
         })}
       </div>
-      <p className="event-hint">Ai đang đứng ở đây cũng chọn được. Hết giờ thì tự chọn lựa chọn đầu.</p>
+      <p className="event-hint">Bấm hoặc nhấn phím số. Ai đang đứng ở đây cũng chọn được; hết giờ thì tự chọn lựa chọn đầu.</p>
     </div>
   );
 }
@@ -151,31 +178,44 @@ function ResultCard({ entry, onClose }: { entry: CheckView; onClose: () => void 
   if (!card || !choice) return null;
   const outcome = describeOutcome(entry.success ? choice.onSuccess : choice.onFail);
   return (
-    <div className="event-card result">
+    <div className={`event-card result${revealed ? (entry.success ? " success" : " fail") : ""}`}>
       <div className="event-meta">
         <span>
-          {entry.playerName} chọn: {choice.label}
+          {entry.playerName} chọn: <strong>{choice.label}</strong>
         </span>
       </div>
       <h2>{card.title}</h2>
       <div className="roll">
         <Dice roll={entry.roll} />
         <div className="breakdown">
-          {entry.modifiers.map((m) => (
-            <span key={m.label}>
-              {m.label} {signed(m.value)}
-            </span>
-          ))}
+          <div className="mods">
+            {entry.modifiers.map((m) => (
+              <span key={m.label} className={m.value < 0 ? "mod neg" : "mod"}>
+                {m.label} {signed(m.value)}
+              </span>
+            ))}
+          </div>
           <span className="total">
-            = {revealed ? entry.total : "…"} / cần {entry.dc}
+            Tổng <strong>{revealed ? entry.total : "…"}</strong> / cần {entry.dc}
           </span>
         </div>
       </div>
       {revealed && (
         <>
-          <div className={entry.success ? "verdict success" : "verdict fail"}>{entry.success ? "Thành công" : "Thất bại"}</div>
+          <div className={entry.success ? "verdict success" : "verdict fail"}>
+            {entry.success ? <Check size={18} aria-hidden /> : <X size={18} aria-hidden />}
+            {entry.success ? "Thành công" : "Thất bại"}
+          </div>
           <p className="event-intro">{entry.success ? choice.successText : choice.failText}</p>
-          {outcome.length > 0 && <p className="outcome">{outcome.join(" · ")}</p>}
+          {outcome.length > 0 && (
+            <div className="outcome">
+              {outcome.map((o) => (
+                <span key={o} className={o.startsWith("-") || o.startsWith("mất") || o.startsWith("lạc") ? "effect bad" : "effect"}>
+                  {o}
+                </span>
+              ))}
+            </div>
+          )}
           {entry.rerolledFrom > 0 && <p className="why">Tay cờ bạc tung lại (lần đầu ra {entry.rerolledFrom}).</p>}
           {entry.dropped && <p className="why">Hậu đậu: làm rơi mất {itemName(entry.dropped)}.</p>}
           {entry.exploded && <p className="why">Thuốc súng cạnh diêm phát nổ: −15 Máu!</p>}

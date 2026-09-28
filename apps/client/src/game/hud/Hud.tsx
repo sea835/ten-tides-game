@@ -1,42 +1,54 @@
 import { useEffect } from "react";
 import type { IslandRoom } from "../../net.ts";
 import { listenChat } from "../chatStore.ts";
+import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { BackpackViewer, PackingScreen } from "./Backpack.tsx";
 import { Campfire, GhostChat, LobbyChat } from "./Campfire.tsx";
 import { CharacterCreator } from "./CharacterCreator.tsx";
+import { PhaseClock, PhaseSplash } from "./Clock.tsx";
 import { EventCard } from "./EventCard.tsx";
 import { Feed } from "./Feed.tsx";
-import { EndScreen, InteractPrompt, PausedOverlay, Toast } from "./Overlays.tsx";
+import { EndScreen, InteractPrompt, KeyHints, PausedOverlay, PostureBadge, Toast } from "./Overlays.tsx";
 import { PhaseBanner } from "./PhaseBanner.tsx";
 import { RoomPanel } from "./RoomPanel.tsx";
 import { SelfPanel } from "./SelfPanel.tsx";
 import { StatusPanel } from "./StatusPanel.tsx";
 import { Journal } from "./Story.tsx";
 
+/** Pha có màn riêng che cả màn hình: ẩn các khung HUD đằng sau cho đỡ rối. */
+const FULLSCREEN_PHASES = new Set(["create", "pack", "ended"]);
+
 export function Hud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   useEffect(() => listenChat(room), [room]);
+  const phase = useRoomSnapshot(room, (s) => s.phase);
+  const fullscreen = FULLSCREEN_PHASES.has(phase);
   return (
-    <div className="hud">
-      <RoomPanel room={room} onLeave={onLeave} />
-      <StatusPanel room={room} />
-      <PhaseBanner room={room} />
-      <SelfPanel room={room} />
-      <Feed room={room} />
-      <InteractPrompt room={room} />
-      <EventCard room={room} />
-      <Campfire room={room} />
-      <LobbyChat room={room} />
-      <GhostChat room={room} />
+    <div className={`hud phase-${phase}`}>
+      {!fullscreen && (
+        <>
+          <RoomPanel room={room} onLeave={onLeave} />
+          <PhaseClock room={room} />
+          <StatusPanel room={room} />
+          <PhaseBanner room={room} />
+          <SelfPanel room={room} />
+          <Feed room={room} />
+          <KeyHints />
+          <InteractPrompt room={room} />
+          <PostureBadge />
+          <EventCard room={room} />
+          <Campfire room={room} />
+          <LobbyChat room={room} />
+          <GhostChat room={room} />
+          <BackpackViewer room={room} />
+          <Journal room={room} />
+        </>
+      )}
+      <PhaseSplash room={room} />
       <Toast room={room} />
       <PausedOverlay room={room} />
       <CharacterCreator room={room} />
       <PackingScreen room={room} />
-      <BackpackViewer room={room} />
-      <Journal room={room} />
       <EndScreen room={room} onLeave={onLeave} />
-      <section className="panel help">
-        Bấm vào màn hình để xoay camera · WASD di chuyển · Shift chạy · Space nhảy · E mở sự kiện · B xem balo · J sổ truyện · Enter chat · Esc thả chuột
-      </section>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { isPlausibleMove } from "./movement.ts";
 
 const ground = heightAt(CAMP.x, CAMP.z) + 1;
 const from = { x: CAMP.x, y: ground, z: CAMP.z };
-const move = (dx: number, dz: number, y = ground) => ({ x: CAMP.x + dx, y, z: CAMP.z + dz, rotY: 0, moving: true });
+const move = (dx: number, dz: number, y = ground) => ({ x: CAMP.x + dx, y, z: CAMP.z + dz, rotY: 0, moving: true, sitting: false });
 
 describe("isPlausibleMove", () => {
   it("nhận bước chạy bình thường", () => {

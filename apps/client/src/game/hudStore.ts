@@ -12,9 +12,12 @@ interface HudState {
   sprint: number;
   /** Đang đứng ở chỗ đào kho báu. */
   atDigSite: boolean;
+  /** Đang ngồi; `hidden` là ngồi trong lõi đám cỏ cao, người khác không thấy tên và chấm trên bản đồ. */
+  sitting: boolean;
+  hidden: boolean;
 }
 
-let state: HudState = { zone: "beach", deepWater: false, nearAnchor: null, sprint: 100, atDigSite: false };
+let state: HudState = { zone: "beach", deepWater: false, nearAnchor: null, sprint: 100, atDigSite: false, sitting: false, hidden: false };
 const listeners = new Set<() => void>();
 
 export function getHud(): HudState {

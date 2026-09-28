@@ -1,41 +1,55 @@
 import { useState, type ReactNode } from "react";
+import { Check, ChevronDown, ChevronUp, Play, Sunrise } from "lucide-react";
 import { DIFFICULTY_LABELS } from "@tentides/content";
 import { Messages, NIGHT_SECONDS_OPTIONS } from "@tentides/protocol";
-import { DIFFICULTY_IDS, TOTAL_DAYS, WEATHER_LABELS, type Difficulty, type WeatherId } from "@tentides/rules";
+import { DIFFICULTY_IDS, TOTAL_DAYS, type Difficulty } from "@tentides/rules";
 import { myId, type IslandRoom } from "../../net.ts";
 import { usePrivateStory, useStory } from "./Story.tsx";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
+import { Callout } from "./ui.tsx";
 
 function LobbySettings({ room, isHost, difficulty, nightSeconds }: { room: IslandRoom; isHost: boolean; difficulty: Difficulty; nightSeconds: number }) {
   if (!isHost) {
     return (
-      <div className="hint">
-        Độ khó {DIFFICULTY_LABELS[difficulty].title} · đêm dài {nightSeconds} giây
+      <div className="settings readonly">
+        <span>
+          Độ khó <strong>{DIFFICULTY_LABELS[difficulty].title}</strong>
+        </span>
+        <span>
+          Đêm dài <strong>{nightSeconds} giây</strong>
+        </span>
       </div>
     );
   }
   return (
     <div className="settings">
-      <label>
-        Độ khó
-        <select value={difficulty} onChange={(e) => room.send(Messages.settings, { difficulty: e.target.value as Difficulty })}>
+      <div className="setting">
+        <span className="label">Độ khó</span>
+        <div className="segmented">
           {DIFFICULTY_IDS.map((id) => (
-            <option key={id} value={id}>
-              {DIFFICULTY_LABELS[id].title} · {DIFFICULTY_LABELS[id].detail}
-            </option>
+            <button
+              key={id}
+              className={difficulty === id ? "selected" : ""}
+              title={DIFFICULTY_LABELS[id].detail}
+              onClick={() => room.send(Messages.settings, { difficulty: id })}
+            >
+              {DIFFICULTY_LABELS[id].title}
+            </button>
           ))}
-        </select>
-      </label>
-      <label>
-        Đêm dài
-        <select value={nightSeconds} onChange={(e) => room.send(Messages.settings, { nightSeconds: Number(e.target.value) as 60 })}>
+        </div>
+        <span className="hint">{DIFFICULTY_LABELS[difficulty].detail}</span>
+      </div>
+      <div className="setting">
+        <span className="label">Đêm dài</span>
+        <div className="segmented">
           {NIGHT_SECONDS_OPTIONS.map((n) => (
-            <option key={n} value={n}>
-              {n} giây{n === 60 ? " (có voice call)" : ""}
-            </option>
+            <button key={n} className={nightSeconds === n ? "selected" : ""} onClick={() => room.send(Messages.settings, { nightSeconds: n })}>
+              {n}s
+            </button>
           ))}
-        </select>
-      </label>
+        </div>
+        <span className="hint">{nightSeconds === 60 ? "Hợp với nhóm có voice call" : "Thêm thời gian để chat bằng chữ"}</span>
+      </div>
     </div>
   );
 }
@@ -46,8 +60,6 @@ export function PhaseBanner({ room }: { room: IslandRoom }) {
     phase: st.phase,
     day: st.day,
     timeLeft: st.timeLeft,
-    weather: st.weather as WeatherId | "",
-    volcano: st.volcano,
     isHost: st.hostId === me,
     hostName: st.players.get(st.hostId)?.name ?? "",
     players: st.players.size,
@@ -56,70 +68,87 @@ export function PhaseBanner({ room }: { room: IslandRoom }) {
     readyCount: st.readyCount,
     readyNeeded: st.readyNeeded,
     alive: st.players.get(me)?.alive ?? false,
+    atCampfire: [...st.campers].includes(me),
   }));
   const [readyDay, setReadyDay] = useState(0);
+  const [folded, setFolded] = useState(false);
   const dawnStory = useStory(room, s.day, "dawn");
   const duskStory = useStory(room, s.day, "dusk");
   const myStory = usePrivateStory(s.day);
   const lastDay = s.day === TOTAL_DAYS;
 
   let body: ReactNode = null;
+  let story: ReactNode = null;
   if (s.phase === "lobby") {
     body = (
       <>
-        {s.isHost ? <div>Đợi đủ bạn rồi bắt đầu. Một ngày kéo dài khoảng 5 phút.</div> : <div>Đang chờ {s.hostName} bắt đầu ván…</div>}
+        <h2 className="banner-title">{s.isHost ? "Chuẩn bị ra khơi" : `Đang chờ ${s.hostName} nhổ neo…`}</h2>
+        <div className="hint">2–6 người · 10 ngày trên đảo · một ngày chừng 5 phút · có thể có kẻ phản bội</div>
         <LobbySettings room={room} isHost={s.isHost} difficulty={s.difficulty} nightSeconds={s.nightSeconds} />
         {s.isHost && (
-          <button className="primary" onClick={() => room.send(Messages.start)}>
-            Bắt đầu ván ({s.players} người)
+          <button className="primary big" onClick={() => room.send(Messages.start)}>
+            <Play size={18} aria-hidden /> Bắt đầu ván ({s.players} người)
           </button>
         )}
       </>
     );
   } else if (s.phase === "dawn") {
     const imReady = readyDay === s.day;
-    body = (
+    story = (
       <>
-        <strong>
-          Ngày {s.day} · {s.weather ? WEATHER_LABELS[s.weather] : ""} · Núi lửa {s.volcano}%
-        </strong>
         {dawnStory && <p className="story">{dawnStory}</p>}
         {myStory && <p className="story private-line">{myStory}</p>}
-        <div className="hint">Cột sáng là nơi có chuyện đang chờ. Bàn nhau chia ra đi đâu, còn {s.timeLeft}s là trời sáng hẳn.</div>
-        {lastDay && <div className="warning">Ngày cuối: tối nay thuyền rời bến, núi lửa phun. Ai không ở trại sẽ bị bỏ lại.</div>}
+      </>
+    );
+    body = (
+      <>
+        <div className="hint">Cột sáng là nơi có chuyện đang chờ. Bàn nhau chia ra đi đâu trước khi trời sáng hẳn.</div>
+        {lastDay && <Callout tone="danger">Ngày cuối: tối nay thuyền rời bến, núi lửa phun. Ai không ở trại sẽ bị bỏ lại.</Callout>}
         {s.alive && (
           <button
-            className={imReady ? "primary" : ""}
+            className={imReady ? "ready done" : "primary"}
             onClick={() => {
               setReadyDay(imReady ? 0 : s.day);
               room.send(Messages.ready);
             }}
           >
-            {imReady ? "Đã sẵn sàng" : "Sẵn sàng lên đường"} ({s.readyCount}/{s.readyNeeded})
+            {imReady ? <Check size={16} aria-hidden /> : <Sunrise size={16} aria-hidden />}
+            {imReady ? "Đã sẵn sàng" : "Sẵn sàng lên đường"}
+            <span className="count">
+              {s.readyCount}/{s.readyNeeded}
+            </span>
           </button>
         )}
       </>
     );
   } else if (s.phase === "dusk") {
     body = (
-      <>
-        <strong>{lastDay ? `Thuyền rời bến trong ${s.timeLeft}s!` : `Hoàng hôn · về trại trong ${s.timeLeft}s`}</strong>
-        <div>
-          {lastDay
-            ? "Ai không có mặt ở trại lúc thuyền đi sẽ bị bỏ lại cùng núi lửa."
-            : "Ai ở ngoài lúc trời tối phải ngủ ngoài: mất sức, không được ăn, không được ngồi bàn với cả trại."}
-        </div>
-      </>
+      <Callout tone={lastDay ? "danger" : "caution"}>
+        <strong>{lastDay ? `Thuyền rời bến trong ${s.timeLeft}s!` : `Về trại trong ${s.timeLeft}s`}</strong>
+        <br />
+        {lastDay
+          ? "Ai không có mặt ở trại lúc thuyền đi sẽ bị bỏ lại cùng núi lửa."
+          : "Ai ở ngoài lúc trời tối phải ngủ ngoài: mất sức, không được ăn, không được ngồi bàn với cả trại."}
+      </Callout>
     );
-  } else if (s.phase === "night") {
-    body = (
-      <>
-        <strong>Đêm · còn {s.timeLeft}s</strong>
-        {duskStory ? <p className="story">{duskStory}</p> : <div>Quây quần bên đống lửa: bàn chuyện, chia khẩu phần, và quyết định có trói ai không.</div>}
-      </>
-    );
+  } else if (s.phase === "night" && !(s.alive && s.atCampfire)) {
+    // Người ngồi quanh đống lửa đọc truyện ngay trong khung lửa trại.
+    story = duskStory ? <p className="story">{duskStory}</p> : null;
   }
-  // Hai pha chuẩn bị có màn riêng che cả màn hình.
-  if (!body || s.phase === "create" || s.phase === "pack") return null;
-  return <section className="panel banner">{body}</section>;
+
+  if (!body && !story) return null;
+  return (
+    <section className={`panel banner phase-${s.phase}${folded ? " folded" : ""}`}>
+      {story && (
+        <div className="banner-story">
+          <button className="fold" title={folded ? "Mở lời kể" : "Thu gọn lời kể"} onClick={() => setFolded(!folded)}>
+            {folded ? <ChevronDown size={16} aria-hidden /> : <ChevronUp size={16} aria-hidden />}
+            {folded ? "Lời kể hôm nay" : null}
+          </button>
+          {!folded && story}
+        </div>
+      )}
+      {body}
+    </section>
+  );
 }

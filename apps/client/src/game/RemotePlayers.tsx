@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Callbacks } from "@colyseus/sdk";
 import type { Group } from "three";
 import type { PlayerState } from "@tentides/protocol";
+import { inTallGrass } from "@tentides/content";
 import { myId, type IslandRoom } from "../net.ts";
 import { Character } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
@@ -30,6 +31,8 @@ function RemotePlayer({ id, player, carrying }: { id: string; player: PlayerStat
   const avatar = useRef<Group>(null);
   const [connected, setConnected] = useState(player.connected);
   const [alive, setAlive] = useState(player.alive);
+  // Ngồi trong lõi đám cỏ cao là đang nấp: giấu bảng tên (bản đồ nhỏ cũng giấu chấm).
+  const [pose, setPose] = useState<"stand" | "sit" | "hidden">("stand");
   const bubble = useBubble(id);
 
   useFrame((_, dt) => {
@@ -47,21 +50,25 @@ function RemotePlayer({ id, player, carrying }: { id: string; player: PlayerStat
     }
     if (player.connected !== connected) setConnected(player.connected);
     if (player.alive !== alive) setAlive(player.alive);
+    const nextPose = !player.sitting ? "stand" : inTallGrass(player.x, player.z) ? "hidden" : "sit";
+    if (nextPose !== pose) setPose(nextPose);
   });
 
   return (
     <group ref={root} position={[player.x, player.y, player.z]}>
-      <Character ref={avatar} color={player.color} opacity={alive && connected ? 1 : 0.35} carrying={carrying} />
+      <Character ref={avatar} color={player.color} opacity={alive && connected ? 1 : 0.35} carrying={carrying} motion={() => player} />
       {bubble && (
-        <Html position={[0, 2.9, 0]} center zIndexRange={[5, 0]} className="bubble">
+        <Html position={[0, 2.9, 0]} center zIndexRange={[5, 0]} className="bubble" style={{ "--c": player.color } as CSSProperties}>
           {bubble}
         </Html>
       )}
-      <Html position={[0, 2.3, 0]} center zIndexRange={[5, 0]} className="nametag">
-        {player.name}
-        {!alive ? " (đã gục)" : !connected && " (mất kết nối)"}
-        {carrying && " · vác rương"}
-      </Html>
+      {pose !== "hidden" && (
+        <Html position={[0, pose === "sit" ? 1.75 : 2.3, 0]} center zIndexRange={[5, 0]} className="nametag" style={{ "--c": player.color } as CSSProperties}>
+          {player.name}
+          {!alive ? " (đã gục)" : !connected && " (mất kết nối)"}
+          {carrying && " · vác rương"}
+        </Html>
+      )}
     </group>
   );
 }

@@ -139,6 +139,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       player.z = move.z;
       player.rotY = move.rotY;
       player.moving = move.moving;
+      player.sitting = move.sitting && !move.moving;
     });
 
     this.onMessage(Messages.settings, SettingsMessage, (client, settings) => {

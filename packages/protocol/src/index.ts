@@ -15,7 +15,7 @@ export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const ROOM_CODE_LENGTH = 4;
 
 /** Tốc độ chạy tối đa (m/s). Server dùng để loại vị trí bất thường. */
-export const MAX_RUN_SPEED = 9;
+export const MAX_RUN_SPEED = 16;
 
 /** Thời lượng mỗi pha (giây), theo PROJECT.md. Server có thể co giãn bằng biến PHASE_SCALE khi dev. */
 export const PHASE_SECONDS = {
@@ -51,6 +51,8 @@ export const PlayerState = schema(
     z: t.float32().default(0),
     rotY: t.float32().default(0),
     moving: t.boolean().default(false),
+    /** Đang ngồi (nghỉ, hoặc nấp trong cỏ cao). */
+    sitting: t.boolean().default(false),
     connected: t.boolean().default(true),
     // Phiếu nhân vật, chép từ engine luật sau mỗi hành động.
     background: t.string().default(""),
@@ -293,6 +295,7 @@ export const MoveMessage = z.object({
   z: finite,
   rotY: finite,
   moving: z.boolean(),
+  sitting: z.boolean(),
 });
 export type MoveMessage = z.infer<typeof MoveMessage>;
 

@@ -1,4 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bomb,
+  Check,
+  Coins,
+  Cross,
+  Droplet,
+  Eye,
+  Flame,
+  Gem,
+  Hammer,
+  Lamp,
+  Map as MapIcon,
+  Package,
+  Sparkles,
+  Swords,
+  Tent,
+  Utensils,
+  Weight,
+  type LucideIcon,
+} from "lucide-react";
 import { ADJACENCY_LABELS, content, gameConfig } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import {
@@ -17,6 +37,7 @@ import { isTyping } from "../input.ts";
 import { usePrivate } from "../privateStore.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { Bar } from "./Bar.tsx";
+import { Callout, clock } from "./ui.tsx";
 
 const CELL = 24;
 const lookup = lookupFrom(gameConfig.items);
@@ -43,8 +64,41 @@ function members(pair: (typeof ADJACENCY_PAIRS)[number]): readonly string[] {
   return [pair.a, pair.b];
 }
 
+const TAG_ICONS: Record<string, LucideIcon> = {
+  tool: Hammer,
+  light: Lamp,
+  food: Utensils,
+  water: Droplet,
+  clue: MapIcon,
+  weapon: Swords,
+  medical: Cross,
+  luxury: Gem,
+  mystery: Sparkles,
+  shelter: Tent,
+  fire: Flame,
+  explosive: Bomb,
+  observe: Eye,
+};
+
 function itemColor(itemId: string): string {
   return TAG_COLORS[lookup(itemId)?.tags[0] ?? ""] ?? "#5c677d";
+}
+
+function ItemIcon({ itemId, size = 14 }: { itemId: string; size?: number }) {
+  const Icon = TAG_ICONS[lookup(itemId)?.tags[0] ?? ""] ?? Package;
+  return <Icon size={size} aria-hidden />;
+}
+
+/** Hình dáng thu nhỏ của món đồ (số ô ngang x dọc), để chọn mua mà hình dung được chỗ trong balo. */
+function Shape({ itemId }: { itemId: string }) {
+  const def = lookup(itemId);
+  if (!def) return null;
+  const unit = Math.min(6, 30 / Math.max(def.size.w, def.size.h));
+  return (
+    <span className="shape" style={{ width: 30, height: 30 }}>
+      <span style={{ width: def.size.w * unit, height: def.size.h * unit, background: itemColor(itemId) }} />
+    </span>
+  );
 }
 
 interface Drag {
@@ -128,6 +182,7 @@ function Grid({
         className="compartment"
         style={{ left: COMPARTMENT.x * CELL, top: COMPARTMENT.y * CELL, width: COMPARTMENT.size * CELL, height: COMPARTMENT.size * CELL }}
       >
+        <Eye size={14} aria-hidden />
         Ngăn bí mật
       </div>
       {bag.map((p) => {
@@ -155,7 +210,8 @@ function Grid({
             }}
             title={content.items.get(p.itemId)?.name}
           >
-            <span>{content.items.get(p.itemId)?.name}</span>
+            {w * h > 1 && <ItemIcon itemId={p.itemId} size={w * h >= 4 ? 16 : 12} />}
+            {w * h >= 3 && <span>{content.items.get(p.itemId)?.name}</span>}
           </div>
         );
       })}
@@ -176,7 +232,10 @@ function PairsList({ bag }: { bag: Placement[] }) {
     <>
       {pairs.map((id) => (
         <div key={id} className="pair">
-          <strong>{ADJACENCY_LABELS[id]?.title}</strong> · {ADJACENCY_LABELS[id]?.effect}
+          <Sparkles size={14} aria-hidden />
+          <span>
+            <strong>{ADJACENCY_LABELS[id]?.title}</strong> · {ADJACENCY_LABELS[id]?.effect}
+          </span>
         </div>
       ))}
     </>
@@ -230,32 +289,44 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
 
   return (
     <div className="prep-screen">
-      <div className="panel prep-card packing">
+      <div className="prep-card packing">
         <header className="prep-header">
-          <h2>Xếp balo</h2>
-          <span className="hint">Kéo đồ vào lưới · R hoặc chuột phải để xoay · nhấp đúp để nhấc ra khay</span>
-          <span className="event-timer">{s.timeLeft}s</span>
+          <div>
+            <div className="kicker">Trước khi lên tàu</div>
+            <h2>Xếp balo</h2>
+          </div>
+          <span className="hint keys-inline">
+            Kéo đồ vào lưới · <kbd>R</kbd> hoặc chuột phải để xoay · nhấp đúp để nhấc ra khay
+          </span>
+          <span className={s.timeLeft <= 15 ? "event-timer urgent" : "event-timer"}>{clock(s.timeLeft)}</span>
         </header>
         <div className="packing-body">
           <section className="shop">
             <div className="label">Cửa hàng ván này</div>
-            {s.shop.map((itemId) => {
-              const def = content.items.get(itemId)!;
-              return (
-                <div key={itemId} className="shop-item" onPointerEnter={() => setPointing(itemId)} onPointerLeave={() => setPointing(null)}>
-                  <span className="swatch-mini" style={{ background: itemColor(itemId) }} />
-                  <div className="shop-info">
-                    <strong>{def.name}</strong>
-                    <span className="hint">
-                      {def.size.w}x{def.size.h} · {def.weightKg} kg
-                    </span>
+            <div className="shop-list">
+              {s.shop.map((itemId) => {
+                const def = content.items.get(itemId)!;
+                const owned = view.bag.filter((b) => b.itemId === itemId).length + view.tray.filter((t) => t.itemId === itemId).length;
+                return (
+                  <div key={itemId} className="shop-item" onPointerEnter={() => setPointing(itemId)} onPointerLeave={() => setPointing(null)}>
+                    <Shape itemId={itemId} />
+                    <div className="shop-info">
+                      <strong>
+                        {def.name}
+                        {owned > 0 && <span className="owned">×{owned}</span>}
+                      </strong>
+                      <span className="hint">
+                        {def.size.w}x{def.size.h} ô · {def.weightKg} kg
+                      </span>
+                    </div>
+                    <button className="buy" disabled={view.budget < def.price} onClick={() => room.send(Messages.buy, { itemId })}>
+                      <Coins size={13} aria-hidden />
+                      {def.price}
+                    </button>
                   </div>
-                  <button disabled={view.budget < def.price} onClick={() => room.send(Messages.buy, { itemId })}>
-                    {def.price} xu
-                  </button>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </section>
 
           <section>
@@ -280,13 +351,23 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
                 <ItemTip itemId={pointing} />
               </>
             )}
-            <div className="label">Ngân sách</div>
-            <div className="big-number">{view.budget} xu</div>
-            <div className="label">
-              Trọng lượng {view.weightKg}/{view.capacityKg} kg
+            <div className="meters">
+              <div className="meter">
+                <Coins size={16} aria-hidden />
+                <span className="label">Ngân sách</span>
+                <span className="big-number">{view.budget} xu</span>
+              </div>
+              <div className="meter">
+                <Weight size={16} aria-hidden />
+                <span className="label">Trọng lượng</span>
+                <span className={overweight ? "big-number danger-text" : "big-number"}>
+                  {view.weightKg}
+                  <small>/{view.capacityKg} kg</small>
+                </span>
+                <Bar value={view.weightKg} max={view.capacityKg} color={overweight ? "var(--danger)" : "var(--stamina)"} />
+              </div>
             </div>
-            <Bar value={view.weightKg} max={view.capacityKg} color={overweight ? "#e4572e" : "#2a9d8f"} />
-            {overweight && <div className="warning">Quá tải: đi chậm, Thể lực/Khéo léo −2, đói nhanh hơn.</div>}
+            {overweight && <Callout tone="danger">Quá tải: đi chậm, Thể lực/Khéo léo −2, đói nhanh hơn.</Callout>}
             <div className="label">Khay tạm · chưa xếp</div>
             <div className="tray">
               {view.tray.length === 0 && <div className="hint">Trống</div>}
@@ -300,6 +381,7 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
                       setDrag({ uid: t.uid, itemId: t.itemId, rot: 0 });
                     }}
                   >
+                    <ItemIcon itemId={t.itemId} />
                     {content.items.get(t.itemId)?.name}
                   </button>
                   <button className="ghost" title="Bán lại" onClick={() => room.send(Messages.sell, { uid: t.uid })}>
@@ -308,21 +390,24 @@ export function PackingScreen({ room }: { room: IslandRoom }) {
                 </div>
               ))}
             </div>
-            {view.tray.length > 0 && <div className="warning">Hết giờ mà còn trong khay thì bị bỏ lại trên tàu.</div>}
+            {view.tray.length > 0 && <Callout tone="caution">Hết giờ mà còn trong khay thì bị bỏ lại trên tàu.</Callout>}
             <div className="label">Hiệu ứng đặt cạnh nhau</div>
             <PairsList bag={view.bag} />
-            <div className="hint">Đồ ăn trong balo được góp vào kho chung khi lên đảo.</div>
           </section>
         </div>
         <footer className="prep-footer">
-          <span className="hint">{s.readyCount}/{s.readyNeeded} người đã xếp xong</span>
+          <span className="hint">Đồ ăn trong balo được góp vào kho chung khi lên đảo.</span>
+          <span className="ready-count">
+            {s.readyCount}/{s.readyNeeded} người đã xếp xong
+          </span>
           <button
-            className={done ? "" : "primary"}
+            className={done ? "ready done" : "primary"}
             onClick={() => {
               setDone(!done);
               room.send(Messages.ready);
             }}
           >
+            {done && <Check size={16} aria-hidden />}
             {done ? "Xếp tiếp" : "Xong, lên đảo"}
           </button>
         </footer>
@@ -348,11 +433,11 @@ export function BackpackViewer({ room }: { room: IslandRoom }) {
   if (!open || !playing || !view) return null;
   return (
     <div className="prep-screen" onClick={() => setOpen(false)}>
-      <div className="panel prep-card viewer" onClick={(e) => e.stopPropagation()}>
+      <div className="prep-card viewer" onClick={(e) => e.stopPropagation()}>
         <header className="prep-header">
           <h2>Balo của bạn</h2>
           <span className="hint">
-            {view.weightKg}/{view.capacityKg} kg · B hoặc Esc để đóng
+            {view.weightKg}/{view.capacityKg} kg · <kbd>B</kbd> hoặc <kbd>Esc</kbd> để đóng
           </span>
         </header>
         <div className="packing-body">

@@ -183,3 +183,61 @@ export const TREASURE_SITES: readonly TreasureSite[] = [
   site("west_cove", "Vịnh nhỏ phía tây", beachPoint(185, 12)),
   site("south_dunes", "Đụn cát phía nam", beachPoint(110, 10)),
 ];
+
+export interface GrassPatch {
+  x: number;
+  z: number;
+  radius: number;
+}
+
+/**
+ * Các đám cỏ cao (cao hơn người ngồi, thấp hơn người đứng). Ngồi xuống trong đám cỏ là nấp:
+ * người khác không thấy tên và chấm của mình trên bản đồ. Vị trí cố định theo seed của map để
+ * mọi máy tính ra cùng một kết quả. Tránh trại, điểm sự kiện và chỗ giấu kho báu.
+ */
+function generateTallGrass(count: number, seed: RngState): GrassPatch[] {
+  const patches: GrassPatch[] = [];
+  let rng = seed;
+  const next = () => {
+    const r = nextFloat(rng);
+    rng = r.rng;
+    return r.value;
+  };
+  const clear = (x: number, z: number, radius: number) =>
+    Math.hypot(x - CAMP.x, z - CAMP.z) > CAMP_RADIUS + radius + 4 &&
+    ANCHORS.every((a) => Math.hypot(a.x - x, a.z - z) > radius + 5) &&
+    TREASURE_SITES.every((t) => Math.hypot(t.x - x, t.z - z) > radius + 4) &&
+    patches.every((p) => Math.hypot(p.x - x, p.z - z) > p.radius + radius + 3);
+
+  // Lau sậy quanh bờ hồ.
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.3;
+    const radius = 3 + next() * 1.5;
+    const x = LAKE.x + Math.cos(a) * (LAKE.radius + 5);
+    const z = LAKE.z + Math.sin(a) * (LAKE.radius + 5);
+    if (heightAt(x, z) > 0.3 && clear(x, z, radius)) patches.push({ x, z, radius });
+  }
+  // Đám cỏ tranh rải khắp vùng đất trong đảo.
+  for (let attempts = 0; patches.length < count && attempts < count * 40; attempts++) {
+    const angle = next() * Math.PI * 2;
+    const x0 = Math.cos(angle);
+    const z0 = Math.sin(angle);
+    const r = 20 + next() * 70;
+    const x = x0 * r;
+    const z = z0 * r;
+    const radius = 3.5 + next() * 4;
+    const inland = shoreRadius(x, z) - Math.hypot(x, z);
+    if (inland < 16 || zoneAt(x, z) === "volcano" || heightAt(x, z) < 0.8 || heightAt(x, z) > 7) continue;
+    if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.radius + 3) continue;
+    if (!clear(x, z, radius)) continue;
+    patches.push({ x, z, radius });
+  }
+  return patches;
+}
+
+export const TALL_GRASS: readonly GrassPatch[] = generateTallGrass(30, 20260928);
+
+/** Đang đứng trong lõi một đám cỏ cao (mép đám cỏ thưa, chưa đủ che). */
+export function inTallGrass(x: number, z: number): boolean {
+  return TALL_GRASS.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius * 0.85);
+}
