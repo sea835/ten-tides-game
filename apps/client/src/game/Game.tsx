@@ -1,28 +1,43 @@
 import { Suspense, useEffect, useRef } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
-import type { DirectionalLight } from "three";
+import { ANCHORS } from "@tentides/content";
+import type { DirectionalLight, HemisphereLight } from "three";
 import type { IslandRoom } from "../net.ts";
-import { Hud } from "./Hud.tsx";
+import { Anchors } from "./Anchors.tsx";
+import { DayCycle } from "./DayCycle.tsx";
+import { Hud } from "./hud/Hud.tsx";
 import { Island } from "./Island.tsx";
 import { LocalPlayer } from "./LocalPlayer.tsx";
 import { RemotePlayers } from "./RemotePlayers.tsx";
-import { bindInput } from "./input.ts";
+import { bindInput, look } from "./input.ts";
+import { localPosition } from "./shared.ts";
 
 const SKY = "#bfe3f5";
 
+/** Móc debug khi dev: xem room, vị trí, hướng nhìn và camera trong console trình duyệt. */
+function DebugHook({ room }: { room: IslandRoom }) {
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, anchors: ANCHORS } });
+  }, [room, camera]);
+  return null;
+}
+
 export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const sun = useRef<DirectionalLight>(null);
+  const sky = useRef<HemisphereLight>(null);
   const wrapper = useRef<HTMLDivElement>(null);
 
   useEffect(() => bindInput(wrapper.current!), []);
+
 
   return (
     <div className="game" ref={wrapper}>
       <Canvas shadows="percentage" dpr={[1, 1.5]} camera={{ fov: 60, near: 0.1, far: 400 }}>
         <color attach="background" args={[SKY]} />
         <fog attach="fog" args={[SKY, 70, 230]} />
-        <hemisphereLight args={["#e0f4ff", "#c2a36b", 1.1]} />
+        <hemisphereLight ref={sky} args={["#e0f4ff", "#c2a36b", 1.1]} />
         <directionalLight
           ref={sun}
           intensity={2.2}
@@ -37,9 +52,12 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
         <Suspense fallback={null}>
           <Physics>
             <Island />
-            <LocalPlayer room={room} sun={sun} />
+            <LocalPlayer room={room} />
           </Physics>
           <RemotePlayers room={room} />
+          <Anchors room={room} />
+          <DayCycle room={room} sun={sun} sky={sky} />
+          <DebugHook room={room} />
         </Suspense>
       </Canvas>
       <Hud room={room} onLeave={onLeave} />

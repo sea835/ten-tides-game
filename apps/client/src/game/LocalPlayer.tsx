@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CapsuleCollider, RigidBody, useRapier, type RapierCollider, type RapierRigidBody } from "@react-three/rapier";
-import { Vector3, type DirectionalLight, type Group } from "three";
-import { heightAt, zoneAt } from "@tentides/content";
+import { Vector3, type Group } from "three";
+import { ANCHORS, ANCHOR_TRIGGER_RADIUS, CAMP, CAMP_RADIUS, heightAt, zoneAt } from "@tentides/content";
 import { MAX_RUN_SPEED, Messages, type CorrectMessage, type MoveMessage } from "@tentides/protocol";
 import type { IslandRoom } from "../net.ts";
 import { Character } from "./Character.tsx";
-import { setHud } from "./hudStore.ts";
-import { keys, look } from "./input.ts";
+import { getHud, setHud } from "./hudStore.ts";
+import { isTyping, keys, look } from "./input.ts";
+import { localPosition } from "./shared.ts";
+import { isBusy } from "./useRoomSnapshot.ts";
 
 const WALK_SPEED = 4.5;
 const GRAVITY = 25;
@@ -15,6 +17,7 @@ const JUMP_SPEED = 8;
 /** Nước sâu hơn mức này thì chưa lội qua được (bơi sẽ làm sau, gắn với sức bền). */
 const MAX_WADE_DEPTH = 1.2;
 const CAMERA_DISTANCE = 7;
+const CAMERA_MIN_DISTANCE = 1.2;
 const SEND_INTERVAL = 1 / 15;
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.4;
@@ -22,14 +25,14 @@ const FEET_OFFSET = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS;
 
 type CharacterController = ReturnType<ReturnType<typeof useRapier>["world"]["createCharacterController"]>;
 
-export function LocalPlayer({ room, sun }: { room: IslandRoom; sun: React.RefObject<DirectionalLight | null> }) {
+export function LocalPlayer({ room }: { room: IslandRoom }) {
   const me = room.state.players.get(room.sessionId)!;
   const spawn = useMemo(() => new Vector3(me.x, me.y, me.z), [me]);
 
   const body = useRef<RapierRigidBody>(null);
   const collider = useRef<RapierCollider>(null);
   const avatar = useRef<Group>(null);
-  const { world } = useRapier();
+  const { world, rapier } = useRapier();
 
   // Tạo và huỷ trong cùng một effect: StrictMode chạy effect hai lần, nếu tạo bằng useMemo
   // thì lần dọn dẹp đầu sẽ giải phóng controller mà lần chạy sau vẫn dùng.
@@ -47,17 +50,30 @@ export function LocalPlayer({ room, sun }: { room: IslandRoom; sun: React.RefObj
     };
   }, [world]);
 
-  const sim = useRef({ vy: 0, grounded: false, facing: me.rotY, sendTimer: 0, lastSent: "" });
+  const sim = useRef({ vy: 0, grounded: false, facing: me.rotY, sendTimer: 0, lastSent: "", started: false });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
+  const camDir = useMemo(() => new Vector3(), []);
 
+  // Server từ chối vị trí thì dịch về đúng chỗ server giữ.
+  useEffect(
+    () =>
+      room.onMessage(Messages.correct, (at: CorrectMessage) => {
+        body.current?.setTranslation({ x: at.x, y: at.y + FEET_OFFSET, z: at.z }, true);
+        sim.current.vy = 0;
+      }),
+    [room],
+  );
+
+  // Nhấn E khi đứng cạnh một điểm sự kiện để mở thẻ. Server kiểm tra lại khoảng cách.
   useEffect(() => {
-    look.yaw = me.rotY + Math.PI;
-    return room.onMessage(Messages.correct, (at: CorrectMessage) => {
-      body.current?.setTranslation({ x: at.x, y: at.y + FEET_OFFSET, z: at.z }, true);
-      sim.current.vy = 0;
-    });
-  }, [room, me]);
+    const onKey = (e: KeyboardEvent) => {
+      const anchorId = getHud().nearAnchor;
+      if (e.code === "KeyE" && !e.repeat && !isTyping(e) && anchorId) room.send(Messages.trigger, { anchorId });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [room]);
 
   useFrame((state, rawDt) => {
     const rb = body.current;
@@ -66,15 +82,26 @@ export function LocalPlayer({ room, sun }: { room: IslandRoom; sun: React.RefObj
     if (!rb || !col || !controller) return;
     const dt = Math.min(rawDt, 0.05);
     const s = sim.current;
+    const firstFrame = !s.started;
+    if (firstFrame) {
+      // Khung hình đầu tiên: đặt camera sau lưng nhân vật, nhìn cùng hướng với nhân vật.
+      s.started = true;
+      look.yaw = me.rotY + Math.PI;
+    }
+    // Đang trong sự kiện thì đứng yên tại chỗ, người khác vẫn đi tiếp.
+    const frozen = isBusy(room.state, room.sessionId);
 
     const forward = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const strafe = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
     const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    const inputScale = frozen ? 0 : 1;
     const speed = running ? MAX_RUN_SPEED : WALK_SPEED;
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
     let mx = -Math.sin(look.yaw) * forward + Math.cos(look.yaw) * strafe;
     let mz = -Math.cos(look.yaw) * forward - Math.sin(look.yaw) * strafe;
+    mx *= inputScale;
+    mz *= inputScale;
     const len = Math.hypot(mx, mz);
     const moving = len > 0;
     if (moving) {
@@ -86,12 +113,16 @@ export function LocalPlayer({ room, sun }: { room: IslandRoom; sun: React.RefObj
     const pos = rb.translation();
     const depth = -heightAt(pos.x + mx, pos.z + mz);
     const blockedByWater = depth > MAX_WADE_DEPTH && depth > -heightAt(pos.x, pos.z);
-    if (blockedByWater) {
+    // Bị trói thì chỉ quanh quẩn trong trại (server cũng chặn).
+    const tied = room.state.players.get(room.sessionId)?.tied ?? false;
+    const campDist = (x: number, z: number) => Math.hypot(x - CAMP.x, z - CAMP.z);
+    const leavingCamp = tied && campDist(pos.x + mx, pos.z + mz) > CAMP_RADIUS - 0.5 && campDist(pos.x + mx, pos.z + mz) > campDist(pos.x, pos.z);
+    if (blockedByWater || leavingCamp) {
       mx = 0;
       mz = 0;
     }
 
-    if (s.grounded && keys.has("Space")) s.vy = JUMP_SPEED;
+    if (s.grounded && !frozen && keys.has("Space")) s.vy = JUMP_SPEED;
     s.vy -= GRAVITY * dt;
 
     controller.computeColliderMovement(col, { x: mx, y: s.vy * dt, z: mz });
@@ -124,20 +155,25 @@ export function LocalPlayer({ room, sun }: { room: IslandRoom; sun: React.RefObj
       camTarget.y + Math.sin(look.pitch) * CAMERA_DISTANCE,
       camTarget.z + Math.cos(look.yaw) * horizontal,
     );
+    // Có vật cản (thân cây, vách hang, sườn đồi) giữa nhân vật và camera thì kéo camera lại gần.
+    camDir.subVectors(camPos, camTarget).normalize();
+    const hit = world.castRay(new rapier.Ray(camTarget, camDir), CAMERA_DISTANCE, true, undefined, undefined, col);
+    const blocked = hit !== null;
+    if (hit) camPos.copy(camTarget).addScaledVector(camDir, Math.max(CAMERA_MIN_DISTANCE, hit.timeOfImpact - 0.3));
     const minCamY = Math.max(heightAt(camPos.x, camPos.z), 0) + 0.5;
     if (camPos.y < minCamY) camPos.y = minCamY;
-    state.camera.position.lerp(camPos, Math.min(1, dt * 10));
+    // Khung hình đầu đặt thẳng vào chỗ, không để camera bay từ giữa đảo tới.
+    if (blocked || firstFrame) state.camera.position.copy(camPos);
+    else state.camera.position.lerp(camPos, Math.min(1, dt * 10));
     state.camera.lookAt(camTarget);
 
-    // Mặt trời đi theo người chơi để shadow map nhỏ vẫn đủ nét.
-    const light = sun.current;
-    if (light) {
-      light.position.set(next.x + 40, feetY + 60, next.z + 25);
-      light.target.position.set(next.x, feetY, next.z);
-      light.target.updateMatrixWorld();
-    }
+    localPosition.set(next.x, feetY, next.z);
 
-    setHud({ zone: zoneAt(next.x, next.z), deepWater: blockedByWater });
+    setHud({
+      zone: zoneAt(next.x, next.z),
+      deepWater: blockedByWater,
+      nearAnchor: frozen ? null : nearestOpenAnchor(room, next.x, next.z),
+    });
 
     s.sendTimer += dt;
     if (s.sendTimer >= SEND_INTERVAL) {
@@ -159,4 +195,21 @@ export function LocalPlayer({ room, sun }: { room: IslandRoom; sun: React.RefObj
       </group>
     </RigidBody>
   );
+}
+
+function nearestOpenAnchor(room: IslandRoom, x: number, z: number): string | null {
+  if (room.state.phase !== "explore") return null;
+  let best: string | null = null;
+  let bestDist = ANCHOR_TRIGGER_RADIUS;
+  for (const [id, placed] of room.state.anchors) {
+    if (placed.status !== "open") continue;
+    const anchor = ANCHORS.find((a) => a.id === id);
+    if (!anchor) continue;
+    const d = Math.hypot(anchor.x - x, anchor.z - z);
+    if (d <= bestDist) {
+      best = id;
+      bestDist = d;
+    }
+  }
+  return best;
 }

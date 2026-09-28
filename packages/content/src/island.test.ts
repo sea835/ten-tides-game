@@ -23,3 +23,23 @@ describe("island", () => {
     expect(PALMS.length).toBeGreaterThanOrEqual(40);
   });
 });
+
+describe("anchors", () => {
+  it("mỗi điểm sự kiện nằm đúng vùng dự kiến và trên mặt nước", async () => {
+    const { ANCHORS } = await import("./island.ts");
+    const expected: Record<string, string> = {
+      coconut_grove: "beach",
+      shore_drift: "beach",
+      lake_shore: "lake",
+      cave_mouth: "cave",
+      cave_tunnel: "cave",
+      volcano_slope: "volcano",
+      crater_rim: "volcano",
+    };
+    for (const a of ANCHORS) {
+      expect(a.zone, a.id).toBe(expected[a.type]);
+      expect(a.y, a.id).toBeGreaterThan(0.3);
+    }
+    expect(new Set(ANCHORS.map((a) => a.id)).size).toBe(ANCHORS.length);
+  });
+});

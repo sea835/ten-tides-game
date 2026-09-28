@@ -7,14 +7,21 @@ export const look = { yaw: 0, pitch: 0.35 };
 
 const MOUSE_SENSITIVITY = 0.0025;
 
+/** Phím gõ vào ô chat không được tính là điều khiển nhân vật. */
+export function isTyping(e: KeyboardEvent): boolean {
+  return e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+}
+
 export function bindInput(canvas: HTMLElement): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement) return;
+    if (isTyping(e)) return;
     keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
   const onBlur = () => keys.clear();
-  const onClick = () => {
+  const onClick = (e: MouseEvent) => {
+    // Chỉ khoá chuột khi bấm vào cảnh 3D, không phải khi bấm nút trên HUD.
+    if (!(e.target instanceof HTMLCanvasElement)) return;
     if (document.pointerLockElement !== canvas) void canvas.requestPointerLock?.();
   };
   const onMouseMove = (e: MouseEvent) => {

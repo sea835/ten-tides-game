@@ -3,7 +3,7 @@
 // và biết người chơi đang ở vùng nào. Map cố định; thứ xáo theo seed sẽ nằm ở chỗ khác.
 // Đơn vị: mét. Trục x hướng đông, trục z hướng nam (trại ở phía nam).
 
-import { nextFloat, type RngState, type ZoneId } from "@tentides/rules";
+import { nextFloat, type AnchorDef, type RngState, type ZoneId } from "@tentides/rules";
 
 export const WATER_LEVEL = 0;
 export const MAP_HALF_SIZE = 150;
@@ -119,3 +119,41 @@ function generatePalms(count: number, seed: RngState): Palm[] {
 }
 
 export const PALMS: readonly Palm[] = generatePalms(48, 20260925);
+
+/** Bán kính để mở thẻ tại một điểm sự kiện, và bán kính để được tính là "đang đứng đó". */
+export const ANCHOR_TRIGGER_RADIUS = 3.5;
+export const ANCHOR_PARTICIPANT_RADIUS = 7;
+/** Ở trong bán kính này quanh đống lửa khi trời tối thì tính là đã về trại. */
+export const CAMP_RADIUS = 12;
+
+export interface Anchor extends AnchorDef {
+  x: number;
+  y: number;
+  z: number;
+}
+
+function beachPoint(angleDeg: number, inset: number): { x: number; z: number } {
+  const a = (angleDeg * Math.PI) / 180;
+  const r = shoreRadius(Math.cos(a) * 100, Math.sin(a) * 100) - inset;
+  return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+}
+
+function anchor(id: string, type: string, at: { x: number; z: number }, y = heightAt(at.x, at.z)): Anchor {
+  return { id, type, zone: zoneAt(at.x, at.z), x: at.x, y, z: at.z };
+}
+
+/** Các điểm sự kiện cố định. Mỗi sáng engine chọn thẻ hợp loại điểm để đặt vào. */
+export const ANCHORS: readonly Anchor[] = [
+  anchor("grove_east", "coconut_grove", beachPoint(20, 22)),
+  anchor("grove_south", "coconut_grove", beachPoint(60, 20)),
+  anchor("grove_west", "coconut_grove", beachPoint(160, 22)),
+  anchor("shore_southwest", "shore_drift", beachPoint(125, 6)),
+  anchor("shore_northeast", "shore_drift", beachPoint(-30, 6)),
+  anchor("lake_east", "lake_shore", { x: LAKE.x + 19, z: LAKE.z }),
+  anchor("lake_west", "lake_shore", { x: LAKE.x - 18, z: LAKE.z - 6 }),
+  anchor("cave_mouth", "cave_mouth", { x: CAVE.x, z: CAVE.z + 8 }),
+  anchor("cave_tunnel", "cave_tunnel", { x: CAVE.x - 2, z: CAVE.z - 6 }, 3),
+  anchor("slope_south", "volcano_slope", { x: VOLCANO.x, z: VOLCANO.z + 25 }),
+  anchor("slope_west", "volcano_slope", { x: VOLCANO.x - 25, z: VOLCANO.z }),
+  anchor("crater_rim", "crater_rim", { x: VOLCANO.x, z: VOLCANO.z + 9 }),
+];

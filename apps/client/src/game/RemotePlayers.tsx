@@ -6,11 +6,30 @@ import type { Group } from "three";
 import type { PlayerState } from "@tentides/protocol";
 import type { IslandRoom } from "../net.ts";
 import { Character } from "./Character.tsx";
+import { useChat } from "./chatStore.ts";
 
-function RemotePlayer({ player }: { player: PlayerState }) {
+const BUBBLE_MS = 6000;
+
+/** Câu nói gần nhất của một người, còn hiện trong vài giây. */
+function useBubble(playerId: string): string | null {
+  const lines = useChat();
+  const [, rerender] = useState(0);
+  const last = lines.findLast((l) => l.from === playerId);
+  const age = last ? performance.now() - last.at : Infinity;
+  useEffect(() => {
+    if (age >= BUBBLE_MS) return;
+    const timer = setTimeout(() => rerender((n) => n + 1), BUBBLE_MS - age);
+    return () => clearTimeout(timer);
+  }, [last?.id, age]);
+  return age < BUBBLE_MS ? last!.text : null;
+}
+
+function RemotePlayer({ id, player }: { id: string; player: PlayerState }) {
   const root = useRef<Group>(null);
   const avatar = useRef<Group>(null);
   const [connected, setConnected] = useState(player.connected);
+  const [alive, setAlive] = useState(player.alive);
+  const bubble = useBubble(id);
 
   useFrame((_, dt) => {
     const g = root.current;
@@ -26,14 +45,20 @@ function RemotePlayer({ player }: { player: PlayerState }) {
       avatar.current.rotation.y = current + diff * t;
     }
     if (player.connected !== connected) setConnected(player.connected);
+    if (player.alive !== alive) setAlive(player.alive);
   });
 
   return (
     <group ref={root} position={[player.x, player.y, player.z]}>
-      <Character ref={avatar} color={player.color} opacity={connected ? 1 : 0.4} />
+      <Character ref={avatar} color={player.color} opacity={alive && connected ? 1 : 0.35} />
+      {bubble && (
+        <Html position={[0, 2.9, 0]} center zIndexRange={[5, 0]} className="bubble">
+          {bubble}
+        </Html>
+      )}
       <Html position={[0, 2.3, 0]} center zIndexRange={[5, 0]} className="nametag">
         {player.name}
-        {!connected && " (mất kết nối)"}
+        {!alive ? " (đã gục)" : !connected && " (mất kết nối)"}
       </Html>
     </group>
   );
@@ -58,7 +83,7 @@ export function RemotePlayers({ room }: { room: IslandRoom }) {
   return (
     <>
       {others.map(([id, player]) => (
-        <RemotePlayer key={id} player={player} />
+        <RemotePlayer key={id} id={id} player={player} />
       ))}
     </>
   );

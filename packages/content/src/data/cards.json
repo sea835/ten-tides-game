@@ -1,0 +1,340 @@
+[
+  {
+    "id": "coconut_grove_01",
+    "title": "Cây dừa trĩu quả",
+    "intro": "Một cây dừa cao vút, chùm quả vàng óng lủng lẳng trên ngọn. Gió biển thổi, thân cây kêu kẽo kẹt.",
+    "acts": [1, 2, 3],
+    "anchorType": "coconut_grove",
+    "choices": [
+      {
+        "id": "climb",
+        "label": "Trèo lên hái",
+        "check": { "stat": "dexterity", "dc": 10, "itemBonus": { "rope": 2 } },
+        "onSuccess": { "food": 2 },
+        "onFail": { "hp": -10 },
+        "successText": "Bạn ôm thân cây nhích lên từng chút và vặt được cả chùm dừa.",
+        "failText": "Tay trượt, bạn tuột xuống, trầy hết hai đầu gối."
+      },
+      {
+        "id": "chop",
+        "label": "Chặt cây",
+        "check": { "stat": "strength", "dc": 12, "itemBonus": { "machete": 4 } },
+        "onSuccess": { "food": 1, "hull": 5 },
+        "onFail": { "stamina": -15 },
+        "successText": "Cây đổ rầm xuống cát. Được dừa, còn thân cây thì dùng vá thuyền.",
+        "failText": "Chặt mãi chỉ được vài vết xước, tay mỏi nhừ."
+      }
+    ],
+    "narrativeHooks": ["dừa rơi trúng đầu", "tiếng sóng vỗ"]
+  },
+  {
+    "id": "coconut_grove_02",
+    "title": "Tổ cua dừa",
+    "intro": "Dưới gốc dừa có một cái hang lớn. Hai cái càng khổng lồ thò ra rồi thụt vào.",
+    "acts": [1, 2],
+    "anchorType": "coconut_grove",
+    "choices": [
+      {
+        "id": "catch",
+        "label": "Bắt con cua",
+        "check": { "stat": "nerve", "dc": 11 },
+        "onSuccess": { "food": 2, "morale": 5 },
+        "onFail": { "hp": -8, "morale": -5 },
+        "successText": "Bạn chụp gọn con cua to bằng cái mũ. Tối nay có bữa ra trò.",
+        "failText": "Cái càng kẹp trúng ngón tay, bạn buông ra kêu oai oái."
+      },
+      {
+        "id": "lure",
+        "label": "Nhử bằng mồi",
+        "check": { "stat": "intellect", "dc": 10, "itemBonus": { "hardtack": 2 } },
+        "onSuccess": { "food": 1 },
+        "onFail": { "food": -1 },
+        "successText": "Con cua bò ra theo mẩu mồi và chui thẳng vào tay bạn.",
+        "failText": "Con cua cướp mồi rồi lặn mất. Mất luôn một phần lương thực."
+      }
+    ],
+    "narrativeHooks": ["càng cua khổng lồ"]
+  },
+  {
+    "id": "shore_drift_01",
+    "title": "Đồ trôi dạt vào bờ",
+    "intro": "Sóng đánh dạt vào bờ một cái thùng gỗ quấn đầy rong biển, nắp đóng đinh chặt.",
+    "acts": [1, 2],
+    "anchorType": "shore_drift",
+    "choices": [
+      {
+        "id": "pry",
+        "label": "Cạy nắp thùng",
+        "check": { "stat": "strength", "dc": 11, "itemBonus": { "machete": 2 } },
+        "onSuccess": { "gainItem": "rope", "food": 1 },
+        "onFail": { "hp": -5 },
+        "successText": "Nắp bật ra: một cuộn dây thừng còn tốt và mấy hộp cá khô.",
+        "failText": "Cái đinh gỉ cứa vào tay bạn. Thùng vẫn đóng im."
+      },
+      {
+        "id": "read_marks",
+        "label": "Đọc dấu khắc trên thùng",
+        "check": { "stat": "intellect", "dc": 12, "itemBonus": { "old_map": 2 } },
+        "onSuccess": { "treasure": 10 },
+        "onFail": { "morale": -5 },
+        "successText": "Con dấu trên thùng trùng với ký hiệu trong truyền thuyết kho báu.",
+        "failText": "Mấy ký hiệu nhoè nhoẹt, bạn nhìn mãi chẳng ra gì."
+      }
+    ],
+    "narrativeHooks": ["thùng gỗ", "rong biển", "con dấu lạ"]
+  },
+  {
+    "id": "shore_drift_02",
+    "title": "Dấu chân lạ trên cát",
+    "intro": "Một hàng dấu chân trần in trên cát ướt, đi từ mép nước vào rừng. Không phải của ai trong đoàn.",
+    "acts": [2, 3],
+    "anchorType": "shore_drift",
+    "choices": [
+      {
+        "id": "follow",
+        "label": "Lần theo dấu chân",
+        "check": { "stat": "intellect", "dc": 12 },
+        "onSuccess": { "treasure": 15 },
+        "onFail": { "morale": -10, "lostUntilDusk": true },
+        "successText": "Dấu chân dẫn tới một cột mốc đá có khắc mũi tên chỉ về phía núi lửa.",
+        "failText": "Dấu chân mất hút trong rừng rậm, còn bạn thì lạc luôn."
+      },
+      {
+        "id": "erase",
+        "label": "Xoá dấu, giữ bí mật",
+        "check": { "stat": "dexterity", "dc": 8 },
+        "onSuccess": { "morale": 5 },
+        "onFail": { "morale": -5 },
+        "successText": "Bạn gạt phẳng mặt cát. Chuyện này để sau.",
+        "failText": "Sóng xoá dấu hộ bạn, nhưng cảm giác bị theo dõi thì còn nguyên."
+      }
+    ],
+    "narrativeHooks": ["dấu chân trần", "bị theo dõi"]
+  },
+  {
+    "id": "lake_shore_01",
+    "title": "Bờ hồ đầy cá",
+    "intro": "Mặt hồ phẳng lặng, từng đàn cá bạc lượn sát bờ. Nước trong nhưng đáy toàn bùn.",
+    "acts": [1, 2, 3],
+    "anchorType": "lake_shore",
+    "choices": [
+      {
+        "id": "fish",
+        "label": "Bắt cá",
+        "check": { "stat": "dexterity", "dc": 11, "itemBonus": { "rope": 1 } },
+        "onSuccess": { "food": 2 },
+        "onFail": { "morale": -5 },
+        "successText": "Bạn tóm được mấy con cá béo núc.",
+        "failText": "Cá lẩn hết. Bạn ướt từ đầu tới chân mà tay không."
+      },
+      {
+        "id": "drink",
+        "label": "Uống nước hồ",
+        "check": { "stat": "intellect", "dc": 9, "itemBonus": { "water_bottle": 3 } },
+        "onSuccess": { "morale": 10, "hunger": 10 },
+        "onFail": { "hp": -15 },
+        "successText": "Nước mát lạnh, bạn thấy tỉnh cả người.",
+        "failText": "Nước bẩn. Chưa tới trưa bụng bạn đã quặn đau."
+      }
+    ],
+    "narrativeHooks": ["đỉa", "nước bẩn gây bệnh"]
+  },
+  {
+    "id": "lake_shore_02",
+    "title": "Bóng đen dưới đáy hồ",
+    "intro": "Giữa hồ, dưới lớp nước xanh thẫm, lờ mờ hiện ra một vật gì đó vuông vức.",
+    "acts": [2, 3],
+    "anchorType": "lake_shore",
+    "choices": [
+      {
+        "id": "dive",
+        "label": "Lặn xuống xem",
+        "check": { "stat": "strength", "dc": 13 },
+        "onSuccess": { "treasure": 15 },
+        "onFail": { "hp": -15, "loseRandomItem": 1 },
+        "successText": "Là một cái rương nhỏ, bên trong có mảnh bản đồ bọc sáp.",
+        "failText": "Hụt hơi, bạn ngoi lên sặc sụa, đồ trong túi rơi mất một món."
+      },
+      {
+        "id": "hook",
+        "label": "Thả dây móc lên",
+        "check": { "stat": "intellect", "dc": 11, "itemBonus": { "rope": 3 } },
+        "onSuccess": { "treasure": 10 },
+        "onFail": { "morale": -5 },
+        "successText": "Dây móc được quai rương. Bên trong có mảnh bản đồ.",
+        "failText": "Dây cứ tuột mãi. Cái bóng chìm dần vào lớp bùn."
+      }
+    ],
+    "narrativeHooks": ["xác tàu cổ", "bóng người bên kia hồ"]
+  },
+  {
+    "id": "cave_mouth_01",
+    "title": "Tranh khắc cổ",
+    "intro": "Vách đá ở cửa hang chi chít hình khắc: thuyền, sóng, và một ngọn núi đang phun lửa.",
+    "acts": [1, 2, 3],
+    "anchorType": "cave_mouth",
+    "choices": [
+      {
+        "id": "decipher",
+        "label": "Giải nghĩa hình khắc",
+        "check": { "stat": "intellect", "dc": 12, "itemBonus": { "lantern": 2, "old_map": 2 } },
+        "onSuccess": { "treasure": 20 },
+        "onFail": { "morale": -10 },
+        "successText": "Hình khắc kể về người giấu kho báu ngay dưới chân núi lửa.",
+        "failText": "Càng nhìn càng rối. Mấy khuôn mặt khắc trên đá như đang cười nhạo bạn."
+      },
+      {
+        "id": "copy",
+        "label": "Chép lại để nghiên cứu sau",
+        "check": { "stat": "dexterity", "dc": 9 },
+        "onSuccess": { "treasure": 10 },
+        "onFail": { "stamina": -10 },
+        "successText": "Bạn chép lại khá đủ. Tối nay ngồi cạnh đống lửa đọc tiếp.",
+        "failText": "Nét than nhoè hết, phí cả buổi."
+      }
+    ],
+    "narrativeHooks": ["tranh khắc cổ", "tên những đoàn thám hiểm trước"]
+  },
+  {
+    "id": "cave_tunnel_01",
+    "title": "Bầy dơi trong hang",
+    "intro": "Bạn vừa lách qua vách ngăn thì cả trần hang bỗng rung lên. Hàng trăm con dơi.",
+    "acts": [1, 2],
+    "anchorType": "cave_tunnel",
+    "choices": [
+      {
+        "id": "push_through",
+        "label": "Cắm đầu đi tiếp",
+        "check": { "stat": "nerve", "dc": 11, "itemBonus": { "lantern": 3 } },
+        "onSuccess": { "treasure": 10 },
+        "onFail": { "morale": -15, "lostUntilDusk": true },
+        "successText": "Bầy dơi ùa qua đầu rồi tản đi. Cuối đường hầm có một hốc đá khắc dấu.",
+        "failText": "Bạn hoảng loạn chạy loạn xạ và lạc giữa các ngách hang."
+      },
+      {
+        "id": "retreat",
+        "label": "Lùi ra từ từ",
+        "check": { "stat": "nerve", "dc": 6 },
+        "onSuccess": { "morale": 5 },
+        "onFail": { "morale": -5 },
+        "successText": "Bạn nín thở lùi ra. Bầy dơi lại im lìm.",
+        "failText": "Một con dơi đâm sầm vào mặt bạn. Tim đập mãi mới yên."
+      }
+    ],
+    "narrativeHooks": ["dơi", "tối", "lạc đường"]
+  },
+  {
+    "id": "cave_collapse_01",
+    "title": "Sập hang",
+    "intro": "Đất rung. Đá trên trần hang rơi lả tả, lối bạn vừa đi qua bị lấp kín sau lưng.",
+    "acts": [2, 3],
+    "anchorType": "cave_tunnel",
+    "requires": { "zone": "cave", "weather": ["storm", "quake"] },
+    "choices": [
+      {
+        "id": "dig_out",
+        "label": "Đào đường ra",
+        "check": { "stat": "strength", "dc": 12, "itemBonus": { "shovel": 3 } },
+        "onSuccess": { "stamina": -10 },
+        "onFail": { "hp": -20, "loseRandomItem": 1 },
+        "successText": "Sau một hồi đào bới, ánh sáng lọt qua khe đá. Bạn thoát ra được.",
+        "failText": "Một tảng đá đè lên người bạn trước khi bạn kịp chui ra."
+      },
+      {
+        "id": "find_another_way",
+        "label": "Tìm lối khác",
+        "check": { "stat": "intellect", "dc": 11, "itemBonus": { "lantern": 2 } },
+        "onSuccess": { "setFlag": "found_hidden_tunnel", "treasure": 10 },
+        "onFail": { "morale": -15, "lostUntilDusk": true },
+        "successText": "Bạn tìm ra một đường hầm bí mật mà trước giờ chưa ai thấy.",
+        "failText": "Ngách nào cũng cụt. Bạn mò mẫm trong bóng tối tới tận chiều."
+      }
+    ],
+    "sceneState": { "onAny": "cave_tunnel_collapsed" },
+    "narrativeHooks": ["bụi đá rơi lả tả", "tiếng vọng tắt ngấm"]
+  },
+  {
+    "id": "volcano_slope_01",
+    "title": "Mạch đá obsidian",
+    "intro": "Sườn núi lửa lộ ra một mạch đá đen bóng như gương, trên đó có vết khắc ai đó để lại.",
+    "acts": [1, 2, 3],
+    "anchorType": "volcano_slope",
+    "choices": [
+      {
+        "id": "dig",
+        "label": "Đào quanh vết khắc",
+        "check": { "stat": "strength", "dc": 11, "itemBonus": { "shovel": 3 } },
+        "onSuccess": { "treasure": 15 },
+        "onFail": { "hp": -12 },
+        "successText": "Dưới lớp đá vụn là một mũi tên khắc sâu chỉ lên miệng núi.",
+        "failText": "Đá lăn từ trên xuống, bạn né không kịp."
+      },
+      {
+        "id": "study",
+        "label": "Quan sát từ xa",
+        "check": { "stat": "intellect", "dc": 10 },
+        "onSuccess": { "treasure": 8 },
+        "onFail": { "stamina": -10 },
+        "successText": "Bạn đoán được vết khắc là một phần của chuỗi chỉ dẫn.",
+        "failText": "Nắng hắt lên mặt đá chói loà, bạn nhìn chẳng rõ gì."
+      }
+    ],
+    "narrativeHooks": ["đá obsidian", "đá lăn"]
+  },
+  {
+    "id": "volcano_slope_02",
+    "title": "Khí độc bốc lên",
+    "intro": "Một khe nứt mở ra ngay trên lối đi, xì ra làn khói vàng mùi trứng thối.",
+    "acts": [2, 3],
+    "anchorType": "volcano_slope",
+    "choices": [
+      {
+        "id": "rush",
+        "label": "Nín thở chạy qua",
+        "check": { "stat": "strength", "dc": 12, "itemBonus": { "first_aid_kit": 2 } },
+        "onSuccess": { "treasure": 12 },
+        "onFail": { "hp": -25 },
+        "successText": "Bạn lao qua làn khói, ho sặc sụa nhưng tới được phía bên kia.",
+        "failText": "Hít phải khí độc, bạn ngã quỵ, mắt hoa lên."
+      },
+      {
+        "id": "detour",
+        "label": "Đi vòng",
+        "check": { "stat": "intellect", "dc": 10 },
+        "onSuccess": { "treasure": 5 },
+        "onFail": { "stamina": -15 },
+        "successText": "Đường vòng xa hơn nhưng an toàn.",
+        "failText": "Đường vòng dẫn vào một bãi đá dốc, bạn trèo mệt bở hơi tai."
+      }
+    ],
+    "narrativeHooks": ["khí độc", "mặt đất rung"]
+  },
+  {
+    "id": "crater_rim_01",
+    "title": "Miệng núi lửa",
+    "intro": "Bạn đứng trên mép miệng núi. Dưới kia dung nham sôi sùng sục, và trên vách có một cái hốc tối.",
+    "acts": [3],
+    "anchorType": "crater_rim",
+    "choices": [
+      {
+        "id": "descend",
+        "label": "Thả dây xuống hốc",
+        "check": { "stat": "nerve", "dc": 14, "itemBonus": { "rope": 4 } },
+        "onSuccess": { "treasure": 30 },
+        "onFail": { "hp": -30 },
+        "successText": "Trong hốc là tấm bản đồ cuối cùng, chỉ đúng chỗ chôn kho báu.",
+        "failText": "Hơi nóng hất bạn văng lên. Da phồng rộp, tay run bần bật."
+      },
+      {
+        "id": "back_off",
+        "label": "Lùi lại",
+        "check": { "stat": "nerve", "dc": 5 },
+        "onSuccess": { "morale": 5 },
+        "onFail": { "morale": -10 },
+        "successText": "Sống còn quan trọng hơn. Bạn quay xuống núi.",
+        "failText": "Bạn lùi lại, nhưng tiếng dung nham còn vang trong đầu tới tối."
+      }
+    ],
+    "narrativeHooks": ["dung nham", "manh mối cuối cùng"]
+  }
+]

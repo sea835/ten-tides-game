@@ -6,14 +6,20 @@ import type { ZoneId } from "@tentides/rules";
 interface HudState {
   zone: ZoneId;
   deepWater: boolean;
+  /** Điểm sự kiện đang đứng cạnh, nhấn E để mở. */
+  nearAnchor: string | null;
 }
 
-let state: HudState = { zone: "beach", deepWater: false };
+let state: HudState = { zone: "beach", deepWater: false, nearAnchor: null };
 const listeners = new Set<() => void>();
+
+export function getHud(): HudState {
+  return state;
+}
 
 export function setHud(patch: Partial<HudState>) {
   const next = { ...state, ...patch };
-  if (next.zone === state.zone && next.deepWater === state.deepWater) return;
+  if (next.zone === state.zone && next.deepWater === state.deepWater && next.nearAnchor === state.nearAnchor) return;
   state = next;
   listeners.forEach((l) => l());
 }

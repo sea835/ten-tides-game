@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { STAT_IDS, ZONE_IDS } from "@tentides/rules";
+import { STAT_IDS, WEATHER_IDS, ZONE_IDS, type EventCard as RulesEventCard } from "@tentides/rules";
 
 const id = z.string().regex(/^[a-z][a-z0-9_]*$/, "id chỉ gồm chữ thường, số và dấu gạch dưới");
 
@@ -20,11 +20,16 @@ export type Item = z.infer<typeof ItemSchema>;
 const Outcome = z
   .object({
     hp: z.int(),
-    stamina: z.int(),
     morale: z.int(),
-    loseRandomItem: z.int().positive(),
-    setFlag: id,
+    hunger: z.int(),
+    stamina: z.int(),
     lostUntilDusk: z.boolean(),
+    loseRandomItem: z.int().positive(),
+    gainItem: id,
+    food: z.int(),
+    treasure: z.int(),
+    hull: z.int(),
+    setFlag: id,
   })
   .partial()
   .strict();
@@ -37,21 +42,29 @@ const Check = z.object({
 
 export const EventCardSchema = z.object({
   id,
+  title: z.string().min(1),
+  /** Lời văn mẫu, dùng khi chưa có hoặc lỗi AI. */
+  intro: z.string().min(1),
   acts: z.array(z.union([z.literal(1), z.literal(2), z.literal(3)])).min(1),
   anchorType: id,
   requires: z
     .object({
       zone: z.enum(ZONE_IDS).optional(),
-      weather: z.array(id).optional(),
+      weather: z.array(z.enum(WEATHER_IDS)).optional(),
+      flags: z.array(id).optional(),
+      notFlags: z.array(id).optional(),
     })
     .optional(),
   choices: z
     .array(
       z.object({
         id,
+        label: z.string().min(1),
         check: Check,
         onSuccess: Outcome,
         onFail: Outcome,
+        successText: z.string().min(1),
+        failText: z.string().min(1),
       }),
     )
     .min(2)
@@ -60,3 +73,7 @@ export const EventCardSchema = z.object({
   narrativeHooks: z.array(z.string().min(1)),
 });
 export type EventCard = z.infer<typeof EventCardSchema>;
+
+// Bảo đảm dữ liệu đã kiểm tra khớp với kiểu mà engine luật dùng.
+type Assignable<T extends U, U> = T;
+export type _CardMatchesRules = Assignable<EventCard, RulesEventCard>;
