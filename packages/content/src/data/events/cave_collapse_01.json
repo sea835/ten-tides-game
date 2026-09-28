@@ -1,0 +1,22 @@
+{
+  "id": "cave_collapse_01",
+  "acts": [2, 3],
+  "anchorType": "cave_tunnel",
+  "requires": { "zone": "cave", "weather": ["storm", "quake"] },
+  "choices": [
+    {
+      "id": "dig_out",
+      "check": { "stat": "strength", "dc": 12, "itemBonus": { "shovel": 3 } },
+      "onSuccess": { "stamina": -10 },
+      "onFail": { "hp": -20, "loseRandomItem": 1 }
+    },
+    {
+      "id": "find_another_way",
+      "check": { "stat": "intellect", "dc": 11, "itemBonus": { "lantern": 2 } },
+      "onSuccess": { "setFlag": "found_hidden_tunnel" },
+      "onFail": { "morale": -15, "lostUntilDusk": true }
+    }
+  ],
+  "sceneState": { "onAny": "cave_tunnel_collapsed" },
+  "narrativeHooks": ["bụi đá rơi lả tả", "tiếng vọng tắt ngấm"]
+}

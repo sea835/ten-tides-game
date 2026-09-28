@@ -1,0 +1,16 @@
+{
+  "name": "@tentides/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@colyseus/schema": "^5.0.34",
+    "zod": "^4.6.5"
+  }
+}

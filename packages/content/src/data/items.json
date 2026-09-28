@@ -1,0 +1,13 @@
+[
+  { "id": "rope", "name": "Dây thừng", "size": { "w": 2, "h": 3 }, "weightKg": 2, "price": 12, "tags": ["tool", "climb"], "hooks": ["vách đá", "hang sâu", "trói tù binh"] },
+  { "id": "machete", "name": "Dao rựa", "size": { "w": 1, "h": 4 }, "weightKg": 1.5, "price": 10, "tags": ["tool", "cut"], "hooks": ["chặt dừa", "mở lối qua rừng rậm"] },
+  { "id": "lantern", "name": "Đèn dầu", "size": { "w": 2, "h": 2 }, "weightKg": 1, "price": 14, "tags": ["light", "flammable"], "hooks": ["cần để vào sâu trong hang"] },
+  { "id": "water_bottle", "name": "Bình nước", "size": { "w": 2, "h": 3 }, "weightKg": 1.5, "price": 6, "tags": ["water"], "hooks": ["múc ở hồ", "nước bẩn nếu chưa đun"] },
+  { "id": "old_map", "name": "Bản đồ cũ", "size": { "w": 2, "h": 2 }, "weightKg": 0.2, "price": 18, "tags": ["clue"], "hooks": ["có thể là bản đồ giả"] },
+  { "id": "hardtack", "name": "Lương khô", "size": { "w": 1, "h": 2 }, "weightKg": 0.5, "price": 4, "tags": ["food"], "hooks": ["hỏng sau 3 ngày"] },
+  { "id": "flintlock", "name": "Súng kíp", "size": { "w": 1, "h": 5 }, "weightKg": 3, "price": 30, "tags": ["weapon", "noisy"], "hooks": ["tiếng súng kéo thú dữ hoặc cướp biển tới"] },
+  { "id": "first_aid_kit", "name": "Bộ sơ cứu", "size": { "w": 3, "h": 2 }, "weightKg": 1, "price": 16, "tags": ["medical"], "hooks": ["cứu người sắp chết"] },
+  { "id": "rum", "name": "Rượu rum", "size": { "w": 1, "h": 3 }, "weightKg": 1, "price": 8, "tags": ["luxury", "trade"], "hooks": ["đổi tin tức với người lạ", "một đêm say xỉn"] },
+  { "id": "shovel", "name": "Xẻng", "size": { "w": 1, "h": 6 }, "weightKg": 2.5, "price": 12, "tags": ["tool", "dig"], "hooks": ["cần để đào kho báu"] },
+  { "id": "amulet", "name": "Bùa hộ mệnh", "size": { "w": 1, "h": 1 }, "weightKg": 0.1, "price": 5, "tags": ["mystery"], "hooks": ["AI được tự do diễn giải"] }
+]

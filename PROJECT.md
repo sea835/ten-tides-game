@@ -1,0 +1,316 @@
+# TEN TIDES — Mô tả dự án game co-op 3D
+
+Sep 25, 2026 · @ngo hai
+
+## Tóm tắt
+
+TEN TIDES (tên tạm) là game co-op 3D cho 2–6 người, mỗi ván khoảng 45–60 phút. Cả nhóm chuẩn bị hành trang rồi sống sót 10 ngày trên một hòn đảo có rừng dừa, hang động, hồ nước và một ngọn núi lửa đang thức giấc. Cốt truyện do AI viết riêng cho từng ván, dựa trên nhân vật, balo, nơi cả đội đặt chân tới và các lần tung xúc xắc.
+
+**Câu hỏi cốt lõi của game:** *Chúng ta mang theo gì — và ai trong chúng ta thật sự đáng tin?*
+
+**Bốn điểm khác biệt**
+
+- **Balo là lời khai.** Mỗi món đồ vừa là tài nguyên, vừa là tín hiệu để AI dựng truyện. Mang dây thừng thì sẽ có vách đá để leo; mang rượu thì sẽ có một đêm say xỉn.
+- **Một hòn đảo, trăm bí mật.** Map 3D được thiết kế tay, nhưng vị trí kho báu, tài nguyên và hang nào mở được xáo lại mỗi ván. Khắp đảo rải easter egg cho người thích lục lọi.
+- **AI kể chuyện, engine làm trọng tài.** Luật, xác suất và kết quả do engine quyết định; AI chỉ dựng cảnh và lời thoại. Nhờ vậy game công bằng, cân bằng được và kiểm thử được.
+- **Bạn bè có thể là kẻ thù.** Từ 4 người trở lên, một người có thể mang vai bí mật. Ai vừa đi một mình vào hang, và vì sao quay ra tay không?
+
+Tham chiếu thể loại: xếp đồ kiểu *Backpack Hero*, khám phá đảo co-op 3D kiểu *Raft* hay *Sons of the Forest* nhưng tươi sáng hơn, vai ẩn kiểu *Werewolf / Among Us*, kể chuyện sinh động kiểu *AI Dungeon*. TEN TIDES gộp bốn thứ đó thành một ván chơi cho nhóm bạn.
+
+## Hòn đảo 3D
+
+Toàn bộ game diễn ra trên một hòn đảo 3D, góc nhìn thứ ba, phong cách low-poly màu sắc tươi. Map được thiết kế tay và cố định, nhưng mỗi ván seed xáo lại những thứ quan trọng nhất, nên người thuộc map vẫn không đoán trước được ván sau.
+
+**Bốn vùng trên đảo**
+
+| Vùng | Tài nguyên | Nguy hiểm | Đồ nên mang | Sự kiện tiêu biểu |
+| --- | --- | --- | --- | --- |
+| Bãi biển & rừng dừa | Dừa (vừa ăn vừa uống), gỗ trôi dạt; nơi dựng trại và neo thuyền | Dừa rơi trúng đầu, thủy triều lên nhanh | Dao rựa | Đồ trôi dạt vào bờ, dấu chân lạ trên cát |
+| Hồ nước ngọt | Nước uống, cá | Đỉa, nước bẩn gây bệnh, đuối nước | Bình nước, dây thừng | Lặn xuống đáy tìm đồ, bóng người bên kia hồ lúc sương mù |
+| Hang động | Manh mối kho báu, khoáng vật | Tối, lạc đường, sập hang, dơi | Đèn dầu, dây thừng | Tranh khắc cổ, đường hầm chỉ mở vào vài ngày |
+| Núi lửa | Manh mối cuối cùng, đá obsidian | Khí độc, đá lăn, dung nham | Bộ sơ cứu, dây thừng | Mặt đất rung, lối đi mới mở ra sau động đất |
+
+**Mỗi ván xáo lại gì (theo seed)**
+
+- Vị trí kho báu, chọn từ 6–8 điểm ứng viên rải khắp đảo.
+- Chỗ có dừa, cá, đồ trôi dạt; hang nào mở, hang nào sập.
+- Thời tiết từng ngày và ngày núi lửa bắt đầu thức giấc.
+- Điểm hẹn của băng cướp biển và vịnh nhỏ nơi kẻ lừa đảo hẹn giao dịch.
+
+**Núi lửa là đồng hồ đếm ngược.** Mức hoạt động của núi lửa tăng dần theo ngày, và hết ngày 10 thì phun trào. Ai chưa lên thuyền rời đảo sẽ kẹt lại, nên giới hạn 10 ngày có lý do nằm ngay trong thế giới game.
+
+**Easter egg.** Khoảng 15–20 điểm bí mật rải khắp đảo, không cần để thắng. Phần thưởng là mẩu truyện, trang phục, thành tựu hoặc một lợi thế nhỏ, để game không biến thành "phải tra wiki mới chơi được".
+
+- Một cây dừa mọc ngang vách đá; leo tới nơi sẽ thấy một trái dừa vàng.
+- Xác một con tàu cổ dưới đáy hồ, chỉ lộ ra vào ngày hồ cạn nước.
+- Căn phòng sau thác nước trong hang, trên vách khắc tên các đoàn thám hiểm từ những ván trước của chính nhóm bạn.
+- Dấu chân khổng lồ trên sườn núi lửa, dẫn tới một chỗ chẳng có gì.
+- Một chai thư dạt vào bờ vào đúng một ngày ngẫu nhiên, lá thư do AI viết dựa trên diễn biến ván đó.
+
+Easter egg tìm được sẽ được ghi vào sổ sự thật, để AI nhắc tới trong lời kể và trong biên niên sử cuối ván.
+
+## Trải nghiệm một ván chơi
+
+Một ván gồm 3 bước chuẩn bị rồi tối đa 10 vòng ngày. Mục tiêu thiết kế là 4–5 phút mỗi ngày, trong đó khoảng 3 phút khám phá đảo tự do, để cả ván gói trong 45–60 phút.
+
+&#91;embedded content: vòng lặp một ván · 3 bước chuẩn bị, 5 pha mỗi ngày\]
+
+Ván kết thúc sớm nếu cả đội chết hoặc phe phản bội đạt mục tiêu trước ngày 10.
+
+| Pha | Chuyện gì xảy ra | Thời lượng mục tiêu |
+| --- | --- | --- |
+| Sảnh chờ | Chủ phòng tạo phòng, mời bạn bằng mã; chọn độ khó | 1 phút |
+| Tạo nhân vật | Chia điểm thuộc tính, chọn xuất thân, tật xấu và ngoại hình 3D | 2 phút |
+| Xếp balo | Mua đồ bằng ngân sách, xếp vào lưới 16x16, có đồng hồ đếm ngược | 4 phút |
+| Bình minh | Tại trại: AI tả thời tiết, núi lửa, tình trạng từng người; cả đội chia nhau đi đâu | 30 giây |
+| Khám phá 3D | Tự do di chuyển trên đảo: hái dừa, lấy nước, tìm manh mối, săn easter egg | Khoảng 3 phút, có đồng hồ mặt trời |
+| Điểm sự kiện | Chạm vào điểm sự kiện trên map thì thẻ mở ra; chỉ người đang đứng đó tham gia, xúc xắc công khai | 20–40 giây mỗi lần, nằm trong giờ khám phá |
+| Hoàng hôn | Mọi người về trại trước khi trời tối; engine trừ lương thực, AI kể lại cả ngày | 30 giây |
+| Đêm | Chat quanh đống lửa, bỏ phiếu chia khẩu phần hoặc nghi ai; vai ẩn hành động bí mật | 60 giây |
+
+**Nguyên tắc nhịp độ:** ban ngày chạy thời gian thực, không theo lượt. Sự kiện ở một điểm chỉ dừng những người đang đứng đó, người khác vẫn đi tiếp. Vì vậy chia nhóm hay đi một mình là một quyết định chiến thuật — và là cơ hội cho kẻ phản bội.
+
+Ai không về trại kịp lúc trời tối sẽ phải ngủ ngoài và gặp sự kiện đêm riêng. Người rời ván giữa chừng thì bot tạm điều khiển nhân vật, ở yên trong trại.
+
+## Tạo nhân vật
+
+Mỗi nhân vật gồm 5 thuộc tính, 1 xuất thân, 1 tật xấu và một dòng tự mô tả. Thuộc tính quyết định xác suất; xuất thân và tật xấu là móc câu để AI viết truyện riêng cho người đó.
+
+**Thuộc tính:** chia 15 điểm, mỗi thuộc tính từ 1 đến 5 (con số khởi điểm, sẽ cân bằng qua playtest).
+
+| Thuộc tính | Tác dụng cơ chế | Loại cảnh AI hay dựng |
+| --- | --- | --- |
+| Thể lực | Tăng giới hạn trọng lượng balo và máu tối đa; kiểm tra leo, bơi, vác | Vượt địa hình, đánh tay đôi |
+| Khéo léo | Kiểm tra lén lút, trộm đồ, sửa chữa, câu cá | Đột nhập, mở khóa, thoát bẫy |
+| Trí tuệ | Đọc bản đồ, giải đố, phát hiện đồ giả; đẩy nhanh tiến độ tìm kho báu | Mật mã, cổ vật, bản đồ |
+| Duyên | Mặc cả với NPC, thuyết phục khi bỏ phiếu | Thương nhân, dân đảo, đàm phán với cướp biển |
+| Gan dạ | Chống hoảng loạn, giữ tinh thần, chịu đói | Đêm bão, tra hỏi, chuyện ma |
+
+**Thuộc tính hiện ra trong chuyển động 3D.** Thể lực quyết định thanh sức bền khi chạy, bơi và leo; Gan dạ quyết định màn hình có tối và méo đi khi ở sâu trong hang. Người chơi cảm nhận nhân vật qua tay điều khiển, không chỉ qua con số.
+
+**Chỉ số sinh tồn** tính từ thuộc tính và thay đổi mỗi ngày: Máu, No, Tinh thần. Máu về 0 là chết; No hoặc Tinh thần về 0 gây trạng thái xấu như kiệt sức, hoảng loạn.
+
+**Xuất thân** (chọn 1): mỗi xuất thân cho 1 món đồ khởi đầu và 1 kỹ năng riêng.
+
+- Thủy thủ già — bơi lặn giỏi, cộng điểm ở hồ và bờ biển
+- Y sĩ bỏ nghề — chữa trị hiệu quả gấp đôi
+- Thợ săn — săn bắn ra thêm thức ăn
+- Nhà khảo cổ — cộng điểm Trí tuệ với cổ vật và bản đồ
+- Con nhà giàu — thêm ngân sách mua đồ nhưng khởi đầu kém Gan dạ
+- Tay cờ bạc — được tung lại xúc xắc 1 lần mỗi ngày
+
+**Tật xấu** (bắt buộc, đổi lấy +2 điểm thuộc tính): sợ độ cao, sợ bóng tối, tham lam, nghiện rượu, nói dối thành tật. Tật xấu kích hoạt sự kiện cá nhân và là nguyên liệu drama tốt nhất cho AI.
+
+**Dòng tự mô tả** tối đa 140 ký tự, ví dụ "trốn nợ, đi tìm kho báu để về chuộc nhà". AI dùng dòng này để giọng văn hợp nhân vật, nhưng nó chỉ là dữ liệu, không bao giờ được thay đổi luật chơi.
+
+## Balo 16x16
+
+Balo là lưới 16x16 (256 ô); mỗi món đồ là một khối hình chiếm nhiều ô và xoay được, giống xếp gạch. Ba giới hạn chạy cùng lúc — ô trống, trọng lượng, ngân sách — nên xếp balo là một câu đố có đánh đổi thật, không chỉ là nhét cho đầy.
+
+**Ba giới hạn**
+
+- **Không gian:** 256 ô, nhưng đồ lớn như lều, thùng nước ngọt, xuồng gấp chiếm 16–24 ô mỗi món.
+- **Trọng lượng:** mức tối đa tăng theo Thể lực; vượt mức thì nhân vật đi chậm hơn, leo kém hơn và mỗi ngày mất thêm No.
+- **Ngân sách:** mỗi người có số xu cố định. Cửa hàng mỗi ván bày một bộ đồ ngẫu nhiên, nên không có cách xếp "chuẩn" nào dùng mãi được.
+
+**Cơ chế riêng của balo**
+
+- **Đặt cạnh nhau tạo hiệu ứng:** đèn dầu cạnh bản đồ cho phép đọc bản đồ ban đêm; thuốc súng cạnh diêm có xác suất phát nổ khi bị ngã.
+- **Ngăn bí mật 4x4:** đồ trong ngăn này không lộ khi bị lục soát thông thường. Đây là nơi kẻ phản bội giấu hàng.
+- **Đồ hao mòn:** thức ăn tươi hỏng sau vài ngày, dây thừng và vũ khí có độ bền.
+- **Balo thay đổi trong hành trình:** đồ có thể mất vì bị cướp, rơi xuống nước, hoặc bị đồng đội lấy trộm trong đêm.
+- **Trao đổi:** người chơi chuyển đồ cho nhau trong pha Hành động; người nhận phải còn chỗ trống.
+
+**Đồ lớn hiện trên người.** Xẻng, súng, dây thừng nhìn thấy được trên lưng nhân vật trong 3D, nên đồng đội liếc qua là biết ai đang mang gì. Đồ trong ngăn bí mật thì không hiện.
+
+**Mỗi món đồ là dữ liệu, không phải code.** Thẻ (tag) là cầu nối giữa engine và AI: engine dùng thẻ để lọc sự kiện hợp lệ, AI dùng thẻ và móc câu để viết cảnh. Thêm đồ mới chỉ cần khai báo thêm một dòng dữ liệu.
+
+| Đồ (ví dụ) | Kích thước | Nặng | Thẻ | Móc câu cho truyện |
+| --- | --- | --- | --- | --- |
+| Dây thừng | 2x3 ô | 2 kg | công cụ, leo | Vách đá, hang sâu, trói tù binh |
+| Dao rựa | 1x4 ô | 1,5 kg | công cụ, chặt | Chặt dừa, mở lối qua rừng rậm |
+| Đèn dầu | 2x2 ô | 1 kg | ánh sáng, dễ cháy | Cần để vào sâu trong hang |
+| Bình nước | 2x3 ô | 1,5 kg | nước | Múc ở hồ; nước bẩn nếu chưa đun |
+| Bản đồ cũ | 2x2 ô | 0,2 kg | manh mối | Có thể là bản đồ giả |
+| Lương khô | 1x2 ô | 0,5 kg | thức ăn | Hỏng sau 3 ngày |
+| Súng kíp | 1x5 ô | 3 kg | vũ khí, gây ồn | Tiếng súng kéo thú dữ hoặc cướp biển tới |
+| Bộ sơ cứu | 3x2 ô | 1 kg | y tế | Cứu người sắp chết |
+| Rượu rum | 1x3 ô | 1 kg | xa xỉ, trao đổi | Đổi tin tức với người lạ, hoặc một đêm say xỉn |
+| Xẻng | 1x6 ô | 2,5 kg | công cụ, đào | Cần để đào kho báu |
+| Bùa hộ mệnh | 1x1 ô | 0,1 kg | bí ẩn | AI được tự do diễn giải |
+
+## Vòng lặp 10 ngày & hệ thống sự kiện
+
+10 ngày chia thành 3 hồi với độ căng tăng dần. Mỗi sáng engine đặt thẻ sự kiện vào các điểm trên map, dựa trên hồi, vùng, trạng thái đội và đồ trong balo. Mọi phép random dùng seed của ván nên ván nào cũng tái hiện lại được.
+
+| Hồi | Ngày | Cảm xúc mục tiêu | Sự kiện ưu tiên |
+| --- | --- | --- | --- |
+| Khởi hành | 1–3 | Làm quen đảo, gắn kết, tật xấu bắt đầu lộ | Dựng trại, hái dừa, tìm nguồn nước, đồ trôi dạt vào bờ |
+| Biến cố | 4–7 | Thiếu thốn, nghi ngờ nhau | Bão, sập hang, đồ biến mất khỏi trại, manh mối kho báu; ngày 5 luôn có một cú twist lớn |
+| Cao trào | 8–10 | Chạy đua với núi lửa, lật mặt | Động đất mở lối mới, bẫy canh kho báu, vai ẩn ra tay, tranh nhau lên thuyền |
+
+**Thẻ sự kiện là đơn vị nội dung nhỏ nhất.** Mỗi thẻ khai báo loại điểm trên map nó được đặt vào, điều kiện xuất hiện, 2–4 lựa chọn, phép kiểm tra và kết quả. Kết quả chỉ là thay đổi trạng thái (chỉ số, đồ, cờ, trạng thái cảnh 3D); lời văn do AI viết sau.
+
+```json
+{
+  "id": "cave_collapse_01",
+  "acts": [2, 3],
+  "anchorType": "cave_tunnel",
+  "requires": { "zone": "cave", "weather": ["storm", "quake"] },
+  "choices": [
+    {
+      "id": "dig_out",
+      "check": { "stat": "strength", "dc": 12, "itemBonus": { "shovel": 3 } },
+      "onSuccess": { "stamina": -10 },
+      "onFail": { "hp": -20, "loseRandomItem": 1 }
+    },
+    {
+      "id": "find_another_way",
+      "check": { "stat": "intellect", "dc": 11, "itemBonus": { "lantern": 2 } },
+      "onSuccess": { "setFlag": "found_hidden_tunnel" },
+      "onFail": { "morale": -15, "lostUntilDusk": true }
+    }
+  ],
+  "sceneState": { "onAny": "cave_tunnel_collapsed" },
+  "narrativeHooks": ["bụi đá rơi lả tả", "tiếng vọng tắt ngấm"]
+}
+```
+
+**Đạo diễn độ căng.** Engine giữ một đường cong độ căng mục tiêu theo ngày, có nhịp nghỉ xen kẽ. Đội đang quá khỏe thì rút thẻ khó hơn; đội sắp chết cả loạt ở hồi 1 thì rút thẻ hồi phục — cùng ý tưởng với AI Director trong Left 4 Dead.
+
+**Tài nguyên chung của đội:** Tiến độ kho báu (0–100), Mức hoạt động núi lửa, Độ bền thuyền, Lương thực chung. Tiến độ tăng nhờ manh mối, đọc đúng bản đồ và khám phá đúng vùng, và nó thu hẹp dần các điểm ứng viên trên map. Đạt 100 là biết chính xác chỗ đào, nhưng vẫn cần người mang xẻng tới đó và một chiếc thuyền đủ tốt để rời đảo.
+
+**Random phải công bằng và nhìn thấy được.** Mỗi lần tung xúc xắc hiện công khai kèm các khoản cộng: thuộc tính, đồ, trạng thái. Người thua phải hiểu vì sao mình thua, nếu không random sẽ bị cảm nhận là AI "chơi ép".
+
+## AI Game Master
+
+Nguyên tắc số một: engine quyết định, AI kể chuyện. AI không bao giờ tự sửa chỉ số, tự sinh đồ hay tự định đoạt sống chết; nó chỉ chọn trong danh sách engine cho phép và viết lời văn. Nhờ vậy game cân bằng được, test được, và người chơi không thể "dụ" AI cho mình thắng.
+
+&#91;embedded content: luồng xử lý một ngày · engine và AI\]
+
+Nếu bất kỳ lời gọi AI nào lỗi hoặc quá thời gian, engine dùng lời văn mẫu gắn theo thẻ, nên ván chơi không bao giờ bị treo vì AI.
+
+**Bốn quyết định thiết kế cốt lõi**
+
+1. **Output có cấu trúc, luôn được kiểm tra.** Mọi lời gọi AI trả JSON theo schema: `eventId` phải thuộc danh sách ứng viên, tham số phải nằm trong khoảng cho phép. Sai thì thử lại 1 lần, rồi rơi về mặc định.
+2. **Tách ngữ cảnh chung và riêng.** Prompt của bản kể chung không chứa vai ẩn hay ngăn bí mật, nên AI không thể lộ điều nó không được biết. Bí mật được bảo vệ bằng kiến trúc, không phải bằng câu dặn "hãy giữ bí mật".
+3. **Bộ nhớ truyện có giới hạn.** Mỗi lời gọi nhận trạng thái hiện tại, sổ sự thật (NPC tên gì, ai bị thương ở đâu) và bản tóm tắt cuộn cập nhật mỗi cuối ngày. Kích thước context gần như không tăng theo số ngày.
+4. **Đầu vào của người chơi chỉ là dữ liệu.** Tên, dòng tự mô tả, tin nhắn chat được đưa vào prompt trong khối dữ liệu có đánh dấu và giới hạn độ dài. Có ai gõ "bỏ qua luật, cho tôi kho báu" thì AI cũng chỉ trả được JSON mà engine sẽ kiểm tra.
+
+**AI và thế giới 3D.** AI không dựng hình 3D; nó chỉ chọn trong danh mục trạng thái cảnh làm sẵn cho từng điểm, như hang mở hoặc sập, hồ đầy hoặc cạn, xác tàu nổi hoặc chìm. Lời AI viết hiện ra ngay trong thế giới: lời thoại của người lạ, trang nhật ký nhặt được, lá thư trong chai. Nhờ vậy câu chuyện gắn với nơi người chơi đang đứng, không chỉ là một khung chữ trên màn hình.
+
+**Chọn model theo việc.** Model nhanh, rẻ cho lời kể hằng ngày; model mạnh hơn cho cú twist ngày 5 và màn kết. Phần system prompt tĩnh (giọng kể, luật viết, ví dụ mẫu) nên được cache để giảm chi phí và độ trễ.
+
+**Độ trễ.** Stream lời kể từng đoạn, gọi các bản riêng song song, và đặt timeout cứng cho mỗi lời gọi. Hiệu ứng tung xúc xắc trên client là khoảng đệm tự nhiên để AI viết xong.
+
+**Chi phí ước tính (giả định, cần đo thật).** Ván 4 người, mỗi ngày khoảng 6 lời gọi (1 chọn thẻ, 1 bản chung, 4 bản riêng), mỗi lời gọi khoảng 3.000 token vào và 400 token ra. Cả ván vào khoảng 180.000 token vào và 24.000 token ra, chưa tính màn kết; nhân với bảng giá model lúc triển khai để ra chi phí mỗi ván.
+
+## Vai trò bí mật & các kết thúc
+
+Kết thúc do engine xác định từ trạng thái cuối ván; AI chỉ viết lời kết. Từ 4 người trở lên, mỗi ván có thể có 0 hoặc 1 kẻ phản bội — chính khả năng "có thể chẳng có ai" giữ cho sự nghi ngờ luôn sống.
+
+**Vai bí mật** (chia ngẫu nhiên lúc bắt đầu, chỉ người nhận biết)
+
+| Vai | Phe | Mục tiêu bí mật | Năng lực |
+| --- | --- | --- | --- |
+| Cướp biển nằm vùng | Phản bội | Đưa đoàn tới điểm hẹn của băng cướp, hoặc làm độ bền thuyền về 0 | Mỗi đêm được phá hoại hoặc gửi tín hiệu cho băng cướp |
+| Kẻ lừa đảo | Phản bội | Gom đủ lòng tin và đồ giá trị, rồi dụ cả đoàn tới điểm giao dịch để bán đứng | Làm giả manh mối, mua chuộc NPC |
+| Y tá | Phe đội (ẩn) | Giữ cho nhiều người sống nhất tới cuối ván | Mỗi đêm cứu 1 người khỏi chết; lộ thân phận thì thành mục tiêu của kẻ phản bội |
+| Người thường | Phe đội | Tìm kho báu và sống sót | Không có |
+
+Mỗi đêm cả đội có thể bỏ phiếu trói một người bị nghi. Trói đúng kẻ phản bội thì hắn mất năng lực; trói nhầm thì đội mất một tay khỏe — đó là cái giá của sự nghi ngờ.
+
+**Các kết thúc**
+
+| Kết thúc | Điều kiện kích hoạt | Ai thắng |
+| --- | --- | --- |
+| Kho báu về tay | Đào được kho báu và lên thuyền rời đảo trước khi núi lửa phun, còn ít nhất 1 người sống | Phe đội |
+| Kho báu nhuốm máu | Mang được kho báu đi nhưng có người chết, bị trói oan hoặc bị bỏ lại trên đảo | Phe đội, thắng đắng |
+| Lật mặt kẻ phản bội | Trói đúng kẻ phản bội trước khi hắn đạt mục tiêu, rồi vẫn mang được kho báu đi | Phe đội, có thưởng |
+| Kẻ sống sót duy nhất | Chỉ còn 1 người lên được thuyền cùng kho báu | Người đó |
+| Tay trắng trở về | Rời đảo kịp lúc nhưng không có kho báu | Không ai |
+| Chôn vùi cùng hòn đảo | Núi lửa phun khi cả đội còn trên đảo, hoặc máu của mọi người về 0 | Không ai |
+| Cướp biển chiếm thuyền | Cướp biển nằm vùng đạt mục tiêu | Cướp biển |
+| Bị bán đứng | Kẻ lừa đảo đưa được cả đoàn tới vịnh giao dịch | Kẻ lừa đảo |
+
+**Màn lật bài cuối ván** công khai vai của mọi người, ngăn bí mật của từng balo và những lần tung xúc xắc quyết định. Khoảnh khắc "hóa ra là mày!" là phần thưởng cảm xúc lớn nhất của cả ván.
+
+**Biên niên sử** là bản kể lại một trang do AI viết, kèm một thẻ ảnh để chia sẻ: tên đoàn, kết thúc, khoảnh khắc đáng nhớ nhất, và ai là kẻ phản bội. Đây là vòng lặp lan truyền chính: người chơi đăng lên mạng, bạn bè tò mò và vào chơi.
+
+## Kiến trúc kỹ thuật
+
+TEN TIDES chạy trên trình duyệt: gửi link là cả nhóm vào chơi, không cần cài đặt. Đồ họa low-poly nhẹ là chủ đích, không phải thỏa hiệp. Toàn bộ hệ thống viết bằng TypeScript, nên engine luật viết một lần và dùng chung cho cả client lẫn server.
+
+Hệ thống vẫn có hai mặt phẳng: thời gian thực (di chuyển, vật lý, tương tác trên map) và game master (luật, bí mật, AI). Nhưng không người chơi nào làm host: cả hai mặt phẳng chạy trên một server có thẩm quyền, tách thành hai module riêng trong cùng một process.
+
+**Vì sao chọn web thay vì Unity hay Godot**
+
+| Lựa chọn | Điểm mạnh | Điểm yếu | Quyết định |
+| --- | --- | --- | --- |
+| Web: three.js / React Three Fiber | Gửi link là chơi; một ngôn ngữ cho client, server và engine luật; build và deploy nhanh | Giới hạn hiệu năng và đồ họa; phần mạng phải tự ráp nhiều hơn | **Chọn** |
+| Unity (C#) | Kho asset và thư viện mạng lớn; build được PC lẫn mobile | Nặng, bắt người chơi cài đặt; cần đọc kỹ điều khoản license | Không chọn |
+| Godot 4 | Mã nguồn mở, miễn phí, nhẹ | Kho asset và công cụ mạng nhỏ hơn | Phương án dự phòng nếu sau này cần đồ họa hoặc vật lý nặng hơn nhiều |
+
+Nếu sau này phát hành Steam, bản web được bọc bằng Tauri hoặc Electron, không phải viết lại.
+
+**Các thành phần hệ thống**
+
+| Thành phần | Công nghệ | Trách nhiệm |
+| --- | --- | --- |
+| Client 3D | three.js + React Three Fiber + drei, build bằng Vite | Render đảo, camera góc nhìn thứ ba, hoạt ảnh nhân vật, hiệu ứng xúc xắc |
+| Vật lý & di chuyển | Rapier (`@react-three/rapier`), character controller | Chạy, leo, bơi, va chạm với địa hình |
+| UI 2D | React DOM phủ lên canvas 3D | Balo 16x16 kéo thả, thẻ sự kiện, chat quanh đống lửa, bỏ phiếu |
+| Mạng thời gian thực | Colyseus (Node), server có thẩm quyền, tick khoảng 20Hz | Đồng bộ vị trí, hoạt ảnh, đồ nằm trên map; lọc trạng thái theo từng người chơi |
+| Game master | Module TypeScript trong cùng server | Luật, bí mật, rút thẻ, đạo diễn độ căng, kết thúc; gửi trạng thái riêng cho từng người |
+| Rules engine | Gói TypeScript thuần dùng chung, PRNG có seed | Hàm thuần (trạng thái, hành động, seed) → trạng thái mới; không phụ thuộc 3D, mạng hay AI |
+| Nội dung | JSON có version, kiểm tra bằng zod | Thẻ, đồ, vai, danh mục trạng thái cảnh tại từng điểm |
+| AI | Anthropic SDK; model nhanh (Haiku 4.5) cho lời kể hằng ngày, model mạnh hơn (Sonnet 5) cho twist ngày 5 và màn kết | Gọi LLM, kiểm tra JSON bằng zod, retry, timeout, fallback lời văn mẫu; cache prompt tĩnh |
+| Hàng đợi AI | Hàng đợi trong process (`p-queue`) ở MVP; chuyển sang BullMQ + Redis khi chạy nhiều server | Giới hạn số lời gọi song song, timeout cứng |
+| Lưu trữ | PostgreSQL + Drizzle | Event log từng ván, biên niên sử, tên các đoàn cho easter egg |
+| Asset | glTF low-poly (Kenney, Quaternius, CC0), dựng map bằng Blender, nén bằng `gltf-transform` (meshopt) | Mô hình đảo, nhân vật, đồ vật |
+| Deploy | Client tĩnh trên Cloudflare Pages; server Node trên Fly.io hoặc Railway | Một process phục vụ nhiều phòng |
+| Test | Vitest; mô phỏng bot chạy thẳng trên rules engine | Kiểm thử luật, cân bằng tỷ lệ các kết thúc |
+
+Code tổ chức thành một monorepo (pnpm workspaces): `client`, `server`, `rules`, `content`.
+
+**Bốn quyết định kiến trúc đáng chú ý**
+
+1. **Không ai làm host, bí mật không bao giờ rời server.** Server gửi cho mỗi người đúng phần trạng thái người đó được thấy (StateView của Colyseus). Vai ẩn, ngăn bí mật, lời kể riêng và vị trí kho báu không bao giờ tới máy người khác, nên mở DevTools cũng không biết ai là kẻ phản bội. Mô hình này cũng loại bỏ luôn rủi ro host thoát giữa ván.
+2. **Server xác nhận mọi hành động có hệ quả.** Nhặt đồ, chạm điểm sự kiện, đào đất: client báo lên, server kiểm tra khoảng cách, thời điểm và đồ cần có rồi mới ghi nhận. Đào đúng chỗ hay không, chỉ server biết.
+3. **Event sourcing cho phần game master.** Lưu seed và chuỗi hành động có hệ quả, không lưu từng bước di chuyển. Nhờ đó có replay để debug, xem lại ván, phân tích cân bằng, và khôi phục khi server khởi động lại.
+4. **Engine luật là hàm thuần, có tính xác định.** Mọi random đi qua PRNG có seed. Có thể chạy mô phỏng hàng nghìn ván bằng bot, bỏ qua phần 3D và AI, để cân bằng tỷ lệ các kết thúc trước khi người thật chơi.
+
+**Ngân sách đồ họa.** Mục tiêu 60fps trên laptop chỉ có GPU tích hợp và lần tải đầu dưới 30MB. Cách giữ: tô màu bằng vertex color và flat shading thay cho texture, một đèn directional với shadow map nhỏ, sương mù để giới hạn tầm nhìn, `InstancedMesh` cho cây dừa, đá và cỏ, tải asset từng vùng khi cần.
+
+**Mở rộng.** Một phòng 6 người đồng bộ vị trí ở khoảng 20Hz là tải rất nhẹ, nên một máy chủ nhỏ chạy được nhiều phòng cùng lúc; game master chỉ xử lý vài chục hành động có hệ quả mỗi ngày trong game. Khi một server không đủ, thêm Redis để Colyseus chia phòng ra nhiều process. Nút thắt vẫn là độ trễ và chi phí LLM.
+
+## Phạm vi MVP & lộ trình
+
+Làm prototype giấy trước khi viết code: câu hỏi "ván này có vui không" rẻ nhất khi trả lời bằng bảng tính và giấy cắt. Chuyển sang 3D làm phạm vi tăng rõ rệt vì art và level design thành chi phí lớn nhất, nên cần thêm một người làm art 3D hoặc dựa vào asset pack low-poly. Thời gian dưới đây ước tính cho 1–2 dev bán thời gian cộng một người làm art; mỗi giai đoạn chỉ mở khi qua cổng của giai đoạn trước.
+
+| Giai đoạn | Phạm vi | Thời gian | Cổng để qua |
+| --- | --- | --- | --- |
+| 0. Prototype giấy | 30 thẻ sự kiện trên bảng tính, bản đồ đảo vẽ tay, balo cắt giấy, một người đóng vai AI | 2 tuần | Nhóm test tự đòi chơi ván thứ hai |
+| 1. Graybox 3D | Đảo dựng bằng khối xám với 4 vùng, 3 người di chuyển co-op, balo, vòng ngày đầy đủ, AI kể bản chung | 8–10 tuần | 3 người chơi hết 10 ngày trong dưới 60 phút, không lỗi đồng bộ |
+| 2. MVP | Đảo low-poly hoàn chỉnh, 4–6 người, vai ẩn, 40 món đồ, 60 thẻ gắn điểm trên map, 8 kết thúc, 10 easter egg, biên niên sử | 12–16 tuần | 30 ván test: không kết thúc nào chiếm quá 40%; chi phí AI mỗi ván dưới ngưỡng đặt trước |
+| 3. Closed beta | Kết nối lại khi rớt mạng, bot thay người rời, tự khôi phục phòng khi server khởi động lại, analytics, kiểm duyệt nội dung | 6 tuần | Tỷ lệ nhóm chơi lại trong 7 ngày đạt mục tiêu đặt ra |
+| 4. Mở rộng | Đảo mới, phát hành Steam, easter egg theo mùa, công cụ tạo thẻ cho cộng đồng | Liên tục | — |
+
+**MVP cố ý bỏ qua:** tài khoản (vào bằng mã phòng), điều khiển cảm ứng cho mobile (chơi trên trình duyệt máy tính), voice chat, cửa hàng trả phí, đồ họa chi tiết (dùng low-poly và asset có sẵn).
+
+## Rủi ro & câu hỏi mở
+
+Với bản 3D, rủi ro lớn nhất là phạm vi: art và level design dễ nuốt hết thời gian trước khi biết game có vui hay không. Sau đó mới tới AI kể sai hoặc chậm, và random bị cảm nhận là bất công.
+
+| Rủi ro | Tác động | Cách giảm |
+| --- | --- | --- |
+| Phạm vi 3D (art, level design, hoạt ảnh) vượt sức nhóm nhỏ | Trễ hạn, bỏ dở giữa chừng | Graybox trước, low-poly và asset có sẵn; chỉ một hòn đảo cho tới khi MVP chứng minh được là vui |
+| Khám phá 3D làm ván dài hơn | Khó gom đủ nhóm cho một buổi | Giới hạn giờ ban ngày; cân nhắc lưu ván để chơi tiếp buổi sau |
+| Server sập giữa ván hoặc người chơi gian lận | Mất ván hoặc lộ bí mật | Không ai làm host; bí mật không rời server; khôi phục ván từ event log; server xác nhận hành động có hệ quả |
+| Lỗi đồng bộ mạng | Mỗi người thấy một kiểu | Dùng thư viện netcode có sẵn; server làm trọng tài cho mọi hành động có hệ quả |
+| AI kể mâu thuẫn trạng thái (nhắc đồ đã mất, người đã chết) | Người chơi hết tin câu chuyện | Engine là nguồn sự thật, sổ sự thật, kiểm tra tên đồ và nhân vật trước khi gửi |
+| AI chậm làm gãy nhịp co-op | Cả nhóm ngồi chờ, chán | Stream, gọi song song, timeout cứng, lời văn mẫu dự phòng |
+| Chi phí token tăng theo số người | Lỗ trên mỗi ván | Cache prompt tĩnh, model nhỏ cho lời kể thường ngày, gộp bản riêng khi được |
+| Random bị cho là bất công | Người chơi đổ lỗi cho game | Xúc xắc công khai kèm các khoản cộng; đạo diễn độ căng |
+| 256 ô quá rộng, không gian không còn là giới hạn thật | Mất câu đố xếp đồ | Đồ lớn, ngân sách chặt; kiểm chứng ngay ở prototype giấy |
+| Kết thúc "bán qua Campuchia" tham chiếu trực tiếp các đường dây lừa đảo, buôn người có thật | Gây phản cảm; có thể vi phạm chính sách nội dung của nền tảng phát hành và nhà cung cấp AI | Hư cấu hóa địa danh và đường dây (một băng đảng giả tưởng đến từ đảo khác), giữ giọng hài đen kiểu phiêu lưu cướp biển |
