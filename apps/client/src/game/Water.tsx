@@ -79,9 +79,14 @@ const fragmentShader = /* glsl */ `
     col = mix(col, uSky, fres * 0.55);
 
     // Vệt nắng lấp lánh.
-    vec3 n = normalize(vec3(-cos(vWorld.x * 0.9 + uTime * 2.0) * 0.08, 1.0, -sin(vWorld.z * 0.8 - uTime * 1.6) * 0.08));
+    // Hai lớp sóng lệch hướng để vệt nắng lấm tấm tự nhiên, không xếp thành lưới đốm.
+    vec2 q = vWorld.xz;
+    vec3 n = normalize(vec3(
+      -(cos(q.x * 0.9 + uTime * 2.0) + 0.7 * cos((q.x + q.y) * 1.73 - uTime * 1.3)) * 0.05,
+      1.0,
+      -(sin(q.y * 0.8 - uTime * 1.6) + 0.7 * sin((q.x - q.y) * 1.91 + uTime * 1.1)) * 0.05));
     vec3 h = normalize(uSunDir + view);
-    col += uSunColor * pow(max(dot(n, h), 0.0), 180.0) * 1.6 * uDay;
+    col += uSunColor * pow(max(dot(n, h), 0.0), 360.0) * 1.3 * uDay;
 
     // Bọt sóng vỗ bờ: dải trắng dập dềnh theo thời gian ở chỗ nước rất nông, cộng một vệt sóng xa hơn.
     float surf = sin(uTime * 1.3 + (p.x + p.y) * 0.08);

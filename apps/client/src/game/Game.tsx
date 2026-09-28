@@ -23,10 +23,11 @@ const HORIZON = "#c4e4f3";
 /** Móc debug khi dev: xem room, vị trí, hướng nhìn và camera trong console trình duyệt. */
 function DebugHook({ room }: { room: IslandRoom }) {
   const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
   const world = useWorld(room);
   useEffect(() => {
-    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, anchors: ANCHORS, world, debugCam } });
-  }, [room, camera, world]);
+    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam } });
+  }, [room, camera, scene, world]);
   return null;
 }
 
