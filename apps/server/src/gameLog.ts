@@ -7,6 +7,8 @@ export interface GameLogFile {
   version: 1;
   roomId: string;
   seed: number;
+  /** Seed của thế giới (đảo nhỏ, hang, easter egg, sinh vật); bẫy dùng seed của ván. */
+  worldSeed?: number;
   createdAt: string;
   actions: GameAction[];
   chat: { day: number; from: string; channel: string; text: string }[];

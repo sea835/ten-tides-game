@@ -3,7 +3,7 @@
 // đi qua message `private`, server gửi riêng cho đúng từng người; chỗ đào kho báu chỉ vào state khi đã lộ.
 
 import { schema, t, type SchemaType } from "@colyseus/schema";
-import { BACKGROUND_IDS, BIO_MAX_LENGTH, DIFFICULTY_IDS, FLAW_IDS, GRID_SIZE, NIGHT_ACTION_IDS, RATION_IDS, STAT_MAX, STAT_MIN, type PrivateView } from "@tentides/rules";
+import { BACKGROUND_IDS, BIO_MAX_LENGTH, DIFFICULTY_IDS, FLAW_IDS, GRID_SIZE, NIGHT_ACTION_IDS, RATION_IDS, STAT_MAX, STAT_MIN, type EncounterEffects, type PrivateView } from "@tentides/rules";
 import { z } from "zod";
 
 export const ROOM_NAME = "island";
@@ -53,6 +53,10 @@ export const PlayerState = schema(
     moving: t.boolean().default(false),
     /** Đang ngồi (nghỉ, hoặc nấp trong cỏ cao). */
     sitting: t.boolean().default(false),
+    /** Đang bơi hoặc lặn (để vẽ dáng bơi). */
+    swimming: t.boolean().default(false),
+    /** Hơi thở khi lặn (0–100), server tính từ độ sâu. Hết hơi thì đuối nước, mất Máu. */
+    breath: t.uint8().default(100),
     connected: t.boolean().default(true),
     // Phiếu nhân vật, chép từ engine luật sau mỗi hành động.
     background: t.string().default(""),
@@ -149,6 +153,13 @@ export const LogEntryState = schema(
     ration: t.string().default(""),
     /** night: người bị đề cử trói */
     nominee: t.string().default(""),
+    /** encounter: egg, anomaly, trap, creature, friend, drowning */
+    source: t.string().default(""),
+    /** encounter: id trên bản đồ và id trong danh mục thế giới */
+    refId: t.string().default(""),
+    defId: t.string().default(""),
+    /** encounter: né được bẫy */
+    dodged: t.boolean().default(false),
   },
   "LogEntryState",
 );
@@ -226,9 +237,40 @@ export const ChronicleState = schema(
 );
 export type ChronicleState = SchemaType<typeof ChronicleState>;
 
+/** Một sinh vật đang sống trên bản đồ. Server cho đi lại, client chỉ vẽ theo. */
+export const CreatureState = schema(
+  {
+    species: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    rotY: t.float32().default(0),
+    /** idle, walk, flee, chase, attack, follow */
+    mode: t.string().default("idle"),
+  },
+  "CreatureState",
+);
+export type CreatureState = SchemaType<typeof CreatureState>;
+
+/** Bẫy đã sập: chỉ lúc này mới công khai chỗ đặt bẫy. */
+export const TrapState = schema(
+  {
+    defId: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+  },
+  "TrapState",
+);
+export type TrapState = SchemaType<typeof TrapState>;
+
 export const IslandState = schema(
   {
-    seed: t.uint32().default(0),
+    /**
+     * Seed của thế giới (đảo nhỏ, hang, hầm mỏ, easter egg, sinh vật). Công khai để mọi máy dựng cùng một bản đồ.
+     * Seed của engine luật (vai ẩn, chỗ kho báu, bẫy) thì không bao giờ rời server.
+     */
+    worldSeed: t.uint32().default(0),
     hostId: t.string().default(""),
     difficulty: t.string().default("normal"),
     nightSeconds: t.uint16().default(PHASE_SECONDS.night),
@@ -258,6 +300,11 @@ export const IslandState = schema(
     treasureSafe: t.boolean().default(false),
     players: t.map(PlayerState),
     anchors: t.map(AnchorState),
+    creatures: t.map(CreatureState),
+    /** Bẫy đã sập, theo id trên bản đồ. */
+    traps: t.map(TrapState),
+    /** Easter egg đã tìm thấy, điểm bất thường đã chạm, bẫy đã sập. */
+    discovered: t.array("string"),
     sceneStates: t.map("string"),
     /** Cửa hàng của ván này. */
     shop: t.array("string"),
@@ -296,6 +343,7 @@ export const MoveMessage = z.object({
   rotY: finite,
   moving: z.boolean(),
   sitting: z.boolean(),
+  swimming: z.boolean().optional(),
 });
 export type MoveMessage = z.infer<typeof MoveMessage>;
 
@@ -310,12 +358,17 @@ export const SettingsMessage = z
   .object({
     difficulty: z.enum(DIFFICULTY_IDS),
     nightSeconds: z.literal([...NIGHT_SECONDS_OPTIONS]),
+    /** Chủ phòng chọn bản đồ: nhập seed để chơi lại một bản đồ hay, hoặc gieo ngẫu nhiên. */
+    worldSeed: z.int().min(1).max(0xffffffff),
   })
   .partial();
 export type SettingsMessage = z.infer<typeof SettingsMessage>;
 
 export const KickMessage = z.object({ playerId: id });
 export const TriggerMessage = z.object({ anchorId: id });
+/** Nhấn E cạnh easter egg, điểm bất thường hoặc sinh vật thân thiện. */
+export const InteractMessage = z.object({ targetId: id });
+export type InteractMessage = z.infer<typeof InteractMessage>;
 export type TriggerMessage = z.infer<typeof TriggerMessage>;
 export const ChooseMessage = z.object({ anchorId: id, choiceId: id });
 export type ChooseMessage = z.infer<typeof ChooseMessage>;
@@ -363,6 +416,18 @@ export interface ChatBroadcast {
   channel: ChatChannel;
 }
 
+/** Server báo riêng cho người vừa chạm trán: tìm thấy gì, bị gì, kèm lời kể ngắn. */
+export interface EncounterMessage {
+  title: string;
+  text: string;
+  tone: "good" | "bad" | "neutral";
+  effects: EncounterEffects;
+  gained: string | null;
+}
+
+/** Bán kính nhấn E để xem xét một điểm bí mật hoặc vuốt ve sinh vật thân thiện. */
+export const INTERACT_RADIUS = 3;
+
 /** Server báo khi từ chối một hành động (vd. đứng quá xa điểm sự kiện). */
 export interface RejectedMessage {
   reason: string;
@@ -388,6 +453,8 @@ export const Messages = {
   ballot: "ballot",
   nightAction: "nightAction",
   dig: "dig",
+  interact: "interact",
+  encounter: "encounter",
   private: "private",
   chat: "chat",
   rejected: "rejected",

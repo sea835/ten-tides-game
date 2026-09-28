@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Dices, Gem, Moon, Sailboat, Skull, Sunset, TriangleAlert, type LucideIcon } from "lucide-react";
-import { RATION_LABELS, content } from "@tentides/content";
+import { ChevronDown, ChevronUp, Dices, Gem, Moon, PawPrint, Sailboat, Skull, Sparkles, Sunset, TriangleAlert, type LucideIcon } from "lucide-react";
+import { RATION_LABELS, content, worldCatalog } from "@tentides/content";
 import type { IslandState, LogEntryState } from "@tentides/protocol";
 import type { RationId } from "@tentides/rules";
 import type { IslandRoom } from "../../net.ts";
@@ -21,7 +21,46 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   dig: Gem,
   departure: Sailboat,
   death: Skull,
+  encounter: Sparkles,
 };
+
+const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
+  egg: Sparkles,
+  anomaly: Sparkles,
+  trap: TriangleAlert,
+  creature: PawPrint,
+  friend: PawPrint,
+  drowning: Skull,
+};
+
+const EFFECT_WORDS: Record<string, string> = { hp: "Máu", morale: "Tinh thần", hunger: "No", stamina: "Sức bền", food: "lương thực", treasure: "kho báu" };
+
+function encounterLine(e: LogEntryState, name: (id: string) => string): Line {
+  const who = name(e.playerId);
+  const effects = [...e.effects]
+    .map((x) => (x.type === "gain" ? `nhặt được ${itemName(x.itemId)}` : `${signed(x.amount)} ${EFFECT_WORDS[x.type] ?? x.type}`))
+    .join(", ");
+  const tail = effects ? ` (${effects})` : "";
+  const poi = worldCatalog.pois.get(e.defId);
+  const creature = worldCatalog.creatures.get(e.defId);
+  const trap = worldCatalog.traps.get(e.defId);
+  switch (e.source) {
+    case "egg":
+      return { day: e.day, ok: true, text: `${who} tìm thấy ${poi?.name.toLowerCase() ?? "một bí mật"}${tail}` };
+    case "anomaly":
+      return { day: e.day, ok: ![...e.effects].some((x) => x.amount < 0), text: `${who} chạm vào ${poi?.name.toLowerCase() ?? "điều gì đó lạ"}${tail}` };
+    case "trap":
+      return e.dodged
+        ? { day: e.day, ok: true, text: `${who} né được ${trap?.name.toLowerCase() ?? "một cái bẫy"}` }
+        : { day: e.day, ok: false, text: `${who} sập ${trap?.name.toLowerCase() ?? "bẫy"}${tail}` };
+    case "creature":
+      return { day: e.day, ok: false, text: `${creature?.name ?? "Thú dữ"} tấn công ${who}${tail}` };
+    case "friend":
+      return { day: e.day, ok: true, text: `${who} làm quen với ${creature?.name.toLowerCase() ?? "một con vật"}${tail}` };
+    default:
+      return { day: e.day, ok: false, text: `${who} suýt đuối nước${tail}` };
+  }
+}
 
 function describe(e: LogEntryState, s: IslandState): Line {
   const name = (id: string) => s.players.get(id)?.name ?? "?";
@@ -80,6 +119,7 @@ function describe(e: LogEntryState, s: IslandState): Line {
     const bad = [...e.effects].some((x) => x.type !== "repair" && x.type !== "rescued");
     return { day: e.day, ok: !bad, text: `Sáng ra: ${parts.join(" · ")}` };
   }
+  if (e.kind === "encounter") return encounterLine(e, name);
   if (e.kind === "dig") return { day: e.day, ok: true, text: `${name(e.playerId)} đã đào được rương kho báu!` };
   if (e.kind === "departure") {
     const behind = [...e.others].map(name);
@@ -95,7 +135,7 @@ function describe(e: LogEntryState, s: IslandState): Line {
 /** Nhật ký công khai: vài dòng gần nhất, bấm để xem lại cả ván. */
 export function Feed({ room }: { room: IslandRoom }) {
   const [expanded, setExpanded] = useState(false);
-  const lines = useRoomSnapshot(room, (s) => [...s.log].map((e) => ({ ...describe(e, s), kind: e.kind })));
+  const lines = useRoomSnapshot(room, (s) => [...s.log].map((e) => ({ ...describe(e, s), kind: e.kind, source: e.source })));
   if (lines.length === 0) return null;
   const shown = expanded ? lines : lines.slice(-4);
   return (
@@ -107,7 +147,7 @@ export function Feed({ room }: { room: IslandRoom }) {
       </button>
       <div className="feed-lines">
         {shown.map((l, i) => {
-          const Icon = KIND_ICONS[l.kind] ?? TriangleAlert;
+          const Icon = (l.kind === "encounter" ? ENCOUNTER_ICONS[l.source] : KIND_ICONS[l.kind]) ?? TriangleAlert;
           return (
             <div key={expanded ? i : lines.length - shown.length + i} className={l.ok ? "feed-line ok" : "feed-line bad"}>
               <Icon size={13} aria-hidden />

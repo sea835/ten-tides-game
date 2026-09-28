@@ -49,6 +49,16 @@ Toàn bộ game diễn ra trên một hòn đảo 3D, góc nhìn thứ ba, phong
 
 Easter egg tìm được sẽ được ghi vào sổ sự thật, để bộ sinh truyện nhắc tới trong lời kể và trong biên niên sử cuối ván.
 
+**Thế giới quanh đảo sinh theo seed.** Đảo chính giữ nguyên để người thuộc map vẫn có lợi thế; mọi thứ quanh nó do seed bản đồ quyết định, cùng seed là cùng thế giới trên mọi máy:
+
+- Vùng biển 480x480 m với 4–6 đảo nhỏ (cồn cát, đảo rừng, đảo đá, đảo cát đen, đảo vòng có vụng nước), rạn san hô để lặn, đáy biển sâu dần ra khơi. Bơi và lặn được; nín thở lâu hay mau tuỳ Thể lực, hết hơi thì đuối nước.
+- 2–3 hang động và 1–2 hầm mỏ (khung gỗ chống lò, đường ray, xe goòng, mạch quặng). Càng vào sâu càng tối; Gan dạ cao hoặc mang đèn dầu, đuốc thì đỡ tối.
+- Easter egg và điểm bất thường (vòng nấm phát sáng, đá lơ lửng, tảng đá thì thầm…); kết quả của điểm bất thường tốt hay xấu đã định sẵn theo seed.
+- Bẫy (hố chông, thòng lọng, cát lún, đá lở, khe khí độc…) rải theo seed bí mật của server, chỉ lộ khi có người sập.
+- Sinh vật từ thân thiện, trung tính tới nguy hiểm, từ quen thuộc, lạ tới biến dị. Sinh vật lạ và biến dị xuất hiện muộn dần khi núi lửa thức.
+
+Chủ phòng nhập hoặc gieo lại seed bản đồ ở sảnh chờ, để nhóm chơi lại một bản đồ hay hoặc khoe seed với nhóm khác. Mọi chạm trán (bị cắn, sập bẫy, nhặt easter egg) đi qua engine luật như một hành động, nên ván vẫn phát lại được từ seed và log.
+
 ## Trải nghiệm một ván chơi
 
 Một ván gồm 3 bước chuẩn bị rồi tối đa 10 vòng ngày. Mục tiêu thiết kế là 4–5 phút mỗi ngày, trong đó khoảng 3 phút khám phá đảo tự do, để cả ván gói trong 45–60 phút.

@@ -1,12 +1,52 @@
 import { useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronUp, Play, Sunrise } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Dices, Map as MapIcon, Play, Sunrise } from "lucide-react";
 import { DIFFICULTY_LABELS } from "@tentides/content";
 import { Messages, NIGHT_SECONDS_OPTIONS } from "@tentides/protocol";
 import { DIFFICULTY_IDS, TOTAL_DAYS, type Difficulty } from "@tentides/rules";
 import { myId, type IslandRoom } from "../../net.ts";
 import { usePrivateStory, useStory } from "./Story.tsx";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
+import { useWorld } from "../world.ts";
 import { Callout } from "./ui.tsx";
+
+/** Bản đồ theo seed: ai cũng thấy seed để chia sẻ; chủ phòng gõ seed khác hoặc gieo ngẫu nhiên. */
+function MapSeed({ room, isHost }: { room: IslandRoom; isHost: boolean }) {
+  const seed = useRoomSnapshot(room, (s) => s.worldSeed);
+  const world = useWorld(room);
+  const [draft, setDraft] = useState("");
+  const summary = `${world.islets.length} đảo nhỏ · ${world.structures.filter((s) => s.kind === "cave").length} hang · ${world.structures.filter((s) => s.kind === "mine").length} hầm mỏ`;
+  const send = (value: number) => room.send(Messages.settings, { worldSeed: value });
+  if (!isHost) {
+    return (
+      <span title={summary}>
+        Bản đồ <strong>#{seed}</strong>
+      </span>
+    );
+  }
+  return (
+    <div className="setting">
+      <span className="label">
+        <MapIcon size={13} aria-hidden /> Bản đồ #{seed}
+      </span>
+      <div className="seed-row">
+        <input
+          inputMode="numeric"
+          placeholder="Nhập seed"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 10))}
+          onKeyDown={(e) => {
+            const n = Number(draft);
+            if (e.key === "Enter" && n >= 1 && n <= 0xffffffff) send(n);
+          }}
+        />
+        <button title="Gieo bản đồ ngẫu nhiên" onClick={() => send(crypto.getRandomValues(new Uint32Array(1))[0]! || 1)}>
+          <Dices size={15} aria-hidden /> Gieo lại
+        </button>
+      </div>
+      <span className="hint">{summary}. Cùng seed là cùng đảo nhỏ, hang, hầm, easter egg và sinh vật.</span>
+    </div>
+  );
+}
 
 function LobbySettings({ room, isHost, difficulty, nightSeconds }: { room: IslandRoom; isHost: boolean; difficulty: Difficulty; nightSeconds: number }) {
   if (!isHost) {
@@ -18,6 +58,7 @@ function LobbySettings({ room, isHost, difficulty, nightSeconds }: { room: Islan
         <span>
           Đêm dài <strong>{nightSeconds} giây</strong>
         </span>
+        <MapSeed room={room} isHost={false} />
       </div>
     );
   }
@@ -50,6 +91,7 @@ function LobbySettings({ room, isHost, difficulty, nightSeconds }: { room: Islan
         </div>
         <span className="hint">{nightSeconds === 60 ? "Hợp với nhóm có voice call" : "Thêm thời gian để chat bằng chữ"}</span>
       </div>
+      <MapSeed room={room} isHost />
     </div>
   );
 }

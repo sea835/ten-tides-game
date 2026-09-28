@@ -2,7 +2,7 @@ import { useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Color, Fog, type DirectionalLight, type HemisphereLight } from "three";
 import type { IslandRoom } from "../net.ts";
-import { localPosition, sky } from "./shared.ts";
+import { localEnv, localPosition, sky } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
 
 const PALETTE = {
@@ -19,6 +19,9 @@ const MOON = new Color("#8fb3ff");
 const GROUND_DAY = new Color("#c2a36b");
 const GROUND_NIGHT = new Color("#1a2130");
 const MOON_SKY = new Color("#4a6aa8");
+const UNDERWATER_DAY = new Color("#1d6f86");
+const UNDERWATER_NIGHT = new Color("#04161f");
+const underwaterFog = new Color();
 
 /** Mặt trời lặn vào lúc này trong ngày (0–1); phần sau là đêm. */
 const SUNSET = 0.82;
@@ -79,12 +82,26 @@ export function DayCycle({
     const horizon = skyUniforms.uHorizon.value.copy(PALETTE.nightHorizon).lerp(PALETTE.duskHorizon, dusk).lerp(PALETTE.dayHorizon, day);
     skyUniforms.uSunColor.value.copy(SUN_WARM).lerp(SUN_NOON, day);
     skyUniforms.uNight.value = night;
-    if (scene.fog instanceof Fog) {
-      scene.fog.color.copy(horizon);
-      // Ban đêm sương mù dày hơn một chút cho thấy tối.
-      scene.fog.far = 230 - 70 * night;
+    if (localEnv.underwater) {
+      // Dưới nước: sương xanh đặc, nhìn không xa, sâu thì tối dần.
+      underwaterFog.copy(UNDERWATER_NIGHT).lerp(UNDERWATER_DAY, 1 - night * 0.85);
+      if (scene.fog instanceof Fog) {
+        scene.fog.color.copy(underwaterFog);
+        scene.fog.near = 1;
+        scene.fog.far = 38 - 12 * night;
+      }
+      if (scene.background instanceof Color) scene.background.copy(underwaterFog);
+    } else {
+      if (scene.fog instanceof Fog) {
+        scene.fog.color.copy(horizon);
+        scene.fog.near = 70;
+        // Ban đêm sương mù dày hơn một chút cho thấy tối.
+        scene.fog.far = 280 - 80 * night;
+      }
+      if (scene.background instanceof Color) scene.background.copy(horizon);
     }
-    if (scene.background instanceof Color) scene.background.copy(horizon);
+    // Trong hang, hầm thì nắng và ánh trời lọt vào ít dần theo độ sâu.
+    const shade = 1 - 0.82 * localEnv.indoor;
 
     const azimuth = Math.PI * u;
     const sunDir = skyUniforms.uSunDir.value.set(Math.cos(azimuth) * 70, 8 + elevation * 60, -25).normalize();
@@ -93,11 +110,11 @@ export function DayCycle({
     const light = sun.current;
     if (light) {
       if (t < SUNSET) {
-        light.intensity = 0.6 + 2.1 * Math.pow(elevation, 0.6);
+        light.intensity = (0.6 + 2.1 * Math.pow(elevation, 0.6)) * shade;
         light.color.copy(SUN_WARM).lerp(SUN_NOON, day);
         light.position.copy(localPosition).addScaledVector(sunDir, 80);
       } else {
-        light.intensity = 0.45;
+        light.intensity = 0.45 * shade;
         light.color.copy(MOON);
         light.position.set(localPosition.x - 30, localPosition.y + 45, localPosition.z + 20);
       }
@@ -107,7 +124,7 @@ export function DayCycle({
     const h = hemi.current;
     if (h) {
       // Sáng sớm, chạng vạng và ban đêm vẫn phải đủ sáng để đi lại (đêm có ánh trăng xanh nhạt).
-      h.intensity = 0.75 + 0.25 * dusk + 0.4 * day;
+      h.intensity = (0.75 + 0.25 * dusk + 0.4 * day) * shade * (localEnv.underwater ? 0.7 : 1);
       h.color.copy(horizon).lerp(MOON_SKY, night * 0.7).lerp(top, 0.25 * day);
       h.groundColor.copy(GROUND_NIGHT).lerp(GROUND_DAY, 0.3 + 0.7 * day);
     }

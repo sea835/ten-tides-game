@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CuboidCollider, CylinderCollider, RigidBody, TrimeshCollider } from "@react-three/rapier";
 import {
@@ -10,7 +10,6 @@ import {
   DoubleSide,
   MeshStandardMaterial,
   Object3D,
-  PlaneGeometry,
   SphereGeometry,
   Vector3,
   type Group,
@@ -19,25 +18,36 @@ import {
   type PointLight,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { CAMP, CAVE, MAP_HALF_SIZE, PALMS, TALL_GRASS, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, zoneAt } from "@tentides/content";
+import { CAMP, CAVE, MAP_HALF_SIZE, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { sky } from "./shared.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { Vegetation } from "./Vegetation.tsx";
 import { Water } from "./Water.tsx";
 import { WindClock, grain, mulberry32, patch, swayMaterial } from "./nature.ts";
-
-const TERRAIN_SEGMENTS = 150;
+import { Structures } from "./Structures.tsx";
+import { Points } from "./Points.tsx";
+import { Wildlife } from "./Wildlife.tsx";
+import { SeaLife } from "./SeaLife.tsx";
 
 // ---------------------------------------------------------------------------
 // Địa hình
 // ---------------------------------------------------------------------------
 
+/** Địa hình chia thành từng ô vuông cạnh chừng này mét (để camera cắt bớt phần ngoài tầm nhìn). */
+const CHUNK = 48;
+/** Độ mịn: ô có đất liền hay đáy nông thì 2 m một đỉnh; ô toàn biển sâu thì 6 m (6 chia hết cho 2 nên mép khớp nhau). */
+const FINE = 2;
+const COARSE = 6;
+
 const C = {
-  deepBed: new Color("#2f6f73"),
+  deepBed: new Color("#1f5a66"),
   bed: new Color("#cdb98a"),
+  reefBed: new Color("#d9a38f"),
   wetSand: new Color("#d2b57c"),
   sand: new Color("#f2dea8"),
+  blackSand: new Color("#3d3a3b"),
+  blackWet: new Color("#2a2829"),
   grassLight: new Color("#9ccb67"),
   grass: new Color("#72b04f"),
   forest: new Color("#4f8e3f"),
@@ -47,74 +57,166 @@ const C = {
   ash: new Color("#6b625c"),
   lava: new Color("#c8401f"),
   straw: new Color("#a9a45a"),
+  dirt: new Color("#7a6a55"),
 };
 
-function faceColor(out: Color, x: number, z: number, h: number, slope: number) {
-  const inland = shoreRadius(x, z) - Math.hypot(x, z);
-  const volcanoDist = Math.hypot(x - VOLCANO.x, z - VOLCANO.z);
+function faceColor(world: World, out: Color, x: number, z: number, h: number, slope: number) {
+  const surf = world.surface(x, z);
+  const inland = surf.inland;
   const n = patch(x, z);
-  if (volcanoDist < VOLCANO.craterRadius + 1) return out.copy(C.lava);
-  if (h < WATER_LEVEL - 0.3) return out.copy(C.bed).lerp(C.deepBed, Math.min(1, (WATER_LEVEL - h) / 5));
-  if (h < WATER_LEVEL + 0.35) return out.copy(C.wetSand);
+  const islet = surf.islet && surf.inland > -30 ? surf.islet : null;
+  const volcanic = islet?.kind === "volcanic";
+  if (!islet && Math.hypot(x - VOLCANO.x, z - VOLCANO.z) < VOLCANO.craterRadius + 1) return out.copy(C.lava);
+  if (h < WATER_LEVEL - 0.3) {
+    const bed = surf.reef ? C.reefBed : volcanic ? C.blackWet : C.bed;
+    return out.copy(bed).lerp(C.deepBed, Math.min(1, (WATER_LEVEL - h) / (surf.reef ? 9 : 7)));
+  }
+  if (h < WATER_LEVEL + 0.35) return out.copy(volcanic ? C.blackWet : C.wetSand);
+  // Sàn trong lòng hang, hầm và sân trước cửa: đất nện lẫn đá vụn.
+  if (surf.pad || world.structureAt(x, z)) return out.copy(C.dirt).lerp(C.rockDark, 0.3 + 0.3 * grain(x, z));
   // Dốc đứng thì lộ đá, bất kể vùng nào.
   if (slope > 0.55 && h > 2) return out.copy(C.rockDark).lerp(C.rock, grain(x, z));
-  if (zoneAt(x, z) === "volcano" && h > 6) return out.copy(C.ash).lerp(C.rockDark, Math.max(0, n) * 0.6);
+  if (islet) {
+    switch (islet.kind) {
+      case "volcanic":
+        return h > 4 ? out.copy(C.ash).lerp(C.rockDark, Math.max(0, n) * 0.6) : out.copy(C.blackSand).lerp(C.ash, Math.max(0, n) * 0.5);
+      case "rocky":
+        if (h > 3 || n > 0.3) return out.copy(C.rock).lerp(C.rockDark, 0.5 + 0.5 * n);
+        return inland < 4 ? out.copy(C.sand).lerp(C.rock, 0.4) : out.copy(C.grassLight).lerp(C.rock, 0.35);
+      case "sandbar":
+      case "atoll":
+        return inland < 6 + n * 2 ? out.copy(C.sand) : out.copy(C.sand).lerp(C.grassLight, 0.5 + 0.3 * n);
+      case "jungle":
+        if (inland < 4 + n * 1.5) return out.copy(C.sand).lerp(C.wetSand, Math.max(0, 1 - inland / 2) * 0.8);
+        if (inland < 7) return out.copy(C.sand).lerp(C.grassLight, (inland - 4) / 3);
+        return out.copy(C.grass).lerp(C.forest, 0.5 + 0.5 * n);
+    }
+  }
+  if (world.zoneAt(x, z) === "volcano" && h > 6) return out.copy(C.ash).lerp(C.rockDark, Math.max(0, n) * 0.6);
   if (h > 8) return out.copy(C.rock).lerp(C.rockDark, 0.5 + 0.5 * n);
   if (inland < 12 + n * 3) return out.copy(C.sand).lerp(C.wetSand, Math.max(0, 1 - inland / 4) * 0.8);
   if (inland < 16) return out.copy(C.sand).lerp(C.grassLight, (inland - 12) / 4);
   if (inland < 40) out.copy(C.grass).lerp(C.forest, 0.5 + 0.5 * n);
   else out.copy(C.forest).lerp(n > 0.2 ? C.forestDark : C.grassLight, Math.abs(n) * 0.8);
   // Nền dưới đám cỏ tranh ngả màu rơm.
-  for (const p of TALL_GRASS) {
+  for (const p of world.tallGrass) {
     const d = Math.hypot(p.x - x, p.z - z) / p.radius;
     if (d < 1.2) out.lerp(C.straw, 0.55 * Math.min(1, (1.2 - d) * 2));
   }
   return out;
 }
 
-/** Dựng lưới địa hình từ heightAt(): bản có chỉ số cho va chạm, bản tách mặt để tô màu phẳng kiểu low-poly. */
-function buildTerrain() {
-  const size = MAP_HALF_SIZE * 2;
-  const grid = new PlaneGeometry(size, size, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
-  grid.rotateX(-Math.PI / 2);
-  const pos = grid.attributes.position!;
-  for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)));
-  }
-
-  const colliderVertices = new Float32Array(pos.array);
-  const colliderIndices = new Uint32Array(grid.index!.array);
-
-  const flat = grid.toNonIndexed();
-  flat.computeVertexNormals();
-  const fpos = flat.attributes.position!;
-  const fnorm = flat.attributes.normal!;
-  const colors = new Float32Array(fpos.count * 3);
-  const tint = new Color();
-  for (let i = 0; i < fpos.count; i += 3) {
-    const cx = (fpos.getX(i) + fpos.getX(i + 1) + fpos.getX(i + 2)) / 3;
-    const cy = (fpos.getY(i) + fpos.getY(i + 1) + fpos.getY(i + 2)) / 3;
-    const cz = (fpos.getZ(i) + fpos.getZ(i + 1) + fpos.getZ(i + 2)) / 3;
-    const slope = 1 - Math.abs(fnorm.getY(i));
-    faceColor(tint, cx, cz, cy, slope);
-    // Lệch màu nhẹ từng mặt cho ra chất low-poly.
-    tint.multiplyScalar(0.93 + 0.1 * grain(cx, cz));
-    for (let v = 0; v < 3; v++) tint.toArray(colors, (i + v) * 3);
-  }
-  flat.setAttribute("color", new BufferAttribute(colors, 3));
-  grid.dispose();
-
-  return { geometry: flat, colliderVertices, colliderIndices };
+interface TerrainChunk {
+  geometry: BufferGeometry;
+  colliderVertices: Float32Array;
+  colliderIndices: Uint32Array;
 }
 
-function Terrain() {
-  const terrain = useMemo(buildTerrain, []);
+/**
+ * Dựng địa hình từ world.heightAt() theo từng ô: ô có đất hay đáy nông dùng lưới mịn, ô toàn biển sâu dùng lưới thưa.
+ * Mép ô mịn giáp ô thưa được nắn thẳng theo ô thưa để không hở khe. Mỗi ô có bản chỉ số cho va chạm
+ * và bản tách mặt để tô màu phẳng kiểu low-poly.
+ */
+function buildTerrain(world: World): TerrainChunk[] {
+  const count = (MAP_HALF_SIZE * 2) / CHUNK;
+  const origin = -MAP_HALF_SIZE;
+  // Ô nào toàn biển sâu (lấy mẫu dày theo lưới thưa, cả mép).
+  const coarse: boolean[][] = [];
+  for (let cx = 0; cx < count; cx++) {
+    coarse.push([]);
+    for (let cz = 0; cz < count; cz++) {
+      let deep = true;
+      for (let i = 0; i <= CHUNK / FINE && deep; i += 1) {
+        for (let j = 0; j <= CHUNK / FINE && deep; j += 1) {
+          if (world.heightAt(origin + cx * CHUNK + i * FINE, origin + cz * CHUNK + j * FINE) > -7) deep = false;
+        }
+      }
+      coarse[cx]!.push(deep);
+    }
+  }
+  const isCoarse = (cx: number, cz: number) => cx >= 0 && cz >= 0 && cx < count && cz < count && coarse[cx]![cz]!;
+
+  const chunks: TerrainChunk[] = [];
+  const tint = new Color();
+  for (let cx = 0; cx < count; cx++) {
+    for (let cz = 0; cz < count; cz++) {
+      const step = coarse[cx]![cz] ? COARSE : FINE;
+      const cells = CHUNK / step;
+      const x0 = origin + cx * CHUNK;
+      const z0 = origin + cz * CHUNK;
+      const verts = new Float32Array((cells + 1) * (cells + 1) * 3);
+      const heightOn = (x: number, z: number) => world.heightAt(x, z);
+      for (let j = 0; j <= cells; j++) {
+        for (let i = 0; i <= cells; i++) {
+          const x = x0 + i * step;
+          const z = z0 + j * step;
+          let y = heightOn(x, z);
+          // Mép giáp ô thưa: lấy nội suy giữa hai đỉnh của ô thưa để hai bên khớp nhau.
+          if (step === FINE) {
+            const snap = (t: number, a: [number, number], b: [number, number]) => {
+              const k = (t % COARSE) / COARSE;
+              return k === 0 ? heightOn(...a) : heightOn(...a) * (1 - k) + heightOn(...b) * k;
+            };
+            const tx = i * FINE;
+            const tz = j * FINE;
+            const floorX = x0 + Math.floor(tx / COARSE) * COARSE;
+            const floorZ = z0 + Math.floor(tz / COARSE) * COARSE;
+            if ((i === 0 && isCoarse(cx - 1, cz)) || (i === cells && isCoarse(cx + 1, cz))) y = snap(tz, [x, floorZ], [x, floorZ + COARSE]);
+            else if ((j === 0 && isCoarse(cx, cz - 1)) || (j === cells && isCoarse(cx, cz + 1))) y = snap(tx, [floorX, z], [floorX + COARSE, z]);
+          }
+          verts.set([x, y, z], (j * (cells + 1) + i) * 3);
+        }
+      }
+      const indices = new Uint32Array(cells * cells * 6);
+      let k = 0;
+      for (let j = 0; j < cells; j++) {
+        for (let i = 0; i < cells; i++) {
+          const a = j * (cells + 1) + i;
+          const b = a + 1;
+          const c = a + (cells + 1);
+          const d = c + 1;
+          indices.set([a, c, b, b, c, d], k);
+          k += 6;
+        }
+      }
+      const grid = new BufferGeometry();
+      grid.setAttribute("position", new BufferAttribute(verts, 3));
+      grid.setIndex(new BufferAttribute(indices, 1));
+      const flat = grid.toNonIndexed();
+      flat.computeVertexNormals();
+      const fpos = flat.attributes.position!;
+      const fnorm = flat.attributes.normal!;
+      const colors = new Float32Array(fpos.count * 3);
+      for (let v = 0; v < fpos.count; v += 3) {
+        const fx = (fpos.getX(v) + fpos.getX(v + 1) + fpos.getX(v + 2)) / 3;
+        const fy = (fpos.getY(v) + fpos.getY(v + 1) + fpos.getY(v + 2)) / 3;
+        const fz = (fpos.getZ(v) + fpos.getZ(v + 1) + fpos.getZ(v + 2)) / 3;
+        faceColor(world, tint, fx, fz, fy, 1 - Math.abs(fnorm.getY(v)));
+        // Lệch màu nhẹ từng mặt cho ra chất low-poly.
+        tint.multiplyScalar(0.93 + 0.1 * grain(fx, fz));
+        for (let q = 0; q < 3; q++) tint.toArray(colors, (v + q) * 3);
+      }
+      flat.setAttribute("color", new BufferAttribute(colors, 3));
+      flat.computeBoundingSphere();
+      grid.dispose();
+      chunks.push({ geometry: flat, colliderVertices: verts, colliderIndices: indices });
+    }
+  }
+  return chunks;
+}
+
+function Terrain({ world }: { world: World }) {
+  const chunks = useMemo(() => buildTerrain(world), [world]);
+  const material = useMemo(() => new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }), []);
+  useEffect(() => () => chunks.forEach((c) => c.geometry.dispose()), [chunks]);
   return (
     <RigidBody type="fixed" colliders={false}>
-      <TrimeshCollider args={[terrain.colliderVertices, terrain.colliderIndices]} />
-      <mesh geometry={terrain.geometry} receiveShadow>
-        <meshStandardMaterial vertexColors flatShading roughness={0.95} />
-      </mesh>
+      {chunks.map((c, i) => (
+        <group key={i}>
+          <TrimeshCollider args={[c.colliderVertices, c.colliderIndices]} />
+          <mesh geometry={c.geometry} material={material} receiveShadow />
+        </group>
+      ))}
     </RigidBody>
   );
 }
@@ -190,7 +292,8 @@ function buildCrown(): { leaves: BufferGeometry; nuts: BufferGeometry } {
   return { leaves, nuts };
 }
 
-function Palms() {
+function Palms({ world }: { world: World }) {
+  const palms = world.palms;
   const trunks = useRef<InstancedMesh>(null);
   const crowns = useRef<InstancedMesh>(null);
   const nuts = useRef<InstancedMesh>(null);
@@ -209,8 +312,8 @@ function Palms() {
     const top = new Vector3();
     const rand = mulberry32(7);
     const leafColor = new Color();
-    PALMS.forEach((palm, i) => {
-      const ground = heightAt(palm.x, palm.z);
+    palms.forEach((palm, i) => {
+      const ground = world.heightAt(palm.x, palm.z);
       // Hướng nghiêng: dừa ven biển hay ngả ra phía biển.
       const seaward = Math.atan2(palm.z, palm.x);
       const lean = palm.lean + 0.25;
@@ -232,16 +335,16 @@ function Palms() {
     });
     for (const m of [trunks, crowns, nuts]) m.current!.instanceMatrix.needsUpdate = true;
     if (crowns.current!.instanceColor) crowns.current!.instanceColor.needsUpdate = true;
-  }, []);
+  }, [palms, world]);
 
   return (
     <>
-      <instancedMesh ref={trunks} args={[geo.trunk, mats.trunk, PALMS.length]} castShadow receiveShadow />
-      <instancedMesh ref={crowns} args={[geo.leaves, mats.leaves, PALMS.length]} castShadow />
-      <instancedMesh ref={nuts} args={[geo.nuts, mats.nuts, PALMS.length]} />
+      <instancedMesh ref={trunks} args={[geo.trunk, mats.trunk, palms.length]} castShadow receiveShadow />
+      <instancedMesh ref={crowns} args={[geo.leaves, mats.leaves, palms.length]} castShadow />
+      <instancedMesh ref={nuts} args={[geo.nuts, mats.nuts, palms.length]} />
       <RigidBody type="fixed" colliders={false}>
-        {PALMS.map((palm, i) => (
-          <CylinderCollider key={i} args={[palm.height / 2, 0.3]} position={[palm.x, heightAt(palm.x, palm.z) + palm.height / 2, palm.z]} />
+        {palms.map((palm, i) => (
+          <CylinderCollider key={i} args={[palm.height / 2, 0.3]} position={[palm.x, world.heightAt(palm.x, palm.z) + palm.height / 2, palm.z]} />
         ))}
       </RigidBody>
     </>
@@ -554,14 +657,18 @@ function Boat({ room }: { room: IslandRoom }) {
   );
 }
 
-export function Island({ room }: { room: IslandRoom }) {
+export function Island({ room, world }: { room: IslandRoom; world: World }) {
   return (
     <>
       <WindClock />
-      <Terrain />
-      <Water />
-      <Palms />
-      <Vegetation />
+      <Terrain world={world} />
+      <Water world={world} />
+      <Palms world={world} />
+      <Vegetation world={world} />
+      <Structures world={world} />
+      <Points room={room} world={world} />
+      <Wildlife room={room} />
+      <SeaLife world={world} />
       <Cave />
       <Volcano room={room} />
       <Campfire />

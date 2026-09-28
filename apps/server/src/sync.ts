@@ -70,6 +70,26 @@ function toLogEntry(entry: LogEntry): LogEntryState {
         out.effects.push(effect);
       }
       break;
+    case "encounter":
+      out.playerId = entry.playerId;
+      out.source = entry.source;
+      out.refId = entry.refId;
+      out.defId = entry.defId;
+      out.dodged = entry.dodged;
+      for (const [type, amount] of Object.entries(entry.effects)) {
+        if (typeof amount !== "number" || amount === 0) continue;
+        const effect = new EffectState();
+        effect.type = type;
+        effect.amount = amount;
+        out.effects.push(effect);
+      }
+      if (entry.gained) {
+        const effect = new EffectState();
+        effect.type = "gain";
+        effect.itemId = entry.gained;
+        out.effects.push(effect);
+      }
+      break;
     case "departure":
       out.players.push(...entry.aboard);
       out.others.push(...entry.leftBehind);
@@ -81,7 +101,7 @@ function toLogEntry(entry: LogEntry): LogEntryState {
 }
 
 export function syncState(target: IslandState, game: GameState) {
-  target.seed = game.seed;
+  // Seed của engine luật không bao giờ được chép sang đây: từ nó suy ra được vai ẩn và chỗ kho báu.
   target.difficulty = game.phase === "lobby" ? target.difficulty : game.difficulty;
   target.phase = game.phase;
   target.day = game.day;
@@ -133,6 +153,7 @@ export function syncState(target: IslandState, game: GameState) {
   }
 
   setMap(target.sceneStates, game.sceneStates);
+  setArray(target.discovered, game.discovered);
 
   setArray(target.campers, game.campers);
   target.rationNeeded = game.phase === "night" && rationVoteNeeded(game);

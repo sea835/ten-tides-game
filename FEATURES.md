@@ -9,7 +9,7 @@
 - **"Table stakes" hiểu theo bối cảnh prototype cho nhóm bạn**, không phải chuẩn phát hành thương mại. Thiếu những thứ này thì ván 45–60 phút gãy giữa chừng, nhóm bỏ cuộc, hoặc không trả lời được câu "có vui không".
 - **Complexity** (LOW/MEDIUM/HIGH) tính cho stack đã chọn: TypeScript monorepo gồm engine luật thuần (`packages/rules`), server Colyseus giữ cả phần thời gian thực lẫn game master (`apps/server`), client three.js + React Three Fiber + Rapier (`apps/client`). Chi tiết ở mục Kiến trúc kỹ thuật của PROJECT.md.
 - **Trạng thái** của từng mã so với code hiện tại nằm ở bảng ngay dưới. Các bảng tính năng phía sau là khuyến nghị, không phải mô tả code.
-- **Mã ID** (L1, H3, B5…) để REQUIREMENTS.md và roadmap tham chiếu: L = Lobby & session, H = Hidden roles, S = Survival loop, B = Backpack, R = Randomness, A = AI narration, C = Content, T = Balance tooling & telemetry, D = Differentiator.
+- **Mã ID** (L1, H3, B5…) để REQUIREMENTS.md và roadmap tham chiếu: L = Lobby & session, H = Hidden roles, S = Survival loop, B = Backpack, R = Randomness, A = AI narration, C = Content, T = Balance tooling & telemetry, D = Differentiator, M = Map (thế giới sinh theo seed).
 
 ## Trạng thái hiện tại (2026-09-28)
 
@@ -57,6 +57,13 @@
 | D3 | Xong | Sự cố tự nhiên mỗi đêm trông giống hệt phá hoại |
 | D4, D5, D6 | Xong | Lời kể riêng mỗi sáng, lời kể hoàng hôn, biên niên sử có nút sao chép |
 | D7 | Xong | Dòng thời gian "đêm đó thật ra đã xảy ra gì" ở màn lật bài |
+| M1 | Xong | Biển 480x480 m; 4–6 đảo nhỏ theo seed (cồn cát, đảo rừng, đảo đá, đảo cát đen, đảo vòng), 5–8 rạn san hô; bản đồ nhỏ vẽ cả vùng biển |
+| M2 | Xong | Bơi và lặn (giữ C, Space ngoi lên); hơi thở do server tính theo Thể lực (thủy thủ già lâu hơn), hết hơi thì đuối nước mất Máu |
+| M3 | Xong | 2–3 hang động và 1–2 hầm mỏ sinh theo seed (lưới ô, vách và trần có va chạm); càng sâu càng tối, Gan dạ cao hoặc mang đèn dầu, đuốc thì đỡ tối |
+| M4 | Xong | 18 easter egg và 9 điểm bất thường trong danh mục; mỗi ván rải chừng 15 egg và 5–7 điểm bất thường, vắng vài cái để ván sau còn thứ tìm. Nhấn E để xem xét; kết quả của điểm bất thường định sẵn theo seed. Ghi vào nhật ký, bộ sinh truyện kể lúc hoàng hôn và trong biên niên sử |
+| M5 | Xong | 9 loại bẫy, rải theo seed bí mật của server; né theo thuộc tính; sập rồi mới lộ trên bản đồ |
+| M6 | Xong | 19 loài sinh vật: thân thiện (vuốt ve được), trung tính (bỏ chạy), nguy hiểm (đuổi cắn, sợ dao, súng, đuốc); quen thuộc từ ngày 1, lạ từ ngày 2, biến dị từ ngày 4–6 khi núi lửa thức |
+| M7 | Xong | Seed bản đồ công khai, chủ phòng nhập hoặc gieo lại ở sảnh chờ; seed của engine luật không còn gửi xuống client |
 
 Cân bằng hiện tại (bot, 3.000 ván 4–6 người): phe đội thắng 57,6%, không ai thắng 22,5%, phản bội thắng 32,9% trong các ván có kẻ phản bội; không kết thúc nào vượt 40%.
 

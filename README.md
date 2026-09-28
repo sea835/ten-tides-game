@@ -6,12 +6,13 @@ Hiện tại: **graybox giai đoạn 1** với phần lớn tính năng của MV
 
 - **Chuẩn bị:** tạo nhân vật (chia điểm, 8 xuất thân, 6 tật xấu, dòng tự mô tả, màu áo), rồi mua đồ và xếp balo 16x16 (xoay, ngăn bí mật, đồ đặt cạnh nhau tạo hiệu ứng, giới hạn ô, trọng lượng và ngân sách).
 - **Ban ngày:** khám phá đảo 4 vùng theo thời gian thực. Mỗi sáng 12 thẻ sự kiện được xếp vào các điểm trên map; xúc xắc công khai kèm các khoản cộng, tỷ lệ % trước khi chọn, và "vì sao thua" sau khi trượt. Có bản đồ nhỏ và cảnh báo không kịp về trại.
+- **Thế giới theo seed:** quanh đảo chính là vùng biển 480x480 m với 4–6 đảo nhỏ (cồn cát, đảo rừng, đảo đá, đảo cát đen, đảo vòng), rạn san hô để lặn, 2–3 hang động và 1–2 hầm mỏ, chừng 15 easter egg, 5–7 điểm bất thường, bẫy và 19 loài sinh vật (thân thiện, trung tính, nguy hiểm; quen, lạ, biến dị). Bơi và lặn được, nín thở có giới hạn. Cùng seed bản đồ là cùng thế giới; chủ phòng nhập hoặc gieo seed ở sảnh chờ.
 - **Ban đêm:** chat quanh đống lửa, bầu khẩu phần khi thiếu, đề cử và bỏ phiếu kín để trói, và mỗi người một hành động đêm bí mật.
 - **Vai ẩn:** từ 4 người có thể có một kẻ phản bội (cướp biển nằm vùng hoặc kẻ lừa đảo), có thể có y tá. Sự cố tự nhiên mỗi đêm trông giống hệt phá hoại.
 - **Kết thúc:** đào kho báu ở chỗ bí mật (cần xẻng), giữ thuyền đủ tốt, rời đảo tối ngày 10; 8 kết thúc, màn lật bài và biên niên sử.
 - **Kể chuyện:** không dùng mô hình AI. Bộ sinh truyện chọn cốt truyện theo seed từ thư viện 110 yếu tố viết sẵn, rồi kể bình minh, hoàng hôn, lời kể riêng từng người và biên niên sử từ sự thật trong ván.
 
-Chưa có: thẻ sự kiện ở mức MVP (mới 12 trên 60), sự kiện đêm riêng cho người ngủ ngoài, trao đổi đồ, lục soát, đảo low-poly thật, easter egg, lưu ván xuống database.
+Chưa có: thẻ sự kiện ở mức MVP (mới 12 trên 60), sự kiện đêm riêng cho người ngủ ngoài, trao đổi đồ, lục soát, đảo low-poly thật, lưu ván xuống database.
 
 ## Chạy thử
 
@@ -30,9 +31,9 @@ Mở hai tab (mỗi tab là một người chơi riêng), tab đầu bấm **T�
 
 Chủ phòng bấm **Bắt đầu ván** khi đủ người. Ván đã bắt đầu thì không ai vào thêm được.
 
-Điều khiển: bấm vào màn hình để khoá chuột, di chuột để xoay camera, WASD di chuyển, Shift chạy (tốn sức bền), Space nhảy, C ngồi xuống/đứng dậy (ngồi hồi sức nhanh gấp đôi; ngồi trong đám cỏ cao là nấp: người khác không thấy tên và chấm của bạn trên bản đồ), E mở điểm sự kiện hoặc đào kho báu, phím 1–4 chọn trong thẻ, B xem balo, J mở sổ truyện, H bật/tắt bảng phím tắt, G đổi đồ họa Cao/Thấp (Thấp bỏ hậu kỳ, bớt cỏ cây, bóng đổ nhẹ hơn cho máy yếu), Enter để chat, Esc thả chuột. Lúc xếp balo: kéo thả, R hoặc chuột phải để xoay, nhấp đúp để nhấc ra khay.
+Điều khiển: bấm vào màn hình để khoá chuột, di chuột để xoay camera, WASD di chuyển, Shift chạy (tốn sức bền), Space nhảy (dưới nước: ngoi lên), C ngồi xuống/đứng dậy (ngồi hồi sức nhanh gấp đôi; ngồi trong đám cỏ cao là nấp: người khác không thấy tên và chấm của bạn trên bản đồ; đang bơi thì giữ C để lặn), E mở điểm sự kiện, đào kho báu, xem xét easter egg và điểm bất thường, hoặc vuốt ve sinh vật thân thiện, phím 1–4 chọn trong thẻ, B xem balo, J mở sổ truyện, H bật/tắt bảng phím tắt, G đổi đồ họa Cao/Thấp (Thấp bỏ hậu kỳ, bớt cỏ cây, bóng đổ nhẹ hơn cho máy yếu), Enter để chat, Esc thả chuột. Lúc xếp balo: kéo thả, R hoặc chuột phải để xoay, nhấp đúp để nhấc ra khay.
 
-Test nhanh cả ván: `PHASE_SCALE=0.1 pnpm dev` thu mỗi ngày từ 5 phút xuống còn khoảng 30 giây. Ở chế độ dev, `window.__tentides` trong console trình duyệt cho xem room, vị trí và camera.
+Test nhanh cả ván: `PHASE_SCALE=0.1 pnpm dev` thu mỗi ngày từ 5 phút xuống còn khoảng 30 giây. Ở chế độ dev, `window.__tentides` trong console trình duyệt cho xem room, vị trí, camera và thế giới đã sinh (`world`); `__tentides.debugCam` là camera tự do (đặt `enabled`, `position`, `target`) để soi bản đồ.
 
 ## Lệnh
 
@@ -72,8 +73,9 @@ Một số quy ước:
 - Luật chơi nằm trong `reduce(state, action, config)` ở `packages/rules/src/game.ts`: hàm thuần, có tính xác định. Server chỉ đưa hành động vào, rồi chép kết quả sang state của Colyseus (`apps/server/src/sync.ts`). Dữ liệu thời gian thực (ai đang đứng ở đâu) nằm ngay trong hành động, nên seed + chuỗi hành động là đủ để phát lại cả ván.
 - `rules` không phụ thuộc 3D, mạng hay AI. `simulate.test.ts` cho bot chơi 500 ván để bắt lỗi luật.
 - Mọi thứ ngẫu nhiên có ảnh hưởng tới ván chơi đều đi qua PRNG trong `rules`, không dùng `Math.random()`. Chỉ mã phòng và hiệu ứng xúc xắc đang lăn trên client là dùng random thường.
-- Thêm đồ, thẻ sự kiện, yếu tố truyện hay mẫu câu chỉ cần sửa `items.json`, `cards.json`, `story.json` hoặc `story_templates.json` trong `packages/content/src/data/`. Điểm sự kiện trên map nằm trong `ANCHORS` ở `island.ts`. `loadContent()` sẽ báo lỗi nếu sai schema hoặc tham chiếu tới id không tồn tại.
+- Thêm đồ, thẻ sự kiện, yếu tố truyện hay mẫu câu chỉ cần sửa `items.json`, `cards.json`, `story.json` hoặc `story_templates.json` trong `packages/content/src/data/`. Điểm sự kiện trên map nằm trong `ANCHORS` ở `island.ts`. Sinh vật, easter egg, điểm bất thường, bẫy và tên đảo, hang, hầm nằm trong `world.json`; mô hình 3D của từng loài khai báo bằng dữ liệu trong `apps/client/src/game/Wildlife.tsx`.
+- Đảo chính cố định (`island.ts`); mọi thứ quanh nó do `generateWorld(seed)` trong `packages/content/src/worldgen.ts` sinh ra, hàm thuần nên client và server dựng cùng một thế giới. Client và server nên dùng `world.heightAt()` thay cho `heightAt()` của đảo chính. Seed bản đồ công khai; bẫy dùng một seed suy từ seed bí mật của ván (`generateTraps`), nên chỉ lộ khi có người sập. Sinh vật do server cho đi lại (`apps/server/src/wildlife.ts`), hơi thở và bẫy do `apps/server/src/hazards.ts` tính; khi có người bị cắn, sập bẫy, nhặt easter egg thì server đưa hành động `encounter` vào engine luật, nên log ván vẫn phát lại được. `loadContent()` sẽ báo lỗi nếu sai schema hoặc tham chiếu tới id không tồn tại.
 - Client tự tính di chuyển (Rapier) rồi báo vị trí lên server. Server không chạy vật lý, nhưng kéo người chơi về chỗ cũ nếu vị trí vượt tốc độ chạy, ra ngoài map hoặc chui xuống đất (`apps/server/src/movement.ts`).
 - Thông tin riêng (vai, hành động đêm, ghi chú, balo đầy đủ, lời kể riêng) không nằm trong state chung: server tính `privateView` cho từng người và chỉ gửi cho đúng người đó. Trong state chung, `items` chỉ gồm đồ ngoài ngăn bí mật.
 - Chat không nằm trong state: server chỉ gửi tin cho đúng người được nghe (`chatAudience` trong `IslandRoom.ts`) và giữ biên bản từng đêm để sau này AI dùng làm dữ liệu kể chuyện.
-- State trong `protocol` chỉ chứa thứ công khai. Phiếu trói là phiếu kín: engine giữ phiếu thật, state chỉ công khai ai đã bầu cho tới khi lật. Vai của mọi người và hành động từng đêm chỉ được chép vào state khi ván kết thúc (màn lật bài).
+- State trong `protocol` chỉ chứa thứ công khai (có cả seed bản đồ; seed của engine luật thì không bao giờ gửi xuống client, vì từ nó suy ra được vai ẩn và chỗ kho báu). Phiếu trói là phiếu kín: engine giữ phiếu thật, state chỉ công khai ai đã bầu cho tới khi lật. Vai của mọi người và hành động từng đêm chỉ được chép vào state khi ván kết thúc (màn lật bài).

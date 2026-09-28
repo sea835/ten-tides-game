@@ -26,7 +26,7 @@ for (const [i, action] of log.actions.entries()) {
 }
 
 const name = (id: string) => state.players[id]?.name ?? id;
-console.log(`Phòng ${log.roomId} · ${log.createdAt} · seed ${log.seed} · ${log.actions.length} hành động · ${log.chat.length} tin nhắn`);
+console.log(`Phòng ${log.roomId} · ${log.createdAt} · seed ${log.seed}${log.worldSeed ? ` · bản đồ #${log.worldSeed}` : ""} · ${log.actions.length} hành động · ${log.chat.length} tin nhắn`);
 console.log(`Trạng thái: ${state.phase}, ngày ${state.day}${state.ending ? `, kết thúc ${state.ending}` : ""}`);
 console.log(`Kho báu ${state.treasure} · lương thực ${state.food} · thuyền ${state.hull}`);
 for (const id of state.playerOrder) {
@@ -47,6 +47,9 @@ if (values.verbose) {
       console.log(`  Ngày ${e.day} · sự cố: ${e.effects.map((x) => x.type + ("amount" in x ? ` ${x.amount}` : "") + ("playerId" in x ? ` ${name(x.playerId)}` : "")).join(", ")}`);
     } else if (e.kind === "dig") {
       console.log(`  Ngày ${e.day} · ${name(e.playerId)} đào được rương kho báu`);
+    } else if (e.kind === "encounter") {
+      const effects = Object.entries(e.effects).map(([k, v]) => `${k} ${v}`).join(", ");
+      console.log(`  Ngày ${e.day} · ${name(e.playerId)} · ${e.source} ${e.defId} (${e.refId})${e.dodged ? " · né được" : ""}${effects ? ` · ${effects}` : ""}${e.gained ? ` · nhặt ${e.gained}` : ""}`);
     } else if (e.kind === "departure") {
       console.log(`  Ngày ${e.day} · rời đảo: ${e.aboard.map(name).join(", ") || "không ai"} · bỏ lại ${e.leftBehind.map(name).join(", ") || "không ai"} · thuyền ${e.hull} · ${e.withTreasure ? "có" : "không có"} kho báu`);
     } else {

@@ -860,7 +860,7 @@ kbd {
 .hud .status {
   top: 16px;
   right: 16px;
-  width: 240px;
+  width: 260px;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -905,7 +905,34 @@ kbd {
 .mm-land {
   fill: #5d9a4c;
   stroke: #f0dca2;
+  stroke-width: 6;
+}
+.mm-islet {
+  fill: #6aa556;
+  stroke: #f0dca2;
   stroke-width: 4;
+}
+.mm-islet.rocky {
+  fill: #8a857d;
+  stroke: #c9c1b0;
+}
+.mm-islet.volcanic {
+  fill: #4a4546;
+  stroke: #2e2b2c;
+}
+.mm-islet.sandbar,
+.mm-islet.atoll {
+  fill: #e8d49a;
+  stroke: #f7ecc9;
+}
+.mm-lagoon {
+  fill: #3fc1c9;
+}
+.mm-reef {
+  fill: rgba(255, 170, 150, 0.22);
+  stroke: rgba(255, 190, 170, 0.5);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
 }
 .mm-lake {
   fill: #2f9bc4;
@@ -918,34 +945,61 @@ kbd {
 }
 .mm-cave {
   fill: #3d3934;
+  stroke: #d8cfc0;
+  stroke-width: 1.5;
+}
+.mm-mine {
+  fill: #7a5230;
+  stroke: #f0c070;
+  stroke-width: 1.5;
 }
 .mm-camp {
   fill: #ffb347;
   stroke: #fff;
-  stroke-width: 1.5;
+  stroke-width: 2.5;
 }
 .mm-anchor {
   fill: #ffd166;
   stroke: #1d1400;
-  stroke-width: 1;
+  stroke-width: 1.5;
 }
 .mm-anchor.active {
   fill: #ff6b35;
 }
+.mm-egg,
+.mm-anomaly {
+  fill: #ffe79a;
+  font-size: 16px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: #1d1400;
+  stroke-width: 2;
+}
+.mm-anomaly {
+  fill: #c9a6ff;
+}
+.mm-trap {
+  fill: #ff5a4a;
+  font-size: 18px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #2a0500;
+  stroke-width: 2;
+}
 .mm-player {
   stroke: #fff;
-  stroke-width: 1;
+  stroke-width: 2;
 }
 .mm-player.dead {
   opacity: 0.35;
 }
 .mm-me {
   stroke: #fff;
-  stroke-width: 2.5;
+  stroke-width: 4;
 }
 .mm-x {
   fill: #e63946;
-  font-size: 16px;
+  font-size: 26px;
   font-weight: 800;
 }
 .resources {
@@ -2960,4 +3014,110 @@ kbd {
     animation: none;
     opacity: 1;
   }
+}
+
+/* ---------- Chạm trán, hơi thở, trong hang ---------- */
+
+.breath {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.breath .bar {
+  flex: 1;
+}
+.breath.low {
+  color: #ff8a7a;
+  animation: blink 0.8s ease-in-out infinite alternate;
+}
+@keyframes blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+.encounter {
+  position: absolute;
+  left: 50%;
+  top: 128px;
+  transform: translateX(-50%);
+  z-index: 38;
+  width: min(420px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
+  animation: rise 0.25s ease;
+}
+.encounter.good {
+  border-color: rgba(245, 200, 76, 0.75);
+  box-shadow:
+    0 0 0 3px rgba(245, 200, 76, 0.18),
+    var(--shadow);
+}
+.encounter.bad {
+  border-color: rgba(255, 110, 90, 0.75);
+}
+.encounter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+}
+.encounter-text {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.encounter-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.encounter-effects span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+}
+.encounter-effects .up {
+  color: #9be38f;
+}
+.encounter-effects .down {
+  color: #ff8a7a;
+}
+
+/* Tối dần khi vào sâu trong hang, hầm; người gan dạ ít bị ảnh hưởng hơn, có đèn thì sáng hơn. */
+.darkness {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(ellipse at 50% 55%, transparent 18%, rgba(4, 3, 8, 0.92) 78%);
+  transition: opacity 0.4s ease;
+}
+.underwater-tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(ellipse at 50% 40%, rgba(40, 140, 170, 0.08), rgba(2, 30, 45, 0.55));
+}
+
+.seed-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.seed-row input {
+  width: 130px;
+  font-variant-numeric: tabular-nums;
 }

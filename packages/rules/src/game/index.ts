@@ -5,6 +5,7 @@
 
 import { advance } from "./day.ts";
 import { choose, dig, trigger } from "./events.ts";
+import { encounter } from "./encounters.ts";
 import { join, leave, start } from "./lobby.ts";
 import { buy, createCharacter, finishCreation, finishPacking, place, sell, unplace } from "./prep.ts";
 import { castBallot, chooseNightAction, emptyVotes, nominate, revealBallot, voteRation } from "./night.ts";
@@ -17,6 +18,7 @@ export { visibleItems } from "./inventory.ts";
 export { anchorZone, canAct, checkModifiers, effectiveDc, isBusy, isOverweight, successChance, treasureRevealed, type CheckingPlayer } from "./events.ts";
 export { allowedNightActions, rationResult, rationVoteNeeded, tieResult } from "./night.ts";
 export { ENDING_WINNERS } from "./endings.ts";
+export { ENCOUNTER_PHASES } from "./encounters.ts";
 export { privateView, type PrivateView } from "./private.ts";
 
 export function createGame(seed: number): GameState {
@@ -49,6 +51,7 @@ export function createGame(seed: number): GameState {
     signals: 0,
     deceit: 0,
     tieHistory: [],
+    discovered: [],
     shop: [],
     nextUid: 1,
     treasureSite: "",
@@ -99,6 +102,8 @@ export function reduce(prev: GameState, action: GameAction, config: GameConfig):
       return chooseNightAction(state, action.playerId, action.action, action.target);
     case "dig":
       return dig(state, action.playerId);
+    case "encounter":
+      return encounter(state, action, config);
   }
 }
 

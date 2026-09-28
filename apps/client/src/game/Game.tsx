@@ -1,10 +1,10 @@
 import { Suspense, useEffect, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
 import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import { ANCHORS } from "@tentides/content";
-import type { DirectionalLight, HemisphereLight } from "three";
+import type { DirectionalLight, HemisphereLight, PointLight } from "three";
 import type { IslandRoom } from "../net.ts";
 import { Anchors } from "./Anchors.tsx";
 import { DayCycle } from "./DayCycle.tsx";
@@ -15,17 +15,36 @@ import { LocalPlayer } from "./LocalPlayer.tsx";
 import { RemotePlayers } from "./RemotePlayers.tsx";
 import { SkyDome } from "./Sky.tsx";
 import { bindInput, isTyping, look } from "./input.ts";
-import { localPosition } from "./shared.ts";
+import { debugCam, localEnv, localPosition } from "./shared.ts";
+import { useWorld } from "./world.ts";
 
 const HORIZON = "#c4e4f3";
 
 /** Móc debug khi dev: xem room, vị trí, hướng nhìn và camera trong console trình duyệt. */
 function DebugHook({ room }: { room: IslandRoom }) {
   const camera = useThree((s) => s.camera);
+  const world = useWorld(room);
   useEffect(() => {
-    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, anchors: ANCHORS } });
-  }, [room, camera]);
+    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, anchors: ANCHORS, world, debugCam } });
+  }, [room, camera, world]);
   return null;
+}
+
+/**
+ * Ánh sáng quanh người: trong hang, hầm thì có quầng sáng nhỏ (to và ấm hơn hẳn nếu mang đèn dầu hay đuốc).
+ * Đèn luôn tồn tại (chỉ đổi độ sáng) để số nguồn sáng không đổi, tránh dựng lại shader.
+ */
+function PlayerLight() {
+  const light = useRef<PointLight>(null);
+  useFrame(({ clock }) => {
+    const l = light.current;
+    if (!l) return;
+    l.position.set(localPosition.x, localPosition.y + 2, localPosition.z);
+    const flicker = 1 + Math.sin(clock.elapsedTime * 13) * 0.05 + Math.sin(clock.elapsedTime * 7.3) * 0.04;
+    l.intensity = localEnv.indoor * (localEnv.light ? 26 : 5) * flicker;
+    l.distance = localEnv.light ? 16 : 7;
+  });
+  return <pointLight ref={light} color="#ffb070" intensity={0} distance={10} decay={1.4} />;
 }
 
 /** Hậu kỳ (chỉ ở chất lượng cao): lửa, dung nham, cột sáng toả quầng; góc màn hình tối nhẹ. */
@@ -45,6 +64,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   const wrapper = useRef<HTMLDivElement>(null);
   const quality = useQuality();
   const high = quality === "high";
+  const world = useWorld(room);
 
   useEffect(() => bindInput(wrapper.current!), []);
   useEffect(() => {
@@ -57,7 +77,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
 
   return (
     <div className="game" ref={wrapper}>
-      <Canvas shadows="percentage" dpr={high ? [1, 2] : [1, 1]} camera={{ fov: 60, near: 0.1, far: 400 }}>
+      <Canvas shadows="percentage" dpr={high ? [1, 2] : [1, 1]} camera={{ fov: 60, near: 0.1, far: 500 }}>
         <color attach="background" args={[HORIZON]} />
         <fog attach="fog" args={[HORIZON, 70, 230]} />
         <hemisphereLight ref={hemi} args={["#e0f4ff", "#c2a36b", 1.1]} />
@@ -77,10 +97,12 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
         />
         <Suspense fallback={null}>
           <SkyDome />
-          <Physics>
-            <Island room={room} />
-            <LocalPlayer room={room} />
+          {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
+          <Physics key={world.seed}>
+            <Island room={room} world={world} />
+            <LocalPlayer room={room} world={world} />
           </Physics>
+          <PlayerLight />
           <RemotePlayers room={room} />
           <Anchors room={room} />
           <DayCycle room={room} sun={sun} hemi={hemi} />

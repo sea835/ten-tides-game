@@ -3,9 +3,21 @@ import type { ZoneId } from "@tentides/rules";
 
 // Trạng thái nhỏ cho HUD. Vòng lặp 3D chỉ ghi khi giá trị đổi, nên React hiếm khi render lại.
 
+export interface NearTarget {
+  id: string;
+  kind: "poi" | "creature";
+  label: string;
+}
+
 interface HudState {
   zone: ZoneId;
-  deepWater: boolean;
+  /** Tên nơi đang đứng: vùng của đảo chính, tên đảo nhỏ, tên hang, hầm mỏ, hay biển khơi. */
+  region: string;
+  /** Đang bơi, và đầu đang ở dưới mặt nước. */
+  swimming: boolean;
+  underwater: boolean;
+  /** Easter egg, điểm bất thường hay sinh vật thân thiện đang ở sát bên, nhấn E để xem xét. */
+  nearTarget: NearTarget | null;
   /** Điểm sự kiện đang đứng cạnh, nhấn E để mở. */
   nearAnchor: string | null;
   /** Sức bền để chạy nhanh lúc này (0–100). */
@@ -17,7 +29,18 @@ interface HudState {
   hidden: boolean;
 }
 
-let state: HudState = { zone: "beach", deepWater: false, nearAnchor: null, sprint: 100, atDigSite: false, sitting: false, hidden: false };
+let state: HudState = {
+  zone: "beach",
+  region: "",
+  swimming: false,
+  underwater: false,
+  nearTarget: null,
+  nearAnchor: null,
+  sprint: 100,
+  atDigSite: false,
+  sitting: false,
+  hidden: false,
+};
 const listeners = new Set<() => void>();
 
 export function getHud(): HudState {
@@ -26,7 +49,8 @@ export function getHud(): HudState {
 
 export function setHud(patch: Partial<HudState>) {
   const next = { ...state, ...patch };
-  if ((Object.keys(next) as (keyof HudState)[]).every((k) => next[k] === state[k])) return;
+  const same = (k: keyof HudState) => next[k] === state[k] || (k === "nearTarget" && next.nearTarget?.id === state.nearTarget?.id);
+  if ((Object.keys(next) as (keyof HudState)[]).every(same)) return;
   state = next;
   listeners.forEach((l) => l());
 }

@@ -6,6 +6,7 @@ export interface Motion {
   moving: boolean;
   running?: boolean;
   sitting?: boolean;
+  swimming?: boolean;
 }
 
 /** Ngồi bệt: hông hạ xuống chừng này, chân duỗi ra trước. */
@@ -45,7 +46,7 @@ export function Character({
   const armL = useRef<Group>(null);
   const armR = useRef<Group>(null);
   const body = useRef<Group>(null);
-  const anim = useRef({ phase: 0, amount: 0, sit: 0 });
+  const anim = useRef({ phase: 0, amount: 0, sit: 0, swim: 0, lie: 0 });
 
   useFrame((_, dt) => {
     const m = motion?.() ?? { moving: false };
@@ -53,9 +54,14 @@ export function Character({
     const target = m.moving ? (m.running ? 1 : 0.6) : 0;
     a.amount += (target - a.amount) * Math.min(1, dt * 10);
     a.sit += ((m.sitting && !m.moving ? 1 : 0) - a.sit) * Math.min(1, dt * 8);
-    a.phase += dt * (m.running ? 17 : 12.5) * (a.amount > 0.05 ? 1 : 0);
-    const swing = Math.sin(a.phase) * 0.75 * a.amount;
-    const sit = a.sit;
+    a.swim += ((m.swimming ? 1 : 0) - a.swim) * Math.min(1, dt * 5);
+    // Bơi tới thì nằm sấp gần ngang mặt nước; đứng yên thì đạp nước, người thẳng đứng.
+    a.lie += ((m.swimming ? (m.moving ? 1.3 : 0.12) : 0) - a.lie) * Math.min(1, dt * 4);
+    a.phase += dt * (m.swimming ? 7 : m.running ? 17 : 12.5) * (a.amount > 0.05 || m.swimming ? 1 : 0);
+    const swim = a.swim;
+    // Bơi: chân đập nhanh biên độ nhỏ, tay sải vòng; đứng yên dưới nước thì đạp nước nhẹ.
+    const swing = Math.sin(a.phase) * 0.75 * a.amount * (1 - swim) + Math.sin(a.phase * 2) * 0.35 * swim;
+    const sit = a.sit * (1 - swim);
     // Ngồi: đùi gập ra trước gần nằm ngang, hai chân hơi dạng; tay chống lên gối.
     if (legL.current) {
       legL.current.rotation.x = swing * (1 - sit) - 1.45 * sit;
@@ -65,13 +71,15 @@ export function Character({
       legR.current.rotation.x = -swing * (1 - sit) - 1.45 * sit;
       legR.current.rotation.z = 0.12 * sit;
     }
-    if (armL.current) armL.current.rotation.x = -swing * 0.9 * (1 - sit) - 0.75 * sit;
-    if (armR.current) armR.current.rotation.x = swing * 0.9 * (1 - sit) - 0.75 * sit;
+    const stroke = swim * (a.amount > 0.05 ? 1 : 0.35);
+    if (armL.current) armL.current.rotation.x = (-swing * 0.9 * (1 - sit) - 0.75 * sit) * (1 - swim) + (-Math.PI + Math.sin(a.phase) * 1.6) * stroke;
+    if (armR.current) armR.current.rotation.x = (swing * 0.9 * (1 - sit) - 0.75 * sit) * (1 - swim) + (-Math.PI - Math.sin(a.phase) * 1.6) * stroke;
     if (body.current) {
       const bob = a.amount < 0.05 ? Math.sin(performance.now() / 700) * 0.012 : Math.abs(Math.cos(a.phase)) * 0.06 * a.amount;
-      body.current.position.y = bob * (1 - sit) - SIT_DROP * sit;
+      // Xoay quanh gót chân nên phải nhấc người lên theo góc nằm để đầu vẫn nhô khỏi mặt nước.
+      body.current.position.y = (bob * (1 - sit) - SIT_DROP * sit) * (1 - swim) + 0.95 * Math.sin(a.lie) + Math.sin(a.phase * 0.5) * 0.04 * swim;
       // Chạy thì người đổ về trước; ngồi thì hơi ngả ra sau.
-      body.current.rotation.x = 0.12 * a.amount * (m.running ? 1.5 : 1) - 0.12 * sit;
+      body.current.rotation.x = (0.12 * a.amount * (m.running ? 1.5 : 1) - 0.12 * sit) * (1 - swim) + a.lie;
     }
   });
 

@@ -7,6 +7,7 @@ import {
   FLAW_LABELS,
   ROLE_LABELS,
   ZONE_LABELS,
+  worldCatalog,
   type StoryElement,
   type StoryLibrary,
 } from "@tentides/content";
@@ -97,6 +98,32 @@ function incidentText(t: Teller, config: GameConfig, e: IncidentEffect): string 
   }
 }
 
+/** Tên (viết thường) của thứ được chạm trán: easter egg, điểm bất thường, bẫy hay sinh vật. */
+function encounterThing(defId: string): string {
+  const name = worldCatalog.pois.get(defId)?.name ?? worldCatalog.traps.get(defId)?.name ?? worldCatalog.creatures.get(defId)?.name ?? "điều lạ";
+  return name.toLocaleLowerCase("vi");
+}
+
+/** Một câu kể cho một lần chạm trán ngoài bản đồ. */
+function encounterLine(t: Teller, e: Extract<LogEntry, { kind: "encounter" }>): string {
+  const vars = { name: t.name(e.playerId), thing: encounterThing(e.defId) };
+  const bad = Object.values(e.effects).some((v) => typeof v === "number" && v < 0);
+  switch (e.source) {
+    case "egg":
+      return t.line("encounter_egg", vars);
+    case "anomaly":
+      return t.line(bad ? "encounter_anomaly_bad" : "encounter_anomaly_good", vars);
+    case "trap":
+      return t.line(e.dodged ? "encounter_trap_dodged" : "encounter_trap", vars);
+    case "creature":
+      return t.line("encounter_creature", vars);
+    case "friend":
+      return t.line("encounter_friend", vars);
+    case "drowning":
+      return t.line("encounter_drown", vars);
+  }
+}
+
 /** Bản kể bình minh: truyền thuyết (ngày đầu), thời tiết, núi lửa, điềm báo, nhân vật phụ, twist, chuyện đêm qua, ai đang ra sao. */
 export function narrateDawn(ctx: StoryContext, day: number): string[] {
   const t = new Teller(ctx, new Voice(ctx.seed, "dawn", day));
@@ -178,6 +205,15 @@ export function narrateDusk(ctx: StoryContext, day: number): string[] {
     const atmosphere = ctx.library.elements.filter((e) => e.category === "atmosphere" && e.zone === zone);
     if (atmosphere.length > 0) out.push(t.elementLine(t.voice.pick(atmosphere).id));
   }
+  // Chạm trán ngoài bản đồ: mỗi người, mỗi loại chỉ kể một lần trong ngày (con vật cắn ba lần vẫn là một chuyện),
+  // và tối đa bốn chuyện để lời kể hoàng hôn không dài lê thê.
+  const told = new Set<string>();
+  for (const e of entriesOf(state, "encounter", day)) {
+    const key = `${e.playerId}:${e.source}:${e.defId}`;
+    if (told.has(key) || told.size >= 4) continue;
+    told.add(key);
+    out.push(encounterLine(t, e));
+  }
   for (const e of entriesOf(state, "dig", day)) out.push(t.line("dig", { name: t.name(e.playerId) }));
   for (const e of entriesOf(state, "death", day)) out.push(t.line("death", { name: t.name(e.playerId) }));
   const dusk = entriesOf(state, "dusk", day)[0];
@@ -250,6 +286,11 @@ export function chronicle(ctx: StoryContext): Chronicle {
   if (state.day >= 5) moments.push(t.elementLine(premise.twist));
   for (const e of allEntries(state, "dig")) moments.push(t.line("dig", { name: t.name(e.playerId) }));
   for (const e of allEntries(state, "death")) moments.push(t.line("death", { name: t.name(e.playerId) }));
+  const secrets = allEntries(state, "encounter").filter((e) => e.source === "egg");
+  if (secrets.length > 0) {
+    const things = [...new Set(secrets.map((e) => encounterThing(e.defId)))];
+    moments.push(t.line("chronicle_discoveries", { count: secrets.length, things: joinNames(things.slice(0, 4)) }));
+  }
   if (moments.length > 0) paragraphs.push(moments.join(" "));
 
   const traitor = Object.values(state.players).find((p) => isTraitor(p.role));

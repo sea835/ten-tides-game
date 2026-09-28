@@ -1,12 +1,13 @@
-// Bản đồ đảo graybox: hàm độ cao địa hình và các vùng.
-// Client dựng mesh địa hình từ heightAt(), server dùng cùng hàm này để đặt điểm hồi sinh
-// và biết người chơi đang ở vùng nào. Map cố định; thứ xáo theo seed sẽ nằm ở chỗ khác.
+// Đảo chính: hàm độ cao địa hình và các vùng, cố định qua mọi ván (người chơi thuộc map vẫn là lợi thế).
+// Những thứ xáo theo seed (đảo nhỏ, rạn san hô, hang, hầm mỏ, easter egg, sinh vật, bẫy) nằm trong worldgen.ts;
+// client và server nên dùng `world.heightAt()` của thế giới đã sinh, hàm ở đây chỉ là nền của đảo chính.
 // Đơn vị: mét. Trục x hướng đông, trục z hướng nam (trại ở phía nam).
 
 import { nextFloat, type AnchorDef, type RngState, type ZoneId } from "@tentides/rules";
 
 export const WATER_LEVEL = 0;
-export const MAP_HALF_SIZE = 150;
+/** Nửa cạnh của cả vùng biển chơi được (đảo chính, đảo nhỏ quanh đó và biển sâu). */
+export const MAP_HALF_SIZE = 240;
 
 export const CAMP = { x: 0, z: 80 } as const;
 export const LAKE = { x: -45, z: 5, radius: 16 } as const;
@@ -45,7 +46,10 @@ export function heightAt(x: number, z: number): number {
 
   let h: number;
   if (inland < 0) {
-    h = -6 * smoothstep(0, 20, -inland);
+    // Thềm cát thoai thoải rồi dốc xuống biển sâu, đáy gợn sóng nhẹ cho lặn đỡ đơn điệu.
+    const off = -inland;
+    h = -6 * smoothstep(0, 20, off) - 9 * smoothstep(22, 110, off);
+    h += 0.8 * Math.sin(x * 0.05 + Math.cos(z * 0.03)) * Math.cos(z * 0.045) * smoothstep(20, 45, off);
   } else {
     h = 1.2 * smoothstep(0, 15, inland) + 1.8 * smoothstep(15, 45, inland);
     h += 1.5 * Math.sin(x * 0.07) * Math.cos(z * 0.06) * smoothstep(20, 50, inland);

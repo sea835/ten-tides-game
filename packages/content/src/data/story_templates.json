@@ -1,155 +1,193 @@
 {
- "premise": [
-  "Truyền thuyết kể rằng {hider} đã giấu {treasure} trên hòn đảo này {motive}.",
-  "Ai sống ở vùng biển này cũng từng nghe chuyện {hider} chôn {treasure} ở đây {motive}."
- ],
- "secret_intro": [
-  "Người ta còn thì thầm một điều nữa: {secret}."
- ],
- "day_open": [
-  "Ngày thứ {day}.",
-  "Bình minh ngày {day}."
- ],
- "volcano_calm": [
-  "Ngọn núi lửa vẫn ngủ yên, chỉ một làn khói mỏng vương trên đỉnh.",
-  "Núi lửa im lìm, như chưa từng có chuyện gì."
- ],
- "volcano_stirring": [
-  "Núi lửa đã bắt đầu thở, khói đặc hơn mỗi sáng.",
-  "Thỉnh thoảng mặt đất lại rùng mình một cái rất khẽ."
- ],
- "volcano_angry": [
-  "Núi lửa gầm gừ không ngớt, trời chiều nhuộm màu đồng.",
-  "Tro bay lất phất như tuyết, và ai cũng biết thời gian không còn nhiều."
- ],
- "npc_meet": [
-  "Hôm nay có người gặp {npc}. {npcLine}",
-  "Trên đường ra suối, cả đoàn bắt gặp {npc}. {npcLine}"
- ],
- "relic_found": [
-  "{finder} nhặt được {relic} trên bãi cát. {relicLine}",
-  "Trong khe đá gần trại, {finder} tìm thấy {relic}. {relicLine}"
- ],
- "twist_intro": [
-  "Rồi ngày thứ năm tới, cùng một phát hiện làm thay đổi tất cả. {twist}"
- ],
- "last_day": [
-  "Hôm nay là ngày cuối. Tối nay thuyền phải rời bến, dù có hay không có kho báu."
- ],
- "status_hurt": [
-  "{names} vẫn còn đau sau những gì xảy ra hôm qua.",
-  "Vết thương của {names} chưa lành hẳn."
- ],
- "status_hungry": [
-  "{names} đói lả, bước đi xiêu vẹo.",
-  "Bụng {names} sôi réo từ lúc mở mắt."
- ],
- "status_tied": [
-  "{name} ngồi bó gối trong trại, cổ tay còn hằn vết dây trói."
- ],
- "status_gone": [
-  "Chỗ nằm của {name} trong lều vẫn để trống."
- ],
- "night_recap_tie": [
-  "Đêm qua, sau một hồi bàn cãi, cả trại quyết định trói {name}.",
-  "Đêm qua đa số đã lên tiếng, và {name} bị trói."
- ],
- "night_recap_tie_failed": [
-  "Đêm qua có người muốn trói {name}, nhưng không đủ người đồng ý."
- ],
- "night_recap_hungry": [
-  "Bữa tối qua chỉ đủ lưng bụng: cả trại phải {ration}."
- ],
- "incident_intro": [
-  "Sáng ra mới biết: {incidents}.",
-  "Khi mặt trời lên, cả trại phát hiện {incidents}."
- ],
- "check_success_solo": [
-  "Ở {zone}, {name} gặp «{title}» và xoay xở thành công{help}.",
-  "«{title}» ở {zone} kết thúc êm đẹp nhờ {name}{help}."
- ],
- "check_fail_solo": [
-  "Ở {zone}, {name} gặp «{title}» nhưng mọi thứ trượt khỏi tầm tay.",
-  "Hôm nay không phải ngày của {name}: «{title}» ở {zone} để lại hậu quả."
- ],
- "check_success_group": [
-  "{names} cùng nhau vượt qua «{title}» ở {zone}{help}.",
-  "Ở {zone}, {names} chung sức giải quyết «{title}»{help}."
- ],
- "check_fail_group": [
-  "{names} cùng gặp «{title}» ở {zone}, và cùng chịu chung hậu quả.",
-  "Ở {zone}, «{title}» khiến {names} phải trả giá."
- ],
- "help_item": [
-  " nhờ có {item}",
-  ", phần lớn nhờ {item}"
- ],
- "dig": [
-  "{name} cắm xẻng xuống đất, và tiếng keng của kim loại vang lên: đã tìm thấy {treasure}!"
- ],
- "death": [
-  "{name} không qua khỏi. Hòn đảo lấy đi người đầu tiên của đoàn.",
-  "{name} gục xuống và không bao giờ đứng dậy nữa."
- ],
- "slept_outside": [
-  "{names} không kịp về trại, đành ngủ giữa rừng.",
-  "Trời tối sập mà {names} vẫn chưa về."
- ],
- "quiet_day": [
-  "Một ngày trôi qua lặng lẽ, không ai đụng tới những bí ẩn của đảo.",
-  "Cả đoàn quanh quẩn gần trại, và hòn đảo cũng để họ yên."
- ],
- "dusk_close": [
-  "Mặt trời lặn xuống biển, để lại hòn đảo trong bóng tối.",
-  "Đống lửa được nhóm lên khi những tia nắng cuối cùng tắt hẳn."
- ],
- "private_bio": [
-  "Bạn nhớ lại lý do mình lên đường: {bio}."
- ],
- "private_background": [
-  "Là {background}, bạn mang theo {hook}.",
-  "Bạn là {background}; người ta biết bạn qua chuyện {hook}."
- ],
- "private_flaw": [
-  "Bạn biết điểm yếu của mình: {hook}."
- ],
- "private_bond": [
-  "{bond}"
- ],
- "private_traitor": [
-  "Không ai ở đây biết bạn thật sự là ai. Đêm nay lại là một cơ hội.",
-  "Bạn mỉm cười khi cả đoàn bàn chuyện kho báu. Họ không biết gì cả."
- ],
- "private_nurse": [
-  "Bạn lặng lẽ nhìn từng người, tự hỏi ai sẽ cần bạn nhất đêm nay."
- ],
- "private_hurt": [
-  "Bạn thấy người mệt rã rời; một ngày nữa như hôm qua thì khó mà trụ nổi."
- ],
- "private_hungry": [
-  "Cái đói gặm nhấm bạn từ lúc tỉnh dậy."
- ],
- "crew_adj": [
-  "Cánh Buồm Rách",
-  "Mười Ngày Muối",
-  "Vết Chân Trên Cát",
-  "Tro Tàn",
-  "Gió Ngược",
-  "Sóng Bạc",
-  "Đêm Không Trăng",
-  "La Bàn Lệch"
- ],
- "chronicle_members": [
-  "{name}, {background}, {flaw}{bio}."
- ],
- "chronicle_traitor": [
-  "Chỉ tới lúc lật bài, cả đoàn mới biết {name} là {role}.",
-  "Hóa ra {name} chính là {role} suốt từ ngày đầu."
- ],
- "chronicle_no_traitor": [
-  "Suốt mười ngày, cả đoàn nghi ngờ lẫn nhau. Hóa ra chẳng có kẻ phản bội nào cả."
- ],
- "chronicle_moment_roll": [
-  "Khoảnh khắc đáng nhớ nhất: {name} tung ra con {roll} trước «{title}», và {outcome}."
- ]
+  "premise": [
+    "Truyền thuyết kể rằng {hider} đã giấu {treasure} trên hòn đảo này {motive}.",
+    "Ai sống ở vùng biển này cũng từng nghe chuyện {hider} chôn {treasure} ở đây {motive}."
+  ],
+  "secret_intro": [
+    "Người ta còn thì thầm một điều nữa: {secret}."
+  ],
+  "day_open": [
+    "Ngày thứ {day}.",
+    "Bình minh ngày {day}."
+  ],
+  "volcano_calm": [
+    "Ngọn núi lửa vẫn ngủ yên, chỉ một làn khói mỏng vương trên đỉnh.",
+    "Núi lửa im lìm, như chưa từng có chuyện gì."
+  ],
+  "volcano_stirring": [
+    "Núi lửa đã bắt đầu thở, khói đặc hơn mỗi sáng.",
+    "Thỉnh thoảng mặt đất lại rùng mình một cái rất khẽ."
+  ],
+  "volcano_angry": [
+    "Núi lửa gầm gừ không ngớt, trời chiều nhuộm màu đồng.",
+    "Tro bay lất phất như tuyết, và ai cũng biết thời gian không còn nhiều."
+  ],
+  "npc_meet": [
+    "Hôm nay có người gặp {npc}. {npcLine}",
+    "Trên đường ra suối, cả đoàn bắt gặp {npc}. {npcLine}"
+  ],
+  "relic_found": [
+    "{finder} nhặt được {relic} trên bãi cát. {relicLine}",
+    "Trong khe đá gần trại, {finder} tìm thấy {relic}. {relicLine}"
+  ],
+  "twist_intro": [
+    "Rồi ngày thứ năm tới, cùng một phát hiện làm thay đổi tất cả. {twist}"
+  ],
+  "last_day": [
+    "Hôm nay là ngày cuối. Tối nay thuyền phải rời bến, dù có hay không có kho báu."
+  ],
+  "status_hurt": [
+    "{names} vẫn còn đau sau những gì xảy ra hôm qua.",
+    "Vết thương của {names} chưa lành hẳn."
+  ],
+  "status_hungry": [
+    "{names} đói lả, bước đi xiêu vẹo.",
+    "Bụng {names} sôi réo từ lúc mở mắt."
+  ],
+  "status_tied": [
+    "{name} ngồi bó gối trong trại, cổ tay còn hằn vết dây trói."
+  ],
+  "status_gone": [
+    "Chỗ nằm của {name} trong lều vẫn để trống."
+  ],
+  "night_recap_tie": [
+    "Đêm qua, sau một hồi bàn cãi, cả trại quyết định trói {name}.",
+    "Đêm qua đa số đã lên tiếng, và {name} bị trói."
+  ],
+  "night_recap_tie_failed": [
+    "Đêm qua có người muốn trói {name}, nhưng không đủ người đồng ý."
+  ],
+  "night_recap_hungry": [
+    "Bữa tối qua chỉ đủ lưng bụng: cả trại phải {ration}."
+  ],
+  "incident_intro": [
+    "Sáng ra mới biết: {incidents}.",
+    "Khi mặt trời lên, cả trại phát hiện {incidents}."
+  ],
+  "check_success_solo": [
+    "Ở {zone}, {name} gặp «{title}» và xoay xở thành công{help}.",
+    "«{title}» ở {zone} kết thúc êm đẹp nhờ {name}{help}."
+  ],
+  "check_fail_solo": [
+    "Ở {zone}, {name} gặp «{title}» nhưng mọi thứ trượt khỏi tầm tay.",
+    "Hôm nay không phải ngày của {name}: «{title}» ở {zone} để lại hậu quả."
+  ],
+  "check_success_group": [
+    "{names} cùng nhau vượt qua «{title}» ở {zone}{help}.",
+    "Ở {zone}, {names} chung sức giải quyết «{title}»{help}."
+  ],
+  "check_fail_group": [
+    "{names} cùng gặp «{title}» ở {zone}, và cùng chịu chung hậu quả.",
+    "Ở {zone}, «{title}» khiến {names} phải trả giá."
+  ],
+  "help_item": [
+    " nhờ có {item}",
+    ", phần lớn nhờ {item}"
+  ],
+  "dig": [
+    "{name} cắm xẻng xuống đất, và tiếng keng của kim loại vang lên: đã tìm thấy {treasure}!"
+  ],
+  "death": [
+    "{name} không qua khỏi. Hòn đảo lấy đi người đầu tiên của đoàn.",
+    "{name} gục xuống và không bao giờ đứng dậy nữa."
+  ],
+  "slept_outside": [
+    "{names} không kịp về trại, đành ngủ giữa rừng.",
+    "Trời tối sập mà {names} vẫn chưa về."
+  ],
+  "quiet_day": [
+    "Một ngày trôi qua lặng lẽ, không ai đụng tới những bí ẩn của đảo.",
+    "Cả đoàn quanh quẩn gần trại, và hòn đảo cũng để họ yên."
+  ],
+  "dusk_close": [
+    "Mặt trời lặn xuống biển, để lại hòn đảo trong bóng tối.",
+    "Đống lửa được nhóm lên khi những tia nắng cuối cùng tắt hẳn."
+  ],
+  "private_bio": [
+    "Bạn nhớ lại lý do mình lên đường: {bio}."
+  ],
+  "private_background": [
+    "Là {background}, bạn mang theo {hook}.",
+    "Bạn là {background}; người ta biết bạn qua chuyện {hook}."
+  ],
+  "private_flaw": [
+    "Bạn biết điểm yếu của mình: {hook}."
+  ],
+  "private_bond": [
+    "{bond}"
+  ],
+  "private_traitor": [
+    "Không ai ở đây biết bạn thật sự là ai. Đêm nay lại là một cơ hội.",
+    "Bạn mỉm cười khi cả đoàn bàn chuyện kho báu. Họ không biết gì cả."
+  ],
+  "private_nurse": [
+    "Bạn lặng lẽ nhìn từng người, tự hỏi ai sẽ cần bạn nhất đêm nay."
+  ],
+  "private_hurt": [
+    "Bạn thấy người mệt rã rời; một ngày nữa như hôm qua thì khó mà trụ nổi."
+  ],
+  "private_hungry": [
+    "Cái đói gặm nhấm bạn từ lúc tỉnh dậy."
+  ],
+  "crew_adj": [
+    "Cánh Buồm Rách",
+    "Mười Ngày Muối",
+    "Vết Chân Trên Cát",
+    "Tro Tàn",
+    "Gió Ngược",
+    "Sóng Bạc",
+    "Đêm Không Trăng",
+    "La Bàn Lệch"
+  ],
+  "chronicle_members": [
+    "{name}, {background}, {flaw}{bio}."
+  ],
+  "chronicle_traitor": [
+    "Chỉ tới lúc lật bài, cả đoàn mới biết {name} là {role}.",
+    "Hóa ra {name} chính là {role} suốt từ ngày đầu."
+  ],
+  "chronicle_no_traitor": [
+    "Suốt mười ngày, cả đoàn nghi ngờ lẫn nhau. Hóa ra chẳng có kẻ phản bội nào cả."
+  ],
+  "chronicle_moment_roll": [
+    "Khoảnh khắc đáng nhớ nhất: {name} tung ra con {roll} trước «{title}», và {outcome}."
+  ],
+  "encounter_egg": [
+    "{name} tìm thấy {thing}, thứ mà chẳng tấm bản đồ nào ghi lại.",
+    "Giữa buổi, {name} lục ra {thing} và mang chuyện về kể cho cả trại.",
+    "{thing} nằm đó chờ ai đủ tò mò, và người đó là {name}."
+  ],
+  "encounter_anomaly_good": [
+    "{name} chạm vào {thing}, và hòn đảo đáp lại bằng một điều tốt lành khó giải thích.",
+    "Chỗ {thing} làm {name} rùng mình, nhưng rồi lại thấy mình may mắn."
+  ],
+  "encounter_anomaly_bad": [
+    "{name} dại dột chạm vào {thing}, và phải trả giá cho sự tò mò ấy.",
+    "Từ chỗ {thing} trở về, {name} im lặng hẳn, như vừa thấy điều không nên thấy."
+  ],
+  "encounter_trap": [
+    "{name} sập phải {thing} mà ai đó đã giăng sẵn từ lâu.",
+    "Một cái {thing} cũ kỹ vẫn còn đủ sức làm {name} bị thương."
+  ],
+  "encounter_trap_dodged": [
+    "{name} tránh được {thing} trong đường tơ kẽ tóc.",
+    "Nhờ nhanh mắt, {name} thoát khỏi {thing}."
+  ],
+  "encounter_creature": [
+    "{thing} lao ra tấn công {name} rồi biến mất vào nơi nó đến.",
+    "{name} mang về một vết thương, quà của {thing}.",
+    "Không ai ngờ {thing} lại hung dữ đến thế, cho tới khi nó nhắm vào {name}."
+  ],
+  "encounter_friend": [
+    "{name} kết bạn được với {thing}; ít ra trên đảo này còn có kẻ không muốn hại mình.",
+    "{thing} quấn quýt theo {name} một đoạn đường dài."
+  ],
+  "encounter_drown": [
+    "{name} lặn quá sâu, suýt không ngoi lên kịp.",
+    "Biển suýt giữ {name} lại dưới đáy."
+  ],
+  "chronicle_discoveries": [
+    "Cả đoàn đã lần ra {count} bí mật của hòn đảo, trong đó có {things}.",
+    "Hòn đảo để lộ {count} bí mật cho những kẻ chịu lục lọi: {things}."
+  ]
 }

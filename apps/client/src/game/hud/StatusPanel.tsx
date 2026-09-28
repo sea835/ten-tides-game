@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Flame, Gem, MapPin, Sailboat, Waves, Wheat, type LucideIcon } from "lucide-react";
+import { Flame, Gem, MapPin, Sailboat, Waves, Wheat, Wind, type LucideIcon } from "lucide-react";
 import { CAMP, CAMP_RADIUS, TREASURE_SITES, ZONE_LABELS } from "@tentides/content";
 import { MAX_RUN_SPEED } from "@tentides/protocol";
 import { HULL_TO_SAIL, TREASURE_REVEAL, WEATHER_LABELS, type WeatherId } from "@tentides/rules";
@@ -51,7 +51,8 @@ export function StatusPanel({ room }: { room: IslandRoom }) {
     safe: st.treasureSafe,
     carrier: st.players.get(st.treasureCarrier)?.name ?? "",
   }));
-  const { zone, deepWater } = useHud();
+  const { zone, region, swimming, underwater } = useHud();
+  const breath = useRoomSnapshot(room, (st) => st.players.get(myId(room))?.breath ?? 100);
   const treasureNote = s.safe
     ? "Rương đã cất ở trại"
     : s.dug
@@ -67,9 +68,16 @@ export function StatusPanel({ room }: { room: IslandRoom }) {
     <section className="panel status">
       <div className="zone">
         <MapPin size={16} aria-hidden />
-        <span className="zone-name">{ZONE_LABELS[zone]}</span>
+        <span className="zone-name">{region || ZONE_LABELS[zone]}</span>
       </div>
-      {deepWater && <Callout tone="danger">Nước sâu quá, chưa bơi được.</Callout>}
+      {(underwater || breath < 100) && (
+        <div className={breath < 30 ? "breath low" : "breath"} title="Nín thở khi lặn. Hết hơi thì đuối nước, mất Máu. Thể lực càng cao nín càng lâu.">
+          <Wind size={15} aria-hidden />
+          <span>Hơi thở</span>
+          <Bar value={breath} max={100} color={breath < 30 ? "var(--danger)" : "#7fd3ff"} />
+        </div>
+      )}
+      {swimming && !underwater && breath >= 100 && <div className="hint">Đang bơi · giữ C để lặn, Space để ngoi lên</div>}
       {ret && ret.run > 0 && (
         <Callout tone={ret.run >= ret.untilNight ? "danger" : ret.run >= ret.untilNight * 0.6 ? "caution" : "info"}>
           {ret.run >= ret.untilNight ? `Không kịp về trại trước khi tối (cần ~${ret.run}s chạy)` : `Về trại ~${ret.run}s chạy · còn ${ret.untilNight}s tới tối`}

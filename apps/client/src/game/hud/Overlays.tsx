@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Armchair, Ban, Check, ChevronDown, Copy, EyeOff, Gem, Keyboard, LogOut, Pause, Shovel, Sparkles } from "lucide-react";
+import { Armchair, Ban, Check, ChevronDown, Copy, EyeOff, Gem, Hand, Keyboard, LogOut, Pause, Search, Shovel, Skull, Sparkles, TriangleAlert } from "lucide-react";
 import { ENDING_LABELS, NIGHT_ACTION_LABELS, ROLE_LABELS, content } from "@tentides/content";
-import { Messages, type RejectedMessage } from "@tentides/protocol";
+import { Messages, type EncounterMessage, type RejectedMessage } from "@tentides/protocol";
 import { DIG_ITEM, type EndingId, type NightActionId, type RoleId, type Winner } from "@tentides/rules";
 import { itemName } from "./format.ts";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -9,10 +9,11 @@ import { useQuality } from "../graphics.ts";
 import { useHud } from "../hudStore.ts";
 import { isTyping } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
+import { localEnv } from "../shared.ts";
 import { Avatar } from "./ui.tsx";
 
 export function InteractPrompt({ room }: { room: IslandRoom }) {
-  const { nearAnchor, atDigSite } = useHud();
+  const { nearAnchor, atDigSite, nearTarget } = useHud();
   const cardId = useRoomSnapshot(room, (s) => (nearAnchor ? (s.anchors.get(nearAnchor)?.cardId ?? null) : null));
   const hasShovel = useRoomSnapshot(room, (s) => [...(s.players.get(myId(room))?.items ?? [])].includes(DIG_ITEM));
   if (atDigSite) {
@@ -24,6 +25,15 @@ export function InteractPrompt({ room }: { room: IslandRoom }) {
       </div>
     );
   }
+  if (!nearAnchor && nearTarget) {
+    return (
+      <div className="prompt">
+        <kbd>E</kbd>
+        {nearTarget.kind === "creature" ? <Hand size={16} aria-hidden /> : <Search size={16} aria-hidden />}
+        {nearTarget.label}
+      </div>
+    );
+  }
   if (!nearAnchor || !cardId) return null;
   return (
     <div className="prompt">
@@ -32,6 +42,88 @@ export function InteractPrompt({ room }: { room: IslandRoom }) {
       {content.cards.get(cardId)?.title ?? "Điểm sự kiện"}
     </div>
   );
+}
+
+const EFFECT_LABELS: Record<string, string> = {
+  hp: "Máu",
+  morale: "Tinh thần",
+  hunger: "No",
+  stamina: "Sức bền",
+  food: "Lương thực",
+  treasure: "Kho báu",
+};
+
+/** Kết quả chạm trán vừa rồi (chỉ mình thấy): tìm được gì, bị gì, kèm lời kể ngắn. */
+export function EncounterToast({ room }: { room: IslandRoom }) {
+  const [msg, setMsg] = useState<(EncounterMessage & { key: number }) | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const off = room.onMessage(Messages.encounter, (m: EncounterMessage) => {
+      setMsg({ ...m, key: Date.now() });
+      clearTimeout(timer);
+      timer = setTimeout(() => setMsg(null), 7000);
+    });
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
+  }, [room]);
+  if (!msg) return null;
+  const Icon = msg.tone === "good" ? Sparkles : msg.tone === "bad" ? (msg.effects.hp && msg.effects.hp < 0 ? Skull : TriangleAlert) : Search;
+  const chips = Object.entries(msg.effects)
+    .filter((e): e is [string, number] => typeof e[1] === "number" && e[1] !== 0)
+    .map(([k, v]) => ({ k, v, text: `${v > 0 ? "+" : "−"}${Math.abs(v)} ${EFFECT_LABELS[k] ?? k}` }));
+  return (
+    <div key={msg.key} className={`encounter ${msg.tone}`} role="status">
+      <div className="encounter-head">
+        <Icon size={17} aria-hidden />
+        {msg.title}
+      </div>
+      <div className="encounter-text">{msg.text}</div>
+      {(chips.length > 0 || msg.gained) && (
+        <div className="encounter-effects">
+          {chips.map((c) => (
+            <span key={c.k} className={c.v > 0 ? "up" : "down"}>
+              {c.text}
+            </span>
+          ))}
+          {msg.gained && <span className="up">Nhặt được: {itemName(msg.gained)}</span>}
+          {msg.effects.gainItem && !msg.gained && <span className="down">Balo đầy, phải bỏ lại {itemName(msg.effects.gainItem)}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Trong hang, hầm: màn hình tối dần theo độ sâu. Gan dạ cao thì đỡ tối hơn; mang đèn dầu hay đuốc thì sáng hẳn.
+ * Dưới nước: phủ một lớp xanh mờ.
+ */
+export function EnvironmentOverlay({ room }: { room: IslandRoom }) {
+  const { zone, underwater } = useHud();
+  const nerve = useRoomSnapshot(room, (s) => s.players.get(myId(room))?.stats.get("nerve") ?? 3);
+  const light = useRoomSnapshot(room, (s) => {
+    const items = [...(s.players.get(myId(room))?.items ?? [])];
+    return items.includes("lantern") || items.includes("torch");
+  });
+  const indoor = useIndoor();
+  const darkness = zone === "cave" ? indoor * Math.max(0.15, 0.95 - nerve * 0.1 - (light ? 0.45 : 0)) : 0;
+  return (
+    <>
+      <div className="darkness" style={{ opacity: darkness }} />
+      {underwater && <div className="underwater-tint" />}
+    </>
+  );
+}
+
+/** Độ sâu trong hang (0–1) đọc từ vòng lặp 3D vài lần mỗi giây, đủ mượt cho lớp tối. */
+function useIndoor(): number {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setValue(Math.round(localEnv.indoor * 20) / 20), 200);
+    return () => clearInterval(timer);
+  }, []);
+  return value;
 }
 
 /** Nhãn tư thế: đang ngồi (nghỉ, hồi sức nhanh), hoặc đang nấp trong cỏ cao. */
@@ -88,9 +180,9 @@ export function PausedOverlay({ room }: { room: IslandRoom }) {
 const KEYS: [string, string][] = [
   ["WASD", "Di chuyển"],
   ["Shift", "Chạy"],
-  ["Space", "Nhảy"],
-  ["C", "Ngồi · đứng"],
-  ["E", "Mở sự kiện · đào"],
+  ["Space", "Nhảy · ngoi lên"],
+  ["C", "Ngồi · giữ để lặn"],
+  ["E", "Sự kiện · đào · xem xét"],
   ["B", "Xem balo"],
   ["J", "Sổ truyện"],
   ["Enter", "Chat"],

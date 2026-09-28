@@ -171,6 +171,28 @@ export interface NightVotes {
   tie: TieBallot | null;
 }
 
+// ---------- Chạm trán ngoài bản đồ ----------
+
+/**
+ * Hệ quả của một lần chạm trán ngoài thẻ sự kiện: nhặt easter egg, chạm điểm bất thường, sập bẫy,
+ * bị sinh vật tấn công, vuốt ve sinh vật thân thiện, đuối nước. Chỉ số cá nhân áp cho người gặp;
+ * lương thực và kho báu áp cho cả đội.
+ */
+export interface EncounterEffects {
+  hp?: number;
+  morale?: number;
+  hunger?: number;
+  stamina?: number;
+  food?: number;
+  treasure?: number;
+  gainItem?: string;
+}
+
+export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning"] as const;
+export type EncounterSource = (typeof ENCOUNTER_SOURCES)[number];
+/** Giới hạn mỗi hệ quả của một lần chạm trán, phòng server tính nhầm. */
+export const ENCOUNTER_EFFECT_LIMIT = 60;
+
 export type AnchorStatus = "open" | "active" | "resolved";
 
 export interface PlacedCard {
@@ -212,6 +234,21 @@ export type LogEntry =
   | { kind: "death"; day: number; playerId: string }
   | { kind: "incident"; day: number; effects: IncidentEffect[] }
   | { kind: "dig"; day: number; playerId: string }
+  | {
+      kind: "encounter";
+      day: number;
+      playerId: string;
+      source: EncounterSource;
+      /** Id của thứ cụ thể trên bản đồ (vd. "poi3", "trap7", "c12"). */
+      refId: string;
+      /** Id trong danh mục (vd. "shipwreck", "wild_boar"), để kể chuyện. */
+      defId: string;
+      effects: EncounterEffects;
+      /** Món nhặt được (null nếu balo đầy hoặc không có). */
+      gained: string | null;
+      /** Né được bẫy: không chịu hệ quả nào. */
+      dodged: boolean;
+    }
   | { kind: "departure"; day: number; aboard: string[]; leftBehind: string[]; hull: number; withTreasure: boolean };
 
 export interface GameState {
@@ -249,6 +286,9 @@ export interface GameState {
   signals: number;
   deceit: number;
   tieHistory: { day: number; playerId: string }[];
+
+  /** Easter egg đã tìm thấy, điểm bất thường đã chạm, bẫy đã sập (theo id trên bản đồ). */
+  discovered: string[];
 
   /** Cửa hàng của ván này (một bộ đồ ngẫu nhiên theo seed). */
   shop: string[];
@@ -294,7 +334,21 @@ export type GameAction =
   | { type: "revealBallot" }
   | { type: "nightAction"; playerId: string; action: NightActionId; target?: string }
   /** Server đã kiểm tra người đào đứng đúng chỗ. */
-  | { type: "dig"; playerId: string };
+  | { type: "dig"; playerId: string }
+  /**
+   * Server đã kiểm tra vị trí và tính hệ quả từ danh mục thế giới. `once`: thứ chỉ dùng được một lần
+   * trong ván (easter egg, điểm bất thường, bẫy), engine từ chối nếu đã có người dùng.
+   */
+  | {
+      type: "encounter";
+      playerId: string;
+      source: EncounterSource;
+      refId: string;
+      defId: string;
+      effects: EncounterEffects;
+      once?: boolean;
+      dodged?: boolean;
+    };
 
 export class RuleError extends Error {
   override name = "RuleError";

@@ -4,8 +4,8 @@ import { Html } from "@react-three/drei";
 import { Callbacks } from "@colyseus/sdk";
 import type { Group } from "three";
 import type { PlayerState } from "@tentides/protocol";
-import { inTallGrass } from "@tentides/content";
 import { myId, type IslandRoom } from "../net.ts";
+import { currentWorld } from "./world.ts";
 import { Character } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
@@ -26,7 +26,8 @@ function useBubble(playerId: string): string | null {
   return age < BUBBLE_MS ? last!.text : null;
 }
 
-function RemotePlayer({ id, player, carrying }: { id: string; player: PlayerState; carrying: boolean }) {
+function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: string; player: PlayerState; carrying: boolean }) {
+  const world = currentWorld(room);
   const root = useRef<Group>(null);
   const avatar = useRef<Group>(null);
   const [connected, setConnected] = useState(player.connected);
@@ -50,7 +51,7 @@ function RemotePlayer({ id, player, carrying }: { id: string; player: PlayerStat
     }
     if (player.connected !== connected) setConnected(player.connected);
     if (player.alive !== alive) setAlive(player.alive);
-    const nextPose = !player.sitting ? "stand" : inTallGrass(player.x, player.z) ? "hidden" : "sit";
+    const nextPose = !player.sitting ? "stand" : world.inTallGrass(player.x, player.z) ? "hidden" : "sit";
     if (nextPose !== pose) setPose(nextPose);
   });
 
@@ -93,7 +94,7 @@ export function RemotePlayers({ room }: { room: IslandRoom }) {
   return (
     <>
       {others.map(([id, player]) => (
-        <RemotePlayer key={id} id={id} player={player} carrying={id === carrier} />
+        <RemotePlayer key={id} room={room} id={id} player={player} carrying={id === carrier} />
       ))}
     </>
   );

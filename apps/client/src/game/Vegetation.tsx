@@ -13,19 +13,7 @@ import {
   type InstancedMesh,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import {
-  ANCHORS,
-  CAMP,
-  CAVE,
-  LAKE,
-  PALMS,
-  TALL_GRASS,
-  TREASURE_SITES,
-  heightAt,
-  shoreRadius,
-  zoneAt,
-  type GrassPatch,
-} from "@tentides/content";
+import { ANCHORS, CAMP, CAVE, LAKE, TREASURE_SITES, type GrassPatch, type World } from "@tentides/content";
 import { useQuality } from "./graphics.ts";
 import { grain, mulberry32, patch, swayMaterial } from "./nature.ts";
 
@@ -160,68 +148,99 @@ interface Spot {
   r: number;
 }
 
-const inland = (x: number, z: number) => shoreRadius(x, z) - Math.hypot(x, z);
 const nearCamp = (x: number, z: number, d: number) => Math.hypot(x - CAMP.x, z - CAMP.z) < d;
 const inLake = (x: number, z: number) => Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.radius + 1;
-const clearOfPoints = (x: number, z: number, d: number) =>
-  ANCHORS.every((a) => Math.hypot(a.x - x, a.z - z) > d) && TREASURE_SITES.every((t) => Math.hypot(t.x - x, t.z - z) > d);
-/** Đất có cỏ mọc: trong đảo, không phải sườn núi lửa hay hang, không dưới nước. */
-const grassy = (x: number, z: number, h: number) =>
-  h > 0.6 && h < 9 && inland(x, z) > 12 && zoneAt(x, z) !== "volcano" && !inLake(x, z) && Math.hypot(x - CAVE.x, z - CAVE.z) > CAVE.radius - 2;
 
-function scatter(count: number, seed: number, accept: (x: number, z: number, h: number, rand: () => number) => boolean, size: [number, number] = [0.7, 1.3]): Spot[] {
-  const rand = mulberry32(seed);
-  const out: Spot[] = [];
-  for (let tries = 0; out.length < count && tries < count * 25; tries++) {
-    const x = (rand() * 2 - 1) * 112;
-    const z = (rand() * 2 - 1) * 112;
-    const h = heightAt(x, z);
-    if (!accept(x, z, h, rand)) continue;
-    out.push({ x, y: h, z, s: size[0] + rand() * (size[1] - size[0]), h: 1, r: rand() * Math.PI * 2 });
-  }
-  return out;
-}
+/** Các hàm đặt cây cỏ theo thế giới đang chơi (đảo chính và đảo nhỏ). */
+function placer(world: World) {
+  const heightAt = world.heightAt;
+  /** Số mét từ bờ vào trong; đảo nhỏ bé nên được "tính rộng" gấp rưỡi để ngưỡng rừng, cát dùng chung. */
+  const inland = (x: number, z: number) => {
+    const s = world.surface(x, z);
+    return s.island === "islet" ? s.inland * 2.5 : s.inland;
+  };
+  const clearOfPoints = (x: number, z: number, d: number) =>
+    ANCHORS.every((a) => Math.hypot(a.x - x, a.z - z) > d) && TREASURE_SITES.every((t) => Math.hypot(t.x - x, t.z - z) > d) && world.isClear(x, z, d);
+  /** Đất có cỏ mọc: trong đảo, không phải sườn núi lửa, hang, đảo đá hay đảo cát đen, không dưới nước. */
+  const grassy = (x: number, z: number, h: number) => {
+    if (h < 0.6 || h > 9 || inland(x, z) < 12 || inLake(x, z)) return false;
+    const s = world.surface(x, z);
+    if (s.islet && (s.islet.kind === "rocky" || s.islet.kind === "volcanic")) return false;
+    return world.zoneAt(x, z) !== "volcano" && Math.hypot(x - CAVE.x, z - CAVE.z) > CAVE.radius - 2 && !s.pad && !world.structureAt(x, z);
+  };
+  /** Vùng lấy mẫu: đảo chính và từng đảo nhỏ, theo diện tích. */
+  const regions = [{ x: 0, z: 0, half: 112 }, ...world.islets.map((it) => ({ x: it.x, z: it.z, half: it.radius * 1.2 }))];
+  const area = regions.reduce((sum, r) => sum + r.half * r.half, 0);
 
-/** Rải dày trong từng đám cỏ tranh: lõi cao và dày, mép thấp và thưa dần. */
-function fillPatches(patches: readonly GrassPatch[], perSquareMeter: number, seed: number): Spot[] {
-  const rand = mulberry32(seed);
-  const out: Spot[] = [];
-  for (const p of patches) {
-    const n = Math.round(Math.PI * p.radius * p.radius * perSquareMeter);
-    for (let i = 0; i < n; i++) {
-      // Căn bậc hai để rải đều theo diện tích; lấn ra mép một chút cho viền tự nhiên.
-      const d = Math.sqrt(rand()) * p.radius * 1.12;
-      const a = rand() * Math.PI * 2;
-      const x = p.x + Math.cos(a) * d;
-      const z = p.z + Math.sin(a) * d;
-      const edge = d / p.radius;
-      if (edge > 0.8 && rand() < (edge - 0.8) * 3) continue;
+  function scatter(count: number, seed: number, accept: (x: number, z: number, h: number, rand: () => number) => boolean, size: [number, number] = [0.7, 1.3]): Spot[] {
+    const rand = mulberry32(seed);
+    const out: Spot[] = [];
+    for (let tries = 0; out.length < count && tries < count * 25; tries++) {
+      let pick = rand() * area;
+      let region = regions[0]!;
+      for (const r of regions) {
+        pick -= r.half * r.half;
+        if (pick <= 0) {
+          region = r;
+          break;
+        }
+      }
+      const x = region.x + (rand() * 2 - 1) * region.half;
+      const z = region.z + (rand() * 2 - 1) * region.half;
       const h = heightAt(x, z);
-      if (h < 0.1 || inLake(x, z)) continue;
-      // Cao 1,5–2,1 m ở lõi (che kín người ngồi, ngang đầu người đứng), thấp dần ra mép.
-      const height = (1.5 + rand() * 0.6) * (1 - Math.max(0, edge - 0.6) * 0.9);
-      out.push({ x, y: h - 0.05, z, s: 0.9 + rand() * 0.5, h: height, r: rand() * Math.PI * 2 });
+      if (!accept(x, z, h, rand)) continue;
+      out.push({ x, y: h, z, s: size[0] + rand() * (size[1] - size[0]), h: 1, r: rand() * Math.PI * 2 });
     }
+    return out;
   }
-  return out;
-}
 
-/** Cây rừng tán rộng mọc trong nội đảo; tránh điểm sự kiện, kho báu, trại, cây dừa, đám cỏ tranh. */
-function jungleTrees(): Spot[] {
-  const rand = mulberry32(41);
-  const out: Spot[] = [];
-  for (let tries = 0; out.length < 34 && tries < 3000; tries++) {
-    const x = (rand() * 2 - 1) * 90;
-    const z = (rand() * 2 - 1) * 90;
-    const h = heightAt(x, z);
-    if (!grassy(x, z, h) || inland(x, z) < 30) continue;
-    if (nearCamp(x, z, 22) || !clearOfPoints(x, z, 7)) continue;
-    if (TALL_GRASS.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius + 2)) continue;
-    if (PALMS.some((p) => Math.hypot(p.x - x, p.z - z) < 5)) continue;
-    if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
-    out.push({ x, y: h, z, s: 0.8 + rand() * 0.5, h: 4.5 + rand() * 2.5, r: rand() * Math.PI * 2 });
+  /** Rải dày trong từng đám cỏ tranh: lõi cao và dày, mép thấp và thưa dần. */
+  function fillPatches(patches: readonly GrassPatch[], perSquareMeter: number, seed: number): Spot[] {
+    const rand = mulberry32(seed);
+    const out: Spot[] = [];
+    for (const p of patches) {
+      const n = Math.round(Math.PI * p.radius * p.radius * perSquareMeter);
+      for (let i = 0; i < n; i++) {
+        // Căn bậc hai để rải đều theo diện tích; lấn ra mép một chút cho viền tự nhiên.
+        const d = Math.sqrt(rand()) * p.radius * 1.12;
+        const a = rand() * Math.PI * 2;
+        const x = p.x + Math.cos(a) * d;
+        const z = p.z + Math.sin(a) * d;
+        const edge = d / p.radius;
+        if (edge > 0.8 && rand() < (edge - 0.8) * 3) continue;
+        const h = heightAt(x, z);
+        if (h < 0.1 || inLake(x, z)) continue;
+        // Cao 1,5–2,1 m ở lõi (che kín người ngồi, ngang đầu người đứng), thấp dần ra mép.
+        const height = (1.5 + rand() * 0.6) * (1 - Math.max(0, edge - 0.6) * 0.9);
+        out.push({ x, y: h - 0.05, z, s: 0.9 + rand() * 0.5, h: height, r: rand() * Math.PI * 2 });
+      }
+    }
+    return out;
   }
-  return out;
+
+  /** Cây rừng tán rộng mọc trong nội đảo; tránh điểm sự kiện, kho báu, trại, cây dừa, đám cỏ tranh, hang. */
+  function jungleTrees(): Spot[] {
+    const rand = mulberry32(41);
+    const out: Spot[] = [];
+    const target = 34 + world.islets.filter((it) => it.kind === "jungle").length * 6;
+    for (let tries = 0; out.length < target && tries < 5000; tries++) {
+      const onIslet = tries % 3 === 2 && world.islets.some((it) => it.kind === "jungle");
+      const jungle = world.islets.filter((it) => it.kind === "jungle");
+      const r = onIslet ? jungle[Math.floor(rand() * jungle.length)]! : { x: 0, z: 0, radius: 75 };
+      const x = r.x + (rand() * 2 - 1) * r.radius * (onIslet ? 0.8 : 1.2);
+      const z = r.z + (rand() * 2 - 1) * r.radius * (onIslet ? 0.8 : 1.2);
+      const h = heightAt(x, z);
+      if (!grassy(x, z, h) || inland(x, z) < 30) continue;
+      if (nearCamp(x, z, 22) || !clearOfPoints(x, z, 7)) continue;
+      if (world.tallGrass.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius + 2)) continue;
+      if (world.palms.some((p) => Math.hypot(p.x - x, p.z - z) < 5)) continue;
+      if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
+      out.push({ x, y: h, z, s: 0.8 + rand() * 0.5, h: 4.5 + rand() * 2.5, r: rand() * Math.PI * 2 });
+    }
+    return out;
+  }
+
+  return { heightAt, inland, clearOfPoints, grassy, scatter, fillPatches, jungleTrees };
 }
 
 // ---------------------------------------------------------------------------
@@ -263,13 +282,17 @@ function Instances({ spots, geometry, material, tint, heightScale = false, cast 
   return <instancedMesh key={spots.length} ref={mesh} args={[geometry, material, spots.length]} castShadow={cast} receiveShadow />;
 }
 
-export function Vegetation() {
+export function Vegetation({ world }: { world: World }) {
   const quality = useQuality();
   const density = quality === "high" ? 1 : 0.35;
+  const place = useMemo(() => placer(world), [world]);
 
   const spots = useMemo(() => {
+    const { inland, clearOfPoints, grassy, scatter, fillPatches } = place;
+    const heightAt = world.heightAt;
+    const zoneAt = world.zoneAt;
     const d = (n: number) => Math.round(n * density);
-    const underPalm = (x: number, z: number) => PALMS.some((p) => Math.hypot(p.x - x, p.z - z) < 4);
+    const underPalm = (x: number, z: number) => world.palms.some((p) => Math.hypot(p.x - x, p.z - z) < 4);
     const bushes = scatter(d(420), 12, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 11) && clearOfPoints(x, z, 3) && (inland(x, z) > 30 || rand() < 0.35), [0.6, 1.8]);
     return {
       // Cỏ thấp phủ khắp nơi có đất, thưa dần ra phía cát.
@@ -283,7 +306,7 @@ export function Vegetation() {
         h: 0.6 + grain(i, 7) * 0.5,
       })),
       // Cỏ cao dùng để nấp nên dày như nhau ở mọi mức đồ hoạ (máy yếu không được lợi thế nhìn xuyên cỏ).
-      tall: fillPatches(TALL_GRASS, 3.4, 16),
+      tall: fillPatches(world.tallGrass, 3.4, 16),
       ferns: scatter(d(520), 17, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 8) && clearOfPoints(x, z, 2.5) && (underPalm(x, z) || inland(x, z) > 38 || rand() < 0.15), [0.6, 1.3]),
       bushes,
       // Khoảng một phần ba số bụi trổ hoa.
@@ -296,13 +319,17 @@ export function Vegetation() {
             return { x: b.x + Math.cos(a) * r * b.s, y: b.y + (0.6 + grain(i, k) * 0.35) * b.s, z: b.z + Math.sin(a) * r * b.s, s: 1, h: 1, r: a };
           }),
         ),
-      rocks: scatter(d(140), 13, (x, z, h) => h > -0.5 && clearOfPoints(x, z, 2) && (zoneAt(x, z) === "volcano" || zoneAt(x, z) === "cave" || inland(x, z) < 6), [0.4, 1.6]),
+      rocks: scatter(d(180), 13, (x, z, h) => {
+        if (h < -0.5 || !clearOfPoints(x, z, 2)) return false;
+        const s = world.surface(x, z);
+        return zoneAt(x, z) === "volcano" || zoneAt(x, z) === "cave" || inland(x, z) < 6 || s.islet?.kind === "rocky" || s.islet?.kind === "volcanic";
+      }, [0.4, 1.6]),
       shells: scatter(d(90), 14, (x, z, h) => h > 0.1 && h < 0.9, [0.8, 1.2]),
       driftwood: scatter(16, 18, (x, z, h) => h > 0.15 && h < 0.7 && !nearCamp(x, z, 8) && clearOfPoints(x, z, 3), [0.8, 1.6]),
     };
-  }, [density]);
+  }, [density, place, world]);
   // Cây rừng có va chạm nên không đổi theo chất lượng đồ hoạ.
-  const trees = useMemo(jungleTrees, []);
+  const trees = useMemo(() => place.jungleTrees(), [place]);
 
   const geo = useMemo(
     () => ({
