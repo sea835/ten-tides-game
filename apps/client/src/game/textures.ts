@@ -48,7 +48,7 @@ function vnoise(u: number, v: number, period: number, seed: number): number {
   return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
 }
 
-function fbm(u: number, v: number, period: number, octaves: number, seed: number): number {
+export function fbm(u: number, v: number, period: number, octaves: number, seed: number): number {
   let sum = 0;
   let amp = 0.5;
   let total = 0;
@@ -61,7 +61,7 @@ function fbm(u: number, v: number, period: number, octaves: number, seed: number
 }
 
 /** Nhiễu tế bào lặp: khoảng cách tới điểm gần nhất (f1) và gần nhì (f2), theo đơn vị ô. */
-function worley(u: number, v: number, cells: number, seed: number): [number, number] {
+export function worley(u: number, v: number, cells: number, seed: number): [number, number] {
   const x = u * cells;
   const y = v * cells;
   const xi = Math.floor(x);
@@ -105,7 +105,7 @@ const wood: Gen = (u, v) => {
   const grainLines = 0.5 + 0.5 * Math.sin((u * 4 + warp * 0.35 + hash(plank, 0, 3)) * TAU * 7);
   const fibre = fbm(u, v, 32, 2, 12);
   const edge = Math.min(within * 30, (1 - within) * 30, 1);
-  return clamp01((0.34 + grainLines * 0.28 + fibre * 0.3 + (hash(plank, 1, 5) - 0.5) * 0.15) * (0.35 + 0.65 * edge));
+  return clamp01((0.4 + grainLines * 0.18 + fibre * 0.32 + (hash(plank, 1, 5) - 0.5) * 0.12) * (0.7 + 0.3 * edge));
 };
 
 /** Đá: mảng loang, vết nứt theo ranh tế bào. */
@@ -322,7 +322,14 @@ const FRAGMENT_COLOR = /* glsl */ `
   #ifdef TEN_SPLAT
     // Mảng lớn đậm nhạt trên địa hình để khỏi thấy vân lặp.
     float tenMacro = texture2D( uDetailB, vDetailPos.xz * 0.011 ).a;
-    diffuseColor.rgb *= 0.9 + 0.2 * tenMacro;
+    float tenMacro2 = texture2D( uDetailA, vDetailPos.xz * 0.0045 ).y;
+    diffuseColor.rgb *= 0.84 + 0.32 * tenMacro;
+    // Mảng cỏ khô ngả vàng, mảng đất lộ ra giữa bãi cỏ.
+    diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * vec3( 1.15, 1.02, 0.72 ), smoothstep( 0.45, 0.72, tenMacro2 ) * vSplat.y * 0.7 );
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.2, 0.15, 0.1 ), smoothstep( 0.66, 0.8, tenMacro ) * vSplat.y * 0.35 );
+    // Hạt mịn ở gần: sỏi cát, rễ cỏ.
+    vec4 tenFine = texture2D( uDetailB, vDetailPos.xz * uDetailScale * 4.3 );
+    diffuseColor.rgb *= 1.0 + ( dot( tenFine, vSplat ) / max( dot( vSplat, vec4( 1.0 ) ), 1e-3 ) - 0.5 ) * 0.3 * tenFade;
   #endif
 `;
 

@@ -18,12 +18,12 @@ import {
   type PointLight,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { CAVE, MAP_HALF_SIZE, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, type World } from "@tentides/content";
+import { ANCHORS, CAVE, MAP_HALF_SIZE, TREASURE_SITES, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { sky } from "./shared.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { Vegetation } from "./Vegetation.tsx";
-import { Water } from "./Water.tsx";
+import { Water, waterUniforms } from "./Water.tsx";
 import { WindClock, grain, mulberry32, patch, swayMaterial } from "./nature.ts";
 import { Structures } from "./Structures.tsx";
 import { Points } from "./Points.tsx";
@@ -33,6 +33,9 @@ import { Trees } from "./Trees.tsx";
 import { Camp } from "./Camp.tsx";
 import { Landmarks } from "./Landmarks.tsx";
 import { detailed } from "./textures.ts";
+import { GrassField } from "./Grass.tsx";
+import { Flame } from "./Flame.tsx";
+import { useQuality } from "./graphics.ts";
 
 // ---------------------------------------------------------------------------
 // Địa hình
@@ -45,23 +48,23 @@ const FINE = 2;
 const COARSE = 6;
 
 const C = {
-  deepBed: new Color("#1f5a66"),
-  bed: new Color("#cdb98a"),
-  reefBed: new Color("#d9a38f"),
-  wetSand: new Color("#d2b57c"),
-  sand: new Color("#f2dea8"),
-  blackSand: new Color("#3d3a3b"),
-  blackWet: new Color("#2a2829"),
-  grassLight: new Color("#9ccb67"),
-  grass: new Color("#72b04f"),
-  forest: new Color("#4f8e3f"),
-  forestDark: new Color("#3a7131"),
-  rock: new Color("#8f8a84"),
-  rockDark: new Color("#6b6661"),
-  ash: new Color("#6b625c"),
+  deepBed: new Color("#1d4f5a"),
+  bed: new Color("#c7b286"),
+  reefBed: new Color("#c99a86"),
+  wetSand: new Color("#b89c70"),
+  sand: new Color("#dcc79a"),
+  blackSand: new Color("#3a3738"),
+  blackWet: new Color("#262425"),
+  grassLight: new Color("#8fa654"),
+  grass: new Color("#62883a"),
+  forest: new Color("#4b6d2c"),
+  forestDark: new Color("#3b5523"),
+  rock: new Color("#878079"),
+  rockDark: new Color("#5f5953"),
+  ash: new Color("#5f5751"),
   lava: new Color("#c8401f"),
-  straw: new Color("#a9a45a"),
-  dirt: new Color("#7a6a55"),
+  straw: new Color("#a79d5c"),
+  dirt: new Color("#6e5b44"),
 };
 
 function faceColor(world: World, out: Color, x: number, z: number, h: number, slope: number) {
@@ -263,12 +266,93 @@ function buildTerrain(world: World): TerrainChunk[] {
   return chunks;
 }
 
-function Terrain({ world }: { world: World }) {
+/**
+ * Mặt đất gần nước: cát ướt sẫm màu và bóng hơn ở mép nước (mép ướt dâng hạ theo sóng), đáy biển có vân sáng
+ * lung linh do nắng khúc xạ qua mặt sóng (caustics), càng sâu càng mờ và ngả xanh.
+ */
+function seabedLight(m: MeshStandardMaterial) {
+  m.customProgramCacheKey = () => "seabed";
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = waterUniforms.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vSeabed;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvSeabed = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        /* glsl */ `#include <common>
+        uniform float uTime;
+        varying vec3 vSeabed;
+        float tenCaustic(vec2 p, float t) {
+          vec2 i = p;
+          float c = 1.0;
+          float inten = 0.005;
+          for (int n = 0; n < 4; n++) {
+            float tt = t * (1.0 - (3.5 / float(n + 1)));
+            i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+            c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / inten), p.y / (cos(i.y + tt) / inten)));
+          }
+          c /= 4.0;
+          c = 1.17 - pow(c, 1.4);
+          return clamp(pow(abs(c), 8.0), 0.0, 2.0);
+        }`,
+      )
+      .replace(
+        "#include <color_fragment>",
+        /* glsl */ `#include <color_fragment>
+        float tenWater = ${WATER_LEVEL.toFixed(2)};
+        float tenAbove = vSeabed.y - tenWater;
+        float tenWetLine = 0.45 + 0.25 * sin(uTime * 0.75 + (vSeabed.x + vSeabed.z) * 0.05);
+        float tenWet = 1.0 - smoothstep(0.0, tenWetLine, tenAbove);
+        diffuseColor.rgb *= 1.0 - 0.32 * tenWet;
+        float tenDepth = max(0.0, -tenAbove);
+        // Càng sâu càng mất màu đỏ, ngả xanh lục lam.
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.85, 0.95), smoothstep(0.0, 6.0, tenDepth));`,
+      )
+      .replace(
+        "#include <roughnessmap_fragment>",
+        "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.3, tenWet * step(0.0, tenAbove));",
+      )
+      .replace(
+        "#include <lights_fragment_end>",
+        /* glsl */ `#include <lights_fragment_end>
+        if (tenAbove < 0.0) {
+          float tenFade = smoothstep(0.0, 0.6, tenDepth) * (1.0 - smoothstep(4.0, 14.0, tenDepth));
+          float tenC = tenCaustic(mod(vSeabed.xz * 0.4 + vec2(0.0, uTime * 0.03), 6.28318) - 250.0, uTime * 0.5);
+          // Vân sáng theo nắng trực tiếp đang chiếu xuống (đêm, trong bóng râm thì tắt).
+          reflectedLight.directDiffuse += reflectedLight.directDiffuse * tenC * 2.2 * tenFade;
+        }`,
+      );
+  };
+}
+
+/** Trại, điểm sự kiện, chỗ đào: không mọc cỏ dày (người qua lại giẫm hết). */
+function grassClearings(room: IslandRoom) {
+  const fixed = [
+    ...ANCHORS.map((a) => [a.x, a.z, LANDMARK_ANCHORS.has(a.type) ? 10 : 3.5] as const),
+    ...TREASURE_SITES.map((t) => [t.x, t.z, 2.5] as const),
+  ];
+  return (out: Vector3[]) => {
+    let i = 0;
+    const st = room.state;
+    if (!st.campPacked) out[i++]!.set(st.campX, st.campZ, 7.5);
+    for (const [x, z, r] of fixed) if (i < out.length) out[i++]!.set(x, z, r);
+  };
+}
+
+const LANDMARK_ANCHORS = new Set(["shipwreck", "jungle_ruin", "cliff_nest", "hot_spring"]);
+
+function Terrain({ room, world }: { room: IslandRoom; world: World }) {
+  const clearings = useMemo(() => grassClearings(room), [room]);
   const chunks = useMemo(() => buildTerrain(world), [world]);
+  const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
+  const high = useQuality() === "high";
   const material = useMemo(() => {
     const m = detailed(new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), "grass");
+    seabedLight(m);
     m.userData.detailSplat = true;
-    m.userData.detailBump = 0.35;
+    m.userData.detailBump = 0.2;
+    m.userData.detailStrength = 0.24;
     return m;
   }, []);
   useEffect(() => () => chunks.forEach((c) => c.geometry.dispose()), [chunks]);
@@ -280,6 +364,7 @@ function Terrain({ world }: { world: World }) {
           <mesh geometry={c.geometry} material={material} receiveShadow />
         </group>
       ))}
+      {high && <GrassField geometries={geometries} count={120000} clearings={clearings} />}
     </RigidBody>
   );
 }
@@ -342,10 +427,7 @@ function Cave() {
             <cylinderGeometry args={[0.06, 0.08, 1, 5]} />
             <meshStandardMaterial color="#5a3d22" flatShading />
           </mesh>
-          <mesh position-y={0.62}>
-            <coneGeometry args={[0.16, 0.4, 5]} />
-            <meshStandardMaterial color="#ffb347" emissive="#ff7b00" emissiveIntensity={3} toneMapped={false} />
-          </mesh>
+          <Flame position={[0, 0.5, 0]} width={0.35} height={0.6} seed={side * 0.37 + 0.5} />
         </group>
       ))}
       <pointLight position={[CAVE.x, floor + 3, CAVE.z + 6.5]} color="#ff9a4a" intensity={8} distance={10} />
@@ -467,7 +549,7 @@ export function Island({ room, world }: { room: IslandRoom; world: World }) {
   return (
     <>
       <WindClock />
-      <Terrain world={world} />
+      <Terrain room={room} world={world} />
       <Water world={world} />
       <Trees room={room} world={world} />
       <Vegetation world={world} />

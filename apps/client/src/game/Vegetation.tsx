@@ -5,7 +5,6 @@ import {
   BufferGeometry,
   Color,
   CylinderGeometry,
-  DodecahedronGeometry,
   DoubleSide,
   IcosahedronGeometry,
   MeshStandardMaterial,
@@ -15,8 +14,9 @@ import {
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { ANCHORS, CAMP, CAVE, LAKE, TREASURE_SITES, type GrassPatch, type World } from "@tentides/content";
 import { useQuality } from "./graphics.ts";
-import { grain, mulberry32, patch, swayMaterial } from "./nature.ts";
+import { grain, mulberry32, patch, rockGeometry, swayMaterial } from "./nature.ts";
 import { detailed } from "./textures.ts";
+import { broadLeafTexture, frondStrip, frondTexture, leafCluster, leafClusterTexture, leafMaterial } from "./foliage.ts";
 
 // Cây cỏ của đảo hoang: cỏ thấp phủ khắp, cỏ vừa, đám cỏ tranh cao (ngồi vào là nấp được),
 // lau sậy quanh hồ, dương xỉ dưới tán dừa, bụi rậm có hoa, chuối rừng lá to, dứa dại gai góc ven rừng,
@@ -80,82 +80,46 @@ function grassClump(blades: number, seed: number, spread: number, width: number)
 
 /** Dương xỉ: vòng lá kép xoè ra rồi rủ xuống, cao chừng 1 đơn vị. */
 function fern(): BufferGeometry {
-  const pos: number[] = [];
   const count = 9;
-  for (let f = 0; f < count; f++) {
+  return frondStrip(count, 6, (f, s, side) => {
     const angle = (f / count) * Math.PI * 2 + (f % 2) * 0.3;
     const length = 1.1 + (f % 3) * 0.15;
-    const point = (s: number, side: number) => {
-      const along = s * length;
-      const y = 0.9 * s - 0.9 * s * s * 1.1 + 0.05;
-      const width = Math.sin(Math.PI * Math.min(1, s * 1.05)) * 0.22 * side;
-      return [Math.cos(angle) * along - Math.sin(angle) * width, y - Math.abs(width) * 0.4, Math.sin(angle) * along + Math.cos(angle) * width];
-    };
-    const steps = 5;
-    for (let i = 0; i < steps; i++) {
-      const s0 = i / steps;
-      const s1 = (i + 1) / steps;
-      for (const side of [-1, 1]) {
-        const a = point(s0, 0);
-        const b = point(s1, 0);
-        const c = point(s1, side);
-        const d = point(s0, side);
-        pos.push(...a, ...b, ...c, ...a, ...c, ...d);
-      }
-    }
-  }
-  const g = new BufferGeometry();
-  g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
-  g.computeVertexNormals();
-  return g;
+    const along = s * length;
+    const y = 0.9 * s - 0.9 * s * s * 1.1 + 0.05;
+    const width = 0.3 * side * Math.min(1, 0.3 + s * 2);
+    return [Math.cos(angle) * along - Math.sin(angle) * width, y - Math.abs(width) * 0.4, Math.sin(angle) * along + Math.cos(angle) * width];
+  });
 }
 
-/** Bụi rậm: vài khối đa diện chụm lại, rộng chừng 1,6 và cao chừng 1 đơn vị. */
-function bush(): BufferGeometry {
-  const parts = [
-    [0, 0.5, 0, 0.62],
-    [0.5, 0.38, 0.12, 0.48],
-    [-0.42, 0.34, -0.18, 0.5],
-    [0.1, 0.32, -0.5, 0.42],
-    [-0.1, 0.8, 0.1, 0.4],
-  ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 1).translate(x!, y!, z!));
-  const g = mergeGeometries(parts)!;
-  g.computeVertexNormals();
-  return g;
+const BUSH_BLOBS: [number, number, number, number][] = [
+  [0, 0.5, 0, 0.62],
+  [0.5, 0.38, 0.12, 0.48],
+  [-0.42, 0.34, -0.18, 0.5],
+  [0.1, 0.32, -0.5, 0.42],
+  [-0.1, 0.8, 0.1, 0.4],
+];
+
+/** Bụi rậm: vài chùm lá chụm lại, rộng chừng 1,6 và cao chừng 1 đơn vị; lõi sẫm che khoảng trống bên trong. */
+function bush(): { leaves: BufferGeometry; core: BufferGeometry } {
+  const leaves = leafCluster(BUSH_BLOBS, 9, 0.55, 12);
+  const core = mergeGeometries(BUSH_BLOBS.map(([x, y, z, r]) => new IcosahedronGeometry(r * 0.7, 1).translate(x, y, z)))!;
+  core.computeVertexNormals();
+  return { leaves, core };
 }
 
-/** Lá chuối rừng: mỗi tàu lá là dải rộng vươn lên rồi rủ xuống, mọc quanh ngọn một thân giả ngắn. */
+/** Lá chuối: mỗi tàu lá là phiến rộng vươn lên rồi rủ xuống, mọc quanh ngọn một thân giả ngắn. */
 function bananaLeaves(): BufferGeometry {
-  const pos: number[] = [];
   const count = 7;
-  for (let f = 0; f < count; f++) {
+  return frondStrip(count, 7, (f, s, side) => {
     const angle = (f / count) * Math.PI * 2 + (f % 2) * 0.4;
     const length = 1.5 + (f % 3) * 0.2;
     const rise = 0.55 + (f % 2) * 0.25;
-    const point = (s: number, side: number) => {
-      const along = s * length;
-      // Cuống vươn lên, phiến lá rủ dần về cuối; hai mép lá hơi cụp xuống như lá chuối thật.
-      const y = 1.35 + rise * s - 1.3 * s * s;
-      const width = Math.sin(Math.PI * Math.min(1, 0.15 + s * 0.9)) * 0.3 * side;
-      return [Math.cos(angle) * along - Math.sin(angle) * width, y - Math.abs(width) * 0.35, Math.sin(angle) * along + Math.cos(angle) * width];
-    };
-    const steps = 5;
-    for (let i = 0; i < steps; i++) {
-      const s0 = i / steps;
-      const s1 = (i + 1) / steps;
-      for (const side of [-1, 1]) {
-        const a = point(s0, 0);
-        const b = point(s1, 0);
-        const c = point(s1, side);
-        const d = point(s0, side);
-        pos.push(...a, ...b, ...c, ...a, ...c, ...d);
-      }
-    }
-  }
-  const g = new BufferGeometry();
-  g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
-  g.computeVertexNormals();
-  return g;
+    const along = s * length;
+    // Cuống vươn lên, phiến lá rủ dần về cuối; hai mép lá hơi cụp xuống như lá chuối thật.
+    const y = 1.35 + rise * s - 1.3 * s * s;
+    const width = 0.36 * side;
+    return [Math.cos(angle) * along - Math.sin(angle) * width, y - Math.abs(width) * 0.35, Math.sin(angle) * along + Math.cos(angle) * width];
+  });
 }
 
 /** Dây leo bò lan trên đất: mấy nhánh lá tròn nhỏ toả ra sát mặt đất. */
@@ -455,7 +419,7 @@ export function Vegetation({ world }: { world: World }) {
       fern: fern(),
       bush: bush(),
       flower: new IcosahedronGeometry(0.1, 0),
-      rock: new DodecahedronGeometry(0.6, 1),
+      rock: rockGeometry(0.6, 1),
       shell: new CylinderGeometry(0, 0.12, 0.08, 5),
       driftwood: new CylinderGeometry(0.16, 0.2, 2.4, 10).rotateZ(Math.PI / 2).translate(0, 0.12, 0),
       bananaStem: new CylinderGeometry(0.1, 0.16, 1.45, 10).translate(0, 0.72, 0),
@@ -470,12 +434,13 @@ export function Vegetation({ world }: { world: World }) {
     () => ({
       grass: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.22, 0, true), "leaf"),
       tall: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.1, 0, true), "leaf"),
-      fern: detailed(swayMaterial({ flatShading: true, side: DoubleSide, roughness: 0.9 }, 0.05), "leaf"),
-      bush: detailed(swayMaterial({ flatShading: true, roughness: 0.9 }, 0.025), "leaf"),
+      fern: leafMaterial(frondTexture(), 0.05, 0, 0.6),
+      bush: leafMaterial(leafClusterTexture(), 0.025),
+      bushCore: detailed(swayMaterial({ roughness: 1 }, 0.025), "leaf"),
       flower: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 0.6 }), "leaf", 0.15),
       stone: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 1 }), "rock"),
       trunk: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 1 }), "bark"),
-      banana: detailed(swayMaterial({ flatShading: true, side: DoubleSide, roughness: 0.75 }, 0.06, -1), "leaf"),
+      banana: leafMaterial(broadLeafTexture(), 0.06, -1, 0.75),
       creeper: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 0.9 }), "leaf"),
     }),
     [],
@@ -493,15 +458,16 @@ export function Vegetation({ world }: { world: World }) {
         const dry = grain(i, 7);
         return c.setHSL(0.2 - dry * 0.07, 0.42 + dry * 0.08, 0.38 + grain(i, 6) * 0.1 + dry * 0.06);
       }) as Tint,
-      fern: ((i, c) => c.setHSL(0.29 + grain(i, 8) * 0.05, 0.5, 0.27 + grain(i, 9) * 0.08)) as Tint,
-      bush: ((i, c) => c.setHSL(0.27 + grain(i, 10) * 0.07, 0.42, 0.22 + grain(i, 11) * 0.1)) as Tint,
+      fern: ((i, c) => c.setHSL(0.27 + grain(i, 8) * 0.05, 0.48, 0.34 + grain(i, 9) * 0.08)) as Tint,
+      bush: ((i, c) => c.setHSL(0.23 + grain(i, 10) * 0.08, 0.4, 0.3 + grain(i, 11) * 0.1)) as Tint,
+      bushCore: ((i, c) => c.setHSL(0.25 + grain(i, 10) * 0.06, 0.4, 0.13)) as Tint,
       flower: ((i, c) => c.set(FLOWERS[Math.floor(i / 4) % FLOWERS.length]!)) as Tint,
       rock: ((i, c) => c.setHSL(0.08, 0.06, 0.36 + grain(i, 12) * 0.16)) as Tint,
       shell: ((i, c) => c.setHSL(0.05 + grain(i, 13) * 0.08, 0.5, 0.82)) as Tint,
       driftwood: ((i, c) => c.setHSL(0.08, 0.18, 0.55 + grain(i, 14) * 0.12)) as Tint,
       bananaStem: ((i, c) => c.setHSL(0.2 + grain(i, 15) * 0.04, 0.35, 0.33)) as Tint,
       // Lá chuối xanh non, thỉnh thoảng có cây ngả vàng úa.
-      banana: ((i, c) => c.setHSL(0.25 - (grain(i, 16) < 0.15 ? 0.08 : 0) + grain(i, 17) * 0.04, 0.55, 0.34 + grain(i, 18) * 0.08)) as Tint,
+      banana: ((i, c) => c.setHSL(0.24 - (grain(i, 16) < 0.15 ? 0.08 : 0) + grain(i, 17) * 0.04, 0.5, 0.4 + grain(i, 18) * 0.08)) as Tint,
       pandan: ((i, c) => c.setHSL(0.24 + grain(i, 19) * 0.05, 0.4, 0.3 + grain(i, 20) * 0.08)) as Tint,
       beachGrass: ((i, c) => c.setHSL(0.16 + grain(i, 21) * 0.06, 0.4, 0.5 + grain(i, 22) * 0.1)) as Tint,
       creeper: ((i, c) => c.setHSL(0.3 + grain(i, 23) * 0.05, 0.45, 0.25 + grain(i, 24) * 0.07)) as Tint,
@@ -515,7 +481,8 @@ export function Vegetation({ world }: { world: World }) {
       <Instances spots={spots.medium} geometry={geo.medium} material={mats.grass} tint={tints.medium} heightScale farthest={110} />
       <Instances spots={spots.tall} geometry={geo.tall} material={mats.tall} tint={tints.tall} heightScale />
       <Instances spots={spots.ferns} geometry={geo.fern} material={mats.fern} tint={tints.fern} farthest={140} />
-      <Instances spots={spots.bushes} geometry={geo.bush} material={mats.bush} tint={tints.bush} cast />
+      <Instances spots={spots.bushes} geometry={geo.bush.leaves} material={mats.bush} tint={tints.bush} cast />
+      <Instances spots={spots.bushes} geometry={geo.bush.core} material={mats.bushCore} tint={tints.bushCore} />
       <Instances spots={spots.flowers} geometry={geo.flower} material={mats.flower} tint={tints.flower} farthest={90} />
       <Instances spots={spots.rocks} geometry={geo.rock} material={mats.stone} tint={tints.rock} cast />
       <Instances spots={spots.shells} geometry={geo.shell} material={mats.stone} tint={tints.shell} farthest={70} />

@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { CuboidCollider, CylinderCollider, RigidBody } from "@react-three/rapier";
 import { DoubleSide, Object3D, type InstancedMesh } from "three";
 import { ANCHORS, type Anchor, type World } from "@tentides/content";
-import { mulberry32 } from "./nature.ts";
+import { mulberry32, rockGeometry } from "./nature.ts";
 
 // Cảnh cố định ở các điểm sự kiện mới, để điểm nào nhìn cũng ra điểm đó dù hôm nay không có thẻ:
 // xác tàu nằm nghiêng trên cát, phế tích đá phủ rêu giữa rừng, mỏm đá đầy tổ chim, suối nước nóng bốc hơi.
@@ -140,7 +140,7 @@ function CliffNest({ a, world }: { a: Anchor; world: World }) {
       {rocks.map((r, i) => (
         <group key={i} position={[r.x, r.y, r.z]}>
           <mesh position-y={r.h / 2} scale={[r.s, r.h, r.s]} castShadow receiveShadow>
-            <dodecahedronGeometry args={[0.7, 0]} />
+            <primitive object={rockGeometry(0.7, i % 4, 2)} attach="geometry" />
             <meshStandardMaterial color="#6f6b64" flatShading roughness={1} />
           </mesh>
           {/* Tổ chim trên đỉnh đá, trứng lốm đốm. */}
@@ -209,7 +209,7 @@ function HotSpring({ a, world }: { a: Anchor; world: World }) {
         const angle = (i / 10) * Math.PI * 2;
         return (
           <mesh key={i} position={[x + Math.cos(angle) * 2.5, y + 0.15, z + Math.sin(angle) * 2.5]} rotation={[i, i * 2, 0]} castShadow>
-            <dodecahedronGeometry args={[0.45 + (i % 3) * 0.15, 0]} />
+            <primitive object={rockGeometry(0.45 + (i % 3) * 0.15, i % 4, 2)} attach="geometry" />
             <meshStandardMaterial color="#2f2b2a" flatShading roughness={1} />
           </mesh>
         );

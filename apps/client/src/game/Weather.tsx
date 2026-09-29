@@ -5,14 +5,11 @@ import {
   BufferGeometry,
   Color,
   Float32BufferAttribute,
-  IcosahedronGeometry,
-  MeshStandardMaterial,
   Object3D,
   type InstancedMesh,
   type LineSegments,
   type MeshBasicMaterial,
 } from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { WATER_LEVEL, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { useQuality } from "./graphics.ts";
@@ -20,7 +17,7 @@ import { mulberry32, windStrength } from "./nature.ts";
 import { play } from "./sound/sfx.ts";
 import { localEnv, localPosition, shake, sky, weatherFx } from "./shared.ts";
 
-// Thời tiết của ngày hiện ra trên trời và dưới đất: mây trôi (nhiều ít, trắng hay xám chì), mưa rơi quanh người,
+// Thời tiết của ngày hiện ra trên trời và dưới đất (mây vẽ trong vòm trời, xem Sky.tsx): mưa rơi quanh người,
 // bão thì gió giật, sấm chớp; sương mù thì nhìn không xa; động đất thì mặt đất rung từng đợt.
 // Ban đêm trời quang thì có đom đóm lập lòe trên đất liền. Chỉ là hình ảnh: luật chơi đọc thời tiết từ engine.
 
@@ -48,66 +45,6 @@ function WeatherState({ room }: { room: IslandRoom }) {
     windStrength.value = 1 + weatherFx.rain * 0.8 + weatherFx.storm * 2.2;
   });
   return null;
-}
-
-// ---------------------------------------------------------------------------- mây
-
-const CLOUDS = 48;
-
-function cloudGeometry(): BufferGeometry {
-  const rand = mulberry32(7);
-  const parts: BufferGeometry[] = [];
-  for (let i = 0; i < 7; i++) {
-    const r = 5 + rand() * 6;
-    parts.push(new IcosahedronGeometry(r, 1).scale(1, 0.55, 1).translate((rand() - 0.5) * 22, (rand() - 0.3) * 3, (rand() - 0.5) * 10));
-  }
-  const g = mergeGeometries(parts)!;
-  g.computeVertexNormals();
-  return g;
-}
-
-function Clouds() {
-  const mesh = useRef<InstancedMesh>(null);
-  const geometry = useMemo(cloudGeometry, []);
-  const material = useMemo(() => new MeshStandardMaterial({ color: "#ffffff", flatShading: true, roughness: 1, transparent: true, opacity: 0.92, fog: false }), []);
-  const clouds = useMemo(() => {
-    const rand = mulberry32(99);
-    return Array.from({ length: CLOUDS }, (_, i) => ({
-      angle: rand() * Math.PI * 2,
-      radius: 40 + rand() * 190,
-      y: 85 + rand() * 35,
-      size: 0.7 + rand() * 0.9,
-      spin: rand() * Math.PI,
-      /** Mây thứ i chỉ hiện khi độ phủ vượt ngưỡng này, để trời quang chỉ lác đác vài đám. */
-      cover: i / CLOUDS,
-    }));
-  }, []);
-  const dummy = useMemo(() => new Object3D(), []);
-  const white = useMemo(() => new Color("#ffffff"), []);
-  const dark = useMemo(() => new Color("#5d6770"), []);
-  const night = useMemo(() => new Color("#1b2233"), []);
-
-  useFrame(({ clock }) => {
-    const m = mesh.current;
-    if (!m) return;
-    const drift = clock.elapsedTime * (0.6 + weatherFx.storm * 2.5);
-    clouds.forEach((c, i) => {
-      const show = Math.min(1, Math.max(0, (weatherFx.cloud - c.cover) * 6 + 0.35));
-      // Gió đẩy mây trôi về phía đông, ra khỏi vùng thì vòng lại từ phía tây.
-      const x = ((((Math.cos(c.angle) * c.radius + drift * 1.5 + 240) % 480) + 480) % 480) - 240;
-      const z = Math.sin(c.angle) * c.radius;
-      dummy.position.set(x, c.y, z);
-      dummy.rotation.set(0, c.spin, 0);
-      dummy.scale.setScalar(c.size * show * (1 + weatherFx.storm * 0.35));
-      dummy.updateMatrix();
-      m.setMatrixAt(i, dummy.matrix);
-    });
-    m.instanceMatrix.needsUpdate = true;
-    // Mây chuyển xám chì khi mưa bão, sẫm lại về đêm, loé trắng khi có chớp.
-    material.color.copy(white).lerp(dark, Math.max(weatherFx.rain * 0.6, weatherFx.storm)).lerp(night, sky.night * 0.85).lerp(white, weatherFx.flash);
-    material.emissive.copy(material.color).multiplyScalar(0.25 * (1 - sky.night));
-  });
-  return <instancedMesh ref={mesh} args={[geometry, material, CLOUDS]} frustumCulled={false} />;
 }
 
 // ---------------------------------------------------------------------------- mưa
@@ -322,7 +259,6 @@ export function Weather({ room, world }: { room: IslandRoom; world: World }) {
   return (
     <>
       <WeatherState room={room} />
-      <Clouds />
       <Rain count={high ? 1600 : 600} />
       <Lightning />
       <Quake />

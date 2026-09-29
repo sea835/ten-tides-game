@@ -53,6 +53,9 @@ importers:
       lucide-react:
         specifier: ^1.48.0
         version: 1.48.0(react@19.3.0)
+      n8ao:
+        specifier: ^2.0.1
+        version: 2.0.1(postprocessing@6.39.5(three@0.186.1))(three@0.186.1)
       postprocessing:
         specifier: ^6.39.5
         version: 6.39.5(three@0.186.1)

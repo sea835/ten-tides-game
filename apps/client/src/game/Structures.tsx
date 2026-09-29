@@ -5,7 +5,6 @@ import {
   BufferGeometry,
   ConeGeometry,
   CylinderGeometry,
-  DodecahedronGeometry,
   Euler,
   Matrix4,
   MeshStandardMaterial,
@@ -16,7 +15,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { STRUCTURE_WALL, structureSlabs, type Slab, type Structure, type World } from "@tentides/content";
-import { grain, mulberry32 } from "./nature.ts";
+import { grain, mulberry32, rockGeometry } from "./nature.ts";
 import { detailed } from "./textures.ts";
 
 // Hang động và hầm mỏ sinh theo seed. Va chạm là các khối hộp (vách, trần); phần nhìn thấy là đá lởm chởm
@@ -86,7 +85,7 @@ const ORE_COLORS = ["#62f5c8", "#ffb347", "#d0e8ff", "#ff6bd6", "#9dff5c"];
 
 const PALETTE = {
   cave: { wall: "#716b65", roof: "#5f5a55", mound: "#6f6a5f" },
-  mine: { wall: "#6e5f50", roof: "#5a4c40", mound: "#5d7a3f" },
+  mine: { wall: "#6e5f50", roof: "#5a4c40", mound: "#5b5c3c" },
 };
 
 interface Dressing {
@@ -109,7 +108,7 @@ function buildStructure(s: Structure, slabs: Slab[]): Dressing {
   roofGeo.computeVertexNormals();
 
   const batch = new Batch();
-  const boulder = new DodecahedronGeometry(1, 1);
+  const boulder = rockGeometry(1, 2, 2);
   const cone = new ConeGeometry(1, 1, 10);
   const box = new BoxGeometry(1, 1, 1);
   const cyl = new CylinderGeometry(1, 1, 1, 12);
@@ -122,7 +121,7 @@ function buildStructure(s: Structure, slabs: Slab[]): Dressing {
     const u = i * cs;
     const v = (j + 0.5) * cs;
     const r = cs * (0.55 + rand() * 0.25);
-    batch.add("mound", boulder, [u + (rand() - 0.5), H + STRUCTURE_WALL + r * 0.25, v + (rand() - 0.5)], [rand(), rand() * 3, rand()], [r, r * (0.45 + rand() * 0.3), r]);
+    batch.add("mound", boulder, [u + (rand() - 0.5), H + STRUCTURE_WALL + r * 0.2, v + (rand() - 0.5)], [(rand() - 0.5) * 0.25, rand() * 3, (rand() - 0.5) * 0.25], [r, r * (0.6 + rand() * 0.35), r]);
   }
 
   // Trang trí trong lòng, lấy mẫu theo từng ô.

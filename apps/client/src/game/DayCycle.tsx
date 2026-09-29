@@ -58,11 +58,15 @@ export function DayCycle({
   room,
   sun,
   hemi,
+  ibl = false,
 }: {
   room: IslandRoom;
   sun: RefObject<DirectionalLight | null>;
   hemi: RefObject<HemisphereLight | null>;
+  /** Có ánh sáng môi trường lấy từ bầu trời: ánh trời phần lớn đến từ đó, đèn bán cầu chỉ còn đỡ thêm, nắng gắt hơn. */
+  ibl?: boolean;
 }) {
+  const sunScale = ibl ? 1.4 : 1;
   const scene = useThree((s) => s.scene);
   const timer = useRef({ timeLeft: -1, at: 0 });
 
@@ -128,7 +132,7 @@ export function DayCycle({
     const light = sun.current;
     if (light) {
       if (t < SUNSET) {
-        light.intensity = (0.6 + 2.1 * Math.pow(elevation, 0.6)) * shade * (1 - 0.6 * overcast - 0.2 * w.storm) + w.flash * 3;
+        light.intensity = (0.6 + 2.1 * Math.pow(elevation, 0.6)) * sunScale * shade * (1 - 0.6 * overcast - 0.2 * w.storm) + w.flash * 3;
         light.color.copy(SUN_WARM).lerp(SUN_NOON, day);
         light.position.copy(localPosition).addScaledVector(sunDir, 80);
       } else {
@@ -142,7 +146,9 @@ export function DayCycle({
     const h = hemi.current;
     if (h) {
       // Sáng sớm, chạng vạng và ban đêm vẫn phải đủ sáng để đi lại (đêm có ánh trăng xanh nhạt).
-      h.intensity = (0.75 + 0.25 * dusk + 0.4 * day) * shade * (localEnv.underwater ? 0.7 : 1) * (1 - 0.15 * overcast) + w.flash * 1.5;
+      // Có ánh trời môi trường thì ban ngày đèn bán cầu chỉ đỡ thêm; đêm trời tối đen nên vẫn cần đèn như cũ.
+      const hemiScale = ibl ? 0.4 + 0.6 * night : 1;
+      h.intensity = (0.75 + 0.25 * dusk + 0.4 * day) * hemiScale * shade * (localEnv.underwater ? 0.7 : 1) * (1 - 0.15 * overcast) + w.flash * 1.5;
       h.color.copy(horizon).lerp(MOON_SKY, night * 0.7).lerp(top, 0.25 * day);
       h.groundColor.copy(GROUND_NIGHT).lerp(GROUND_DAY, 0.3 + 0.7 * day);
     }

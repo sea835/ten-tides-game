@@ -2,11 +2,9 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CylinderCollider, RigidBody } from "@react-three/rapier";
 import {
-  BufferAttribute,
   BufferGeometry,
   Color,
   CylinderGeometry,
-  DoubleSide,
   IcosahedronGeometry,
   Matrix4,
   MeshStandardMaterial,
@@ -22,6 +20,7 @@ import type { IslandRoom } from "../net.ts";
 import { useFx } from "./fxStore.ts";
 import { grain, mulberry32, swayMaterial } from "./nature.ts";
 import { detailed } from "./textures.ts";
+import { frondStrip, frondTexture, leafCluster, leafClusterTexture, leafMaterial } from "./foliage.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 // Cây leo được, chặt được: dừa và cây rừng tán rộng của bản đồ (trừ cây đã bị đốn, chỉ còn gốc),
@@ -48,61 +47,67 @@ function buildTrunk(): BufferGeometry {
   return flat;
 }
 
-/** Tán dừa: 8 tàu lá rủ xuống (mỗi tàu là một dải có lá hai bên) và chùm dừa. */
+/** Tán dừa: 9 tàu lá kép rủ xuống (ảnh lá chét có nền trong suốt) và chùm dừa. */
 function buildCrown(): { leaves: BufferGeometry; nuts: BufferGeometry } {
-  const fronds: BufferGeometry[] = [];
-  const count = 8;
-  for (let f = 0; f < count; f++) {
+  const count = 9;
+  const leaves = frondStrip(count, 8, (f, s, side) => {
     const angle = (f / count) * Math.PI * 2 + (f % 2) * 0.2;
-    const length = 3 + (f % 3) * 0.35;
-    const steps = 6;
-    const verts: number[] = [];
-    const point = (s: number, side: number) => {
-      const along = s * length;
-      const droop = -0.9 * s * s * length * 0.45 + 0.35 * s;
-      const width = Math.sin(Math.PI * Math.min(1, s * 1.1)) * 0.55 * side;
-      const x = Math.cos(angle) * along - Math.sin(angle) * width;
-      const z = Math.sin(angle) * along + Math.cos(angle) * width;
-      // Mép lá thấp hơn sống lá một chút cho thành hình chữ V.
-      return [x, droop - Math.abs(width) * 0.35, z];
-    };
-    for (let i = 0; i < steps; i++) {
-      const s0 = i / steps;
-      const s1 = (i + 1) / steps;
-      for (const side of [-1, 1]) {
-        const a = point(s0, 0);
-        const b = point(s1, 0);
-        const c = point(s1, side);
-        const d = point(s0, side);
-        verts.push(...a, ...b, ...c, ...a, ...c, ...d);
-      }
-    }
-    const g = new BufferGeometry();
-    g.setAttribute("position", new BufferAttribute(new Float32Array(verts), 3));
-    g.computeVertexNormals();
-    fronds.push(g);
-  }
-  const leaves = mergeGeometries(fronds)!;
+    const length = 3.1 + (f % 3) * 0.35;
+    // Tàu lá non ở giữa vươn cao, tàu già rủ thấp.
+    const young = f % 3 === 0 ? 0.5 : 0;
+    const along = s * length;
+    const droop = -(0.9 - young) * s * s * length * 0.45 + (0.35 + young) * s;
+    const width = 0.85 * side * Math.min(1, 0.3 + s * 2);
+    const x = Math.cos(angle) * along - Math.sin(angle) * width;
+    const z = Math.sin(angle) * along + Math.cos(angle) * width;
+    // Hai nửa lá cụp xuống thành hình chữ V.
+    return [x, droop - Math.abs(width) * 0.3, z];
+  });
   const nutParts = [0, 1, 2].map((i) => {
-    const s = new SphereGeometry(0.2, 8, 6);
+    const s = new SphereGeometry(0.2, 10, 8);
     const a = (i / 3) * Math.PI * 2;
     s.translate(Math.cos(a) * 0.22, -0.25, Math.sin(a) * 0.22);
-    return s.toNonIndexed();
+    return s;
   });
   const nuts = mergeGeometries(nutParts)!;
-  nuts.computeVertexNormals();
   return { leaves, nuts };
 }
 
-/** Tán cây rừng: bốn khối lá lớn chồng lệch nhau quanh ngọn thân. */
-function canopy(): BufferGeometry {
-  const parts = [
-    [0, 0, 0, 2.2],
-    [1.5, -0.4, 0.4, 1.6],
-    [-1.3, -0.3, -0.6, 1.7],
-    [0.2, 0.9, -0.3, 1.5],
-  ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 1).translate(x!, y!, z!));
-  const g = mergeGeometries(parts)!;
+const CANOPY_BLOBS: [number, number, number, number][] = [
+  [0, 0, 0, 2.2],
+  [1.5, -0.4, 0.4, 1.6],
+  [-1.3, -0.3, -0.6, 1.7],
+  [0.2, 0.9, -0.3, 1.5],
+  [0.3, -0.6, -1.3, 1.3],
+];
+
+/** Tán cây rừng: vài chùm lá lớn chồng lệch nhau quanh ngọn thân, lõi đặc sẫm màu che khoảng trống giữa các lá. */
+function canopy(): { leaves: BufferGeometry; core: BufferGeometry } {
+  const leaves = leafCluster(CANOPY_BLOBS, 3.2, 1.25, 31);
+  const core = mergeGeometries(CANOPY_BLOBS.map(([x, y, z, r]) => new IcosahedronGeometry(r * 0.72, 2).translate(x, y, z)))!;
+  core.computeVertexNormals();
+  return { leaves, core };
+}
+
+/** Thân cây rừng kèm vài cành chĩa lên đỡ tán (thân cao 1 đơn vị, co giãn theo cây). */
+function broadTrunk(): BufferGeometry {
+  const trunk = new CylinderGeometry(0.2, 0.4, 1, 12, 4).translate(0, 0.5, 0);
+  // Gốc loe ra như rễ bạnh.
+  const p = trunk.attributes.position!;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    const flare = 1 + Math.max(0, 0.25 - y) * 2.2;
+    p.setX(i, p.getX(i) * flare);
+    p.setZ(i, p.getZ(i) * flare);
+  }
+  const branches = [0, 1, 2].map((k) => {
+    const a = (k / 3) * Math.PI * 2 + 0.4;
+    const b = new CylinderGeometry(0.05, 0.1, 0.34, 7).translate(0, 0.17, 0);
+    b.rotateZ(0.8);
+    b.rotateY(a);
+    return b.translate(0, 0.72 + k * 0.06, 0);
+  });
+  const g = mergeGeometries([trunk, ...branches])!;
   g.computeVertexNormals();
   return g;
 }
@@ -171,19 +176,27 @@ export function climbTop(tree: ClimbTree): number {
 }
 
 const palm = { trunk: buildTrunk(), ...buildCrown() };
+const tops = canopy();
 const shared = {
-  trunk: new CylinderGeometry(0.22, 0.38, 1, 12).translate(0, 0.5, 0),
-  canopy: canopy(),
+  trunk: broadTrunk(),
+  canopy: tops.leaves,
+  core: tops.core,
   stump: new CylinderGeometry(0.28, 0.36, 0.45, 12).translate(0, 0.2, 0),
 };
 const mats = {
   palmTrunk: detailed(swayMaterial({ color: "#8b6b43", flatShading: true, roughness: 1 }, 0.004), "bark"),
-  palmLeaves: detailed(swayMaterial({ color: "#3f9a3c", flatShading: true, side: DoubleSide, roughness: 0.8 }, 0.035, -2), "leaf"),
+  palmLeaves: leafMaterial(frondTexture(), 0.035, -2, 0.7),
   nuts: detailed(new MeshStandardMaterial({ color: "#5a4020", flatShading: true }), "fur"),
   trunk: detailed(new MeshStandardMaterial({ flatShading: true, roughness: 1 }), "bark"),
-  canopy: detailed(swayMaterial({ flatShading: true, roughness: 0.9 }, 0.004, 1), "leaf"),
+  canopy: leafMaterial(leafClusterTexture(), 0.004, 1),
+  core: detailed(swayMaterial({ roughness: 1 }, 0.004, 1), "leaf"),
   stump: detailed(new MeshStandardMaterial({ color: "#7a5a38", flatShading: true, roughness: 1 }), "wood"),
-  leaf: detailed(new MeshStandardMaterial({ color: "#4f9a3c", flatShading: true, roughness: 0.9 }), "leaf"),
+  leaf: (() => {
+    const m = leafMaterial(leafClusterTexture(), 0.004, 1);
+    m.color.set("#4f8a36");
+    return m;
+  })(),
+  leafCore: detailed(new MeshStandardMaterial({ color: "#2f5a26", roughness: 1 }), "leaf"),
   bark: detailed(new MeshStandardMaterial({ color: "#5a4028", flatShading: true, roughness: 1 }), "bark"),
 };
 
@@ -227,7 +240,7 @@ function PalmForest({ trees, world }: { trees: Tree[]; world: World }) {
       trunks.current!.setMatrixAt(i, m.trunk);
       crowns.current!.setMatrixAt(i, m.crown);
       nuts.current!.setMatrixAt(i, m.crown);
-      crowns.current!.setColorAt(i, color.setHSL(0.28 + m.p.hue * 0.05, 0.5 + m.p.sat * 0.15, 0.3 + m.p.light * 0.08));
+      crowns.current!.setColorAt(i, color.setHSL(0.25 + m.p.hue * 0.06, 0.45 + m.p.sat * 0.15, 0.36 + m.p.light * 0.1));
     });
     for (const m of [trunks, crowns, nuts]) {
       m.current!.instanceMatrix.needsUpdate = true;
@@ -248,8 +261,9 @@ function PalmForest({ trees, world }: { trees: Tree[]; world: World }) {
 function BroadleafForest({ trees, world }: { trees: Tree[]; world: World }) {
   const trunks = useRef<InstancedMesh>(null);
   const canopies = useRef<InstancedMesh>(null);
+  const cores = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
-    if (!trunks.current || !canopies.current) return;
+    if (!trunks.current || !canopies.current || !cores.current) return;
     const dummy = new Object3D();
     const color = new Color();
     trees.forEach((t, i) => {
@@ -265,9 +279,11 @@ function BroadleafForest({ trees, world }: { trees: Tree[]; world: World }) {
       dummy.scale.setScalar(t.lean);
       dummy.updateMatrix();
       canopies.current!.setMatrixAt(i, dummy.matrix);
-      canopies.current!.setColorAt(i, color.setHSL(0.27 + p.hue * 0.06, 0.45, 0.2 + p.light * 0.07));
+      cores.current!.setMatrixAt(i, dummy.matrix);
+      canopies.current!.setColorAt(i, color.setHSL(0.24 + p.hue * 0.07, 0.42 + p.sat * 0.12, 0.3 + p.light * 0.1));
+      cores.current!.setColorAt(i, color.multiplyScalar(0.45));
     });
-    for (const m of [trunks, canopies]) {
+    for (const m of [trunks, canopies, cores]) {
       m.current!.instanceMatrix.needsUpdate = true;
       if (m.current!.instanceColor) m.current!.instanceColor.needsUpdate = true;
       m.current!.computeBoundingSphere();
@@ -277,7 +293,8 @@ function BroadleafForest({ trees, world }: { trees: Tree[]; world: World }) {
   return (
     <group key={trees.length}>
       <instancedMesh ref={trunks} args={[shared.trunk, mats.trunk, trees.length]} castShadow receiveShadow />
-      <instancedMesh ref={canopies} args={[shared.canopy, mats.canopy, trees.length]} castShadow />
+      <instancedMesh ref={canopies} args={[shared.canopy, mats.canopy, trees.length]} castShadow receiveShadow />
+      <instancedMesh ref={cores} args={[shared.core, mats.core, trees.length]} receiveShadow />
     </group>
   );
 }
@@ -312,6 +329,7 @@ function Planted({ plant }: { plant: PlantView }) {
     <group position={[plant.x, plant.y, plant.z]}>
       <mesh geometry={shared.trunk} material={mats.bark} scale={[g, h, g]} castShadow />
       <mesh geometry={shared.canopy} material={mats.leaf} position-y={h * 0.95} scale={g} castShadow />
+      <mesh geometry={shared.core} material={mats.leafCore} position-y={h * 0.95} scale={g} />
     </group>
   );
 }
@@ -352,6 +370,7 @@ function Falling({ tree, dir, onDone }: { tree: FallingTree; dir: number; onDone
           <>
             <mesh geometry={shared.trunk} material={mats.bark} scale={[tree.lean, tree.height, tree.lean]} castShadow />
             <mesh geometry={shared.canopy} material={mats.leaf} position-y={tree.height * 0.95} scale={tree.lean} castShadow />
+            <mesh geometry={shared.core} material={mats.leafCore} position-y={tree.height * 0.95} scale={tree.lean} />
           </>
         )}
       </group>

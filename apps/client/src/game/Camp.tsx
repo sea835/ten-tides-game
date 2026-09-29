@@ -1,23 +1,26 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CuboidCollider, CylinderCollider, RigidBody } from "@react-three/rapier";
-import { BufferAttribute, BufferGeometry, DoubleSide, Object3D, type Group, type InstancedMesh, type Mesh, type MeshBasicMaterial, type PointLight } from "three";
+import { BufferAttribute, BufferGeometry, DoubleSide, MeshStandardMaterial, Object3D, type Group, type InstancedMesh, type Mesh, type MeshBasicMaterial, type PointLight } from "three";
 import { BUILD_RADIUS, worldCatalog, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { getHud, setHud, useHud } from "./hudStore.ts";
 import { look } from "./input.ts";
-import { mulberry32 } from "./nature.ts";
+import { mulberry32, rockGeometry } from "./nature.ts";
 import { usePrivate } from "./privateStore.ts";
 import { buildGhost, localPosition, sky } from "./shared.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
+import { Flame } from "./Flame.tsx";
+import { detailed } from "./textures.ts";
 
 // Trại: lửa trại, hai lều và những công trình cả đội dựng thêm (chòi lá, nhà sàn, hàng rào), tất cả đặt
 // tương đối so với lửa trại. Nhổ trại mang đi rồi đặt lửa trại ở chỗ mới thì cả khu nhà dời theo.
 
 const EMBERS = 18;
+/** Khúc gỗ ngồi quanh lửa: vân vỏ cây (vân ván gỗ trên thân tròn thành sọc). */
+const SEAT_LOG = detailed(new MeshStandardMaterial({ color: "#6e5236", roughness: 0.95 }), "bark", 0.1);
 
 function Campfire({ x, z, ground }: { x: number; z: number; ground: number }) {
-  const flames = useRef<Group>(null);
   const light = useRef<PointLight>(null);
   const embers = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
@@ -28,11 +31,6 @@ function Campfire({ x, z, ground }: { x: number; z: number; ground: number }) {
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
-    flames.current?.children.forEach((f, i) => {
-      const k = 1 + Math.sin(t * (9 + i * 2.3) + i) * 0.12 + Math.sin(t * 17 + i * 5) * 0.06;
-      f.scale.set(1, k, 1);
-      f.rotation.y = t * (0.8 + i * 0.3);
-    });
     if (light.current) light.current.intensity = (14 + Math.sin(t * 11) * 2.5 + Math.sin(t * 23) * 1.5) * (0.5 + sky.night * 1.2);
     const mesh = embers.current;
     if (!mesh) return;
@@ -48,18 +46,10 @@ function Campfire({ x, z, ground }: { x: number; z: number; ground: number }) {
 
   return (
     <group>
-      <group ref={flames} position={[x, ground + 0.15, z]}>
-        {[
-          [0, 1.3, 0.55, "#ff8a1f"],
-          [0.18, 0.9, 0.35, "#ffb347"],
-          [-0.16, 0.8, 0.32, "#ffd27a"],
-          [0, 0.55, 0.28, "#fff1c2"],
-        ].map(([fx, h, r, c], i) => (
-          <mesh key={i} position={[fx as number, (h as number) / 2, 0]}>
-            <coneGeometry args={[r as number, h as number, 6]} />
-            <meshStandardMaterial color={c as string} emissive={c as string} emissiveIntensity={2.6} toneMapped={false} flatShading />
-          </mesh>
-        ))}
+      <group position={[x, ground + 0.05, z]}>
+        <Flame position={[0, 0, 0]} width={1.2} height={1.9} seed={0.1} />
+        <Flame position={[0.15, 0, 0.1]} width={0.8} height={1.4} seed={0.57} intensity={0.8} />
+        <Flame position={[-0.15, 0, -0.08]} width={0.7} height={1.2} seed={0.83} intensity={0.8} />
       </group>
       <pointLight ref={light} position={[x, ground + 1.6, z]} color="#ffa052" distance={18} castShadow={false} />
       <instancedMesh ref={embers} args={[undefined, undefined, EMBERS]} frustumCulled={false}>
@@ -71,7 +61,7 @@ function Campfire({ x, z, ground }: { x: number; z: number; ground: number }) {
         const a = (i / 9) * Math.PI * 2;
         return (
           <mesh key={i} position={[x + Math.cos(a) * 0.95, ground + 0.12, z + Math.sin(a) * 0.95]} rotation={[i, i * 2, 0]} castShadow>
-            <dodecahedronGeometry args={[0.22, 0]} />
+            <primitive object={rockGeometry(0.22, i % 4, 2)} attach="geometry" />
             <meshStandardMaterial color="#77716b" flatShading />
           </mesh>
         );
@@ -87,9 +77,8 @@ function Campfire({ x, z, ground }: { x: number; z: number; ground: number }) {
       {[0, 1, 2, 3].map((i) => {
         const a = (i / 4) * Math.PI * 2 + 0.4;
         return (
-          <mesh key={i} position={[x + Math.cos(a) * 2.4, ground + 0.22, z + Math.sin(a) * 2.4]} rotation={[0, -a, Math.PI / 2]} castShadow receiveShadow>
-            <cylinderGeometry args={[0.24, 0.26, 1.8, 7]} />
-            <meshStandardMaterial color="#7a5230" flatShading />
+          <mesh key={i} position={[x + Math.cos(a) * 2.4, ground + 0.22, z + Math.sin(a) * 2.4]} rotation={[0, -a, Math.PI / 2]} material={SEAT_LOG} castShadow receiveShadow>
+            <cylinderGeometry args={[0.24, 0.26, 1.8, 14]} />
           </mesh>
         );
       })}

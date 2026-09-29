@@ -1,7 +1,8 @@
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
-import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
+import { Bloom, BrightnessContrast, EffectComposer, HueSaturation, SMAA, ToneMapping, Vignette } from "@react-three/postprocessing";
+import { N8AOPostPass } from "n8ao";
 import { ToneMappingMode } from "postprocessing";
 import { ANCHORS } from "@tentides/content";
 import type { DirectionalLight, HemisphereLight, PointLight } from "three";
@@ -25,7 +26,7 @@ import { Hud } from "./hud/Hud.tsx";
 import { Island } from "./Island.tsx";
 import { LocalPlayer } from "./LocalPlayer.tsx";
 import { RemotePlayers } from "./RemotePlayers.tsx";
-import { SkyDome } from "./Sky.tsx";
+import { SkyDome, SkyEnvironment } from "./Sky.tsx";
 import { bindInput, isTyping, look } from "./input.ts";
 import { debugCam, localEnv, localPosition, weatherFx } from "./shared.ts";
 import { useWorld } from "./world.ts";
@@ -60,13 +61,39 @@ function PlayerLight() {
   return <pointLight ref={light} color="#ffb070" intensity={0} distance={10} decay={1.4} />;
 }
 
-/** Hậu kỳ (chỉ ở chất lượng cao): lửa, dung nham, cột sáng toả quầng; góc màn hình tối nhẹ. */
+/**
+ * Hậu kỳ (chỉ ở chất lượng cao): bóng tối ở khe, góc, chân cây (ambient occlusion); lửa, dung nham, nắng loá
+ * toả quầng; tone map kiểu phim (AgX, màu tự nhiên, không cháy sáng); chỉnh màu nhẹ; góc màn hình tối nhẹ.
+ */
 function PostFx() {
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+  // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần).
+  const [ao, setAo] = useState<N8AOPostPass | null>(null);
+  useEffect(() => {
+    const pass = new N8AOPostPass(scene, camera, size.width, size.height);
+    pass.configuration.aoRadius = 1.6;
+    pass.configuration.distanceFalloff = 1;
+    pass.configuration.intensity = 2.2;
+    pass.configuration.halfRes = true;
+    pass.configuration.gammaCorrection = false;
+    pass.setQualityMode("Medium");
+    setAo(pass);
+    return () => pass.dispose();
+    // Kích thước đổi thì EffectComposer tự gọi setSize.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, camera]);
+  if (!ao) return null;
   return (
-    <EffectComposer multisampling={4}>
-      <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.8} radius={0.7} />
-      <Vignette offset={0.32} darkness={0.55} />
-      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+    <EffectComposer multisampling={0}>
+      <primitive object={ao} />
+      <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.7} radius={0.75} />
+      <ToneMapping mode={ToneMappingMode.AGX} />
+      <HueSaturation saturation={0.22} />
+      <BrightnessContrast contrast={0.14} />
+      <Vignette offset={0.3} darkness={0.5} />
+      <SMAA />
     </EffectComposer>
   );
 }
@@ -95,18 +122,21 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
         <color attach="background" args={[HORIZON]} />
         <fog attach="fog" args={[HORIZON, 70, 230]} />
         <hemisphereLight ref={hemi} args={["#e0f4ff", "#c2a36b", 1.1]} />
+        {high && <SkyEnvironment intensity={0.7} />}
         <directionalLight
           ref={sun}
           intensity={2.2}
           castShadow
           key={quality}
-          shadow-mapSize={high ? [2048, 2048] : [1024, 1024]}
-          shadow-bias={-0.0004}
-          shadow-normalBias={0.03}
-          shadow-camera-left={-35}
-          shadow-camera-right={35}
-          shadow-camera-top={35}
-          shadow-camera-bottom={-35}
+          shadow-mapSize={high ? [4096, 4096] : [1024, 1024]}
+          shadow-bias={-0.0003}
+          shadow-normalBias={0.04}
+          shadow-radius={high ? 4 : 1}
+          shadow-blurSamples={12}
+          shadow-camera-left={high ? -55 : -35}
+          shadow-camera-right={high ? 55 : 35}
+          shadow-camera-top={high ? 55 : 35}
+          shadow-camera-bottom={high ? -55 : -35}
           shadow-camera-far={180}
         />
         <Suspense fallback={null}>
@@ -128,7 +158,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <Fx />
           <WaypointTracker />
           <Texturize />
-          <DayCycle room={room} sun={sun} hemi={hemi} />
+          <DayCycle room={room} sun={sun} hemi={hemi} ibl={high} />
           <DebugHook room={room} />
           {high && <PostFx />}
         </Suspense>

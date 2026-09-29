@@ -4,7 +4,7 @@ import { AdditiveBlending, DoubleSide, type Group, type InstancedMesh, Object3D 
 import { worldCatalog, type Poi, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { localPosition } from "./shared.ts";
-import { mulberry32 } from "./nature.ts";
+import { mulberry32, rockGeometry } from "./nature.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 // Easter egg và điểm bất thường rải theo seed, cộng bẫy đã sập (server mới công khai chỗ bẫy khi có người giẫm).
@@ -330,7 +330,7 @@ function PoiModel({ model, live, seed }: { model: string; live: boolean; seed: n
           {Array.from({ length: 6 }, (_, i) => (
             <Spin key={i} speed={live ? 0.4 + i * 0.1 : 0} bob={live ? 0.25 : 0} p={[Math.cos(i * 1.1) * 1.2, live ? 1.2 + i * 0.35 : 0.2, Math.sin(i * 1.1) * 1.2]}>
               <mesh castShadow>
-                <dodecahedronGeometry args={[0.28 + (i % 3) * 0.1, 0]} />
+                <primitive object={rockGeometry(0.28 + (i % 3) * 0.1, i % 4, 2)} attach="geometry" />
                 <Mat c="#77716b" e={0} />
               </mesh>
             </Spin>
@@ -479,7 +479,7 @@ function TrapModel({ defId }: { defId: string }) {
         <group>
           {Array.from({ length: 7 }, (_, i) => (
             <mesh key={i} position={[Math.cos(i * 2) * 0.7, 0.25, Math.sin(i * 1.4) * 0.7]} rotation={[i, i, 0]} castShadow>
-              <dodecahedronGeometry args={[0.3 + (i % 3) * 0.12, 0]} />
+              <primitive object={rockGeometry(0.3 + (i % 3) * 0.12, i % 4, 2)} attach="geometry" />
               <Mat c="#6a645d" />
             </mesh>
           ))}
