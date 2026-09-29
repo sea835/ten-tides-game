@@ -159,6 +159,8 @@ export interface Surface {
   reef: boolean;
   /** Sân đất nện trước cửa hang hay hầm mỏ. */
   pad: boolean;
+  /** Nền nhân tạo của Battleground: đường nhựa, bê tông, đất trống (không mọc cây cỏ). */
+  ground?: "asphalt" | "concrete" | "dirt" | "stone";
 }
 
 export interface StructureHit {
@@ -169,6 +171,10 @@ export interface StructureHit {
 
 export interface World {
   seed: number;
+  /** Bản đồ cốt truyện (mặc định) hay bản đồ Battleground (xem battle.ts). */
+  kind?: "story" | "battle";
+  /** Nửa cạnh vùng đảo chính (để rải cây cỏ); mặc định 112. */
+  extent?: number;
   islets: readonly Islet[];
   reefs: readonly Reef[];
   structures: readonly Structure[];

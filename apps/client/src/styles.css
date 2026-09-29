@@ -4070,3 +4070,13 @@ details.more > .hint {
 .prep-card.crafting .prep-header h2 {
   white-space: nowrap;
 }
+
+/* Nút tạo phòng Battleground ở sảnh. */
+.battle-button {
+  background: linear-gradient(180deg, #8f2a1c, #5e1a12);
+  border-color: rgba(255, 140, 110, 0.35);
+  color: #ffe6dc;
+}
+.battle-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #a8321f, #6e1f15);
+}

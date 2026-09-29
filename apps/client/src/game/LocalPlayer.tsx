@@ -27,6 +27,9 @@ import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
+import { WEAPON } from "@tentides/content";
+import { bodies, getBattleHud, localAvatar, localBody, setBattleHud, stance } from "./battle/runtime.ts";
+import { aimZoom, getSettings } from "./settings.ts";
 
 const WALK_SPEED = 8;
 const GRAVITY = 25;
@@ -93,6 +96,15 @@ const BHOP_GAIN = 0.1;
 const BHOP_MAX = MAX_SPEED_BOOST - 1;
 /** Đứng trên đất quá khung giờ trên thì đà mất dần chừng này mỗi giây. */
 const BHOP_DECAY = 2;
+/** Battleground: tốc độ đi, chạy, ngồi xổm (m/s), camera qua vai (khoảng cách thường, khi ngắm, lệch sang phải). */
+const BATTLE_WALK = 4.8;
+const BATTLE_RUN = 7.2;
+const BATTLE_CROUCH = 2.6;
+const BATTLE_CAM_DIST = 3.4;
+const BATTLE_CAM_AIM = 1.9;
+const BATTLE_SHOULDER = 0.62;
+const CAM_HEIGHT_CROUCH = 1.15;
+const EYE_HEIGHT_CROUCH = 1.2;
 /** Vừa đánh hay ném thì quay mặt theo hướng camera chừng này giây. */
 const AIM_FACE_MS = 450;
 
@@ -159,6 +171,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     airJump: false,
     landAt: -1,
     hopReady: false,
+    /** Battleground: đang ngồi xổm; FOV đang dùng (mượt dần khi ngắm). */
+    crouching: false,
+    fov: 60,
   });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
@@ -195,6 +210,12 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         if (!sim.current.swimming) sim.current.crouchPressed = true;
         return;
       }
+      // Battleground: E là nhặt đồ gần nhất.
+      if (room.state.mode === "battle") {
+        const near = getBattleHud().nearItem;
+        if (e.code === "KeyE" && near) room.send(Messages.pickup, { id: near.key });
+        return;
+      }
       // Đang leo thì E là buông tay tụt xuống, Space là nhún người nhảy ra khỏi cây.
       if (sim.current.climb && (e.code === "KeyE" || e.code === "Space")) {
         sim.current.leap = e.code === "Space";
@@ -217,6 +238,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
 
   useFrame((state, rawDt) => {
     const rb = body.current;
+    localBody.current = rb;
+    localAvatar.current = avatar.current;
     const col = collider.current;
     const controller = controllerRef.current;
     if (!rb || !col || !controller) return;
@@ -231,7 +254,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     // Tạm dừng thì đứng yên; đang trong sự kiện thì đứng yên tại chỗ, người khác vẫn đi tiếp.
     const sheet = room.state.players.get(myId(room));
     const stunned = (sheet?.stun ?? 0) > 0;
-    const frozen = room.state.paused || isBusy(room.state, myId(room)) || stunned;
+    const battle = room.state.mode === "battle";
+    // Battleground: gục rồi thì đứng im (camera đi theo người khác).
+    const dead = battle && !!sheet && !sheet.alive;
+    const frozen = room.state.paused || isBusy(room.state, myId(room)) || stunned || dead;
     const dizzy = sheet?.dizzy ?? 0;
     s.clock += dt;
     // Nhảy thỏ cần bấm Space lại mỗi lần (cả nút cảm ứng, vốn chỉ giữ phím), nên tự bắt lúc vừa nhấn.
@@ -243,6 +269,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const inputScale = frozen ? 0 : 1;
     // Bấm đi hoặc nhảy khi đang ngồi thì đứng dậy luôn.
     if (s.sitting && !frozen && (forward !== 0 || strafe !== 0 || keys.has("Space"))) s.sitting = false;
+    if (s.crouching && (keys.has("Space") || !battle)) s.crouching = false;
 
     const pos = rb.translation();
     const feetNow = pos.y - FEET_OFFSET;
@@ -261,10 +288,13 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
 
     // Chạy (hoặc bơi nhanh) tốn sức bền; Thể lực càng cao càng tốn ít. Cạn sức thì phải hồi lại một đoạn mới chạy tiếp.
     // Thanh hồi tối đa tới mức sức bền trong ngày (các sự kiện làm mệt sẽ kéo mức này xuống).
-    const wantsRun = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && (forward !== 0 || strafe !== 0) && !frozen;
-    const running = wantsRun && !s.exhausted && s.energy > 0;
+    const shift = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    // Battleground: chạy thì đứng dậy; đang ngắm thì không chạy được; chạy không tốn sức bền.
+    if (battle && shift && s.crouching && (forward !== 0 || strafe !== 0)) s.crouching = false;
+    const wantsRun = shift && (forward !== 0 || strafe !== 0) && !frozen && !(battle && (stance.aiming || stance.holdFire || s.crouching));
+    const running = wantsRun && (battle || (!s.exhausted && s.energy > 0));
     const strength = sheet?.stats.get("strength") ?? 3;
-    if (running) {
+    if (running && !battle) {
       s.energy = Math.max(0, s.energy - (SPRINT_DRAIN_BASE - SPRINT_DRAIN_PER_STRENGTH * strength) * dt);
       if (s.energy === 0) s.exhausted = true;
     } else {
@@ -273,8 +303,12 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     }
     s.energy = Math.min(s.energy, sheet?.stamina ?? 100);
     // Quá tải thì đi (và bơi) chậm hơn.
-    const baseSpeed = s.swimming ? (running ? SWIM_SPRINT_SPEED : SWIM_SPEED) : running ? MAX_RUN_SPEED : WALK_SPEED;
+    // Battleground: nhịp chạy như game bắn súng (chậm hơn chế độ khám phá), súng nặng thì chậm hơn, ngắm thì đi chậm.
+    const gun = battle && sheet ? WEAPON.get((sheet.kit as unknown as Record<string, string>)[sheet.kit.active] ?? "") : undefined;
+    const landSpeed = battle ? (running ? BATTLE_RUN : s.crouching ? BATTLE_CROUCH : BATTLE_WALK) * (gun?.speed ?? 1) * (stance.aiming ? 0.62 : 1) : running ? MAX_RUN_SPEED : WALK_SPEED;
+    const baseSpeed = s.swimming ? (running ? SWIM_SPRINT_SPEED : SWIM_SPEED) : landSpeed;
     if (s.swimming) s.hop = 0;
+    if (battle) s.hop = Math.min(s.hop, 0.3);
     const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
@@ -305,7 +339,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         s.slide = { dir: Math.atan2(mx, mz), speed: Math.min(TOP_SPEED, speed * SLIDE_BOOST) };
         s.energy = Math.max(0, s.energy - SLIDE_COST);
         s.sitting = false;
-      } else if (!s.slide && !s.swimming) s.sitting = !s.sitting;
+      } else if (!s.slide && !s.swimming) {
+        if (battle) s.crouching = !s.crouching;
+        else s.sitting = !s.sitting;
+      }
     }
     if (s.slide && (frozen || s.swimming || s.climb)) s.slide = null;
     if (s.slide) {
@@ -444,7 +481,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     rb.setNextKinematicTranslation(next);
 
     // Vừa đánh hay ném: quay mặt theo hướng camera cho đòn đi đúng chỗ mình nhắm. Góc thứ nhất thì luôn nhìn theo camera.
-    if (!s.climb && (getCameraView() === "first" || performance.now() - localAim.at < AIM_FACE_MS)) s.facing = (getCameraView() === "first" ? look.yaw : localAim.yaw) + Math.PI;
+    if (!s.climb && (getCameraView() === "first" || (battle && stance.aiming) || performance.now() - localAim.at < AIM_FACE_MS * (battle ? 2 : 1)))
+      s.facing = (getCameraView() === "first" || battle ? look.yaw : localAim.yaw) + Math.PI;
 
     if (avatar.current) {
       const current = avatar.current.rotation.y;
@@ -454,22 +492,44 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
 
     // Camera góc nhìn thứ ba, bám mượt theo nhân vật; hoặc góc nhìn thứ nhất, đặt ngay mắt.
     const feetY = next.y - FEET_OFFSET;
-    const firstPerson = getCameraView() === "first";
-    if (avatar.current) avatar.current.visible = !firstPerson;
-    s.camHeight += ((s.sitting || sliding ? CAM_HEIGHT_SIT : CAM_HEIGHT_STAND) - s.camHeight) * Math.min(1, dt * 6);
+    // Battleground: ngắm qua ống (phóng đại từ 3 lần) thì nhìn bằng mắt; ngắm thường thì kéo camera sát vai.
+    const zoom = battle && stance.aiming ? stance.zoom : 1;
+    const scoped = zoom >= 3;
+    aimZoom.value = zoom;
+    const firstPerson = getCameraView() === "first" || scoped;
+    if (avatar.current) avatar.current.visible = !firstPerson && !dead;
+    const standCam = s.crouching ? CAM_HEIGHT_CROUCH : CAM_HEIGHT_STAND;
+    s.camHeight += ((s.sitting || sliding ? CAM_HEIGHT_SIT : standCam) - s.camHeight) * Math.min(1, dt * 6);
+    const camDistance = battle ? (stance.aiming ? BATTLE_CAM_AIM : BATTLE_CAM_DIST) : CAMERA_DISTANCE;
     camTarget.set(next.x, feetY + s.camHeight, next.z);
-    const horizontal = Math.cos(look.pitch) * CAMERA_DISTANCE;
+    // Gục rồi thì camera bám theo người mình đang xem.
+    const watched = dead ? bodies.get(getBattleHud().spectating) : undefined;
+    if (watched) camTarget.set(watched.x, watched.y + 1.6, watched.z);
+    if (battle) {
+      const shoulder = watched ? 0 : BATTLE_SHOULDER;
+      camTarget.x += Math.cos(look.yaw) * shoulder;
+      camTarget.z -= Math.sin(look.yaw) * shoulder;
+    }
+    // FOV theo cài đặt, thu hẹp khi ngắm.
+    const wantFov = battle ? getSettings().fov / (stance.aiming ? (scoped ? zoom : Math.max(1.15, zoom)) : 1) : 60;
+    s.fov += (wantFov - s.fov) * Math.min(1, dt * (scoped ? 30 : 12));
+    const cam = state.camera as import("three").PerspectiveCamera;
+    if (Math.abs(cam.fov - s.fov) > 0.01) {
+      cam.fov = s.fov;
+      cam.updateProjectionMatrix();
+    }
+    const horizontal = Math.cos(look.pitch) * camDistance;
     camPos.set(
       camTarget.x + Math.sin(look.yaw) * horizontal,
-      camTarget.y + Math.sin(look.pitch) * CAMERA_DISTANCE,
+      camTarget.y + Math.sin(look.pitch) * camDistance,
       camTarget.z + Math.cos(look.yaw) * horizontal,
     );
     // Có vật cản (thân cây, vách hang, sườn đồi) giữa nhân vật và camera thì kéo camera lại gần.
     camDir.subVectors(camPos, camTarget).normalize();
-    const hit = physics.castRay(new rapier.Ray(camTarget, camDir), CAMERA_DISTANCE, true, undefined, undefined, col);
+    const hit = physics.castRay(new rapier.Ray(camTarget, camDir), camDistance, true, undefined, undefined, col);
     // Chỉ làm mượt độ dài cần camera (co lại ngay khi vướng, dãn ra từ từ); vị trí camera bám đúng nhân vật
     // từng khung hình, không trễ theo sau nên chạy nhanh không rung.
-    const wantDist = hit ? Math.max(CAMERA_MIN_DISTANCE, hit.timeOfImpact - 0.3) : CAMERA_DISTANCE;
+    const wantDist = hit ? Math.max(battle ? 0.6 : CAMERA_MIN_DISTANCE, hit.timeOfImpact - 0.3) : camDistance;
     s.camDist = firstFrame || wantDist < s.camDist ? wantDist : s.camDist + (wantDist - s.camDist) * Math.min(1, dt * 4);
     camPos.copy(camTarget).addScaledVector(camDir, s.camDist);
     // Đang lặn thì camera được xuống nước theo; bơi trên mặt thì giữ camera trên mặt nước.
@@ -479,7 +539,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (headUnder && camPos.y > WATER_LEVEL - 0.3) camPos.y = WATER_LEVEL - 0.3;
     if (firstPerson) {
       // Mắt ở trên đỉnh đầu một chút, nhìn theo yaw/pitch (pitch dương là cúi xuống).
-      const eyeY = feetY + (s.sitting || sliding ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : EYE_HEIGHT);
+      const eyeY = feetY + (s.sitting || sliding ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : s.crouching ? EYE_HEIGHT_CROUCH : EYE_HEIGHT);
       state.camera.position.set(next.x, eyeY, next.z);
       camDir.set(-Math.sin(look.yaw) * Math.cos(look.pitch), -Math.sin(look.pitch), -Math.cos(look.yaw) * Math.cos(look.pitch));
       camTarget.copy(state.camera.position).add(camDir);
@@ -509,6 +569,15 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     localMotion.climbing = !!s.climb;
     localMotion.sitting = s.sitting;
     localMotion.swimming = s.swimming;
+    localMotion.crouching = s.crouching;
+    localMotion.aiming = battle && stance.aiming;
+    stance.crouching = s.crouching;
+    stance.moving = moving || sliding;
+    stance.sprinting = running && moving;
+    stance.airborne = !s.grounded && !s.swimming;
+    // Góc ngắm lên xuống theo hướng camera (dương là ngẩng lên).
+    state.camera.getWorldDirection(camDir);
+    localMotion.aimPitch = Math.asin(Math.max(-1, Math.min(1, camDir.y)));
     const inside = world.structureAt(next.x, next.z);
     const maxDepth = inside ? Math.max(1, ...inside.structure.depth) : 1;
     const indoorTarget = inside ? 0.45 + 0.55 * (inside.depth / maxDepth) : 0;
@@ -517,6 +586,22 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const items = sheet ? [...sheet.items] : [];
     localEnv.light = items.includes("lantern") || items.includes("torch");
 
+    if (battle) {
+      // Đồ gần nhất nhặt được.
+      let near: { key: string; itemId: string } | null = null;
+      let bestD = 2.6;
+      if (!dead)
+        for (const [key, g] of room.state.groundItems) {
+          const d = Math.hypot(g.x - next.x, g.z - next.z);
+          if (d < bestD && Math.abs(g.y - feetY) < 2.2) {
+            bestD = d;
+            near = { key, itemId: g.itemId };
+          }
+        }
+      const cur = getBattleHud().nearItem;
+      if (near?.key !== cur?.key) setBattleHud({ nearItem: near });
+      setHud({ region: world.regionAt(next.x, next.z), swimming: s.swimming, underwater: headUnder });
+    } else {
     const anchor = frozen ? null : nearestOpenAnchor(room, next.x, next.z);
     setHud({
       zone: world.zoneAt(next.x, next.z),
@@ -534,12 +619,18 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       sitting: s.sitting,
       hidden: s.sitting && world.inTallGrass(next.x, next.z),
     });
+    }
 
     s.sendTimer += dt;
     if (s.sendTimer >= SEND_INTERVAL) {
       s.sendTimer = 0;
       const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving: s.climb ? climbMoving : moving || sliding, sitting: s.sitting, swimming: s.swimming };
-      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming}`;
+      if (battle) {
+        msg.crouching = s.crouching;
+        msg.aiming = stance.aiming;
+        msg.aimPitch = localMotion.aimPitch;
+      }
+      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming},${s.crouching},${msg.aiming},${(msg.aimPitch ?? 0).toFixed(2)}`;
       if (key !== s.lastSent) {
         s.lastSent = key;
         room.send(Messages.move, msg);
@@ -551,7 +642,11 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     <RigidBody ref={body} type="kinematicPosition" colliders={false} position={[spawn.x, spawn.y + FEET_OFFSET, spawn.z]}>
       <CapsuleCollider ref={collider} args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
       <group position-y={-FEET_OFFSET}>
-        <Carrier room={room}>{(carrying, held) => <Character ref={avatar} color={me.color} carrying={carrying} held={held} motion={() => readLocalMotion(room)} />}</Carrier>
+        {room.state.mode === "battle" ? (
+          <BattleLook room={room}>{(look) => <Character ref={avatar} color={me.color} {...look} motion={() => readLocalMotion(room)} />}</BattleLook>
+        ) : (
+          <Carrier room={room}>{(carrying, held) => <Character ref={avatar} color={me.color} carrying={carrying} held={held} motion={() => readLocalMotion(room)} />}</Carrier>
+        )}
       </group>
     </RigidBody>
   );
@@ -701,6 +796,17 @@ function atDigSite(room: IslandRoom, x: number, z: number): boolean {
 }
 
 /** Vẽ lại nhân vật khi mình bắt đầu hay thôi vác rương, hay đổi món cầm trên tay. */
+/** Battleground: súng đang cầm, áo ngụy trang, giáp, mũ của mình. */
+function BattleLook({ room, children }: { room: IslandRoom; children: (look: { weapon: string; outfit: string; armor: number; helmet: number }) => ReactNode }) {
+  const look = useRoomSnapshot(room, (s) => {
+    const k = s.players.get(myId(room))?.kit;
+    if (!k) return { weapon: "", outfit: "woodland", armor: 0, helmet: 0 };
+    const slot = k.active;
+    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+  });
+  return <>{children(look)}</>;
+}
+
 function Carrier({ room, children }: { room: IslandRoom; children: (carrying: boolean, held: string) => ReactNode }) {
   const carrying = useRoomSnapshot(room, (s) => s.treasureCarrier === myId(room) && !s.treasureSafe);
   const held = useRoomSnapshot(room, (s) => s.players.get(myId(room))?.held ?? "");

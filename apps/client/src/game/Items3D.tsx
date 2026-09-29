@@ -5,6 +5,7 @@ import type { Group } from "three";
 import type { GroundItemState, ProjectileState } from "@tentides/protocol";
 import type { IslandRoom } from "../net.ts";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
+import { LootModel } from "./GunModel.tsx";
 import { localPosition } from "./shared.ts";
 
 // Đồ nằm dưới đất (thả ra, ném đi, rơi từ thú, cây) và đồ đang bay. Đồ dưới đất khẽ nhún, lấp lánh cho dễ thấy;
@@ -26,7 +27,7 @@ function useEntries<T>(room: IslandRoom, key: "groundItems" | "projectiles"): [s
   return list;
 }
 
-function Ground({ item }: { item: GroundItemState }) {
+function Ground({ item, battle }: { item: GroundItemState; battle: boolean }) {
   const g = useRef<Group>(null);
   const seed = useRef(Math.random() * 10);
   useFrame(({ clock }) => {
@@ -38,6 +39,16 @@ function Ground({ item }: { item: GroundItemState }) {
     m.rotation.y = t * 0.6;
   });
   const long = LONG_ITEMS.has(item.itemId);
+  if (battle)
+    return (
+      <group ref={g} position={[item.x, item.y, item.z]}>
+        <LootModel id={item.itemId} />
+        <mesh rotation-x={-Math.PI / 2} position-y={-0.06}>
+          <ringGeometry args={[0.42, 0.5, 20]} />
+          <meshBasicMaterial color="#ffe08a" transparent opacity={0.45} depthWrite={false} toneMapped={false} />
+        </mesh>
+      </group>
+    );
   return (
     <group ref={g} position={[item.x, item.y, item.z]}>
       {/* Đồ dài nằm ngang trên đất, đồ nhỏ đứng. */}
@@ -74,14 +85,17 @@ function Flying({ p }: { p: ProjectileState }) {
 export function GroundItems({ room }: { room: IslandRoom }) {
   const items = useEntries<GroundItemState>(room, "groundItems");
   const flying = useEntries<ProjectileState>(room, "projectiles");
+  // Battleground: đồ rơi là súng, đạn, giáp...; lựu đạn đang bay vẽ riêng (battle/Effects.tsx).
+  const battle = room.state.mode === "battle";
   return (
     <>
       {items.map(([id, item]) => (
-        <Ground key={id} item={item} />
+        <Ground key={id} item={item} battle={battle} />
       ))}
-      {flying.map(([id, p]) => (
-        <Flying key={id} p={p} />
-      ))}
+      {!battle &&
+        flying.map(([id, p]) => (
+          <Flying key={id} p={p} />
+        ))}
     </>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { CalendarDays, DoorOpen, Drama, Plus, RotateCcw, Users } from "lucide-react";
+import { CalendarDays, Crosshair, DoorOpen, Drama, Plus, RotateCcw, Users } from "lucide-react";
 import { ROOM_CODE_LENGTH } from "@tentides/protocol";
-import { createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
+import { createBattleRoom, createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
 
 const NAME_KEY = "tentides.name";
 
@@ -94,6 +94,10 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
 
           <button className={previous ? "big" : "primary big"} disabled={busy} onClick={() => void run(() => createRoom(name))}>
             <Plus size={18} aria-hidden /> Tạo phòng mới
+          </button>
+
+          <button className="big battle-button" disabled={busy} onClick={() => void run(() => createBattleRoom(name))}>
+            <Crosshair size={18} aria-hidden /> Tạo phòng Battleground
           </button>
 
           <div className="divider">

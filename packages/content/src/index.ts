@@ -5,3 +5,5 @@ export * from "./labels.ts";
 export * from "./worldCatalog.ts";
 export * from "./worldgen.ts";
 export * from "./combat.ts";
+export * from "./battleItems.ts";
+export * from "./battle.ts";

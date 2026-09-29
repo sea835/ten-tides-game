@@ -1,6 +1,7 @@
 // Bàn phím và chuột. Giữ trong biến module để useFrame đọc mỗi khung hình mà không re-render React.
 
 import { clampPitch } from "./camera.ts";
+import { aimZoom, getSettings } from "./settings.ts";
 
 export const keys = new Set<string>();
 
@@ -28,8 +29,12 @@ export function bindInput(canvas: HTMLElement): () => void {
   };
   const onMouseMove = (e: MouseEvent) => {
     if (document.pointerLockElement !== canvas) return;
-    look.yaw -= e.movementX * MOUSE_SENSITIVITY;
-    look.pitch = clampPitch(look.pitch + e.movementY * MOUSE_SENSITIVITY);
+    // Độ nhạy theo cài đặt; đang ngắm thì chậm lại theo mức phóng đại để nhắm xa không bị giật tay.
+    const set = getSettings();
+    const zoomed = aimZoom.value > 1.01;
+    const k = MOUSE_SENSITIVITY * set.sensitivity * (zoomed ? (aimZoom.value >= 3 ? set.scopeSensitivity : set.adsSensitivity) / Math.sqrt(aimZoom.value) : 1);
+    look.yaw -= e.movementX * k;
+    look.pitch = clampPitch(look.pitch + e.movementY * k * (set.invertY ? -1 : 1));
   };
 
   window.addEventListener("keydown", onKeyDown);

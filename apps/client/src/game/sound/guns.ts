@@ -1,0 +1,777 @@
+import { WEAPON, type WeaponClass } from "@tentides/content";
+import { audio, noiseBurst, tone, type Bus, type Place } from "./engine.ts";
+
+// Âm thanh đấu súng (chế độ Battleground): tiếng nổ từng loại súng, thay đạn, lựu đạn, trúng đích, bước chân...
+// Tất cả tổng hợp tại chỗ như sfx.ts. Một phát súng gồm vài lớp: tiếng cơ khí (kim hỏa, khóa nòng), tiếng "nứt"
+// cao tần (tiếng ồn lọc cao), cú "đấm" giữa (tiếng ồn lọc thấp trượt xuống), phần thân trầm (sin trượt cao độ) và
+// đuôi vang (tiếng ồn nâu + hồi âm chung dội từ địa hình đảo).
+// Súng nghe được xa hơn nhiều so với 70 m của bộ máy: tiếng xa thì nhỏ, đục (lọc thấp theo khoảng cách), đến trễ
+// theo vận tốc âm thanh và vang nhiều hơn. Có giới hạn số tiếng cùng lúc để bắn liên thanh không đẻ nút vô hạn.
+
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+/** Vận tốc âm thanh (m/s) và độ trễ tối đa (không để tiếng đến quá muộn so với hình). */
+const SPEED_OF_SOUND = 343;
+const MAX_DELAY = 0.6;
+
+/** Chạy an toàn: âm thanh không bao giờ được làm hỏng trò chơi. */
+function safe<A extends unknown[]>(fn: (...args: A) => void): (...args: A) => void {
+  return (...args: A) => {
+    try {
+      fn(...args);
+    } catch {
+      // Lỗi âm thanh thì im lặng bỏ qua.
+    }
+  };
+}
+
+const noop = () => {};
+
+function live(): AudioContext | null {
+  const ctx = audio.ctx;
+  if (!ctx || ctx.state !== "running" || audio.settings.muted) return null;
+  return ctx;
+}
+
+// ---------------------------------------------------------------------------- hồi âm chung
+
+/**
+ * Một bộ hồi âm dùng chung (ConvolverNode, chi phí cố định dù bắn bao nhiêu phát): đáp ứng xung tự dựng gồm vài
+ * tiếng dội rời (vách đá, đồi) rồi đuôi tiếng ồn tắt dần, hai kênh khác nhau cho độ rộng stereo.
+ */
+let shared: { ctx: AudioContext; send: GainNode } | null = null;
+
+function reverbSend(ctx: AudioContext): GainNode {
+  if (shared && shared.ctx === ctx) return shared.send;
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * 2.2);
+  const ir = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = ir.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      const s = i / rate;
+      // Đuôi khuếch tán: tiếng ồn làm tối dần (lọc một cực) theo thời gian, tắt theo hàm mũ.
+      const k = 0.35 + 0.6 * Math.exp(-s / 0.4);
+      lp += k * ((Math.random() * 2 - 1) - lp);
+      data[i] = s < 0.018 ? 0 : lp * 0.55 * Math.exp(-s / 0.55);
+    }
+    // Tiếng dội rời: mỗi kênh lệch nhau một chút như vách ở hai bên.
+    const slaps = ch === 0 ? [0.083, 0.171, 0.29, 0.47, 0.72] : [0.097, 0.188, 0.33, 0.52, 0.8];
+    slaps.forEach((at, n) => {
+      const start = Math.floor(at * rate);
+      const width = Math.floor(rate * (0.006 + n * 0.006));
+      const amp = 0.55 * Math.pow(0.62, n);
+      for (let i = 0; i < width && start + i < len; i++) {
+        data[start + i] = (data[start + i] ?? 0) + (Math.random() * 2 - 1) * amp * (1 - i / width);
+      }
+    });
+  }
+  const send = ctx.createGain();
+  // Bỏ bớt trầm trước khi vang cho khỏi đục, và bớt chói.
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 180;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 5000;
+  const conv = ctx.createConvolver();
+  conv.buffer = ir;
+  const ret = ctx.createGain();
+  ret.gain.value = 0.55;
+  send.connect(hp).connect(lp).connect(conv).connect(ret).connect(audio.bus("sfx"));
+  shared = { ctx, send };
+  return send;
+}
+
+// ---------------------------------------------------------------------------- vị trí, khoảng cách
+
+interface Spatial {
+  d: number;
+  gain: number;
+  pan: number;
+  /** Tần số cắt của bộ lọc thấp (xa thì đục). */
+  cutoff: number;
+  /** Trễ do âm thanh bay (giây). */
+  delay: number;
+}
+
+/**
+ * Tính độ to, lệch trái phải, độ đục và độ trễ của một tiếng ở `at`. Quá `range` mét thì null.
+ * Độ to giảm chậm (tiếng súng vang xa) rồi mờ hẳn ở mép tầm nghe.
+ */
+function spatial(at: Place, range: number, ref = 20): Spatial | null {
+  const L = audio.listener;
+  const dx = at.x - L.x;
+  const dz = at.z - L.z;
+  const d = Math.hypot(dx, dz, (at.y - L.y) * 0.7);
+  if (!(d < range)) return null;
+  const gain = Math.pow(1 + d / ref, -0.85) * (1 - Math.pow(d / range, 3));
+  let pan = 0;
+  let cutoff = clamp(17000 * Math.exp(-d / 90), 380, 17000);
+  if (d > 0.5) {
+    // Trục phải của camera: (cos yaw, −sin yaw); trục trước: (−sin yaw, −cos yaw).
+    const right = (dx * Math.cos(L.yaw) - dz * Math.sin(L.yaw)) / d;
+    const front = (-dx * Math.sin(L.yaw) - dz * Math.cos(L.yaw)) / d;
+    pan = clamp(right * 0.85, -0.85, 0.85);
+    // Tiếng sau lưng hơi đục hơn (đầu che bớt tần số cao): giúp phân biệt trước sau.
+    if (front < 0) cutoff *= 1 + front * 0.35;
+  }
+  return { d, gain, pan, cutoff, delay: Math.min(MAX_DELAY, d / SPEED_OF_SOUND) };
+}
+
+// ---------------------------------------------------------------------------- tiếng (voice) và giới hạn
+
+type Pool = "gun" | "fx" | "local" | "ui";
+/** Số tiếng tối đa cùng lúc mỗi nhóm; vượt thì cướp tiếng nhỏ nhất / sắp hết nhất. */
+const POOL_CAP: Record<Pool, number> = { gun: 24, fx: 20, local: 14, ui: 8 };
+const pools: Record<Pool, Voice[]> = { gun: [], fx: [], local: [], ui: [] };
+
+/**
+ * Một tiếng: nút vào (độ to) → [lọc thấp theo khoảng cách] → lệch trái phải → bus, cộng một nhánh gửi sang hồi âm.
+ * Các lớp tiếng nối vào `input` (giữa) hoặc `side` (lệch một bên, cho độ rộng tiếng súng của chính mình).
+ * Tự tháo nút khi hết tiếng.
+ */
+class Voice {
+  readonly ctx: AudioContext;
+  readonly input: GainNode;
+  side: AudioNode;
+  readonly t0: number;
+  end: number;
+  private nodes: AudioNode[] = [];
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  dead = false;
+
+  constructor(
+    ctx: AudioContext,
+    readonly pool: Pool,
+    readonly level: number,
+    opts: { bus: Bus; sp?: Spatial | null; reverb?: number; wide?: number; delay?: number },
+  ) {
+    this.ctx = ctx;
+    const sp = opts.sp;
+    this.t0 = ctx.currentTime + 0.005 + (opts.delay ?? sp?.delay ?? 0);
+    this.end = this.t0;
+    const input = ctx.createGain();
+    input.gain.value = level;
+    this.input = input;
+    let head: AudioNode = input;
+    this.nodes.push(input);
+    if (sp && sp.cutoff < 16000) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = sp.cutoff;
+      lp.Q.value = 0.5;
+      head = head.connect(lp);
+      this.nodes.push(lp);
+    }
+    const out = audio.bus(opts.bus);
+    if (sp && Math.abs(sp.pan) > 0.02) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = sp.pan;
+      head = head.connect(p);
+      this.nodes.push(p);
+    }
+    head.connect(out);
+    if (opts.reverb) {
+      const send = ctx.createGain();
+      send.gain.value = opts.reverb;
+      head.connect(send).connect(reverbSend(ctx));
+      this.nodes.push(send);
+    }
+    this.side = input;
+    if (opts.wide) {
+      // Nhánh lệch một bên ngẫu nhiên: tiếng súng của mình nghe rộng hơn, không dẹt ở giữa.
+      const g = ctx.createGain();
+      const p = ctx.createStereoPanner();
+      p.pan.value = (Math.random() < 0.5 ? -1 : 1) * opts.wide;
+      g.connect(p).connect(input);
+      this.nodes.push(g, p);
+      this.side = g;
+    }
+  }
+
+  /** Thêm một đoạn tiếng ồn lọc, bắt đầu sau `dt` giây. */
+  noise(dt: number, opts: Parameters<typeof noiseBurst>[2], out: AudioNode = this.input) {
+    const t = this.t0 + dt;
+    noiseBurst(out, t, opts);
+    this.end = Math.max(this.end, t + (opts.attack ?? 0.005) + opts.decay + 0.05);
+  }
+
+  /** Thêm một nốt dao động. */
+  osc(dt: number, opts: Parameters<typeof tone>[2], out: AudioNode = this.input): OscillatorNode {
+    const t = this.t0 + dt;
+    const o = tone(out, t, opts);
+    this.end = Math.max(this.end, t + (opts.attack ?? 0.005) + opts.decay + 0.05);
+    return o;
+  }
+
+  /** Xong phần dựng: hẹn giờ tháo nút. */
+  done(): this {
+    const ms = (this.end - this.ctx.currentTime + 0.25) * 1000;
+    this.timer = setTimeout(() => this.release(), Math.max(50, ms));
+    return this;
+  }
+
+  /** Độ "đáng giữ": to và còn dài thì giữ, nhỏ và sắp tắt thì cướp trước. */
+  score(now: number): number {
+    const span = Math.max(0.01, this.end - this.t0);
+    return this.level * clamp((this.end - now) / span, 0, 1);
+  }
+
+  /** Tắt nhanh (bị cướp hay bị hủy) rồi tháo. */
+  kill() {
+    if (this.dead) return;
+    const now = this.ctx.currentTime;
+    const g = this.input.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(0, now + 0.03);
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.release(), 80);
+    this.remove();
+  }
+
+  private remove() {
+    this.dead = true;
+    const list = pools[this.pool];
+    const i = list.indexOf(this);
+    if (i >= 0) list.splice(i, 1);
+  }
+
+  private release() {
+    this.remove();
+    for (const n of this.nodes) {
+      try {
+        n.disconnect();
+      } catch {
+        // Đã tháo rồi.
+      }
+    }
+    this.nodes = [];
+  }
+}
+
+/** Mở một tiếng mới trong nhóm; đầy thì cướp tiếng ít quan trọng nhất (nếu tiếng mới quan trọng hơn). */
+function voice(pool: Pool, level: number, opts: { bus?: Bus; sp?: Spatial | null; reverb?: number; wide?: number; delay?: number } = {}): Voice | null {
+  const ctx = live();
+  if (!ctx || level < 0.004) return null;
+  const list = pools[pool];
+  const now = ctx.currentTime;
+  // Dọn các tiếng đã hết mà hẹn giờ chưa kịp chạy.
+  for (let i = list.length - 1; i >= 0; i--) if (list[i]!.end + 0.1 < now) list[i]!.kill();
+  if (list.length >= POOL_CAP[pool]) {
+    let worst: Voice | null = null;
+    let worstScore = Infinity;
+    for (const v of list) {
+      const s = v.score(now);
+      if (s < worstScore) {
+        worst = v;
+        worstScore = s;
+      }
+    }
+    // Tiếng mới còn nhỏ hơn mọi tiếng đang phát thì bỏ luôn tiếng mới.
+    if (!worst || worstScore > level * 1.5) return null;
+    worst.kill();
+  }
+  const v = new Voice(ctx, pool, level, { ...opts, bus: opts.bus ?? "sfx" });
+  list.push(v);
+  return v;
+}
+
+// ---------------------------------------------------------------------------- tiếng súng
+
+interface GunProfile {
+  vol: number;
+  /** Tầm nghe (m). */
+  range: number;
+  /** Tiếng cơ khí: tần số, độ to. */
+  click: [number, number];
+  /** Tiếng nứt cao tần: tần số lọc cao, thời gian tắt, độ to. */
+  crack: [number, number, number];
+  /** Tiếng "tách" siêu thanh rất ngắn (súng trường): tần số, thời gian tắt, độ to; 0 là không có. */
+  snap: [number, number, number];
+  /** Cú đấm giữa: lọc thấp từ → đến, thời gian tắt, độ to. */
+  punch: [number, number, number, number];
+  /** Thân trầm: sin từ → đến, thời gian tắt, độ to. */
+  body: [number, number, number, number];
+  /** Đuôi: lọc thấp tiếng ồn nâu, thời gian tắt, độ to. */
+  tail: [number, number, number];
+  /** Lượng gửi sang hồi âm. */
+  rev: number;
+}
+
+const PROFILES: Record<WeaponClass, GunProfile> = {
+  // Súng lục: gọn, giòn, đuôi ngắn.
+  pistol: { vol: 0.8, range: 300, click: [3200, 0.35], crack: [2200, 0.06, 0.8], snap: [0, 0, 0], punch: [4200, 700, 0.12, 0.8], body: [165, 55, 0.12, 0.75], tail: [750, 0.35, 0.22], rev: 0.35 },
+  // Tiểu liên: nhẹ, nhanh, nhiều cao tần hơn, thân mỏng.
+  smg: { vol: 0.68, range: 300, click: [3700, 0.3], crack: [2800, 0.045, 0.7], snap: [0, 0, 0], punch: [5200, 900, 0.08, 0.7], body: [195, 72, 0.08, 0.55], tail: [850, 0.28, 0.17], rev: 0.28 },
+  // Súng trường: đấm chắc, nứt giữa rõ, có tiếng tách siêu thanh.
+  ar: { vol: 0.95, range: 350, click: [3000, 0.3], crack: [1800, 0.07, 0.9], snap: [6000, 0.012, 0.45], punch: [5500, 600, 0.16, 0.95], body: [120, 45, 0.16, 1], tail: [620, 0.6, 0.32], rev: 0.45 },
+  // Trung liên: nặng, trầm, đuôi dày.
+  lmg: { vol: 1, range: 380, click: [2700, 0.3], crack: [1500, 0.08, 0.85], snap: [5500, 0.014, 0.4], punch: [4500, 450, 0.2, 1], body: [95, 38, 0.22, 1.1], tail: [520, 0.75, 0.4], rev: 0.5 },
+  // Súng bắn tỉa bán tự động: nứt to, sắc, đuôi dài.
+  dmr: { vol: 1.1, range: 450, click: [2900, 0.3], crack: [1600, 0.1, 1], snap: [7000, 0.016, 0.8], punch: [6000, 500, 0.22, 1], body: [100, 35, 0.26, 1.1], tail: [560, 1.1, 0.45], rev: 0.6 },
+  // Súng bắn tỉa: tiếng nứt khổng lồ, đuôi vang rất dài.
+  sniper: { vol: 1.2, range: 500, click: [2600, 0.35], crack: [1400, 0.12, 1.1], snap: [8000, 0.02, 1], punch: [6500, 400, 0.3, 1.1], body: [82, 28, 0.36, 1.2], tail: [460, 1.6, 0.55], rev: 0.75 },
+  // Shotgun: bùm trầm, dày, ít cao tần.
+  shotgun: { vol: 1.15, range: 300, click: [2400, 0.35], crack: [1200, 0.09, 0.7], snap: [0, 0, 0], punch: [3000, 300, 0.28, 1.2], body: [72, 30, 0.3, 1.3], tail: [420, 0.9, 0.5], rev: 0.55 },
+};
+
+/** Băm tên súng ra số 0–1: mỗi khẩu có âm sắc hơi khác dù cùng nhóm. */
+function hash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+/** Một phát súng. `local` là do chính mình bắn (to hơn, không lọc khoảng cách, hơi rộng). `at` là đầu nòng. */
+export const playGunshot = safe((weaponId: string, at: Place, local: boolean) => {
+  if (!live()) return;
+  const def = WEAPON.get(weaponId);
+  const cls: WeaponClass = def?.class ?? "ar";
+  const P = PROFILES[cls];
+  // Âm sắc riêng từng khẩu: cao độ theo tên, độ nặng theo sát thương, độ gọn theo tốc độ bắn.
+  const id = hash(weaponId);
+  const heavy = clamp(((def?.damage ?? 40) - 30) / 70, 0, 1);
+  const fast = clamp(((def?.rpm ?? 600) - 600) / 600, -0.3, 0.8);
+  // Mỗi phát lệch một chút để liên thanh không nghe như máy lặp.
+  const pitch = (0.92 + id * 0.16) * (1 - heavy * 0.18) * (1 + fast * 0.12) * rand(0.95, 1.05);
+  const len = (1 + heavy * 0.5) * (1 - fast * 0.25) * rand(0.9, 1.1);
+  const loud = P.vol * (1 + heavy * 0.25) * rand(0.88, 1.06);
+
+  const sp = local ? null : spatial(at, P.range);
+  if (!local && !sp) return;
+  const d = sp?.d ?? 0;
+  // Xa thì phần dội chiếm nhiều hơn phần thẳng.
+  const reverb = P.rev * (local ? 0.6 : 0.6 + 1.6 * Math.min(1, d / 180));
+  const v = voice("gun", 0.42 * loud * (local ? 1 : 0.85 * (sp?.gain ?? 0)), { sp, reverb, wide: local ? 0.3 : 0 });
+  if (!v) return;
+  const near = local || d < 30;
+
+  // 1. Tiếng cơ khí (kim hỏa, khóa nòng lùi): chỉ nghe được ở gần.
+  if (near) v.noise(0, { type: "bandpass", freq: P.click[0] * pitch, q: 5, decay: 0.012, peak: P.click[1] * rand(0.8, 1.1) }, v.side);
+  // 2. Tiếng nứt cao tần: lõi của độ "sắc".
+  v.noise(0, { type: "highpass", freq: P.crack[0] * pitch, decay: P.crack[1] * len, peak: P.crack[2], attack: 0.001 }, v.side);
+  // 3. Tiếng tách siêu thanh (đạn súng trường): rất ngắn, rất cao.
+  if (P.snap[0] && d < 160) v.noise(0, { type: "highpass", freq: P.snap[0], decay: P.snap[1], peak: P.snap[2], attack: 0.0005 });
+  // 4. Cú đấm giữa: tiếng ồn lọc thấp đóng dần lại.
+  v.noise(0, { type: "lowpass", freq: P.punch[0] * pitch, freqEnd: P.punch[1] * pitch, decay: P.punch[2] * len, peak: P.punch[3], attack: 0.002 });
+  // 5. Thân trầm: sin trượt xuống — cái "bụp" vang xa nhất.
+  v.osc(0, { freq: P.body[0] * pitch, freqEnd: P.body[1] * pitch, decay: P.body[2] * len, peak: P.body[3], attack: 0.002 });
+  if (cls === "shotgun") v.osc(0.004, { freq: 52 * pitch, freqEnd: 26, decay: 0.4 * len, peak: 0.9 });
+  // 6. Đuôi vang ngoài trời: tiếng ồn nâu, xa thì dài và lăn hơn.
+  const tailLen = P.tail[1] * len * (1 + d / 260);
+  v.noise(0.02, { brown: true, type: "lowpass", freq: P.tail[0] * pitch, freqEnd: P.tail[0] * 0.5, attack: 0.03, decay: tailLen, peak: P.tail[2] });
+  // 7. Tiếng dội từ xa (vách, đồi) cho súng lớn nghe từ xa.
+  if (d > 110 && (cls === "sniper" || cls === "dmr" || cls === "lmg")) {
+    v.noise(rand(0.35, 0.7), { brown: true, type: "lowpass", freq: 380, attack: 0.08, decay: tailLen * 0.8, peak: P.tail[2] * 0.6 });
+  }
+  v.done();
+});
+
+/** Hết đạn: tiếng tách khô. */
+export const playDryFire = safe(() => {
+  const v = voice("local", 0.35);
+  if (!v) return;
+  v.noise(0, { type: "highpass", freq: 3500, decay: 0.012, peak: 0.9, attack: 0.001 });
+  v.osc(0, { type: "triangle", freq: 2900, decay: 0.02, peak: 0.35 });
+  v.noise(0.03, { type: "bandpass", freq: 1500, q: 4, decay: 0.02, peak: 0.3 });
+  v.done();
+});
+
+// ---------------------------------------------------------------------------- thao tác súng
+
+/** Tiếng kim loại va nhau ngắn (khóa, lẫy): `f` là độ cao. */
+function clack(v: Voice, dt: number, f: number, peak: number) {
+  v.noise(dt, { type: "bandpass", freq: f, q: 3, decay: 0.03, peak, attack: 0.001 });
+  v.osc(dt, { type: "triangle", freq: f * 0.55, freqEnd: f * 0.4, decay: 0.035, peak: peak * 0.35 });
+}
+
+/** Tiếng trượt kim loại (kéo khóa nòng, rút băng): tiếng ồn băng hẹp trượt cao độ. */
+function slide(v: Voice, dt: number, from: number, to: number, dur: number, peak: number) {
+  v.noise(dt, { type: "bandpass", freq: from, freqEnd: to, q: 2.5, attack: dur * 0.3, decay: dur * 0.7, peak });
+}
+
+function magOut(v: Voice, dt: number) {
+  clack(v, dt, 2600, 0.5); // nút nhả băng
+  slide(v, dt + 0.04, 1800, 900, 0.14, 0.35);
+}
+
+function magIn(v: Voice, dt: number, heavy = 1) {
+  slide(v, dt, 900, 1600, 0.09, 0.3);
+  clack(v, dt + 0.09, 1700, 0.8);
+  v.osc(dt + 0.09, { freq: 190 * heavy, freqEnd: 90, decay: 0.06, peak: 0.45 });
+}
+
+function charge(v: Voice, dt: number) {
+  slide(v, dt, 1400, 2600, 0.1, 0.45);
+  clack(v, dt + 0.14, 2200, 0.85);
+  v.osc(dt + 0.14, { freq: 240, freqEnd: 110, decay: 0.05, peak: 0.35 });
+}
+
+/** Chu trình khóa nòng (kéo lên, lùi, đẩy tới, khóa xuống). */
+function boltCycle(v: Voice, dt: number, rate = 1) {
+  clack(v, dt, 2100, 0.5);
+  slide(v, dt + 0.06 * rate, 1200, 2400, 0.12 * rate, 0.45);
+  clack(v, dt + 0.2 * rate, 2600, 0.6);
+  slide(v, dt + 0.28 * rate, 2300, 1300, 0.1 * rate, 0.4);
+  clack(v, dt + 0.4 * rate, 1800, 0.85);
+  v.osc(dt + 0.4 * rate, { freq: 210, freqEnd: 100, decay: 0.05, peak: 0.35 });
+}
+
+/** Thay đạn cho khẩu này, trải trong `seconds` giây. Trả về hàm hủy (khi đổi súng giữa chừng). */
+export function playReload(weaponId: string, seconds: number): () => void {
+  try {
+    const cls: WeaponClass = WEAPON.get(weaponId)?.class ?? "ar";
+    const s = clamp(Number.isFinite(seconds) ? seconds : 2, 0.5, 8);
+    const v = voice("local", 0.5);
+    if (!v) return noop;
+    if (cls === "shotgun") {
+      // Bẻ nòng, nạp hai viên, đóng nòng.
+      clack(v, 0.05, 1500, 0.8);
+      slide(v, 0.08, 1100, 600, 0.12, 0.3);
+      for (let i = 0; i < 2; i++) {
+        const t = s * (0.35 + i * 0.22);
+        slide(v, t, 700, 1400, 0.07, 0.3);
+        clack(v, t + 0.07, 1300, 0.5);
+      }
+      clack(v, s * 0.88, 1200, 1);
+      v.osc(s * 0.88, { freq: 170, freqEnd: 80, decay: 0.08, peak: 0.5 });
+    } else if (cls === "sniper") {
+      // Mở khóa nòng, ấn từng viên vào hộp đạn, đóng khóa.
+      clack(v, 0.05, 2100, 0.5);
+      slide(v, 0.12, 1200, 2400, 0.14, 0.45);
+      const rounds = 4;
+      for (let i = 0; i < rounds; i++) clack(v, s * (0.3 + (i * 0.4) / rounds), rand(2800, 3300), 0.4);
+      slide(v, s * 0.82, 2300, 1300, 0.12, 0.4);
+      clack(v, s * 0.82 + 0.14, 1800, 0.9);
+    } else {
+      magOut(v, s * 0.08);
+      // Băng cũ rơi / cất vào túi.
+      v.noise(s * 0.3, { brown: true, type: "lowpass", freq: 900, decay: 0.08, peak: 0.25 });
+      magIn(v, s * 0.55, cls === "lmg" ? 0.8 : 1);
+      if (cls === "lmg") {
+        // Trung liên: mở nắp, đặt dây đạn, đóng nắp.
+        clack(v, s * 0.3, 1900, 0.6);
+        slide(v, s * 0.68, 2500, 3500, 0.2, 0.2);
+        clack(v, s * 0.78, 1500, 1);
+      }
+      if (cls === "pistol") clack(v, s * 0.85, 2400, 0.9); // nhả khóa trượt
+      else charge(v, s * 0.82);
+    }
+    v.done();
+    return () => v.kill();
+  } catch {
+    return noop;
+  }
+}
+
+/** Chu trình khóa nòng sau phát bắn tỉa (Kar98k, AWM). */
+export const playBolt = safe(() => {
+  const v = voice("local", 0.45);
+  if (!v) return;
+  boltCycle(v, 0);
+  v.done();
+});
+
+/** Đổi súng / rút súng: vải sột soạt rồi tiếng kim loại. */
+export const playDraw = safe(() => {
+  const v = voice("local", 0.4);
+  if (!v) return;
+  v.noise(0, { type: "bandpass", freq: 2200, freqEnd: 3500, q: 0.8, attack: 0.04, decay: 0.12, peak: 0.3 });
+  clack(v, 0.14, 2400, 0.55);
+  clack(v, 0.22, 1600, 0.7);
+  v.done();
+});
+
+// ---------------------------------------------------------------------------- trúng đích, bị bắn
+
+/** Dấu trúng: tiếng tích ngắn; trúng đầu là tiếng "keng" kim loại; hạ gục thêm cú thụp xác nhận. */
+export const playHitMarker = safe((kind: "body" | "head" | "kill") => {
+  const v = voice("ui", 0.5, { bus: "ui" });
+  if (!v) return;
+  v.osc(0, { type: "triangle", freq: 2600, decay: 0.03, peak: 0.6, attack: 0.001 });
+  v.noise(0, { type: "highpass", freq: 5000, decay: 0.015, peak: 0.4, attack: 0.001 });
+  if (kind === "head") {
+    // Tần số không hòa âm (tỉ lệ như chuông) cho chất kim loại.
+    v.osc(0.005, { freq: 2350, decay: 0.35, peak: 0.45 });
+    v.osc(0.005, { freq: 2350 * 2.76, decay: 0.18, peak: 0.18 });
+    v.osc(0.005, { freq: 2350 * 5.4, decay: 0.08, peak: 0.08 });
+  }
+  if (kind === "kill") {
+    v.osc(0.03, { freq: 150, freqEnd: 48, decay: 0.25, peak: 1 });
+    v.noise(0.03, { brown: true, type: "lowpass", freq: 500, decay: 0.15, peak: 0.6 });
+    v.osc(0.06, { type: "triangle", freq: 1320, decay: 0.2, peak: 0.25 });
+  }
+  v.done();
+});
+
+/** Mình trúng đạn: va chạm đục vào người và tiếng thụp trầm ngắn. */
+export const playHurt = safe(() => {
+  const v = voice("local", 0.6);
+  if (!v) return;
+  v.noise(0, { brown: true, type: "lowpass", freq: 1200, freqEnd: 300, decay: 0.12, peak: 1 });
+  v.noise(0, { type: "bandpass", freq: 700, q: 1.5, decay: 0.05, peak: 0.6 });
+  v.osc(0, { freq: 95, freqEnd: 38, decay: 0.22, peak: 1 });
+  v.done();
+});
+
+/** Giáp đỡ đạn: tiếng tấm giáp kêu "cạch". */
+export const playArmorHit = safe(() => {
+  const v = voice("local", 0.45);
+  if (!v) return;
+  const f = rand(1150, 1400);
+  v.osc(0, { type: "triangle", freq: f, decay: 0.12, peak: 0.6 });
+  v.osc(0, { freq: f * 2.43, decay: 0.07, peak: 0.3 });
+  v.noise(0, { type: "highpass", freq: 3500, decay: 0.03, peak: 0.6, attack: 0.001 });
+  v.osc(0, { freq: 130, freqEnd: 60, decay: 0.08, peak: 0.5 });
+  v.done();
+});
+
+/** Đạn bay sượt đầu: tiếng "tách" siêu thanh và tiếng rít trượt xuống. `at` là điểm đường đạn gần mình nhất. */
+export const playBulletWhiz = safe((at: Place) => {
+  const sp = spatial(at, 25, 3);
+  if (!sp) return;
+  // Không trễ: đây là lúc viên đạn đi qua.
+  sp.delay = 0;
+  sp.cutoff = 17000;
+  const v = voice("fx", 0.55 * sp.gain, { sp });
+  if (!v) return;
+  v.noise(0, { type: "highpass", freq: 2800, decay: 0.022, peak: 1, attack: 0.0005 });
+  const f = rand(2800, 3800);
+  v.noise(0.005, { type: "bandpass", freq: f, freqEnd: f * 0.3, q: 3, attack: 0.03, decay: 0.2, peak: 0.55 });
+  v.done();
+});
+
+/** Đạn găm vào bề mặt gần người nghe. */
+export const playImpact = safe((at: Place, surface: "dirt" | "concrete" | "metal" | "wood" | "water") => {
+  const sp = spatial(at, 60, 6);
+  if (!sp) return;
+  const v = voice("fx", 0.45 * sp.gain, { sp, reverb: 0.15 });
+  if (!v) return;
+  switch (surface) {
+    case "dirt":
+      v.noise(0, { brown: true, type: "lowpass", freq: 900, decay: 0.08, peak: 1 });
+      v.noise(0.01, { type: "highpass", freq: 3000, decay: 0.12, peak: 0.25, attack: 0.01 }); // đất cát rơi lả tả
+      break;
+    case "concrete":
+      v.noise(0, { type: "highpass", freq: 2500, decay: 0.04, peak: 0.9, attack: 0.001 });
+      v.noise(0, { type: "bandpass", freq: rand(1600, 2200), q: 2, decay: 0.06, peak: 0.6 });
+      v.noise(0.03, { type: "highpass", freq: 4000, decay: 0.15, peak: 0.2, attack: 0.02 });
+      break;
+    case "metal": {
+      const f = rand(1800, 3200);
+      v.noise(0, { type: "highpass", freq: 3000, decay: 0.02, peak: 0.8, attack: 0.001 });
+      v.osc(0, { type: "triangle", freq: f, decay: 0.3, peak: 0.45 });
+      v.osc(0, { freq: f * 2.76, decay: 0.15, peak: 0.2 });
+      // Đạn nảy (ricochet) thỉnh thoảng.
+      if (Math.random() < 0.3) v.noise(0.02, { type: "bandpass", freq: 4200, freqEnd: 1800, q: 4, attack: 0.02, decay: 0.3, peak: 0.35 });
+      break;
+    }
+    case "wood":
+      v.osc(0, { freq: rand(280, 340), freqEnd: 160, decay: 0.09, peak: 0.7 });
+      v.noise(0, { type: "bandpass", freq: 1000, q: 3, decay: 0.06, peak: 0.9 });
+      v.noise(0.005, { type: "highpass", freq: 3500, decay: 0.04, peak: 0.3 }); // dăm gỗ
+      break;
+    case "water":
+      v.noise(0, { type: "lowpass", freq: 3500, freqEnd: 600, decay: 0.25, peak: 0.8 });
+      v.osc(0.02, { freq: rand(500, 700), freqEnd: rand(1100, 1500), decay: 0.06, peak: 0.3 });
+      break;
+  }
+  v.done();
+});
+
+// ---------------------------------------------------------------------------- lựu đạn, mìn, khói
+
+/** Nổ lựu đạn / mìn: tiếng nổ lớn với đuôi trầm lăn dài, xa thì có tiếng dội; gần thì rất mạnh và ù tai. */
+export const playExplosion = safe((at: Place, kind: "frag" | "mine") => {
+  const sp = spatial(at, 500, 25);
+  if (!sp) return;
+  const d = sp.d;
+  const mine = kind === "mine";
+  const v = voice("gun", 0.75 * sp.gain * (mine ? 1.05 : 1), { sp, reverb: 0.5 + Math.min(1, d / 150) });
+  if (!v) return;
+  const roll = 1 + d / 200;
+  // Tiếng nứt đầu (sóng xung kích).
+  v.noise(0, { type: "highpass", freq: mine ? 1200 : 1600, decay: mine ? 0.2 : 0.14, peak: mine ? 1 : 0.8, attack: 0.001 });
+  // Khối nổ giữa.
+  v.noise(0, { type: "lowpass", freq: 3500, freqEnd: 250, decay: 0.6, peak: 1.1, attack: 0.003 });
+  // Thân trầm cực mạnh.
+  v.osc(0, { freq: mine ? 85 : 70, freqEnd: 24, decay: 1.1, peak: 1.3, attack: 0.004 });
+  // Đuôi lăn trầm dài (hai lớp tiếng ồn nâu).
+  v.noise(0.05, { brown: true, type: "lowpass", freq: 420, freqEnd: 90, attack: 0.08, decay: 2.4 * roll * (mine ? 0.8 : 1), peak: 1 });
+  v.noise(0.35, { brown: true, type: "lowpass", freq: 160, attack: 0.3, decay: 2.8 * roll, peak: 0.7 });
+  if (d < 40) {
+    // Đất đá, mảnh vụn rơi lộp độp.
+    for (let i = 0; i < 6; i++) v.noise(rand(0.3, 1.4), { type: "bandpass", freq: rand(1500, 4000), q: 2, decay: 0.04, peak: rand(0.1, 0.25) });
+  }
+  if (d > 90) {
+    // Tiếng dội vọng lại từ đồi xa.
+    v.noise(rand(0.5, 0.8), { brown: true, type: "lowpass", freq: 300, attack: 0.15, decay: 2 * roll, peak: 0.5 });
+    v.noise(rand(1.2, 1.7), { brown: true, type: "lowpass", freq: 220, attack: 0.25, decay: 2.2 * roll, peak: 0.3 });
+  }
+  v.done();
+  if (d < 12) {
+    // Ù tai: tiếng rít cao mảnh tắt dần.
+    const ring = voice("local", 0.08 * (1 - d / 12), { delay: sp.delay });
+    if (ring) {
+      ring.osc(0.05, { freq: rand(3300, 3900), attack: 0.1, decay: 2.2, peak: 1 });
+      ring.done();
+    }
+  }
+});
+
+/** Rút chốt lựu đạn và ném (của mình). */
+export const playThrow = safe(() => {
+  const v = voice("local", 0.45);
+  if (!v) return;
+  // Chốt tuột ra: tiếng "ting" kim loại mảnh.
+  v.osc(0, { type: "triangle", freq: 2300, decay: 0.12, peak: 0.45 });
+  v.osc(0, { freq: 2300 * 2.7, decay: 0.06, peak: 0.15 });
+  v.noise(0, { type: "highpass", freq: 4000, decay: 0.02, peak: 0.4 });
+  // Cần bẩy bật ra.
+  clack(v, 0.2, 1900, 0.45);
+  // Tiếng vút khi ném.
+  v.noise(0.26, { type: "bandpass", freq: 350, freqEnd: 1600, q: 1.2, attack: 0.08, decay: 0.22, peak: 0.8 });
+  v.done();
+});
+
+/** Lựu đạn nảy trên đất. */
+export const playGrenadeBounce = safe((at: Place) => {
+  const sp = spatial(at, 45, 5);
+  if (!sp) return;
+  const v = voice("fx", 0.4 * sp.gain, { sp });
+  if (!v) return;
+  const f = rand(900, 1300);
+  v.osc(0, { type: "triangle", freq: f, decay: 0.08, peak: 0.5 });
+  v.osc(0, { freq: f * 2.3, decay: 0.05, peak: 0.2 });
+  v.noise(0, { brown: true, type: "lowpass", freq: 700, decay: 0.06, peak: 0.8 });
+  v.done();
+});
+
+/** Bom khói: tiếng bụp rồi xì xì kéo dài khoảng 4 giây. */
+export const playSmoke = safe((at: Place) => {
+  const sp = spatial(at, 80, 8);
+  if (!sp) return;
+  const v = voice("fx", 0.45 * sp.gain, { sp, reverb: 0.2 });
+  if (!v) return;
+  v.noise(0, { type: "lowpass", freq: 2000, freqEnd: 300, decay: 0.2, peak: 0.9 });
+  v.osc(0, { freq: 140, freqEnd: 60, decay: 0.15, peak: 0.6 });
+  // Xì khói: tiếng ồn cao, lên chậm, tắt chậm; thêm lớp giữa cho dày.
+  v.noise(0.08, { type: "highpass", freq: 3200, freqEnd: 2200, attack: 0.3, decay: 3.8, peak: 0.45 });
+  v.noise(0.08, { type: "bandpass", freq: 1400, freqEnd: 900, q: 0.7, attack: 0.4, decay: 3.4, peak: 0.25 });
+  v.done();
+});
+
+/** Mìn: tiếng bíp khi gài và tiếng tách trước khi nổ (có vị trí). */
+export const playMineBeep = safe((at: Place) => {
+  const sp = spatial(at, 40, 5);
+  if (!sp) return;
+  sp.delay = 0;
+  const v = voice("fx", 0.4 * sp.gain, { sp });
+  if (!v) return;
+  clack(v, 0, 2800, 0.6);
+  v.osc(0.05, { type: "square", freq: 2400, decay: 0.07, peak: 0.25 });
+  v.osc(0.17, { type: "square", freq: 2400, decay: 0.07, peak: 0.25 });
+  v.done();
+});
+
+// ---------------------------------------------------------------------------- bước chân, vùng an toàn, giao diện
+
+/** Bước chân người khác (để nghe đối thủ): chạy thì to hơn. */
+export const playFootstep = safe((at: Place, surface: "grass" | "concrete" | "metal" | "wood", run: boolean) => {
+  const sp = spatial(at, run ? 45 : 25, 4);
+  if (!sp) return;
+  sp.delay = 0;
+  const v = voice("fx", (run ? 0.42 : 0.24) * sp.gain, { sp });
+  if (!v) return;
+  const p = rand(0.9, 1.1);
+  switch (surface) {
+    case "grass":
+      v.noise(0, { type: "bandpass", freq: 2200 * p, q: 0.8, attack: 0.01, decay: 0.09, peak: 0.8 });
+      v.noise(0, { brown: true, type: "lowpass", freq: 500, decay: 0.05, peak: 0.5 });
+      break;
+    case "concrete":
+      v.noise(0, { type: "highpass", freq: 2600 * p, decay: 0.035, peak: 0.6 });
+      v.osc(0, { freq: 200 * p, freqEnd: 110, decay: 0.05, peak: 0.6 });
+      break;
+    case "metal":
+      v.osc(0, { type: "triangle", freq: 520 * p, decay: 0.14, peak: 0.4 });
+      v.osc(0, { freq: 1370 * p, decay: 0.08, peak: 0.2 });
+      v.noise(0, { type: "highpass", freq: 3000, decay: 0.03, peak: 0.4 });
+      break;
+    case "wood":
+      v.osc(0, { freq: 300 * p, freqEnd: 160, decay: 0.1, peak: 0.6 });
+      v.noise(0, { type: "bandpass", freq: 900 * p, q: 3, decay: 0.06, peak: 0.7 });
+      break;
+  }
+  v.done();
+});
+
+/** Cảnh báo / trừ máu ngoài vùng an toàn. */
+export const playZoneTick = safe(() => {
+  const v = voice("ui", 0.4, { bus: "ui" });
+  if (!v) return;
+  v.osc(0, { type: "square", freq: 110, decay: 0.14, peak: 0.25 });
+  v.osc(0, { freq: 55, decay: 0.2, peak: 0.7 });
+  v.noise(0, { type: "bandpass", freq: 1800, q: 1, decay: 0.08, peak: 0.3 }); // lẹt xẹt điện
+  v.done();
+});
+
+/** Đếm ngược; `final` là tiếng "BẮT ĐẦU". */
+export const playCountdown = safe((final: boolean) => {
+  const v = voice("ui", 0.45, { bus: "ui" });
+  if (!v) return;
+  if (final) {
+    v.osc(0, { type: "triangle", freq: 1320, decay: 0.7, peak: 0.6 });
+    v.osc(0, { freq: 660, decay: 0.8, peak: 0.5 });
+    v.osc(0, { freq: 1980, decay: 0.4, peak: 0.15 });
+  } else {
+    v.osc(0, { type: "triangle", freq: 880, decay: 0.18, peak: 0.6 });
+    v.osc(0, { freq: 1760, decay: 0.1, peak: 0.15 });
+  }
+  v.done();
+});
+
+/** Dùng đồ hồi máu (băng gạc xé / hộp cứu thương), trải trong `seconds` giây; trả về hàm hủy. */
+export function playHeal(kind: "bandage" | "medkit", seconds: number): () => void {
+  try {
+    const s = clamp(Number.isFinite(seconds) ? seconds : 3, 0.5, 10);
+    const v = voice("local", 0.4);
+    if (!v) return noop;
+    if (kind === "bandage") {
+      // Xé băng: vài đợt tiếng ồn băng hẹp rung nhanh, rồi quấn sột soạt.
+      for (let i = 0; i < 3; i++) {
+        const t = s * (0.05 + i * 0.25);
+        for (let k = 0; k < 5; k++) v.noise(t + k * 0.03, { type: "bandpass", freq: rand(2500, 4000), q: 1.5, decay: 0.03, peak: 0.5 });
+        v.noise(t + 0.18, { type: "bandpass", freq: 1500, freqEnd: 2600, q: 0.8, attack: 0.08, decay: 0.2, peak: 0.25 });
+      }
+    } else {
+      // Mở khóa kéo, lục đồ, xé gói, bấm ống tiêm, đóng hộp.
+      for (let k = 0; k < 10; k++) v.noise(0.05 + k * 0.025, { type: "bandpass", freq: 3000 + k * 120, q: 3, decay: 0.015, peak: 0.4 });
+      for (let i = 0; i < 4; i++) v.noise(s * (0.2 + i * 0.12) + rand(0, 0.1), { type: "highpass", freq: rand(2500, 4500), attack: 0.03, decay: 0.15, peak: 0.3 });
+      for (let k = 0; k < 4; k++) v.noise(s * 0.7 + k * 0.03, { type: "bandpass", freq: rand(2500, 4000), q: 1.5, decay: 0.03, peak: 0.45 });
+      clack(v, s * 0.85, 2600, 0.5);
+      v.noise(s * 0.85 + 0.05, { type: "highpass", freq: 5000, attack: 0.05, decay: 0.15, peak: 0.2 });
+      clack(v, s * 0.95, 1400, 0.6);
+    }
+    v.done();
+    return () => v.kill();
+  } catch {
+    return noop;
+  }
+}
+
+/** Mua đồ: tiếng "ka-ching" kiểu máy tính tiền. */
+export const playBuy = safe(() => {
+  const v = voice("ui", 0.45, { bus: "ui" });
+  if (!v) return;
+  v.noise(0, { type: "bandpass", freq: 2200, q: 3, decay: 0.03, peak: 0.6 });
+  v.osc(0, { freq: 200, freqEnd: 110, decay: 0.06, peak: 0.4 }); // ngăn kéo
+  v.osc(0.06, { type: "triangle", freq: 1568, decay: 0.35, peak: 0.45 });
+  v.osc(0.06, { type: "triangle", freq: 2093, decay: 0.45, peak: 0.4 });
+  v.osc(0.06, { freq: 2093 * 2.7, decay: 0.15, peak: 0.1 });
+  v.done();
+});

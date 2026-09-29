@@ -259,9 +259,11 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     setLevel(loops.current.wind, (0.05 + 0.12 * height + 0.09 * (windStrength.value - 1)) * outdoors);
     loops.current.wind?.filter.frequency.setTargetAtTime(450 + 350 * Math.sin(t * 0.3) + 200 * weatherFx.storm, audio.ctx!.currentTime, 0.5);
     setLevel(loops.current.rain, 0.5 * weatherFx.rain * (0.4 + 0.6 * outdoors));
-    const lavaDist = Math.hypot(p.x - LAVA.x, p.z - LAVA.z);
+    // Bản đồ Battleground không có núi lửa, không có lửa trại.
+    const battle = state.mode === "battle";
+    const lavaDist = battle ? 999 : Math.hypot(p.x - LAVA.x, p.z - LAVA.z);
     setLevel(loops.current.lava, 0.7 * Math.pow(Math.max(0, 1 - lavaDist / 70), 2) * (0.6 + state.volcano / 200));
-    const campDist = state.campPacked ? 99 : Math.hypot(p.x - state.campX, p.z - state.campZ);
+    const campDist = state.campPacked || battle ? 99 : Math.hypot(p.x - state.campX, p.z - state.campZ);
     const fireNear = Math.pow(Math.max(0, 1 - campDist / 22), 2);
     setLevel(loops.current.fire, 0.1 * fireNear);
 

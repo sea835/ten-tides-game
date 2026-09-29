@@ -175,7 +175,7 @@ function placer(world: World) {
     return world.zoneAt(x, z) !== "volcano" && Math.hypot(x - CAVE.x, z - CAVE.z) > CAVE.radius - 2 && !s.pad && !world.structureAt(x, z);
   };
   /** Vùng lấy mẫu: đảo chính và từng đảo nhỏ, theo diện tích. */
-  const regions = [{ x: 0, z: 0, half: 112 }, ...world.islets.map((it) => ({ x: it.x, z: it.z, half: it.radius * 1.2 }))];
+  const regions = [{ x: 0, z: 0, half: world.extent ?? 112 }, ...world.islets.map((it) => ({ x: it.x, z: it.z, half: it.radius * 1.2 }))];
   const area = regions.reduce((sum, r) => sum + r.half * r.half, 0);
 
   function scatter(count: number, seed: number, accept: (x: number, z: number, h: number, rand: () => number) => boolean, size: [number, number] = [0.7, 1.3]): Spot[] {
@@ -357,7 +357,9 @@ export function Vegetation({ world }: { world: World }) {
     const { inland, clearOfPoints, grassy, scatter, fillPatches } = place;
     const heightAt = world.heightAt;
     const zoneAt = world.zoneAt;
-    const d = (n: number) => Math.round(n * density);
+    // Đảo lớn hơn (bản đồ Battleground) thì rải nhiều hơn theo diện tích để độ dày như nhau.
+    const area = Math.min(3.2, ((world.extent ?? 112) / 112) ** 2);
+    const d = (n: number) => Math.round(n * density * area);
     const underPalm = (x: number, z: number) => world.palms.some((p) => Math.hypot(p.x - x, p.z - z) < 4);
     const nearTree = (x: number, z: number, r: number) => world.trees.some((t) => Math.hypot(t.x - x, t.z - z) < r);
     /** Bãi cát: trên mặt nước, sát mép bờ (đảo đá, đảo núi lửa không có). */

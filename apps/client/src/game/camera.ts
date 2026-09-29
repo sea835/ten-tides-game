@@ -46,8 +46,15 @@ export function useCameraView(): CameraView {
  * Góc thứ nhất: pitch là góc cúi đầu, ngẩng lên nhìn trời được.
  */
 export function clampPitch(pitch: number): number {
-  return view === "first" ? Math.min(1.35, Math.max(-1.35, pitch)) : Math.min(1.2, Math.max(-0.2, pitch));
+  if (view === "first" || cameraMode.battle) return Math.min(1.35, Math.max(-1.35, pitch));
+  return Math.min(1.2, Math.max(-0.2, pitch));
 }
+
+/**
+ * Battleground: camera góc thứ ba đặt qua vai, ngắm được cả lên trời lẫn xuống đất (pitch âm là camera hạ thấp,
+ * nhìn lên). Game.tsx bật tắt theo chế độ phòng.
+ */
+export const cameraMode = { battle: false };
 
 /** Góc ngắm lên xuống cho đòn đánh, cú ném: góc thứ ba ngắm ngang ở pitch 0,35; góc thứ nhất ngắm đúng chỗ đang nhìn. */
 export function aimPitchFrom(pitch: number): number {

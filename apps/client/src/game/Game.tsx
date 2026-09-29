@@ -30,6 +30,13 @@ import { SkyDome, SkyEnvironment } from "./Sky.tsx";
 import { bindInput, isTyping, look } from "./input.ts";
 import { debugCam, localEnv, localPosition, weatherFx } from "./shared.ts";
 import { useWorld } from "./world.ts";
+import { useRoomSnapshot } from "./useRoomSnapshot.ts";
+import { cameraMode } from "./camera.ts";
+import { BattleIsland } from "./battle/BattleWorld.tsx";
+import { BattleEffects } from "./battle/Effects.tsx";
+import { BattleHud, SettingsButton } from "./battle/BattleHud.tsx";
+import { Shooter } from "./battle/Shooter.tsx";
+import { ViewModel } from "./battle/ViewModel.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -105,6 +112,9 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   const quality = useQuality();
   const high = quality === "high";
   const world = useWorld(room);
+  // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
+  const battle = useRoomSnapshot(room, (s) => s.mode) === "battle";
+  cameraMode.battle = battle;
 
   useEffect(() => bindInput(wrapper.current!), []);
   useEffect(() => listenFx(room), [room]);
@@ -144,17 +154,20 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
           {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
           <Physics key={world.seed} timeStep="vary">
-            <Island room={room} world={world} />
+            {battle ? <BattleIsland room={room} world={world} /> : <Island room={room} world={world} />}
             <LocalPlayer room={room} world={world} />
+            {battle && <Shooter room={room} />}
           </Physics>
           <PlayerLight />
-          <FirstPersonHands room={room} />
+          {!battle && <FirstPersonHands room={room} />}
           <RemotePlayers room={room} />
-          <Anchors room={room} />
+          {!battle && <Anchors room={room} />}
           <GroundItems room={room} />
-          <Pages room={room} world={world} />
+          {!battle && <Pages room={room} world={world} />}
           <Weather room={room} world={world} />
-          <Trails room={room} world={world} />
+          {!battle && <Trails room={room} world={world} />}
+          {battle && <BattleEffects room={room} world={world} />}
+          {battle && <ViewModel room={room} />}
           <Soundscape room={room} world={world} />
           <Fx />
           <WaypointTracker />
@@ -164,8 +177,17 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           {high && <PostFx />}
         </Suspense>
       </Canvas>
-      <Controls room={room} />
-      <Hud room={room} onLeave={onLeave} />
+      {battle ? (
+        <BattleHud room={room} onLeave={onLeave} />
+      ) : (
+        <>
+          <Controls room={room} />
+          <Hud room={room} onLeave={onLeave} />
+          <div className="hud story-settings">
+            <SettingsButton />
+          </div>
+        </>
+      )}
     </div>
   );
 }

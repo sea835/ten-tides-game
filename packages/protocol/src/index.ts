@@ -7,6 +7,8 @@ import { BACKGROUND_IDS, BIO_MAX_LENGTH, DIFFICULTY_IDS, FLAW_IDS, GHOST_ACTION_
 import { z } from "zod";
 
 export const ROOM_NAME = "island";
+/** Phòng chế độ Battleground (bắn súng sinh tồn, người cuối cùng còn sống thắng). */
+export const BATTLE_ROOM_NAME = "battle";
 export const MAX_PLAYERS = 6;
 export const DEFAULT_SERVER_PORT = 2567;
 
@@ -41,6 +43,37 @@ export const EVENT_TIMEOUT_SECONDS = 40;
 
 /** Mọi người đều bấm sẵn sàng thì pha hiện tại chỉ còn chừng này giây. */
 export const READY_WRAP_UP_SECONDS = 3;
+
+/** Hành trang Battleground của một người: tiền, súng ba ô, đạn trong băng, đạn dự trữ, đồ ném, giáp, mũ, đồ hồi máu. */
+export const KitState = schema(
+  {
+    money: t.uint32().default(0),
+    primary1: t.string().default(""),
+    primary2: t.string().default(""),
+    pistol: t.string().default(""),
+    mag1: t.uint16().default(0),
+    mag2: t.uint16().default(0),
+    magP: t.uint16().default(0),
+    /** Ô đang cầm: primary1, primary2, pistol, frag, smoke, mine hoặc rỗng (tay không). */
+    active: t.string().default(""),
+    ammo: t.map("uint16"),
+    frag: t.uint8().default(0),
+    smoke: t.uint8().default(0),
+    mine: t.uint8().default(0),
+    bandage: t.uint8().default(0),
+    medkit: t.uint8().default(0),
+    armor: t.uint8().default(0),
+    armorHp: t.uint16().default(0),
+    helmet: t.uint8().default(0),
+    helmetHp: t.uint16().default(0),
+    outfit: t.string().default("woodland"),
+    /** Đang thay đạn / đang băng bó (tên đồ hồi máu), để máy khác diễn động tác. */
+    reloading: t.boolean().default(false),
+    healing: t.string().default(""),
+  },
+  "KitState",
+);
+export type KitState = SchemaType<typeof KitState>;
 
 export const PlayerState = schema(
   {
@@ -89,6 +122,17 @@ export const PlayerState = schema(
     alive: t.boolean().default(true),
     lost: t.boolean().default(false),
     tied: t.boolean().default(false),
+    // Battleground.
+    kit: t.ref(KitState).default(() => new KitState()),
+    kills: t.uint16().default(0),
+    crouching: t.boolean().default(false),
+    aiming: t.boolean().default(false),
+    /** Góc ngắm lên xuống (radian, dương là ngẩng lên), để máy khác thấy nòng súng chĩa đúng hướng. */
+    aimPitch: t.float32().default(0),
+    /** Bộ đếm phát bắn, để máy khác diễn giật súng, chớp lửa đầu nòng. */
+    shots: t.uint16().default(0),
+    /** Là máy (bot) do server điều khiển. */
+    bot: t.boolean().default(false),
   },
   "PlayerState",
 );
@@ -350,6 +394,50 @@ export const BuildingState = schema(
 );
 export type BuildingState = SchemaType<typeof BuildingState>;
 
+/** Vùng an toàn của Battleground: vòng hiện tại, vòng kế tiếp, còn bao lâu tới lúc thu hẹp (hay thu xong). */
+export const ZoneState = schema(
+  {
+    x: t.float32().default(0),
+    z: t.float32().default(0),
+    r: t.float32().default(0),
+    nx: t.float32().default(0),
+    nz: t.float32().default(0),
+    nr: t.float32().default(0),
+    stage: t.uint8().default(0),
+    shrinking: t.boolean().default(false),
+    timeLeft: t.uint16().default(0),
+    /** Máu mất mỗi giây khi đứng ngoài vùng. */
+    dps: t.float32().default(0),
+  },
+  "ZoneState",
+);
+export type ZoneState = SchemaType<typeof ZoneState>;
+
+/** Một dòng bảng hạ gục: ai hạ ai, bằng gì, có trúng đầu không. `killer` rỗng là chết vì vùng độc hay mìn. */
+export const KillState = schema(
+  {
+    killer: t.string().default(""),
+    victim: t.string().default(""),
+    weapon: t.string().default(""),
+    headshot: t.boolean().default(false),
+    n: t.uint32().default(0),
+  },
+  "KillState",
+);
+export type KillState = SchemaType<typeof KillState>;
+
+/** Một đám khói còn bao nhiêu giây. */
+export const SmokeState = schema(
+  {
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    timeLeft: t.float32().default(0),
+  },
+  "SmokeState",
+);
+export type SmokeState = SchemaType<typeof SmokeState>;
+
 export const IslandState = schema(
   {
     /**
@@ -357,6 +445,14 @@ export const IslandState = schema(
      * Seed của engine luật (vai ẩn, chỗ kho báu, bẫy) thì không bao giờ rời server.
      */
     worldSeed: t.uint32().default(0),
+    /** story: chế độ cốt truyện · battle: Battleground. */
+    mode: t.string().default("story"),
+    zone: t.ref(ZoneState).default(() => new ZoneState()),
+    feed: t.array(KillState),
+    smokes: t.map(SmokeState),
+    /** Battleground: còn bao nhiêu người sống, số máy (bot) chủ phòng chọn. */
+    aliveCount: t.uint8().default(0),
+    bots: t.uint8().default(0),
     hostId: t.string().default(""),
     difficulty: t.string().default("normal"),
     nightSeconds: t.uint16().default(PHASE_SECONDS.night),
@@ -441,6 +537,10 @@ export const MoveMessage = z.object({
   moving: z.boolean(),
   sitting: z.boolean(),
   swimming: z.boolean().optional(),
+  /** Battleground: ngồi xổm, đang ngắm, góc ngắm lên xuống. */
+  crouching: z.boolean().optional(),
+  aiming: z.boolean().optional(),
+  aimPitch: z.number().min(-2).max(2).optional(),
 });
 export type MoveMessage = z.infer<typeof MoveMessage>;
 
@@ -573,6 +673,54 @@ export interface RejectedMessage {
   reason: string;
 }
 
+// ---------------------------------------------------------------------------- Battleground
+
+const vec3 = z.tuple([finite, finite, finite]);
+/**
+ * Bắn một phát: gốc tia (đầu nòng), các tia (shotgun nhiều tia), và những gì client thấy trúng (người nào, phần nào,
+ * ở khoảng cách bao xa). Server kiểm tra lại (tốc độ bắn, đạn, vị trí, tường chắn) rồi mới tính sát thương.
+ */
+export const FireMessage = z.object({
+  weapon: id,
+  o: vec3,
+  rays: z.array(vec3).min(1).max(12),
+  hits: z.array(z.object({ target: id, part: z.enum(["head", "body"]), d: z.number().min(0).max(1000), ray: z.int().min(0).max(11) })).max(12),
+});
+export type FireMessage = z.infer<typeof FireMessage>;
+export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "pistol", "frag", "smoke", "mine", ""]) });
+export const BattleBuyMessage = z.object({ item: z.string().max(40) });
+export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke"]), o: vec3, v: vec3 });
+export const HealMessage = z.object({ kind: z.enum(["bandage", "medkit"]) });
+export const BattleSettingsMessage = z.object({ bots: z.int().min(0).max(12) }).partial();
+
+/** Server báo mọi người: một phát bắn (để vẽ vệt đạn, chớp lửa, phát tiếng). `e` là điểm cuối từng tia. */
+export interface ShotMessage {
+  id: string;
+  w: string;
+  o: [number, number, number];
+  e: [number, number, number][];
+}
+/** Server báo riêng người bắn: trúng thân, trúng đầu, hạ gục, trúng giáp. */
+export interface HitMessage {
+  kind: "body" | "head" | "kill";
+  armor: boolean;
+  amount: number;
+}
+/** Server báo riêng người bị trúng: từ hướng nào, mất bao nhiêu. */
+export interface HurtMessage {
+  x: number;
+  z: number;
+  amount: number;
+  armor: boolean;
+}
+/** Nổ: lựu đạn, mìn. Khói: bom khói bung ra. */
+export interface BoomMessage {
+  kind: "frag" | "mine" | "smoke";
+  x: number;
+  y: number;
+  z: number;
+}
+
 export const Messages = {
   move: "move",
   correct: "correct",
@@ -619,6 +767,23 @@ export const Messages = {
   private: "private",
   chat: "chat",
   rejected: "rejected",
+  // Battleground.
+  fire: "fire",
+  reload: "reload",
+  switchSlot: "switchSlot",
+  battleBuy: "battleBuy",
+  battleThrow: "battleThrow",
+  placeMine: "placeMine",
+  heal: "heal",
+  battleSettings: "battleSettings",
+  shot: "shot",
+  hit: "hit",
+  hurt: "hurt",
+  boom: "boom",
+  /** Server báo riêng: vị trí mìn của chính mình (người khác không thấy). */
+  myMines: "myMines",
+  /** Server báo mọi người: mìn kêu tích (sắp nổ). */
+  mineClick: "mineClick",
 } as const;
 
 /** Mã đóng kết nối khi bị chủ phòng mời ra. */

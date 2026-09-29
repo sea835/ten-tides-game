@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Callbacks } from "@colyseus/sdk";
@@ -6,9 +6,10 @@ import type { Group } from "three";
 import type { PlayerState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { currentWorld } from "./world.ts";
-import { Character } from "./Character.tsx";
+import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
+import { bodies } from "./battle/runtime.ts";
 
 const BUBBLE_MS = 6000;
 
@@ -28,6 +29,8 @@ function useBubble(playerId: string): string | null {
 
 function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: string; player: PlayerState; carrying: boolean }) {
   const world = currentWorld(room);
+  const battle = room.state.mode === "battle";
+  useEffect(() => () => void bodies.delete(id), [id]);
   const root = useRef<Group>(null);
   const avatar = useRef<Group>(null);
   const [connected, setConnected] = useState(player.connected);
@@ -54,9 +57,21 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
     if (player.alive !== alive) setAlive(player.alive);
     if (player.held !== held) setHeld(player.held);
     const nextPose = !player.sitting ? "stand" : world.inTallGrass(player.x, player.z) ? "hidden" : "sit";
+    // Battleground: ghi chỗ thân người này đang hiện trên màn hình mình, để dò đạn trúng đúng chỗ thấy.
+    if (battle) {
+      const b = bodies.get(id);
+      if (b) {
+        b.x = g.position.x;
+        b.y = g.position.y;
+        b.z = g.position.z;
+        b.crouch = player.crouching;
+        b.alive = player.alive;
+      } else bodies.set(id, { x: g.position.x, y: g.position.y, z: g.position.z, crouch: player.crouching, alive: player.alive });
+    }
     if (nextPose !== pose) setPose(nextPose);
   });
 
+  if (battle) return <BattleRemote room={room} player={player} root={root} avatar={avatar} alive={alive} />;
   return (
     <group ref={root} position={[player.x, player.y, player.z]}>
       <Character ref={avatar} color={player.color} opacity={alive && connected ? 1 : 0.35} carrying={carrying} held={alive ? held : ""} motion={() => player} />
@@ -72,6 +87,34 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
           {carrying && " · vác rương"}
         </Html>
       )}
+    </group>
+  );
+}
+
+/** Battleground: người khác mang súng, giáp, mũ, áo ngụy trang; gục thì biến mất (đồ rơi lại); không hiện tên. */
+function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom; player: PlayerState; root: RefObject<Group | null>; avatar: RefObject<Group | null>; alive: boolean }) {
+  const look = useRoomSnapshot(room, () => {
+    const k = player.kit;
+    const slot = k.active;
+    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+  });
+  const motion = useMemo(() => {
+    const m: Motion = { moving: false };
+    return () => {
+      m.moving = player.moving;
+      m.swimming = player.swimming;
+      m.crouching = player.crouching;
+      m.aiming = player.aiming;
+      m.aimPitch = player.aimPitch;
+      m.firing = player.shots;
+      m.act = player.act;
+      m.actN = player.actN;
+      return m;
+    };
+  }, [player]);
+  return (
+    <group ref={root} position={[player.x, player.y, player.z]} visible={alive}>
+      <Character ref={avatar} color={player.color} weapon={look.weapon} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
     </group>
   );
 }

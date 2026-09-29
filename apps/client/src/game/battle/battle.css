@@ -1,0 +1,862 @@
+/* Giao diện Battleground: chữ trắng viền tối trên cảnh, khung mờ tối, nhấn màu cam cho số liệu quan trọng. */
+
+.battle-hud {
+  font-family: var(--font-ui, "Be Vietnam Pro", system-ui, sans-serif);
+  color: #f3f1ea;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+.battle-hud kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font: 600 11px/17px system-ui, sans-serif;
+  text-align: center;
+  text-shadow: none;
+}
+.battle-hud button {
+  pointer-events: auto;
+}
+
+/* Tâm ngắm: bốn vạch cách tâm theo độ toả; ngắm thì chỉ còn chấm. */
+.b-cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+.b-cross i {
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 0 2px #000;
+}
+.b-cross i.t,
+.b-cross i.b {
+  width: 2px;
+  height: 9px;
+  left: -1px;
+}
+.b-cross i.l,
+.b-cross i.r {
+  width: 9px;
+  height: 2px;
+  top: -1px;
+}
+.b-cross i.t {
+  bottom: var(--gap);
+}
+.b-cross i.b {
+  top: var(--gap);
+}
+.b-cross i.l {
+  right: var(--gap);
+}
+.b-cross i.r {
+  left: var(--gap);
+}
+.b-cross b {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  left: -1.5px;
+  top: -1.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 2px #000;
+}
+.b-cross.ads i {
+  opacity: 0.35;
+}
+
+.b-hitmark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  background:
+    linear-gradient(45deg, transparent 44%, #fff 44%, #fff 56%, transparent 56%) center / 100% 100%,
+    linear-gradient(-45deg, transparent 44%, #fff 44%, #fff 56%, transparent 56%) center / 100% 100%;
+  -webkit-mask: radial-gradient(circle, transparent 5px, #000 6px);
+  mask: radial-gradient(circle, transparent 5px, #000 6px);
+}
+.b-hitmark.head {
+  filter: drop-shadow(0 0 3px #ffcc00) sepia(1) saturate(8) hue-rotate(5deg);
+}
+.b-hitmark.kill {
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  filter: sepia(1) saturate(10) hue-rotate(-40deg);
+}
+
+/* Hướng bị bắn: cung đỏ quanh tâm màn hình. */
+.b-hurt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 260px;
+  height: 260px;
+  margin: -130px 0 0 -130px;
+  border-radius: 50%;
+  border-top: 6px solid rgba(255, 40, 30, 0.85);
+  -webkit-mask: linear-gradient(90deg, transparent 30%, #000 45%, #000 55%, transparent 70%);
+  mask: linear-gradient(90deg, transparent 30%, #000 45%, #000 55%, transparent 70%);
+  filter: blur(0.5px);
+}
+.b-lowhp {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(170, 0, 0, 0.55) 100%);
+}
+
+/* Ống ngắm: tối xung quanh, vòng tròn, vạch chữ thập mảnh. */
+.b-scope {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 0, transparent 34vmin, rgba(0, 0, 0, 0.94) 34.4vmin);
+}
+.b-scope-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 68vmin;
+  height: 68vmin;
+  margin: -34vmin 0 0 -34vmin;
+  border-radius: 50%;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.85);
+}
+.b-scope-line {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.85);
+}
+.b-scope-line.h {
+  left: calc(50% - 34vmin);
+  width: 68vmin;
+  top: 50%;
+  height: 1px;
+}
+.b-scope-line.v {
+  top: calc(50% - 34vmin);
+  height: 68vmin;
+  left: 50%;
+  width: 1px;
+}
+
+/* La bàn trên cùng. */
+.b-compass {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 420px;
+  height: 28px;
+  margin-left: -210px;
+  overflow: hidden;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.35) 20%, rgba(0, 0, 0, 0.35) 80%, transparent);
+  font-size: 12px;
+}
+.b-compass span {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  opacity: 0.8;
+}
+.b-compass span.card {
+  font-weight: 700;
+  color: #ffd27a;
+  opacity: 1;
+}
+.b-compass em {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.b-top {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.b-count,
+.b-zone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.b-count strong {
+  font-size: 16px;
+  color: #ffd27a;
+}
+.b-zone.shrinking {
+  background: rgba(40, 90, 200, 0.6);
+}
+.b-zone.prep {
+  background: rgba(200, 120, 20, 0.55);
+}
+
+.b-outside {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(30, 70, 190, 0.75);
+  font-weight: 600;
+}
+.b-outside-tint {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(40, 90, 255, 0.28) 100%);
+}
+
+/* Góc phải: bản đồ nhỏ, bảng hạ gục. */
+.b-right {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.b-map {
+  width: 210px;
+  height: 210px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #173a4d;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.b-map.big {
+  width: min(80vh, 80vw);
+  height: min(80vh, 80vw);
+}
+.bm-sea {
+  fill: #1c4a63;
+}
+.bm-land {
+  fill: #587f45;
+  stroke: #d8c79a;
+  stroke-width: 3;
+}
+.bm-site {
+  fill: rgba(60, 60, 60, 0.55);
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 1.5;
+}
+.bm-site.minefield {
+  fill: rgba(190, 40, 30, 0.45);
+}
+.bm-site.armory {
+  fill: rgba(120, 110, 40, 0.6);
+}
+.bm-site.fortress {
+  fill: rgba(130, 120, 100, 0.6);
+}
+.bm-label {
+  fill: #fff;
+  font-size: 11px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 3px;
+}
+.bm-zone {
+  fill: none;
+  stroke: #3f8cff;
+  stroke-width: 3;
+}
+.bm-next {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+.bm-me {
+  fill: #ffd23a;
+  stroke: #000;
+  stroke-width: 1.5;
+}
+.b-bigmap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+.b-feed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  font-size: 12.5px;
+}
+.b-feed div {
+  display: flex;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.b-feed div.me {
+  background: rgba(200, 120, 20, 0.55);
+}
+.b-feed .w {
+  opacity: 0.85;
+}
+.b-feed .v {
+  color: #ff9a8a;
+}
+
+/* Dưới: máu, giáp, đồ ném, súng, tiền. */
+.b-vitals {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  width: 360px;
+  margin-left: -180px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.b-gear {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  font-size: 13px;
+}
+.b-armor {
+  position: relative;
+  padding: 2px 8px 4px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0.55;
+}
+.b-armor.lv1,
+.b-armor.lv2,
+.b-armor.lv3 {
+  opacity: 1;
+}
+.b-armor.lv3 {
+  color: #ffd27a;
+}
+.b-armor i {
+  position: absolute;
+  left: 4px;
+  bottom: 2px;
+  height: 2px;
+  max-width: calc(100% - 8px);
+  background: #8fd0ff;
+}
+.b-hp {
+  position: relative;
+  height: 16px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+.b-hp-fill {
+  height: 100%;
+  background: linear-gradient(180deg, #f5f5f0, #c9c9c0);
+  transition: width 0.15s;
+}
+.b-hp-fill.low {
+  background: linear-gradient(180deg, #ff5a4a, #b8201a);
+}
+.b-hp span {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  font: 700 12px/16px system-ui, sans-serif;
+  color: #111;
+  text-shadow: none;
+}
+.b-items {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.b-items span {
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.b-items span.on {
+  background: rgba(230, 150, 30, 0.7);
+}
+.b-weapons {
+  position: absolute;
+  right: 18px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.b-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 150px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+  opacity: 0.7;
+}
+.b-slot.on {
+  opacity: 1;
+  background: rgba(230, 150, 30, 0.55);
+}
+.b-slot.empty span {
+  opacity: 0.5;
+}
+.b-ammo {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 4px;
+}
+.b-ammo strong {
+  font-size: 34px;
+  line-height: 1;
+}
+.b-ammo strong.empty {
+  color: #ff6a5a;
+}
+.b-ammo span {
+  font-size: 18px;
+  opacity: 0.8;
+}
+.b-ammo small {
+  display: block;
+  width: 100%;
+  font-size: 10px;
+  opacity: 0.7;
+}
+.b-money {
+  position: absolute;
+  left: 18px;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.b-money strong {
+  font-size: 22px;
+  color: #9fe870;
+}
+.b-money span {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.b-progress {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+}
+.b-pickup {
+  position: absolute;
+  left: 50%;
+  top: 64%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 14px;
+}
+
+/* Khung nổi: cửa hàng, cài đặt, sảnh, bảng điểm, màn kết thúc. */
+.b-buy,
+.b-settings,
+.b-lobby,
+.b-score,
+.b-end,
+.b-dead {
+  position: absolute;
+  pointer-events: auto;
+  background: rgba(10, 16, 22, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  text-shadow: none;
+}
+.b-buy header,
+.b-settings header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.b-buy header strong {
+  margin-left: 8px;
+  color: #9fe870;
+}
+.b-buy .x,
+.b-settings .x {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+.b-buy {
+  left: 50%;
+  top: 50%;
+  width: min(760px, 94vw);
+  max-height: 84vh;
+  transform: translate(-50%, -50%);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.b-buy nav {
+  display: flex;
+  gap: 6px;
+}
+.b-buy nav button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  cursor: pointer;
+}
+.b-buy nav button.on {
+  background: rgba(230, 150, 30, 0.6);
+}
+.b-buy-body {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.b-buy-body h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+.b-buy-body section {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
+.b-buy-body section h4 {
+  grid-column: 1 / -1;
+}
+.b-buy-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.b-buy-item:hover:not(:disabled) {
+  background: rgba(230, 150, 30, 0.25);
+}
+.b-buy-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.b-buy-item .n {
+  font-weight: 700;
+}
+.b-buy-item .p {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  align-self: center;
+  color: #9fe870;
+  font-weight: 700;
+}
+.b-buy-item .s {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.b-buy-note,
+.b-buy-msg {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.b-buy-msg {
+  color: #ff9a8a;
+  opacity: 1;
+}
+.b-buy footer {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.b-outfits {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+}
+.b-outfit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  cursor: pointer;
+}
+.b-outfit.on {
+  border-color: #f2b441;
+  background: rgba(230, 150, 30, 0.25);
+}
+.b-outfit .sw {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+.sw.woodland {
+  background: radial-gradient(circle at 30% 30%, #3b4a2a 30%, transparent 32%), radial-gradient(circle at 70% 60%, #1f231a 25%, transparent 27%), #6b7148;
+}
+.sw.desert {
+  background: radial-gradient(circle at 30% 60%, #a88a5c 30%, transparent 32%), #d2bd92;
+}
+.sw.urban {
+  background: radial-gradient(circle at 60% 40%, #555 30%, transparent 32%), radial-gradient(circle at 20% 70%, #2a2a2a 22%, transparent 24%), #9a9a9a;
+}
+.sw.digital {
+  background: conic-gradient(#5d6b45 25%, #3e4a30 0 50%, #7c865c 0 75%, #2f3526 0) 0 0 / 8px 8px;
+}
+.sw.snow {
+  background: radial-gradient(circle at 40% 40%, #b8bec4 25%, transparent 27%), #eef1f3;
+}
+.sw.ghillie {
+  background: repeating-linear-gradient(60deg, #3d4a24 0 3px, #5c6b33 3px 6px, #2c3419 6px 8px);
+}
+
+.b-settings {
+  left: 50%;
+  top: 50%;
+  width: min(420px, 92vw);
+  transform: translate(-50%, -50%);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 30;
+}
+.b-set-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.b-set-row em {
+  font-style: normal;
+  text-align: right;
+  color: #ffd27a;
+}
+.b-set-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.b-gear-btn,
+.story-gear-btn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.b-lobby {
+  left: 50%;
+  top: 50%;
+  width: min(460px, 94vw);
+  transform: translate(-50%, -50%);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.b-lobby h2 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: 0.04em;
+}
+.b-lobby p {
+  margin: 0;
+  font-size: 13.5px;
+  opacity: 0.85;
+}
+.b-lobby-code span {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+}
+.b-lobby-code strong {
+  font-size: 34px;
+  letter-spacing: 0.22em;
+  color: #ffd27a;
+}
+.b-lobby-players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.b-lobby-players li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+}
+.b-lobby-players i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.b-bots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.b-lobby .b-keys {
+  font-size: 11.5px;
+  opacity: 0.65;
+}
+.b-lobby .ghost,
+.b-end .ghost,
+.b-dead .ghost,
+.b-settings .ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.b-score {
+  left: 50%;
+  top: 14%;
+  transform: translateX(-50%);
+  min-width: 360px;
+  padding: 14px 18px;
+}
+.b-score h3 {
+  margin: 0 0 8px;
+}
+.b-score table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.b-score td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.b-score tr.dead {
+  opacity: 0.5;
+}
+.b-score tr.me td {
+  color: #ffd27a;
+}
+.b-end,
+.b-dead {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 22px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.b-dead {
+  top: 30%;
+  background: rgba(40, 8, 8, 0.8);
+}
+.b-end h1 {
+  margin: 0;
+  font-size: 34px;
+}
+.b-end.win h1 {
+  color: #ffd23a;
+  text-shadow: 0 0 22px rgba(255, 200, 40, 0.5);
+}
+.b-end.win {
+  border-color: rgba(255, 210, 60, 0.5);
+}
+.b-dead h2 {
+  margin: 0;
+}
+.b-dead p,
+.b-end p {
+  margin: 0;
+}
+.battle-hud .muted {
+  opacity: 0.7;
+  font-size: 13px;
+}
+/* Chế độ cốt truyện: nút cài đặt nằm cạnh khung phòng. */
+.story-settings .b-gear-btn {
+  left: 244px;
+}
+.story-settings {
+  pointer-events: none;
+}

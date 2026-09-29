@@ -65,6 +65,8 @@ const C = {
   lava: new Color("#c8401f"),
   straw: new Color("#a79d5c"),
   dirt: new Color("#6e5b44"),
+  asphalt: new Color("#3f4143"),
+  concrete: new Color("#8f8c85"),
 };
 
 function faceColor(world: World, out: Color, x: number, z: number, h: number, slope: number) {
@@ -73,7 +75,15 @@ function faceColor(world: World, out: Color, x: number, z: number, h: number, sl
   const n = patch(x, z);
   const islet = surf.islet && surf.inland > -30 ? surf.islet : null;
   const volcanic = islet?.kind === "volcanic";
-  if (!islet && Math.hypot(x - VOLCANO.x, z - VOLCANO.z) < VOLCANO.craterRadius + 1) return out.copy(C.lava);
+  if (world.kind !== "battle" && !islet && Math.hypot(x - VOLCANO.x, z - VOLCANO.z) < VOLCANO.craterRadius + 1) return out.copy(C.lava);
+  // Nền nhân tạo của Battleground: đường nhựa, sân bê tông, sân đá, đất trống.
+  if (surf.ground && h >= WATER_LEVEL + 0.35) {
+    const g = grain(x, z);
+    if (surf.ground === "asphalt") return out.copy(C.asphalt).multiplyScalar(0.92 + 0.12 * g);
+    if (surf.ground === "concrete") return out.copy(C.concrete).multiplyScalar(0.9 + 0.12 * g);
+    if (surf.ground === "stone") return out.copy(C.rock).lerp(C.dirt, 0.25 + 0.2 * g);
+    return out.copy(C.dirt).lerp(C.straw, 0.15 * g);
+  }
   if (h < WATER_LEVEL - 0.3) {
     const bed = surf.reef ? C.reefBed : volcanic ? C.blackWet : C.bed;
     return out.copy(bed).lerp(C.deepBed, Math.min(1, (WATER_LEVEL - h) / (surf.reef ? 9 : 7)));
@@ -122,6 +132,7 @@ function splatAt(world: World, x: number, z: number, h: number, slope: number): 
   const n = patch(x, z);
   const islet = surf.islet && surf.inland > -30 ? surf.islet : null;
   if (h < WATER_LEVEL + 0.35) return [1, 0, 0, 0];
+  if (surf.ground) return surf.ground === "dirt" ? [0, 0, 0.2, 0.8] : [0, 0, 1, 0];
   if (surf.pad || world.structureAt(x, z)) return [0, 0, 0.3, 0.7];
   if (slope > 0.55 && h > 2) return [0, 0, 1, 0];
   const mix = (t: number, a: [number, number, number, number], b: [number, number, number, number]) =>
@@ -327,7 +338,8 @@ function seabedLight(m: MeshStandardMaterial) {
 }
 
 /** Trại, điểm sự kiện, chỗ đào: không mọc cỏ dày (người qua lại giẫm hết). */
-function grassClearings(room: IslandRoom) {
+function grassClearings(room: IslandRoom, world: World) {
+  if (world.kind === "battle") return () => {};
   const fixed = [
     ...ANCHORS.map((a) => [a.x, a.z, LANDMARK_ANCHORS.has(a.type) ? 10 : 3.5] as const),
     ...TREASURE_SITES.map((t) => [t.x, t.z, 2.5] as const),
@@ -342,8 +354,8 @@ function grassClearings(room: IslandRoom) {
 
 const LANDMARK_ANCHORS = new Set(["shipwreck", "jungle_ruin", "cliff_nest", "hot_spring"]);
 
-function Terrain({ room, world }: { room: IslandRoom; world: World }) {
-  const clearings = useMemo(() => grassClearings(room), [room]);
+export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
+  const clearings = useMemo(() => grassClearings(room, world), [room, world]);
   const chunks = useMemo(() => buildTerrain(world), [world]);
   const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
   const high = useQuality() === "high";

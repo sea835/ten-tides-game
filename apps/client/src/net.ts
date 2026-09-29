@@ -1,5 +1,5 @@
 import { Client, type Room } from "@colyseus/sdk";
-import { DEFAULT_SERVER_PORT, IslandState, KICKED_CLOSE_CODE, ROOM_NAME } from "@tentides/protocol";
+import { BATTLE_ROOM_NAME, DEFAULT_SERVER_PORT, IslandState, KICKED_CLOSE_CODE, ROOM_NAME } from "@tentides/protocol";
 import { listenPrivate } from "./game/privateStore.ts";
 
 export type IslandRoom = Room<any, IslandState>;
@@ -70,6 +70,11 @@ function whenReady(room: IslandRoom): Promise<IslandRoom> {
 
 export async function createRoom(name: string): Promise<IslandRoom> {
   return whenReady(await client.create(ROOM_NAME, { name, token: playerToken() }, IslandState));
+}
+
+/** Tạo phòng Battleground (mã phòng dùng chung ô "Vào phòng" như phòng thường). */
+export async function createBattleRoom(name: string): Promise<IslandRoom> {
+  return whenReady(await client.create(BATTLE_ROOM_NAME, { name, token: playerToken() }, IslandState));
 }
 
 export async function joinRoom(code: string, name: string): Promise<IslandRoom> {
