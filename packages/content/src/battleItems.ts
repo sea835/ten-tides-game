@@ -1,7 +1,7 @@
 // Danh mục đồ của chế độ Battleground: súng, đạn, lựu đạn, bom khói, mìn, giáp, mũ, đồ hồi máu, trang phục.
 // Dùng chung cho server (sát thương, tốc độ bắn, giá) và client (mô hình, âm thanh, cửa hàng).
 
-export type AmmoId = "9mm" | "45acp" | "556" | "762" | "12g" | "300";
+export type AmmoId = "9mm" | "45acp" | "556" | "762" | "12g" | "300" | "rocket";
 
 export const AMMO: Record<AmmoId, { name: string; price: number; pack: number }> = {
   "9mm": { name: "Đạn 9mm", price: 60, pack: 45 },
@@ -10,10 +10,11 @@ export const AMMO: Record<AmmoId, { name: string; price: number; pack: number }>
   "762": { name: "Đạn 7.62mm", price: 120, pack: 60 },
   "12g": { name: "Đạn 12 Gauge", price: 80, pack: 15 },
   "300": { name: "Đạn .300 Magnum", price: 200, pack: 10 },
+  rocket: { name: "Đạn RPG", price: 350, pack: 2 },
 };
 
 /** Nhóm súng: quyết định ô đeo, dáng cầm, tiếng nổ. */
-export type WeaponClass = "pistol" | "smg" | "ar" | "lmg" | "dmr" | "sniper" | "shotgun";
+export type WeaponClass = "pistol" | "smg" | "ar" | "lmg" | "dmr" | "sniper" | "shotgun" | "launcher";
 
 export interface WeaponDef {
   id: string;
@@ -51,10 +52,15 @@ export interface WeaponDef {
   headshot: number;
   /** Chỉ có trong kho vũ khí (hàng hiếm). */
   rare?: boolean;
+  /**
+   * Súng phóng đạn nổ (chống tăng): đạn không dò trúng người như đạn thường, server dò đường bay một lần rồi nổ ở
+   * chỗ chạm (bán kính, sát thương nổ vào người ở tâm, sát thương thêm vào xe tăng trúng thẳng).
+   */
+  explosive?: { radius: number; damage: number; armor: number };
 }
 
 /** Sơ tốc đầu nòng (m/s), gần với súng thật. */
-const VELOCITY: Record<string, number> = { p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, s686: 380, sks: 800, kar98k: 760, awm: 945 };
+const VELOCITY: Record<string, number> = { rpg7: 150, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, s686: 380, sks: 800, kar98k: 760, awm: 945 };
 
 const w = (d: Omit<WeaponDef, "pellets" | "headshot" | "speed" | "velocity"> & Partial<Pick<WeaponDef, "pellets" | "headshot" | "speed">>): WeaponDef => ({
   pellets: 1,
@@ -76,6 +82,8 @@ export const WEAPONS: readonly WeaponDef[] = [
   w({ id: "s686", name: "S686", class: "shotgun", ammo: "12g", mag: 2, rpm: 200, damage: 24, pellets: 9, range: 22, hipSpread: 0.075, adsSpread: 0.06, recoil: 0.06, recoilSide: 0.02, auto: false, reload: 2.2, zoom: 1.2, price: 1100, headshot: 1.5 }),
   w({ id: "sks", name: "SKS", class: "dmr", ammo: "762", mag: 10, rpm: 330, damage: 55, range: 220, hipSpread: 0.035, adsSpread: 0.003, recoil: 0.03, recoilSide: 0.008, auto: false, reload: 2.9, zoom: 1.5, price: 3200, speed: 0.95, headshot: 2.3 }),
   w({ id: "kar98k", name: "Kar98k", class: "sniper", ammo: "762", mag: 5, rpm: 48, damage: 80, range: 400, hipSpread: 0.05, adsSpread: 0.0008, recoil: 0.06, recoilSide: 0.01, auto: false, reload: 3.8, zoom: 1.5, price: 3800, speed: 0.95, headshot: 2.5 }),
+  // RPG-7: một quả mỗi lần nạp, bay chậm, rơi nhiều ở xa; nổ phá xe tăng, người đứng gần cũng chết.
+  w({ id: "rpg7", name: "RPG-7", class: "launcher", ammo: "rocket", mag: 1, rpm: 40, damage: 0, range: 160, hipSpread: 0.04, adsSpread: 0.006, recoil: 0.05, recoilSide: 0.01, auto: false, reload: 3.4, zoom: 1.4, price: 2200, speed: 0.88, headshot: 1, explosive: { radius: 4.5, damage: 110, armor: 380 } }),
   w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, rpm: 40, damage: 105, range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, headshot: 2.5, rare: true }),
 ];
 
@@ -139,6 +147,7 @@ export const SIGHT_IDS = Object.keys(SIGHTS) as SightId[];
 /** Ống ngắm nào lắp được lên súng nào (súng lục chỉ kính phản xạ, shotgun tới 2x, tiểu liên tới 4x). */
 export function sightFits(sight: string, def: WeaponDef): boolean {
   if (!(sight in SIGHTS)) return false;
+  if (def.class === "launcher") return false;
   const max = def.class === "pistol" ? 1.5 : def.class === "shotgun" ? 2 : def.class === "smg" ? 4 : 8;
   return SIGHTS[sight as SightId].zoom <= max;
 }

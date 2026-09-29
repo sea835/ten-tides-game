@@ -175,6 +175,8 @@ export interface World {
   kind?: "story" | "battle";
   /** Nửa cạnh vùng đảo chính (để rải cây cỏ); mặc định 112. */
   extent?: number;
+  /** Nửa cạnh cả bản đồ (địa hình, mặt biển); mặc định MAP_HALF_SIZE. Chiến trường 50 vs 50 rộng hơn. */
+  half?: number;
   islets: readonly Islet[];
   reefs: readonly Reef[];
   structures: readonly Structure[];

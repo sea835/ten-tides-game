@@ -73,6 +73,7 @@ const MATS: Record<string, MatDef> = {
   "ammo:762": { color: "#c65a26", rough: 0.7, detail: "none" },
   "ammo:12g": { color: "#b83232", rough: 0.7, detail: "none" },
   "ammo:300": { color: "#7a4bb0", rough: 0.7, detail: "none" },
+  "ammo:rocket": { color: "#4c5838", rough: 0.75, detail: "none" },
   ammobox: { color: "#4a4f36", rough: 0.8, detail: "none" },
   /** Vỏ lựu đạn choáng: xám xanh. */
   flash: { color: "#6f7a66", metal: 0.3, rough: 0.6, detail: "none" },
@@ -558,6 +559,34 @@ const GUNS: Record<string, GunSpec> = {
     action: () => [...bolt(0.1, -0.05), box("steel", 0.004, 0.014, 0.07, [-0.0185, 0.1, 0.0]), cyl("steel", 0.011, 0.04, [0, 0.1, -0.13], { segs: 10 })],
     // Nắp đáy hộp tiếp đạn và hộp đạn giấu trong báng.
     mag: () => [box("metal", 0.03, 0.012, 0.07, [0, 0.03, 0.03]), box("metal", 0.024, 0.03, 0.065, [0, 0.05, 0.03])],
+  },
+  // RPG-7: ống phóng thép dài vác vai, ốp gỗ chống nóng, loe sau, hai tay cầm; quả đạn đầu nhọn cắm ở miệng ống
+  // (phần "mag": bắn đi thì biến mất tới khi nạp quả mới).
+  rpg7: {
+    muzzle: [0, 0.09, 0.62],
+    sight: 0.165,
+    support: [0.0, 0.03, 0.2],
+    stock: 0.34,
+    eject: [0, 0.09, -0.5],
+    travel: 0,
+    parts: () => [
+      cyl("metal", 0.036, 0.98, [0, 0.09, 0.12], { segs: 14 }),
+      cyl("metal", 0.036, 0.2, [0, 0.09, -0.46], { segs: 14, r2: 0.066, open: true }),
+      cyl("wood", 0.047, 0.32, [0, 0.09, 0.02], { segs: 14 }),
+      grip("poly", 0.034),
+      box("poly", 0.03, 0.1, 0.04, [0, -0.005, 0.2], [0.2, 0, 0]),
+      ...trigger(0.035, 0.03),
+      post(0.165, 0.36, 0.12),
+      ...notch(0.165, -0.08, 0.026, 0.03),
+      box("metal", 0.02, 0.035, 0.05, [-0.045, 0.1, -0.1]),
+    ],
+    action: () => [],
+    mag: () => [
+      cyl("olive", 0.03, 0.06, [0, 0.09, 0.64], { segs: 12 }),
+      cyl("olive", 0.052, 0.16, [0, 0.09, 0.75], { segs: 14, r2: 0.03 }),
+      cyl("olive", 0.012, 0.2, [0, 0.09, 0.92], { segs: 12, r2: 0.052 }),
+      cyl("steel", 0.006, 0.04, [0, 0.09, 1.04], { segs: 8 }),
+    ],
   },
   // AWM: khung báng xanh ô liu có lỗ ngón cái, nòng to với hãm nẩy, ống ngắm lớn, chân chống.
   awm: {

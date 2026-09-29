@@ -73,6 +73,10 @@ export interface Tracer {
   mine: boolean;
   /** Sơ tốc (m/s): vệt bay tới đích mất chừng ấy thời gian, võng xuống theo đường đạn rơi. */
   speed?: number;
+  /** Đạn nổ: RPG (lửa đuôi to, vệt khói dài), pháo xe tăng (vệt sáng to, khói mỏng). */
+  trail?: "rocket" | "shell";
+  /** Khói đuôi đã nhả tới quãng nào (m). */
+  smoked?: number;
 }
 export interface Impact {
   x: number;
@@ -106,6 +110,10 @@ export interface Blast {
   y: number;
   z: number;
   born: number;
+  /** Nổ to (đạn pháo, RPG, xe nổ tung): cầu lửa, sóng xung kích lớn hơn. */
+  big?: boolean;
+  /** Số ngẫu nhiên riêng của vụ nổ (hình dạng cầu lửa mỗi vụ một khác). */
+  seed?: number;
 }
 
 /** Vết máu bắn lên tường, sàn phía sau người trúng đạn. */

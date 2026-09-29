@@ -58,6 +58,16 @@ export interface BattleSite {
   ground: NonNullable<Surface["ground"]>;
 }
 
+/** Cứ điểm (chiến trường): chữ cái, tên, tâm cột cờ, bán kính vùng chiếm. */
+export interface FlagSpot {
+  id: string;
+  name: string;
+  x: number;
+  z: number;
+  y: number;
+  r: number;
+}
+
 /** Chỗ rơi đồ: cấp 1 thường, 2 khá, 3 hiếm (kho vũ khí). */
 export interface LootSpot {
   x: number;
@@ -67,6 +77,12 @@ export interface LootSpot {
 }
 
 export interface BattleMap {
+  /** Đảo sinh tồn (mặc định) hay chiến trường 50 vs 50 (war.ts). */
+  layout?: "island" | "war";
+  /** Nửa cạnh vùng bản đồ (m); mặc định MAP_HALF_SIZE. */
+  half?: number;
+  /** Cứ điểm để chiếm (chiến trường). */
+  flags?: readonly FlagSpot[];
   world: World;
   sites: readonly BattleSite[];
   boxes: readonly BattleBox[];
@@ -107,7 +123,7 @@ const MOUNTAIN = { x: -25, z: -40, r: 64, h: 24 };
 const FORT_HILL = { x: -110, z: -95, r: 48, h: 12 };
 
 /** Toạ độ riêng (u, v) của khu → thế giới. */
-function toWorld(site: Pick<BattleSite, "x" | "z" | "rot">, u: number, v: number): { x: number; z: number } {
+export function toWorld(site: Pick<BattleSite, "x" | "z" | "rot">, u: number, v: number): { x: number; z: number } {
   const c = Math.cos(site.rot);
   const s = Math.sin(site.rot);
   return { x: site.x + u * c + v * s, z: site.z - u * s + v * c };
@@ -120,7 +136,7 @@ function toLocal(site: Pick<BattleSite, "x" | "z" | "rot">, x: number, z: number
   return { u: dx * c - dz * s, v: dx * s + dz * c };
 }
 /** Khoảng cách ra ngoài hình chữ nhật của khu (0 là ở trong). */
-function outside(site: BattleSite, x: number, z: number, grow = 0): number {
+export function outside(site: BattleSite, x: number, z: number, grow = 0): number {
   const { u, v } = toLocal(site, x, z);
   const du = Math.max(0, Math.abs(u) - site.rx - grow);
   const dv = Math.max(0, Math.abs(v) - site.rz - grow);
@@ -167,7 +183,8 @@ function siteHeight(x: number, z: number): number {
 
 type Rand = ReturnType<typeof makeRand>;
 
-class Builder {
+/** Bộ dựng công trình theo toạ độ riêng của một khu (dùng chung cho đảo sinh tồn và chiến trường). */
+export class Builder {
   boxes: BattleBox[] = [];
   loot: LootSpot[] = [];
   constructor(
@@ -208,7 +225,7 @@ const SLAB_T = 0.25;
 const RUN = 5.2;
 const PLASTER = ["#d8d2c4", "#c9b79c", "#b8c4c9", "#d9c3a5", "#a9b3a0", "#cfc7bb", "#bfa89a", "#9fb0bf"];
 
-interface TowerOpts {
+export interface TowerOpts {
   floors: number;
   w: number;
   d: number;
@@ -223,7 +240,7 @@ interface TowerOpts {
  * Toà nhà nhiều tầng: sàn bê tông, tường có ô cửa sổ trống (bắn qua được), cửa ra vào ở tầng trệt, cầu thang
  * gấp khúc hai vế dọc tường trái lên tới sân thượng, vài vách ngăn và thùng gỗ làm chỗ nấp.
  */
-function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
+export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
   const add = b.local(u0, v0, rot);
   const { floors, w: W, d: D } = o;
   const mat = o.mat ?? "plaster";
@@ -324,7 +341,7 @@ function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
   }
 }
 
-function buildCity(b: Builder) {
+export function buildCity(b: Builder) {
   const s = b.site;
   // Đường nhựa kẻ vạch: hai trục chính.
   for (const v of [-14, 14]) b.add(0, 0.03, v, s.rx * 2, 0.04, 0.3, "road", { solid: false, tint: "#e8e0c0" });
@@ -354,7 +371,7 @@ function buildCity(b: Builder) {
   }
 }
 
-function container(add: ReturnType<Builder["local"]>, u: number, y: number, v: number, rand: Rand) {
+export function container(add: ReturnType<Builder["local"]>, u: number, y: number, v: number, rand: Rand) {
   const tints = ["#b5372c", "#2f5f8f", "#d98e1e", "#3f7a3a", "#7b7b7b", "#8a3f7a", "#1f6f6f"];
   add(u, y + 1.3, v, 6.1, 2.6, 2.44, "container", { tint: tints[Math.floor(rand() * tints.length)] });
 }
@@ -436,7 +453,7 @@ function buildPort(b: Builder) {
   tower(b, 10, 5, 0, { floors: 3, w: 12, d: 10, tier: 1 });
 }
 
-function buildFortress(b: Builder) {
+export function buildFortress(b: Builder) {
   const S = 22;
   const T = 2.6;
   const H = 7;
@@ -535,14 +552,14 @@ function buildMinefield(b: Builder) {
   b.lootAt(-16, 0.05, 6, 2);
 }
 
-function buildArmory(b: Builder) {
+export function buildArmory(b: Builder, fence = true) {
   const s = b.site;
-  // Hàng rào lưới quanh khu, cổng trước.
-  for (let u = -s.rx; u < s.rx; u += 5) {
+  // Hàng rào lưới quanh khu, cổng trước (cứ điểm chiến trường thì bỏ rào cho hai phe vào chiếm được từ mọi phía).
+  for (let u = -s.rx; u < s.rx && fence; u += 5) {
     if (Math.abs(u + 2.5) > 4) b.add(u + 2.5, 1.2, -s.rz, 5, 2.4, 0.08, "fence", { solid: true });
     b.add(u + 2.5, 1.2, s.rz, 5, 2.4, 0.08, "fence", { solid: true });
   }
-  for (let v = -s.rz; v < s.rz; v += 5) {
+  for (let v = -s.rz; v < s.rz && fence; v += 5) {
     b.add(-s.rx, 1.2, v + 2.5, 0.08, 2.4, 5, "fence", { solid: true });
     b.add(s.rx, 1.2, v + 2.5, 0.08, 2.4, 5, "fence", { solid: true });
   }
@@ -586,7 +603,7 @@ function buildArmory(b: Builder) {
   for (let k = 0; k < 4; k++) b.lootAt(-12 + k * 8, 0.05, -9, 2);
 }
 
-function buildVillage(b: Builder) {
+export function buildVillage(b: Builder) {
   const s = b.site;
   const houses = 2 + Math.floor(b.rand() * 2);
   for (let k = 0; k < houses; k++) {
@@ -814,6 +831,15 @@ function battleGrass(rand: Rand, world: World): GrassPatch[] {
 
 const cache = new Map<number, BattleMap>();
 
+/** Bản đồ Battleground của một thế giới (đảo sinh tồn hay chiến trường), để phần nào chỉ có `world` cũng tra được. */
+const byWorld = new WeakMap<World, BattleMap>();
+export function registerMap(map: BattleMap) {
+  byWorld.set(map.world, map);
+}
+export function mapOf(world: World): BattleMap {
+  return byWorld.get(world) ?? battleMap(world.seed || 1);
+}
+
 export function battleMap(seed: number): BattleMap {
   const hit = cache.get(seed);
   if (hit) return hit;
@@ -887,14 +913,15 @@ export function battleMap(seed: number): BattleMap {
     mines.push(p);
   }
 
-  const map: BattleMap = { world, sites: BATTLE_SITES, boxes, loot, mines, index: buildIndex(boxes) };
+  const map: BattleMap = { layout: "island", half: 240, flags: [], world, sites: BATTLE_SITES, boxes, loot, mines, index: buildIndex(boxes) };
   cache.set(seed, map);
+  registerMap(map);
   return map;
 }
 
 /** Chỗ xuất phát ngẫu nhiên trên đất liền (không trong nước, không kẹt trong nhà, không trong bãi mìn). */
 export function battleSpawn(map: BattleMap, rand: () => number, avoid: readonly { x: number; z: number }[] = []): { x: number; y: number; z: number } {
-  const mf = map.sites.find((s) => s.kind === "minefield")!;
+  const mf = map.sites.find((s) => s.kind === "minefield");
   let fallback = { x: 0, y: map.world.heightAt(0, 0) + 1, z: 0 };
   for (let tries = 0; tries < 200; tries++) {
     const a = rand() * Math.PI * 2;
@@ -902,7 +929,7 @@ export function battleSpawn(map: BattleMap, rand: () => number, avoid: readonly 
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
     const h = map.world.heightAt(x, z);
-    if (h < 1 || outside(mf, x, z, 4) === 0) continue;
+    if (h < 1 || (mf && outside(mf, x, z, 4) === 0)) continue;
     if (insideBox(map.index, x, h + 1, z, 0.6)) continue;
     fallback = { x, y: h, z };
     if (avoid.every((p) => Math.hypot(p.x - x, p.z - z) > 45)) return { x, y: h, z };

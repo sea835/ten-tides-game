@@ -63,6 +63,7 @@ const PUNCH: Record<WeaponDef["class"], { pitch: number; roll: number; body: num
   dmr: { pitch: 0.9, roll: 0.02, body: 0.85 },
   sniper: { pitch: 1.1, roll: 0.035, body: 1 },
   shotgun: { pitch: 1.1, roll: 0.03, body: 1 },
+  launcher: { pitch: 1.3, roll: 0.03, body: 1.2 },
 };
 
 /**
@@ -555,6 +556,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       d.y += lift * Math.sqrt(1 - d.y * d.y);
       d.normalize();
       rays.push([d.x, d.y, d.z]);
+      // RPG: server dò đường bay và báo nổ; vệt đạn vẽ theo tin "shot" server gửi về.
+      if (def.explosive) continue;
       const d3: [number, number, number] = [d.x, d.y, d.z];
       // Đạn bay theo đường cong: dò từng đoạn dây cung, gặp tường hay người trước thì dừng.
       let sHit = maxRange;
@@ -608,14 +611,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const seconds = now / 1000;
     // Vệt đạn: góc nhất thì bay ra từ đầu nòng khẩu súng trước mặt (chỗ lửa đầu nòng), không phải từ mắt.
     const from = first && muzzleView.valid ? new Vector3(muzzleView.x, muzzleView.y, muzzleView.z) : muzzle;
-    for (const e of ends) effects.tracers.push({ ox: from.x, oy: from.y, oz: from.z, ex: e.at.x, ey: e.at.y, ez: e.at.z, born: seconds, mine: true, speed: def.velocity });
+    if (!def.explosive) for (const e of ends) effects.tracers.push({ ox: from.x, oy: from.y, oz: from.z, ex: e.at.x, ey: e.at.y, ez: e.at.z, born: seconds, mine: true, speed: def.velocity });
     // Lửa đầu nòng: góc nhất thì ViewModel tự vẽ trên súng; góc ba vẽ ở đầu nòng thật.
     if (!first) effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
     playGunshot(def.id, muzzle, true);
-    if (def.class !== "sniper" && def.class !== "shotgun") playShotMechanics(def.id);
+    if (def.class !== "sniper" && def.class !== "shotgun" && def.class !== "launcher") playShotMechanics(def.id);
     // Vỏ đạn văng ra cửa thoát bên phải (súng khoá nòng: văng khi kéo khoá, sau phát bắn một chút; shotgun hai nòng
     // bẻ ra lúc nạp đạn).
-    if (def.class !== "shotgun") {
+    if (def.class !== "shotgun" && def.class !== "launcher") {
       let ex: Vector3;
       let rx = right.x;
       let rz = right.z;

@@ -14,7 +14,7 @@ import {
   Vector3,
   type InstancedMesh,
 } from "three";
-import { battleMap, type BattleBox, type BoxMat } from "@tentides/content";
+import { mapOf, type BattleBox, type BoxMat, type World } from "@tentides/content";
 import { detailed, type DetailKind } from "../textures.ts";
 
 // Công trình của bản đồ Battleground: hàng nghìn khối hộp gom theo chất liệu và theo ô đất TILE mét, mỗi nhóm một
@@ -249,8 +249,8 @@ function Colliders({ boxes }: { boxes: readonly BattleBox[] }) {
   return null;
 }
 
-export function BattleStructures({ seed }: { seed: number }) {
-  const map = battleMap(seed);
+export function BattleStructures({ world }: { world: World }) {
+  const map = mapOf(world);
   // Mỗi chất liệu một vật liệu và một hình hộp dùng chung cho mọi ô.
   const materials = useMemo(() => new Map<BoxMat, MeshStandardMaterial>(), []);
   const geometry = useMemo(() => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ROLES, TANK, battleMap, type SquadRole } from "@tentides/content";
+import { ROLES, TANK, mapForMode, type SquadRole } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, look } from "../input.ts";
@@ -11,7 +11,7 @@ import { tankHud } from "./Vehicles.tsx";
 // Giao diện chế độ Đồng đội và xe tăng: bảng đội (máu, vai trò, ai đang lái tăng), ra lệnh cho máy (F tới chỗ đang
 // nhìn, G giữ chỗ, H theo sau), gục rồi thì chọn máy trong đội để nhập vào, và bảng điều khiển khi lái xe tăng.
 
-const ROLE_ICON: Record<string, string> = { leader: "★", rifle: "▲", sniper: "◎", support: "■", tanker: "⛟" };
+const ROLE_ICON: Record<string, string> = { leader: "★", rifle: "▲", sniper: "◎", support: "■", tanker: "⛟", antitank: "✹" };
 const ORDER_LABEL: Record<string, string> = { follow: "Theo sau", hold: "Giữ chỗ", move: "Tới điểm" };
 
 /** Tên đội thắng: đội của người chơi nào, hay đội máy số mấy. */
@@ -23,8 +23,8 @@ export function teamName(room: IslandRoom, team: string): string {
 }
 
 /** Điểm trên mặt đất ở giữa màn hình (dò theo hướng nhìn), để ra lệnh "tới điểm". */
-function groundAhead(seed: number): { x: number; z: number } | null {
-  const world = battleMap(seed || 1).world;
+function groundAhead(seed: number, mode: string): { x: number; z: number } | null {
+  const world = mapForMode(mode, seed).world;
   const cp = Math.cos(look.pitch);
   // Góc thứ ba: camera sau lưng nhìn xuống nhân vật; tia từ ngang đầu theo hướng nhìn.
   const dx = -Math.sin(look.yaw) * cp;
@@ -77,7 +77,7 @@ export function SquadHud({ room }: { room: IslandRoom }) {
       if (!p) return;
       if (p.alive && p.team === me) {
         if (e.code === "KeyF") {
-          const at = groundAhead(room.state.worldSeed);
+          const at = groundAhead(room.state.worldSeed, room.state.battleMode);
           if (!at) return;
           room.send(Messages.squadOrder, { kind: "move", x: at.x, z: at.z });
           Object.assign(lastOrder, { kind: "move", x: at.x, z: at.z, at: performance.now() });

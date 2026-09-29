@@ -147,6 +147,8 @@ export const PlayerState = schema(
     team: t.string().default(""),
     role: t.string().default(""),
     vehicle: t.string().default(""),
+    /** Chiến trường: còn bao nhiêu giây nữa được hồi sinh (0 là chọn chỗ được rồi). */
+    respawn: t.float32().default(0),
   },
   "PlayerState",
 );
@@ -478,6 +480,23 @@ export const VehicleState = schema(
 );
 export type VehicleState = SchemaType<typeof VehicleState>;
 
+/** Một cứ điểm (chiến trường 50 vs 50): phe đang giữ, tiến độ chiếm (−1 đỏ … 1 xanh), số người mỗi phe trong vùng. */
+export const FlagState = schema(
+  {
+    name: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    r: t.float32().default(15),
+    owner: t.string().default(""),
+    progress: t.float32().default(0),
+    blue: t.uint8().default(0),
+    red: t.uint8().default(0),
+  },
+  "FlagState",
+);
+export type FlagState = SchemaType<typeof FlagState>;
+
 export const IslandState = schema(
   {
     /**
@@ -505,6 +524,10 @@ export const IslandState = schema(
     /** Battleground: "solo" (sinh tồn một mình) hay "squad" (mỗi người dẫn 5 máy, đội cuối cùng còn người thắng). */
     battleMode: t.string().default("solo"),
     vehicles: t.map(VehicleState),
+    /** Chiến trường: cứ điểm (key là chữ cái A–G), vé quân còn lại của hai phe. */
+    flags: t.map(FlagState),
+    ticketsBlue: t.uint16().default(0),
+    ticketsRed: t.uint16().default(0),
     difficulty: t.string().default("normal"),
     nightSeconds: t.uint16().default(PHASE_SECONDS.night),
     /** Thời lượng hoàng hôn của phòng, để client tính còn bao lâu tới lúc tối. */
@@ -755,7 +778,7 @@ export const BattleSettingsMessage = z
     bots: z.int().min(0).max(MAX_BATTLE_BOTS),
     weather: z.enum(["random", ...BATTLE_WEATHERS]),
     time: z.enum(["random", ...BATTLE_TIMES]),
-    mode: z.enum(["solo", "squad"]),
+    mode: z.enum(["solo", "squad", "war"]),
   })
   .partial();
 /** Lái xe tăng: vị trí, hướng thân, hướng tháp pháo, góc nòng (máy người lái tự tính, server kiểm tra tốc độ). */
@@ -767,6 +790,11 @@ export type TankFireMessage = z.infer<typeof TankFireMessage>;
 /** Ra lệnh cho máy trong đội: đi theo mình, giữ chỗ, tới điểm (x, z). */
 export const SquadOrderMessage = z.object({ kind: z.enum(["follow", "hold", "move"]), x: finite.optional(), z: finite.optional() });
 export type SquadOrderMessage = z.infer<typeof SquadOrderMessage>;
+/** Chiến trường: hồi sinh ở căn cứ ("hq") hay ở cứ điểm phe mình đang giữ (chữ cái), với lớp lính đã chọn. */
+export const RespawnMessage = z.object({ at: z.string().max(8), role: z.enum(["rifle", "sniper", "support", "antitank", "tanker"]) });
+export type RespawnMessage = z.infer<typeof RespawnMessage>;
+/** Chiến trường (ở sảnh): chọn phe. */
+export const PickSideMessage = z.object({ side: z.enum(["blue", "red"]) });
 /** Đã gục: nhập vào một máy còn sống trong đội mình. */
 export const PossessMessage = z.object({ id: id });
 export type PossessMessage = z.infer<typeof PossessMessage>;
@@ -870,6 +898,10 @@ export const Messages = {
   tankFire: "tankFire",
   squadOrder: "squadOrder",
   possess: "possess",
+  respawn: "respawn",
+  pickSide: "pickSide",
+  /** Server báo mọi người: một phe vừa chiếm được cứ điểm. */
+  flag: "flag",
 } as const;
 
 /** Mã đóng kết nối khi bị chủ phòng mời ra. */

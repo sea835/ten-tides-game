@@ -1332,3 +1332,342 @@
 .b-tank-bar.reload i {
   background: #ffc233;
 }
+
+/* ---------------------------------------------------------------- chế độ Chiến trường (50 vs 50) */
+
+/* Trên cùng: vé quân hai phe, dãy cứ điểm. */
+.w-top {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.w-tickets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.w-tickets.mine {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+.w-tickets b {
+  min-width: 30px;
+  font-size: 16px;
+  text-align: center;
+}
+.w-tickets i {
+  width: min(120px, 16vw);
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+  display: flex;
+}
+.w-tickets u {
+  display: block;
+  height: 100%;
+  transition: width 0.4s;
+}
+.w-tickets.blue span,
+.w-tickets.blue b {
+  color: #8fb4ff;
+}
+.w-tickets.blue u {
+  background: #2f6bff;
+}
+.w-tickets.red span,
+.w-tickets.red b {
+  color: #ff9a92;
+}
+.w-tickets.red i {
+  justify-content: flex-end;
+}
+.w-tickets.red u {
+  background: #e0332b;
+}
+.w-flags {
+  display: flex;
+  gap: 4px;
+}
+.w-flag {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 800;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+}
+.w-flag.blue {
+  background: #2f6bff;
+}
+.w-flag.red {
+  background: #e0332b;
+}
+.w-flag.neutral {
+  background: rgba(200, 200, 190, 0.35);
+}
+.w-flag.ours {
+  border-color: #fff;
+}
+.w-flag em {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+}
+
+/* Thanh chiếm khi đứng trong vùng cứ điểm. */
+.w-capture {
+  position: absolute;
+  left: 50%;
+  top: 92px;
+  transform: translateX(-50%);
+  width: min(320px, 86vw);
+  padding: 6px 12px 8px;
+  border-radius: 10px;
+  background: rgba(8, 14, 20, 0.6);
+  text-align: center;
+  font-size: 12.5px;
+}
+.w-capture-title b {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+.w-capture-bar {
+  position: relative;
+  height: 8px;
+  margin: 6px 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.w-capture-bar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.7);
+}
+.w-capture-bar u {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.w-capture-bar u.blue {
+  left: 50%;
+  background: #2f6bff;
+}
+.w-capture-bar u.red {
+  right: 50%;
+  background: #e0332b;
+}
+.w-capture-count {
+  font-size: 11.5px;
+  opacity: 0.85;
+}
+.w-capture .blue {
+  color: #8fb4ff;
+}
+.w-capture .red {
+  color: #ff9a92;
+}
+.w-capture.contested .w-capture-title {
+  color: #ffd23a;
+  animation: w-blink 0.8s steps(2) infinite;
+}
+@keyframes w-blink {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Gục: chọn lớp lính, chỗ hồi sinh. */
+.w-deploy {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  width: min(620px, calc(100vw - 32px));
+  max-height: 76vh;
+  overflow-y: auto;
+  pointer-events: auto;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(10, 16, 22, 0.9);
+  text-align: center;
+}
+.w-deploy h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+.w-deploy .muted {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+.w-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.w-roles button,
+.w-spawns button {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.07);
+  color: inherit;
+  cursor: pointer;
+}
+.w-roles button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 7px 8px;
+  text-align: left;
+  font-size: 12.5px;
+}
+.w-roles small {
+  font-size: 10.5px;
+  opacity: 0.7;
+}
+.w-roles kbd {
+  font-size: 10px;
+}
+.w-roles button.on,
+.w-spawns button.on {
+  border-color: #ffd23a;
+  background: rgba(255, 210, 58, 0.16);
+}
+.w-spawns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.w-spawns button {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Sảnh: hai cột phe. */
+.w-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0;
+}
+.w-side {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.w-side.blue {
+  background: rgba(47, 107, 255, 0.18);
+}
+.w-side.red {
+  background: rgba(224, 51, 43, 0.18);
+}
+.w-side h4 {
+  margin: 0 0 4px;
+}
+.w-side.blue h4 {
+  color: #8fb4ff;
+}
+.w-side.red h4 {
+  color: #ff9a92;
+}
+.w-side ul {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.w-side li.muted {
+  opacity: 0.6;
+}
+.w-side button {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Bản đồ: vùng cứ điểm. */
+.bm-flag {
+  fill-opacity: 0.3;
+  stroke-width: 2;
+}
+.bm-flag-letter {
+  fill: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 3px;
+}
+
+/* Chữ cái cứ điểm nổi trên cao trong thế giới 3D. */
+.b-flag-tag {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font: 800 14px var(--font-ui, system-ui, sans-serif);
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+  border: 2px solid #fff;
+  pointer-events: none;
+  user-select: none;
+}
+.b-flag-tag.blue {
+  background: rgba(47, 107, 255, 0.75);
+}
+.b-flag-tag.red {
+  background: rgba(224, 51, 43, 0.75);
+}
+.b-flag-tag.ours {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
+}
+.b-flag-tag.neutral {
+  background: rgba(60, 60, 60, 0.6);
+}
+
+/* Màn hình thấp (100 người, tin hạ gục dồn dập): chỉ giữ 3 dòng mới nhất, khỏi đè lên ô súng. */
+@media (max-height: 620px) {
+  .b-feed div:nth-last-child(n + 4) {
+    display: none;
+  }
+}

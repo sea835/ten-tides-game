@@ -22,8 +22,9 @@ export function isPlausibleMove(
   to: MoveMessage,
   elapsedMs: number,
   ground: (x: number, z: number) => number = islandHeightAt,
+  half: number = MAP_HALF_SIZE,
 ): boolean {
-  if (Math.abs(to.x) > MAP_HALF_SIZE || Math.abs(to.z) > MAP_HALF_SIZE) return false;
+  if (Math.abs(to.x) > half || Math.abs(to.z) > half) return false;
   if (to.y < ground(to.x, to.z) - 2) return false;
 
   const seconds = Math.max(elapsedMs, MIN_WINDOW_MS) / 1000;

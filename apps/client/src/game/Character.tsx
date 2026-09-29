@@ -494,6 +494,8 @@ export function Character({
 
   const gunId = weapon || "";
   const pistol = gunId === "p92" || gunId === "deagle";
+  // Súng chống tăng luôn vác trên vai phải (cầm ngang hông thì thân người che mất ống phóng).
+  const shoulder = gunId === "rpg7";
   const itemInHand = gunId ? "" : held;
 
   // Tiết kiệm: người ở sau lưng camera thì thôi tính dáng (đứng yên tư thế cũ), ở xa thì tính cách một khung hình;
@@ -708,7 +710,7 @@ export function Character({
       body.current.rotation.z = (m.dizzy ?? 0) > 0 ? Math.sin(now / 260) * 0.12 : 0;
     }
     // Nằm sấp: súng luôn tì vai; góc nòng tính trong khung thân (thân đã ngả gần nằm ngang) nên cộng bù góc ngả.
-    const aimW = withGun ? Math.max(a.aim, prone) : 0;
+    const aimW = withGun ? Math.max(a.aim, prone, shoulder ? 1 : 0) : 0;
     const look = Math.max(-1.2, Math.min(1.2, a.pitch));
     const pitch = look + PRONE_TILT * prone;
     if (torso.current) {

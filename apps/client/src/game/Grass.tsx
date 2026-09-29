@@ -35,7 +35,7 @@ const CLEARINGS = 32;
  * Chụp địa hình từ trên xuống: ảnh màu (RGB màu đất, A mật độ cỏ) và ảnh độ cao. `run` vẽ vào hai ảnh, gọi trong
  * vòng lặp khung hình (vẽ ngay lúc React dựng cây thì renderer chưa sẵn sàng, ảnh ra trống).
  */
-function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[]) {
+function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[], half: number) {
   const vertex = /* glsl */ `
     attribute vec4 splat;
     varying vec3 vColor;
@@ -46,7 +46,7 @@ function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[]) {
       // Cỏ mọc ở chỗ trọng số cỏ cao, trên mặt nước một đoạn.
       vGrass = splat.y / max(splat.x + splat.y + splat.z + splat.w, 1e-3) * smoothstep(0.5, 1.0, position.y);
       vHeight = position.y;
-      gl_Position = vec4(position.x / ${MAP_HALF_SIZE.toFixed(1)}, position.z / ${MAP_HALF_SIZE.toFixed(1)}, 0.5, 1.0);
+      gl_Position = vec4(position.x / ${half.toFixed(1)}, position.z / ${half.toFixed(1)}, 0.5, 1.0);
     }
   `;
   const colorMat = new ShaderMaterial({
@@ -161,6 +161,7 @@ const VERTEX_HEAD = /* glsl */ `
   uniform sampler2D uGroundColor;
   uniform sampler2D uGroundHeight;
   uniform vec3 uCam;
+  uniform float uHalf;
   uniform float uTile;
   uniform float uRadius;
   uniform float uWind;
@@ -176,7 +177,7 @@ const VERTEX_PLACE = /* glsl */ `
   // Chỗ đứng cố định trên thế giới, lặp theo ô quanh camera.
   vec2 gRel = (fract((aSeed.xy * uTile - uCam.xz) / uTile + 0.5) - 0.5) * uTile;
   vec2 gXZ = uCam.xz + gRel;
-  vec2 gUV = gXZ / ${(MAP_HALF_SIZE * 2).toFixed(1)} + 0.5;
+  vec2 gUV = gXZ / (uHalf * 2.0) + 0.5;
   vec4 gGround = texture2D(uGroundColor, gUV);
   float gY = texture2D(uGroundHeight, gUV).r;
   float gDist = length(gRel);
@@ -215,18 +216,18 @@ const VERTEX_PLACE = /* glsl */ `
  * `clearings(out)` ghi các khoảng trống [x, z, bán kính] vào mảng (gọi mỗi khung hình, trại dời được);
  * chỗ thừa để bán kính 0.
  */
-export function GrassField({ geometries, count, clearings, heightAt }: { geometries: BufferGeometry[]; count: number; clearings: (out: Vector3[]) => void; heightAt: (x: number, z: number) => number }) {
+export function GrassField({ geometries, count, clearings, heightAt, half = MAP_HALF_SIZE }: { geometries: BufferGeometry[]; count: number; clearings: (out: Vector3[]) => void; heightAt: (x: number, z: number) => number; half?: number }) {
   const gl = useThree((s) => s.gl);
   // Tạo và huỷ ảnh nướng trong cùng một effect (StrictMode, sửa nóng khi dev chạy effect hai lần).
   const [baked, setBaked] = useState<ReturnType<typeof bakeGround> | null>(null);
   useEffect(() => {
-    const b = bakeGround(gl, geometries);
+    const b = bakeGround(gl, geometries, half);
     setBaked(b);
     return () => {
       b.color.dispose();
       b.height.dispose();
     };
-  }, [gl, geometries]);
+  }, [gl, geometries, half]);
   const chunks = useMemo(() => bladeGeometries(count, 77), [count]);
   const meshes = useRef<(Mesh | null)[]>([]);
   // Độ cao thấp nhất, cao nhất của mặt đất trong từng ô thế giới (ô cố định trên lưới lặp), tính một lần.
@@ -239,13 +240,14 @@ export function GrassField({ geometries, count, clearings, heightAt }: { geometr
       uGroundColor: { value: baked?.color.texture ?? null },
       uGroundHeight: { value: baked?.height.texture ?? null },
       uCam: { value: new Vector3() },
+      uHalf: { value: half },
       uTile: { value: 68 },
       uRadius: { value: 34 },
       uWind: wind,
       uWindStrength: windStrength,
       uClear: { value: Array.from({ length: CLEARINGS }, () => new Vector3()) },
     }),
-    [baked],
+    [baked, half],
   );
 
   const material = useMemo(() => {

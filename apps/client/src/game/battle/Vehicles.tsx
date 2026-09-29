@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Callbacks } from "@colyseus/sdk";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
-import { TANK, TEAM_COLORS, battleMap, cannonMuzzle, cannonPitch, tankStep, type TankPose } from "@tentides/content";
+import { TANK, TEAM_COLORS, mapForMode, cannonMuzzle, cannonPitch, tankStep, type TankPose } from "@tentides/content";
 import { Messages, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -69,6 +69,8 @@ G.brake.rotateX(Math.PI / 2);
 /** Màu đội (theo id đội), để phân biệt xe mình với xe địch. */
 export function teamColor(team: string): string {
   if (!team) return "#9a9a8a";
+  if (team === "blue") return "#2f6bff";
+  if (team === "red") return "#e0332b";
   let h = 0;
   for (let i = 0; i < team.length; i++) h = (h * 31 + team.charCodeAt(i)) >>> 0;
   return TEAM_COLORS[h % TEAM_COLORS.length]!;
@@ -166,7 +168,7 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
     const c = teamColor(v.team);
     if (c !== color) setColor(c);
     // Nghiêng theo mặt đất (dốc trước sau, trái phải).
-    const world = battleMap(room.state.worldSeed || 1).world;
+    const world = mapForMode(room.state.battleMode, room.state.worldSeed).world;
     const s = Math.sin(a.rotY);
     const co = Math.cos(a.rotY);
     const hf = world.heightAt(a.x + s * 2.6, a.z + co * 2.6);
@@ -321,7 +323,7 @@ function TankDriver({ room }: { room: IslandRoom }) {
       look.pitch = 0.25;
       if (getBattleHud().nearTank) setBattleHud({ nearTank: "" });
     }
-    const map = battleMap(room.state.worldSeed || 1);
+    const map = mapForMode(room.state.battleMode, room.state.worldSeed);
     const typing = menuOpen();
     const throttle = typing ? 0 : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const steer = typing ? 0 : (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);

@@ -267,7 +267,9 @@ export function ViewModel({ room }: { room: IslandRoom }) {
           const out = reloading && withMag ? ramp(r, 0.12, 0.3) : 0;
           const back = reloading && withMag ? ramp(r, 0.62, 0.76) : 1;
           const gone = reloading && withMag && r > 0.3 && r < 0.62;
-          magG.visible = !gone;
+          // Ống phóng: quả đạn đã bay đi thì miệng ống trống tới khi nạp quả mới.
+          const fired = def.class === "launcher" && gun.mag <= 0 && !(reloading && r >= 0.62);
+          magG.visible = !gone && !fired;
           const drop = r < 0.5 ? out : 1 - back;
           magG.position.set(0, -0.22 * drop, -0.03 * drop);
           magG.rotation.set(0.35 * drop, 0, 0);

@@ -204,7 +204,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <SkyDome />
           {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
           {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
-          <Physics key={world.seed} timeStep="vary">
+          <Physics key={`${world.seed}:${world.half ?? 0}`} timeStep="vary">
             {battle ? <BattleIsland room={room} world={world} /> : <Island room={room} world={world} />}
             <LocalPlayer room={room} world={world} />
             {battle && <Shooter room={room} />}

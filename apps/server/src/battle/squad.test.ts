@@ -34,7 +34,7 @@ describe("Battleground: đồng đội, xe tăng, 50 máy", () => {
     const players = [...room.state.players.entries()];
     const mine = players.filter(([, p]) => p.team === "human0");
     expect(mine.length).toBe(6);
-    expect(mine.filter(([, p]) => p.bot).map(([, p]) => p.role).sort()).toEqual(["rifle", "rifle", "sniper", "support", "tanker"]);
+    expect(mine.filter(([, p]) => p.bot).map(([, p]) => p.role).sort()).toEqual(["antitank", "rifle", "sniper", "support", "tanker"]);
     // 2 người × 5 máy = 10, còn 10 máy chia thành đội máy.
     expect(players.filter(([, p]) => p.bot).length).toBe(20);
     const tanks = [...room.state.vehicles.values()];

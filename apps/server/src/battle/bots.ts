@@ -53,6 +53,14 @@ interface Brain {
   slot: number;
   /** Chờ bao lâu nữa mới ném lựu đạn tiếp (giây). */
   nade: number;
+  /** Chiến trường: cứ điểm đang nhắm, tới lúc nào thì chọn lại, chỗ đứng trong vùng (góc, bán kính 0–1). */
+  goal: string;
+  goalUntil: number;
+  ga: number;
+  gr: number;
+  /** Máy chống tăng: xe tăng địch đang nhắm (id người lái), lần dò kế tiếp. */
+  at: string;
+  atScan: number;
   /** Kẹt: thử né sang bên trong chừng này giây. */
   detour: number;
   detourDir: number;
@@ -102,7 +110,7 @@ export class Bots {
   /** Lệnh của từng đội (theo id đội). */
   orders = new Map<string, SquadOrder>();
   private grid: HeightGrid | null = null;
-  private gridSeed = -1;
+  private gridMap: object | null = null;
   /** Đội trưởng từng đội, tính lại mỗi nhịp. */
   private leaders = new Map<string, string>();
   private nameSeq = 0;
@@ -110,10 +118,10 @@ export class Bots {
   constructor(private readonly room: BattleRoom) {}
 
   private height(x: number, z: number): number {
-    const seed = this.room.state.worldSeed;
-    if (!this.grid || this.gridSeed !== seed) {
-      this.grid = new HeightGrid(this.room.map.world.heightAt);
-      this.gridSeed = seed;
+    const map = this.room.map;
+    if (!this.grid || this.gridMap !== map) {
+      this.grid = new HeightGrid(map.world.heightAt, (map.half ?? 240) - 20);
+      this.gridMap = map;
     }
     return this.grid.at(x, z);
   }
@@ -188,6 +196,21 @@ export class Bots {
     }
   }
 
+  /**
+   * Chiến trường: thêm `blue` máy phe Xanh, `red` máy phe Đỏ; mỗi phe `tankers` máy đầu tiên lái tăng, còn lại chia
+   * lớp lính theo `roles` (súng trường, bắn tỉa, súng máy, chống tăng).
+   */
+  buildWar(blue: number, red: number, roles: readonly SquadRole[], tankers: number) {
+    this.clear();
+    let made = 0;
+    for (const [side, n] of [
+      ["blue", blue],
+      ["red", red],
+    ] as const) {
+      for (let k = 0; k < n; k++, made++) this.newBot(`bot${made + 1}`, side, k < tankers ? "tanker" : roles[k % roles.length]!);
+    }
+  }
+
   /** Mỗi máy một bộ đồ: solo thì ngẫu nhiên; Đồng đội thì theo vai trò (súng, ống ngắm, lựu đạn, băng gạc). */
   equipAll() {
     for (const [id, p] of this.room.state.players) {
@@ -205,6 +228,8 @@ export class Bots {
       receive(p.kit, `armor:${1 + Math.floor(Math.random() * 2)}`, []);
       receive(p.kit, `helmet:${1 + Math.floor(Math.random() * 2)}`, []);
       for (const extra of spec?.extras ?? ["bandage", "frag"]) receive(p.kit, extra, []);
+      // Súng phụ (RPG) nhận sau cùng thì thành món đang cầm: cầm lại súng chính.
+      if (p.kit.primary1) p.kit.active = "primary1";
       p.hp = MAX_HP;
       p.crouching = p.prone = false;
       this.brains.set(id, this.fresh(p.x, p.z, 0));
@@ -265,7 +290,7 @@ export class Bots {
   }
 
   private fresh(x: number, z: number, slot: number): Brain {
-    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0 };
+    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0 };
   }
 
   /** Hai người có phải địch của nhau không (cùng đội thì không). */
@@ -369,9 +394,42 @@ export class Bots {
     }
   }
 
+  /**
+   * Chiến trường: máy nhắm tới một cứ điểm (chưa phải của phe mình, gần nhất hay gần nhì; thỉnh thoảng ở lại giữ
+   * cứ điểm đang bị đánh), đứng rải trong vùng chiếm; chiếm xong thì đi tiếp. Xe tăng đứng ngoài rìa yểm trợ.
+   */
+  private warSpot(p: PlayerState, b: Brain, tank: boolean): { x: number; z: number; far: number } | null {
+    const s = this.room.state;
+    const side = p.team;
+    const now = Date.now();
+    let f = b.goal ? s.flags.get(b.goal) : undefined;
+    const enemyIn = (fl: { blue: number; red: number }) => (side === "blue" ? fl.red : fl.blue);
+    const secured = f && f.owner === side && Math.abs(f.progress) >= 1 && enemyIn(f) === 0;
+    if (!f || now > b.goalUntil || (secured && Math.random() < 0.75)) {
+      const flags = [...s.flags.entries()];
+      const dist = ([, fl]: (typeof flags)[number]) => Math.hypot(fl.x - p.x, fl.z - p.z);
+      const attack = flags.filter(([, fl]) => fl.owner !== side).sort((a, c) => dist(a) - dist(c));
+      const defend = flags.filter(([, fl]) => fl.owner === side && enemyIn(fl) > 0);
+      let pick = attack[Math.random() < 0.65 || attack.length < 2 ? 0 : 1];
+      if (defend.length && Math.random() < 0.35) pick = defend[Math.floor(Math.random() * defend.length)];
+      if (!pick) pick = flags[Math.floor(Math.random() * flags.length)];
+      if (!pick) return null;
+      b.goal = pick[0];
+      b.goalUntil = now + 9000 + Math.random() * 9000;
+      b.ga = Math.random() * Math.PI * 2;
+      b.gr = Math.sqrt(Math.random());
+      f = pick[1];
+    }
+    const r = tank ? f.r + 12 : f.r * 0.8 * b.gr;
+    const x = f.x + Math.cos(b.ga) * r;
+    const z = f.z + Math.sin(b.ga) * r;
+    return { x, z, far: Math.hypot(x - p.x, z - p.z) };
+  }
+
   /** Chỗ máy này nên đứng theo đội hình (hay theo lệnh), hoặc null nếu tự do (đội trưởng, máy solo). */
   private formationSpot(id: string, p: PlayerState, b: Brain, tank: boolean): { x: number; z: number; far: number } | null {
     if (!p.team) return null;
+    if (this.room.state.battleMode === "war") return this.warSpot(p, b, tank);
     const s = this.room.state;
     const leaderId = this.leaderOf(p.team);
     const order = this.orders.get(p.team);
@@ -414,6 +472,9 @@ export class Bots {
     const slot = isGunSlot(kit.active) ? kit.active : null;
     const def = slot ? weaponIn(kit, slot) : undefined;
     if (slot && def && magOf(kit, slot) === 0 && !kit.reloading) room.reload(id);
+
+    // Có RPG: thấy xe tăng địch trong tầm thì đổi sang RPG, ngắm (bù đạn rơi) rồi bắn; không thì cầm lại súng chính.
+    if (this.antiTank(id, p, b, eye, dt, target)) return;
 
     let mx = 0;
     let mz = 0;
@@ -478,10 +539,11 @@ export class Bots {
           p.crouching = false;
           p.rotY = Math.atan2(mx, mz);
         } else {
-          p.crouching = order?.kind === "hold" || order?.kind === "move";
-          // Đứng canh: nhìn ra ngoài đội hình theo hướng chỗ đứng.
+          p.crouching = order?.kind === "hold" || order?.kind === "move" || s.battleMode === "war";
+          // Đứng canh: nhìn ra ngoài đội hình theo hướng chỗ đứng; chiến trường thì đảo mắt quanh cứ điểm.
           const leader = s.players.get(this.leaderOf(p.team));
-          if (leader) p.rotY = leader.rotY + ((b.slot % 2 ? 1 : -1) * (0.4 + (b.slot >> 1) * 0.5));
+          if (s.battleMode === "war") p.rotY += dt * 0.35 * (b.slot % 2 ? 1 : -1);
+          else if (leader) p.rotY = leader.rotY + ((b.slot % 2 ? 1 : -1) * (0.4 + (b.slot >> 1) * 0.5));
         }
       } else {
         p.crouching = false;
@@ -535,6 +597,75 @@ export class Bots {
     }
     // Máu thấp mà không ai bắn thì băng bó.
     if (!target && p.hp < 60 && kit.bandage > 0 && !kit.healing) this.heal(id);
+  }
+
+  /** Máy mang RPG bắn xe tăng địch thấy được trong tầm. Trả về true nếu lượt này đang lo bắn xe (không đi lại). */
+  private antiTank(id: string, p: PlayerState, b: Brain, eye: [number, number, number], dt: number, infantry: PlayerState | undefined): boolean {
+    const s = this.room.state;
+    const kit = p.kit;
+    const rpgSlot = kit.primary1 === "rpg7" ? "primary1" : kit.primary2 === "rpg7" ? "primary2" : "";
+    if (!rpgSlot || s.phase !== "battle") return false;
+    const rockets = magOf(kit, rpgSlot) + (kit.ammo.get("rocket") ?? 0);
+    b.atScan -= dt;
+    if (b.atScan <= 0) {
+      b.atScan = 0.5 + Math.random() * 0.2;
+      b.at = "";
+      let bestD = 150;
+      if (rockets > 0)
+        for (const v of s.vehicles.values()) {
+          if (v.hp <= 0 || !v.driver) continue;
+          const driver = s.players.get(v.driver);
+          if (!driver || !this.hostile(p, driver)) continue;
+          const d = Math.hypot(v.x - p.x, v.z - p.z);
+          if (d > bestD || d < 8 || !this.visible(eye, v.x, v.y + 1.4, v.z)) continue;
+          b.at = v.driver;
+          bestD = d;
+        }
+    }
+    // Lính địch sát bên thì lo bắn người trước.
+    const closeInfantry = infantry && b.sees && Math.hypot(infantry.x - p.x, infantry.z - p.z) < 25;
+    const tank = b.at && !closeInfantry ? s.players.get(b.at) : undefined;
+    if (!tank || !tank.alive || !tank.vehicle) {
+      if (kit.active === rpgSlot && kit.primary1 && rpgSlot !== "primary1") kit.active = "primary1";
+      return false;
+    }
+    const v = s.vehicles.get(tank.vehicle);
+    if (!v) return false;
+    if (kit.active !== rpgSlot) {
+      kit.active = rpgSlot;
+      kit.reloading = false;
+      b.pause = 0.8;
+    }
+    const def = WEAPON.get("rpg7")!;
+    const dx = v.x - p.x;
+    const dz = v.z - p.z;
+    const d = Math.hypot(dx, dz);
+    p.rotY = Math.atan2(dx, dz);
+    p.aiming = true;
+    p.moving = false;
+    p.crouching = true;
+    p.prone = false;
+    const rocketEye: [number, number, number] = [p.x, p.y + 1.2, p.z];
+    // Ngẩng thêm để bù đạn rơi (đạn bay chậm, rơi nhiều ở xa), lệch chút ít theo khoảng cách.
+    const flight = d / def.velocity;
+    const drop = 0.5 * 9.81 * flight * flight;
+    const err = 0.012 + d * 0.00012;
+    const ty = v.y + 1.2 + drop - rocketEye[1];
+    const aimYaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 2 * err;
+    const aimPitch = Math.atan2(ty, d) + (Math.random() - 0.5) * err;
+    p.aimPitch = aimPitch;
+    if (magOf(kit, rpgSlot) === 0) {
+      if (!kit.reloading) this.room.reload(id);
+      return true;
+    }
+    if (b.pause > 0) {
+      b.pause -= dt;
+      return true;
+    }
+    const cp = Math.cos(aimPitch);
+    this.room.fire(id, "rpg7", rocketEye, [[Math.sin(aimYaw) * cp, Math.sin(aimPitch), Math.cos(aimYaw) * cp]], []);
+    b.pause = 1.5 + Math.random();
+    return true;
   }
 
   /** Ném lựu đạn vào xe tăng địch gần nhất trong tầm ném (thấy được): tính quỹ đạo cầu vồng rơi đúng chỗ xe. */
@@ -672,14 +803,14 @@ export class Bots {
     const s = this.room.state;
     const z = s.zone;
     const map = this.room.map;
-    const mf = map.sites.find((x) => x.kind === "minefield")!;
+    const mf = map.sites.find((x) => x.kind === "minefield");
     for (let tries = 0; tries < 20; tries++) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.sqrt(Math.random()) * Math.max(10, Math.min(z.nr || 150, 150) * 0.85);
       const x = (s.phase === "battle" ? z.nx : 0) + Math.cos(a) * r;
       const zz = (s.phase === "battle" ? z.nz : 0) + Math.sin(a) * r;
       if (this.height(x, zz) < 0.8) continue;
-      if (Math.hypot(x - mf.x, zz - mf.z) < Math.max(mf.rx, mf.rz) + 4) continue;
+      if (mf && Math.hypot(x - mf.x, zz - mf.z) < Math.max(mf.rx, mf.rz) + 4) continue;
       b.wx = x;
       b.wz = zz;
       return;

@@ -23,6 +23,11 @@ import type { BattleRoom } from "./BattleRoom.ts";
 /** Đạn pháo đang bay: nổ ở (x, y, z) sau `left` giây; `direct` là xe bị bắn trúng thẳng (mất thêm máu). */
 interface Shell {
   left: number;
+  /** Nổ: bán kính, sát thương người ở tâm, sát thương thêm vào xe trúng thẳng; tên vũ khí (bảng hạ gục). */
+  radius: number;
+  damage: number;
+  armor: number;
+  weapon: string;
   x: number;
   y: number;
   z: number;
@@ -61,7 +66,7 @@ export class Vehicles {
       const px = x + Math.cos(a) * r;
       const pz = z + Math.sin(a) * r;
       const rotY = rand() * Math.PI * 2;
-      if (Math.hypot(px, pz) > 175) continue;
+      if (Math.hypot(px, pz) > (map.half ?? 240) * 0.8) continue;
       if (!tankFits(map, px, pz, rotY) || !tankFits(map, px, pz, rotY + Math.PI / 2)) continue;
       if ([...this.room.state.vehicles.values()].some((v) => Math.hypot(v.x - px, v.z - pz) < 9)) continue;
       return { x: px, z: pz, rotY };
@@ -83,6 +88,11 @@ export class Vehicles {
     this.room.state.vehicles.set(id, v);
     if (driver) this.seat(driver, id);
     return id;
+  }
+
+  /** Cho người `pid` lên lái xe `vid` (hồi sinh làm lính lái tăng, máy lái tăng ở căn cứ). */
+  board(pid: string, vid: string) {
+    this.seat(pid, vid);
   }
 
   /** Cho người `pid` ngồi vào ghế lái xe `vid`. */
@@ -163,7 +173,7 @@ export class Vehicles {
       const driver = v.driver ? s.players.get(v.driver) : undefined;
       // Xe có người lái: chỉ đổi chỗ được với máy cùng đội.
       if (driver && !(driver.bot && p.team && driver.team === p.team)) continue;
-      if (!driver && v.team && p.team && v.team !== p.team && s.battleMode === "squad") continue;
+      if (!driver && v.team && p.team && v.team !== p.team && s.battleMode !== "solo") continue;
       best = vid;
       bestD = d;
     }
@@ -183,7 +193,7 @@ export class Vehicles {
     const now = Date.now();
     const elapsed = Math.max(100, now - (this.lastMoveAt.get(pid) ?? now - 100));
     const dist = Math.hypot(m.x - v.x, m.z - v.z);
-    if (dist > TANK.forward * 1.8 * (elapsed / 1000) + 0.5 || Math.hypot(m.x, m.z) > 240) {
+    if (dist > TANK.forward * 1.8 * (elapsed / 1000) + 0.5 || Math.hypot(m.x, m.z) > (this.room.map.half ?? 240) * 1.2) {
       this.room.clientOf(pid)?.send(Messages.correct, { x: v.x, y: v.y, z: v.z } satisfies CorrectMessage);
       return;
     }
@@ -212,19 +222,30 @@ export class Vehicles {
     v.pitch = Math.max(TANK.pitchDown, Math.min(TANK.pitchUp, pitch));
     v.shots = (v.shots + 1) % 65536;
     const { o, d } = cannonMuzzle(v, v.turret, v.pitch);
+    this.launch(pid, o, d, TANK.velocity, { radius: TANK.radius, damage: TANK.damage, armor: TANK.armorDamage }, "tank", vid);
+    this.room.bots.onShot(pid, v.x, v.z, 250);
+  }
+
+  /**
+   * Phóng một viên đạn nổ (pháo xe tăng, RPG) từ `o` theo hướng `d`: dò đường bay cong một lần (đồi, nhà, xe, người),
+   * báo mọi máy vẽ vệt đạn, hẹn giờ nổ đúng lúc đạn tới nơi. `skip` là xe của chính người bắn.
+   */
+  launch(owner: string, o: [number, number, number], d: [number, number, number], velocity: number, spec: { radius: number; damage: number; armor: number }, weapon: string, skip = "") {
+    const s = this.room.state;
+    const shooter = s.players.get(owner);
     const max = 450;
-    const steps = bulletSteps(TANK.velocity, max);
+    const steps = bulletSteps(velocity, max);
     let hitS = max;
     let direct = "";
     for (let i = 1; i < steps.length; i++) {
-      const a = bulletAt(o, d, TANK.velocity, steps[i - 1]!);
-      const b = bulletAt(o, d, TANK.velocity, steps[i]!);
+      const a = bulletAt(o, d, velocity, steps[i - 1]!);
+      const b = bulletAt(o, d, velocity, steps[i]!);
       const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
       const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
       let t = Math.min(raycastBoxes(this.room.map.index, a, cd, len), raycastTerrain(this.room.map.world, a, cd, len));
       let hitTank = "";
       for (const [oid, other] of s.vehicles) {
-        if (oid === vid) continue;
+        if (oid === skip) continue;
         const tt = rayTank(other, a, cd, len);
         if (tt < t) {
           t = tt;
@@ -232,7 +253,7 @@ export class Vehicles {
         }
       }
       for (const q of s.players.values()) {
-        if (!q.alive || q === p || q.vehicle) continue;
+        if (!q.alive || q === shooter || q.vehicle) continue;
         const h = rayBody(a, cd, { x: q.x, y: q.y, z: q.z, rotY: q.rotY, crouch: q.crouching, prone: q.prone });
         if (h && h.t < t) {
           t = h.t;
@@ -245,20 +266,19 @@ export class Vehicles {
         break;
       }
     }
-    const e = bulletAt(o, d, TANK.velocity, hitS);
-    this.shells.push({ left: hitS / TANK.velocity, x: e[0], y: e[1], z: e[2], owner: pid, direct });
-    this.room.broadcast(Messages.shot, { id: pid, w: "tank", o, e: [e] } satisfies ShotMessage);
-    this.room.bots.onShot(pid, v.x, v.z, 250);
+    const e = bulletAt(o, d, velocity, hitS);
+    this.shells.push({ left: hitS / velocity, x: e[0], y: e[1], z: e[2], owner, direct, ...spec, weapon });
+    this.room.broadcast(Messages.shot, { id: owner, w: weapon, o, e: [e] } satisfies ShotMessage);
   }
 
   /** Mất máu xe; hết máu thì nổ tung, người lái chết theo. */
-  damage(vid: string, amount: number, attacker: string) {
+  damage(vid: string, amount: number, attacker: string, weapon = "tank") {
     const s = this.room.state;
     const v = s.vehicles.get(vid);
     if (!v || v.hp <= 0 || this.room.state.phase !== "battle") return;
     const a = attacker ? s.players.get(attacker) : undefined;
     // Không bắn hỏng xe của đội mình.
-    if (a && a.team && a.team === v.team && s.battleMode === "squad" && attacker !== v.driver) return;
+    if (a && a.team && a.team === v.team && s.battleMode !== "solo" && attacker !== v.driver) return;
     v.hp = Math.max(0, Math.round(v.hp - amount));
     if (attacker && attacker !== v.driver) this.room.clientOf(attacker)?.send(Messages.hit, { kind: v.hp <= 0 ? "kill" : "body", armor: true, amount: Math.round(amount) } satisfies HitMessage);
     if (v.driver) this.room.bots.onHurt(v.driver, attacker);
@@ -272,19 +292,19 @@ export class Vehicles {
       const p = s.players.get(driver);
       if (p) {
         p.vehicle = "";
-        this.room.kill(driver, attacker, "tank", false);
+        this.room.kill(driver, attacker, weapon, false);
       }
     }
   }
 
   /** Nổ gần xe (lựu đạn, mìn, pháo): xe mất máu theo khoảng cách. */
-  blast(x: number, y: number, z: number, radius: number, maxDamage: number, owner: string) {
+  blast(x: number, y: number, z: number, radius: number, maxDamage: number, owner: string, weapon: string, skip = "") {
     for (const [vid, v] of this.room.state.vehicles) {
-      if (v.hp <= 0) continue;
+      if (v.hp <= 0 || vid === skip) continue;
       const d = Math.max(0, Math.hypot(v.x - x, v.y + 1.2 - y, v.z - z) - 2);
       if (d > radius) continue;
       const k = Math.pow(1 - d / radius, 1.2);
-      this.damage(vid, maxDamage * k * TANK.blastFactor, owner);
+      this.damage(vid, maxDamage * k * TANK.blastFactor, owner, weapon);
     }
   }
 
@@ -306,7 +326,8 @@ export class Vehicles {
       const dist = Math.hypot(dx, dz);
       const want = Math.atan2(dx, dz);
       const diff = Math.atan2(Math.sin(want - v.rotY), Math.cos(want - v.rotY));
-      steer = Math.max(-1, Math.min(1, diff * 2));
+      // Góc cần quay dương (rotY phải tăng) là quay trái: steer âm.
+      steer = Math.max(-1, Math.min(1, -diff * 2));
       throttle = Math.abs(diff) > 1.1 ? 0.1 : dist > 25 ? 1 : 0.55;
     }
     const step = tankStep(map, v, throttle, steer, brain.tankSpeed, dt);
@@ -367,8 +388,8 @@ export class Vehicles {
         keep.push(sh);
         continue;
       }
-      if (sh.direct) this.damage(sh.direct, TANK.armorDamage, sh.owner);
-      this.room.explode(sh.x, sh.y, sh.z, "shell", sh.owner, TANK.radius, TANK.damage);
+      if (sh.direct) this.damage(sh.direct, sh.armor, sh.owner, sh.weapon);
+      this.room.explode(sh.x, sh.y, sh.z, "shell", sh.owner, sh.radius, sh.damage, sh.weapon, sh.direct);
     }
     this.shells = keep;
   }
