@@ -2,17 +2,17 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, SIGHTS, WEAPON, bulletAt, bulletDrop, bulletSteps, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
+import { HEALS, MELEE, SIGHTS, WEAPON, bulletAt, bulletDrop, bulletSteps, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
 import { isTyping, keys, look } from "../input.ts";
 import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
-import { playArmorHit, playDraw, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt } from "../sound/guns.ts";
-import { bodies, effects, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, setBattleHud, stance } from "./runtime.ts";
+import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
+import { bodies, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, setBattleHud, stance } from "./runtime.ts";
 import { physicsProbe } from "./surface.ts";
-import { muzzleOffset } from "../GunModel.tsx";
+import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
 // R thay đạn, 1–3 đổi súng, 4–6 lựu đạn / bom khói / mìn, 7–8 băng gạc / hộp cứu thương, lăn chuột đổi món,
@@ -20,7 +20,9 @@ import { muzzleOffset } from "../GunModel.tsx";
 // Mỗi phát: tia từ camera qua tâm ngắm tìm điểm muốn bắn, rồi tia thật từ đầu nòng tới điểm đó (lệch theo độ toả),
 // dò trúng người khác theo đúng chỗ họ đang hiện trên màn hình mình, gửi server kiểm tra lại.
 
-type Slot = "primary1" | "primary2" | "pistol" | "frag" | "smoke" | "mine" | "";
+type Slot = "primary1" | "primary2" | "pistol" | "frag" | "smoke" | "flash" | "mine" | "";
+const THROWN = ["frag", "smoke", "flash"] as const;
+const isThrown = (slot: string): slot is (typeof THROWN)[number] => (THROWN as readonly string[]).includes(slot);
 const GUN_SLOTS = ["primary1", "primary2", "pistol"] as const;
 
 function magOf(kit: KitState, slot: string): number {
@@ -40,7 +42,7 @@ export function zeroRange(def: WeaponDef, sight: string): { base: number; max: n
 }
 
 /** Súng đang cầm và băng đạn dự đoán trên máy (server trả số thật sau). */
-export const gun = { slot: "" as Slot, weapon: "", mag: 0, lastShot: 0, reloadUntil: 0, cancelReload: null as null | (() => void), healUntil: 0, cancelHeal: null as null | (() => void) };
+export const gun = { slot: "" as Slot, weapon: "", mag: 0, lastShot: 0, readyAt: 0, lastMelee: 0, reloadUntil: 0, cancelReload: null as null | (() => void), healUntil: 0, cancelHeal: null as null | (() => void) };
 
 /** Số giả ngẫu nhiên cố định theo tên súng: mỗi khẩu một kiểu lượn ngang riêng (học được, ghì được). */
 function weaponSeed(id: string): number {
@@ -48,6 +50,9 @@ function weaponSeed(id: string): number {
   for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
   return ((h >>> 0) % 1000) / 1000;
 }
+
+/** Giật chung nhân thêm (nặng tay hơn số liệu gốc của từng khẩu). */
+const RECOIL_SCALE = 1.4;
 
 /** Cú hất màn hình (chỉ để nhìn) và độ giật tay theo loại súng. */
 const PUNCH: Record<WeaponDef["class"], { pitch: number; roll: number; body: number }> = {
@@ -70,10 +75,10 @@ export function recoilFor(def: WeaponDef, shot: number, st: { aiming: boolean; c
   const seed = weaponSeed(def.id) * Math.PI * 2;
   // Liên thanh: phát đầu nhẹ, nặng dần tới phát thứ tám, sau đó chững lại (nòng đã "lên" hết cỡ, chủ yếu lượn ngang).
   const ramp = def.auto ? (shot === 0 ? 0.7 : shot < 8 ? 0.9 + shot * 0.05 : Math.max(0.8, 1.25 - (shot - 8) * 0.04)) : 1;
-  const up = def.recoil * ramp * tame * (0.9 + Math.random() * 0.2);
+  const up = def.recoil * RECOIL_SCALE * ramp * tame * (0.9 + Math.random() * 0.2);
   const grow = def.auto ? Math.min(1, shot / 4) : 0.4;
   const sway = Math.sin(shot * 0.42 + seed) * 0.9 + Math.sin(shot * 1.17 + seed * 1.7) * 0.35 + (seed > Math.PI ? 0.25 : -0.25) * Math.min(1, shot / 10);
-  const side = def.recoilSide * tame * (sway * grow * 1.6 + (Math.random() - 0.5) * 0.9);
+  const side = def.recoilSide * RECOIL_SCALE * 1.1 * tame * (sway * grow * 1.6 + (Math.random() - 0.5) * 0.9);
   return { up, side };
 }
 
@@ -145,7 +150,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       const k = kit();
       if (!k || !alive()) return;
       if (slot && (GUN_SLOTS as readonly string[]).includes(slot) && !(k as unknown as Record<string, string>)[slot]) return;
-      if ((slot === "frag" || slot === "smoke" || slot === "mine") && k[slot] <= 0) return;
+      if ((isThrown(slot) || slot === "mine") && k[slot] <= 0) return;
+      stance.cookAt = 0;
       gun.cancelReload?.();
       gun.cancelReload = null;
       gun.reloadUntil = 0;
@@ -153,12 +159,11 @@ export function Shooter({ room }: { room: IslandRoom }) {
       gun.cancelHeal = null;
       gun.healUntil = 0;
       room.send(Messages.switchSlot, { slot });
-      if (slot) playDraw();
     };
     const cycle = (step: number) => {
       const k = kit();
       if (!k) return;
-      const list: Slot[] = [...GUN_SLOTS.filter((s) => (k as unknown as Record<string, string>)[s]), ...(["frag", "smoke", "mine"] as const).filter((s) => k[s] > 0)];
+      const list: Slot[] = [...GUN_SLOTS.filter((s) => (k as unknown as Record<string, string>)[s]), ...(["frag", "smoke", "flash", "mine"] as const).filter((s) => k[s] > 0)];
       if (!list.length) return;
       const i = list.indexOf(k.active as Slot);
       switchTo(list[(i + step + list.length) % list.length]!);
@@ -177,9 +182,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
         case "Digit5":
           return switchTo("smoke");
         case "Digit6":
+          return switchTo("flash");
+        case "Digit7":
           return switchTo("mine");
         case "KeyX":
+          // Cất súng: cầm dao.
           return switchTo("");
+        case "KeyV":
+          return melee();
         case "KeyT":
           toggleCameraView();
           look.pitch = clampPitch(look.pitch);
@@ -198,9 +208,9 @@ export function Shooter({ room }: { room: IslandRoom }) {
           playDryFire();
           return;
         }
-        case "Digit7":
-          return heal("bandage");
         case "Digit8":
+          return heal("bandage");
+        case "Digit9":
           return heal("medkit");
         case "KeyB": {
           const open = !getBattleHud().buyOpen;
@@ -285,6 +295,48 @@ export function Shooter({ room }: { room: IslandRoom }) {
     };
   }, [room]);
 
+  /**
+   * Đâm dao (phím V lúc nào cũng được, hay chuột trái khi đã cất súng): tìm người gần nhất trong tầm với phía trước
+   * mặt, báo server (server kiểm tra lại). Máy mình diễn động tác và tiếng ngay.
+   */
+  const melee = () => {
+    const now = performance.now();
+    if (!alive() || now - gun.lastMelee < MELEE.cooldown * 1000 || now < gun.readyAt) return;
+    gun.lastMelee = now;
+    stance.meleeAt = now;
+    stance.cookAt = 0;
+    gun.cancelHeal?.();
+    gun.cancelHeal = null;
+    gun.healUntil = 0;
+    const fx = -Math.sin(look.yaw);
+    const fz = -Math.cos(look.yaw);
+    let target = "";
+    let best = MELEE.range;
+    for (const [id, b] of bodies) {
+      if (id === myId(room) || !b.alive) continue;
+      const dx = b.x - localPosition.x;
+      const dz = b.z - localPosition.z;
+      const d = Math.hypot(dx, dz);
+      if (d > best || Math.abs(b.y - localPosition.y) > 1.6) continue;
+      if (d > 0.6 && (dx * fx + dz * fz) / d < 0.45) continue;
+      best = d;
+      target = id;
+    }
+    room.send(Messages.melee, { yaw: look.yaw, ...(target ? { target } : {}) });
+    playKnifeSwing();
+    localAim.yaw = look.yaw;
+    localAim.at = now;
+    if (target) {
+      const b = bodies.get(target)!;
+      setTimeout(() => {
+        playKnifeHit({ x: b.x, y: b.y + 1.2, z: b.z }, true);
+        effects.impacts.push({ x: b.x, y: b.y + 1.2, z: b.z, nx: -fx, ny: 0.2, nz: -fz, born: performance.now() / 1000, blood: true });
+      }, 140);
+    }
+    recoil.vPitch += 0.25;
+    recoil.vRoll += 0.3;
+  };
+
   const reload = () => {
     const k = kit();
     if (!k || !alive()) return;
@@ -323,7 +375,15 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const serverMag = magOf(k, slot);
     const sight = def ? sightOf(k, slot) : "";
     if (gun.slot !== slot || gun.weapon !== weaponId || stance.sight !== sight) {
-      if (gun.slot !== slot || gun.weapon !== weaponId) gun.mag = serverMag;
+      if (gun.slot !== slot || gun.weapon !== weaponId) {
+        gun.mag = serverMag;
+        // Rút món mới ra: hạ món cũ, đưa món mới lên (súng to mất lâu hơn); rút xong mới bắn, ném được.
+        stance.swapAt = now;
+        stance.swapDur = !slot ? 0.35 : isThrown(slot) || slot === "mine" ? 0.35 : def?.class === "pistol" ? 0.4 : def?.class === "sniper" || def?.class === "lmg" ? 0.75 : 0.55;
+        gun.readyAt = now + stance.swapDur * 1000;
+        stance.cookAt = 0;
+        playWeaponSwap(!slot ? "knife" : isThrown(slot) || slot === "mine" ? "throwable" : def?.class === "pistol" ? "pistol" : "gun");
+      }
       gun.slot = slot;
       gun.weapon = weaponId;
       stance.sight = sight;
@@ -333,7 +393,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const reloading = k.reloading || gun.reloadUntil > now;
 
     // Ngắm.
-    const wantAim = (getSettings().toggleAim ? inp.aimToggle : inp.aimHeld) && !!def && !reloading && !stance.sprinting;
+    const wantAim = (getSettings().toggleAim ? inp.aimToggle : inp.aimHeld) && !!def && !reloading && !stance.sprinting && now >= gun.readyAt;
     stance.aiming = wantAim;
     stance.zoom = def ? zoomOf(def, sight) : 1;
     stance.scoped = !!sight && SIGHTS[sight as SightId]?.scope === true;
@@ -354,20 +414,38 @@ export function Shooter({ room }: { room: IslandRoom }) {
     camera.getWorldDirection(fwd);
     right.set(-fwd.z, 0, fwd.x).normalize();
 
+    // Lựu đạn, bom khói, bom choáng: bấm giữ chuột trái là rút chốt (tay vung ra sau), thả ra thì ném; đang giữ mà
+    // bấm chuột phải thì ném thấp tay (lăn gần). Đổi món thì cắm lại chốt.
+    if (isThrown(slot) && stance.cookAt && !inp.fire) {
+      const underhand = inp.aimHeld;
+      stance.cookAt = 0;
+      stance.throwAt = now;
+      gun.readyAt = now + 700;
+      const eye = new Vector3(localPosition.x, localPosition.y + (underhand ? 1.0 : 1.5), localPosition.z).addScaledVector(fwd, 0.5);
+      const v = fwd.clone().multiplyScalar(underhand ? 8 : 17).add(new Vector3(0, underhand ? 2 : 3.5, 0));
+      room.send(Messages.battleThrow, { kind: slot, o: [eye.x, eye.y, eye.z], v: [v.x, v.y, v.z] });
+      playThrow();
+      setTimeout(() => playSpoon({ x: localPosition.x, y: localPosition.y + 1.5, z: localPosition.z }), 120);
+      localAim.yaw = look.yaw;
+      localAim.at = now;
+      return;
+    }
+
     if (!inp.fire && !inp.firePressed) return;
     const pressed = inp.firePressed;
     inp.firePressed = false;
-    if (stance.sprinting) return;
+    if (stance.sprinting || now < gun.readyAt) return;
 
-    // Lựu đạn, bom khói: ném theo hướng nhìn; mìn: đặt dưới chân.
-    if (slot === "frag" || slot === "smoke") {
-      if (!pressed) return;
-      const eye = new Vector3(localPosition.x, localPosition.y + 1.5, localPosition.z).addScaledVector(fwd, 0.5);
-      const v = fwd.clone().multiplyScalar(17).add(new Vector3(0, 3.5, 0));
-      room.send(Messages.battleThrow, { kind: slot, o: [eye.x, eye.y, eye.z], v: [v.x, v.y, v.z] });
-      playThrow();
-      localAim.yaw = look.yaw;
-      localAim.at = now;
+    if (isThrown(slot)) {
+      if (pressed && !stance.cookAt) {
+        stance.cookAt = now;
+        playPinPull();
+      }
+      return;
+    }
+    // Cất súng (tay cầm dao): chuột trái là đâm.
+    if (!slot) {
+      if (pressed) melee();
       return;
     }
     if (slot === "mine") {
@@ -545,6 +623,33 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Lửa đầu nòng: góc nhất thì ViewModel tự vẽ trên súng; góc ba vẽ ở đầu nòng thật.
     if (!first) effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
     playGunshot(def.id, muzzle, true);
+    if (def.class !== "sniper" && def.class !== "shotgun") playShotMechanics(def.id);
+    // Vỏ đạn văng ra cửa thoát bên phải (súng khoá nòng: văng khi kéo khoá, sau phát bắn một chút; shotgun hai nòng
+    // bẻ ra lúc nạp đạn).
+    if (def.class !== "shotgun") {
+      let ex: Vector3;
+      let rx = right.x;
+      let rz = right.z;
+      if (first && eject.valid) {
+        ex = new Vector3(eject.x, eject.y, eject.z);
+        rx = eject.rx;
+        rz = eject.rz;
+      } else if (held?.visible) ex = held.localToWorld(new Vector3(...ejectPort(def.id)));
+      else ex = muzzle.clone().addScaledVector(fwd, -0.5);
+      const bolt = def.class === "sniper";
+      const sp = 1.6 + Math.random() * 1.2;
+      effects.casings.push({
+        x: ex.x,
+        y: ex.y,
+        z: ex.z,
+        vx: rx * sp + fwd.x * (Math.random() * 0.6 - 0.4),
+        vy: 1.2 + Math.random() * 1.1,
+        vz: rz * sp + fwd.z * (Math.random() * 0.6 - 0.4),
+        at: seconds + (bolt ? 0.55 : 0),
+        kind: "brass",
+        size: def.class === "pistol" || def.class === "smg" ? 0.75 : bolt || def.class === "dmr" ? 1.3 : 1,
+      });
+    }
     if (def.class === "sniper") setTimeout(() => playBolt(), 450);
     room.send(Messages.fire, { weapon: def.id, o: [muzzle.x, muzzle.y, muzzle.z], rays, hits } satisfies FireMessage);
     // Giật: dồn vào góc nhìn trong vài khung hình tới (updateRecoil), hất màn hình một cái, súng trên tay lùi lại.
@@ -553,9 +658,9 @@ export function Shooter({ room }: { room: IslandRoom }) {
     recoil.pendPitch += up;
     recoil.pendYaw += side;
     const punch = PUNCH[def.class];
-    recoil.vPitch += up * punch.pitch * 40;
-    recoil.vYaw += side * 25;
-    recoil.vRoll += (Math.random() - 0.5) * 2 * punch.roll * 45;
+    recoil.vPitch += up * punch.pitch * 60;
+    recoil.vYaw += side * 35 + (Math.random() - 0.5) * up * 12;
+    recoil.vRoll += (Math.random() - 0.5) * 2 * punch.roll * 70;
     recoil.kick = Math.min(1.4, recoil.kick + punch.body);
     recoil.fired++;
     recoil.power = punch.body;

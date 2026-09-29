@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import {
+  AgXToneMapping,
   AdditiveBlending,
   CylinderGeometry,
   DoubleSide,
@@ -17,11 +18,11 @@ import {
 import { SIGHTS, WEAPON, type SightId } from "@tentides/content";
 import { myId, type IslandRoom } from "../../net.ts";
 import { camoTexture } from "../camo.ts";
-import { DRAW_ON_TOP_GLSL, GunModel, aimLineHeight, drawOnTop, muzzleOffset, opticHeight, railMount, supportOffset, viewMaterial } from "../GunModel.tsx";
+import { DRAW_ON_TOP_GLSL, GunModel, KnifeModel, MagModel, ThrowableModel, actionTravel, aimLineHeight, drawOnTop, ejectPort, hasMag, magCenter, muzzleOffset, opticHeight, railMount, supportOffset, viewMaterial } from "../GunModel.tsx";
 import { view } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun } from "./Shooter.tsx";
-import { effects, muzzle, recoil, stance } from "./runtime.ts";
+import { effects, eject, muzzle, recoil, stance } from "./runtime.ts";
 
 // Súng trước mặt khi nhìn bằng mắt (góc thứ nhất): cầm thấp bên phải, lắc theo bước chân, trễ theo cú xoay chuột,
 // giật như lò xo khi bắn (báng lùi vào vai, nòng hất lên, lệch ngang, nghiêng), nhún khi đáp đất; ngắm thì nâng
@@ -31,6 +32,47 @@ import { effects, muzzle, recoil, stance } from "./runtime.ts";
 // kính phản xạ có chấm đỏ / vòng holo sáng; bắn thì lửa loé ở đầu nòng (sao lửa trước mặt, lưỡi lửa hai bên).
 
 const HIP = new Vector3(0.24, -0.25, -0.5);
+
+/** Lớp vẽ riêng của súng trước mặt. */
+export const VIEW_LAYER = 5;
+
+/**
+ * Vẽ súng trước mặt sau cùng, trên nền cảnh đã xử lý hậu kỳ, với bộ đệm độ sâu xoá sạch: không bao giờ xuyên tường,
+ * và hiệu ứng che bóng (AO) không làm súng đen sì chớp tắt (AO đọc độ sâu, súng sát ống kính làm nó tính sai).
+ * Đồ hoạ thấp (không hậu kỳ) thì lượt này vẽ luôn cảnh chính, vì R3F thôi tự vẽ khi có useFrame ưu tiên.
+ */
+export function ViewPass({ post }: { post: boolean }) {
+  const lightsAt = useRef(0);
+  useFrame(({ gl, scene, camera }) => {
+    if (!post) gl.render(scene, camera);
+    const now = performance.now();
+    if (now - lightsAt.current > 1000) {
+      lightsAt.current = now;
+      // Đèn phải cùng lớp thì mới chiếu lên súng.
+      scene.traverse((o) => {
+        if ((o as { isLight?: boolean }).isLight) o.layers.enable(VIEW_LAYER);
+      });
+    }
+    if (!stance.firstPerson) return;
+    const autoClear = gl.autoClear;
+    const toneMapping = gl.toneMapping;
+    const shadows = gl.shadowMap.autoUpdate;
+    const background = scene.background;
+    gl.autoClear = false;
+    gl.shadowMap.autoUpdate = false;
+    if (post) gl.toneMapping = AgXToneMapping;
+    scene.background = null;
+    camera.layers.set(VIEW_LAYER);
+    gl.clearDepth();
+    gl.render(scene, camera);
+    camera.layers.set(0);
+    scene.background = background;
+    gl.toneMapping = toneMapping;
+    gl.shadowMap.autoUpdate = shadows;
+    gl.autoClear = autoClear;
+  }, 2);
+  return null;
+}
 const flashPos = new Vector3();
 const offset = new Vector3();
 const q = new Quaternion();
@@ -49,12 +91,33 @@ function step(sp: Spring, dt: number, k: number, c: number) {
   sp.x += sp.v * dt;
 }
 
+/** Dốc lên rồi xuống trong khoảng [a, b] của tiến trình t (0 ngoài khoảng, 1 ở giữa), mượt hai đầu. */
+function bump(t: number, a: number, b: number): number {
+  if (t <= a || t >= b) return 0;
+  return Math.sin(((t - a) / (b - a)) * Math.PI);
+}
+/** Tiến trình 0–1 trong khoảng [a, b], mượt hai đầu. */
+function ramp(t: number, a: number, b: number): number {
+  const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return k * k * (3 - 2 * k);
+}
+
+const THROWN_SLOTS = ["frag", "smoke", "flash", "mine"];
+const _v = new Vector3();
+const _w = new Vector3();
+
 export function ViewModel({ room }: { room: IslandRoom }) {
   const g = useRef<Group>(null);
+  const gunG = useRef<Group>(null);
+  const itemG = useRef<Group>(null);
+  const knifeG = useRef<Group>(null);
+  const throwG = useRef<Group>(null);
+  const leftG = useRef<Group>(null);
+  const spareMag = useRef<Group>(null);
+  const ejectRef = useRef<Group>(null);
   const s = useRef({
     aim: 0,
     bob: 0,
-    drop: 0,
     wall: 0,
     sprint: 0,
     yawLag: 0,
@@ -62,12 +125,14 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     lastYaw: 0,
     lastPitch: 0,
     fired: 0,
+    actionAt: -1e9,
     back: { x: 0, v: 0 } as Spring,
     rise: { x: 0, v: 0 } as Spring,
     side: { x: 0, v: 0 } as Spring,
     roll: { x: 0, v: 0 } as Spring,
     land: { x: 0, v: 0 } as Spring,
     lastLand: 0,
+    reloadWas: false,
   });
   const held = useRoomSnapshot(room, (st) => {
     const p = st.players.get(myId(room));
@@ -76,58 +141,72 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     const slot = k.active;
     const w = slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "";
     const sg = slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "";
-    return w ? `${w}|${sg}|${k.outfit}` : "";
+    return `${slot}|${w}|${sg}|${k.outfit}`;
   });
-  const [weapon = "", sightId = "", outfit = "woodland"] = held.split("|");
+  const [slot = "", weapon = "", sightId = "", outfit = "woodland"] = held.split("|");
   const def = WEAPON.get(weapon);
   const sight = def ? aimLineHeight(weapon, sightId) : 0;
+  const thrown = THROWN_SLOTS.includes(slot) ? slot : "";
   const flash = useRef<Group>(null);
   const flashState = useRef({ fired: 0, until: 0 });
+  const support = useMemo(() => (def ? supportOffset(weapon) : ([0, 0, 0.2] as [number, number, number])), [def, weapon]);
+  const magAt = useMemo(() => (def ? magCenter(weapon) : ([0, -0.1, 0.1] as [number, number, number])), [def, weapon]);
 
   useFrame(({ camera }, rawDt) => {
     const m = g.current;
     if (!m) return;
     const dt = Math.min(rawDt, 0.05);
     const st = s.current;
+    const now = performance.now();
     const scoped = stance.aiming && stance.scoped;
-    const show = !!def && stance.firstPerson && !scoped;
+    const show = !!held && stance.firstPerson && !scoped;
     m.visible = show;
-    if (!show) muzzle.valid = false;
+    // Súng trước mặt nằm ở lớp riêng: không lọt vào lượt vẽ chính (che bóng AO, bloom), ViewPass vẽ đè sau cùng.
+    m.traverse((o) => o.layers.set(VIEW_LAYER));
     if (!show) {
+      muzzle.valid = false;
+      eject.valid = false;
       st.fired = recoil.fired;
       st.lastYaw = view.yaw;
       st.lastPitch = view.pitch;
       return;
     }
+    // Cả bộ đi theo camera; các món bên trong đặt theo toạ độ camera (−z là phía trước).
+    m.position.copy(camera.position);
+    m.quaternion.copy(camera.quaternion);
+
     const ease = (rate: number) => Math.min(1, dt * rate);
     st.wall += (stance.wall - st.wall) * ease(12);
     const aimTarget = stance.aiming ? 1 - st.wall : 0;
     st.aim += (aimTarget - st.aim) * ease(14);
     st.sprint += ((stance.sprinting && !stance.aiming ? 1 : 0) - st.sprint) * ease(8);
     if (stance.moving && !stance.airborne) st.bob += dt * (4 + stance.speed * 1.25);
-    const reloading = gun.reloadUntil > performance.now();
-    st.drop += ((reloading ? 1 : 0) - st.drop) * ease(8);
 
-    // Phát bắn mới: đá lò xo. Ngắm thì giật gọn hơn (tì vai chắc).
+    // Rút món mới: đưa từ dưới lên (0 là đã cầm chắc).
+    const raise = 1 - ramp((now - stance.swapAt) / 1000, 0, stance.swapDur);
+    // Đâm dao: súng hạ xuống tránh chỗ cho dao, dao chém từ phải sang trái.
+    const meleeT = (now - stance.meleeAt) / 1000;
+    const meleeK = meleeT < 0.5 ? meleeT / 0.5 : 1;
+    const meleeOn = meleeK < 1;
+
+    // Phát bắn mới: đá lò xo (mạnh hơn khi bắn từ hông), khoá nòng lùi về rồi lao lên.
     if (recoil.fired !== st.fired) {
       const n = recoil.fired - st.fired;
       st.fired = recoil.fired;
-      const p = recoil.power * n * (1 - st.aim * 0.35);
-      st.back.v += 1.6 * p;
-      st.rise.v += 3.2 * p;
-      st.side.v += (Math.random() - 0.5) * 1.6 * p;
-      st.roll.v += (Math.random() - 0.5) * 4 * p;
+      const p = recoil.power * n * (1 - st.aim * 0.3);
+      st.back.v += 2.4 * p;
+      st.rise.v += 4.6 * p;
+      st.side.v += (Math.random() - 0.5) * 2.4 * p;
+      st.roll.v += (Math.random() - 0.5) * 6 * p;
+      st.actionAt = now;
     }
-    // Đáp đất: súng trĩu xuống rồi bật về.
     if (stance.land > st.lastLand + 0.05) st.land.v -= stance.land * 2.2;
     st.lastLand = stance.land;
-    step(st.back, dt, 320, 26);
-    step(st.rise, dt, 240, 22);
+    step(st.back, dt, 300, 24);
+    step(st.rise, dt, 220, 20);
     step(st.side, dt, 200, 20);
-    step(st.roll, dt, 180, 18);
+    step(st.roll, dt, 170, 17);
     step(st.land, dt, 140, 14);
-
-    // Súng trễ theo cú xoay chuột một chút rồi đuổi kịp.
     st.yawLag += (view.yaw - st.lastYaw) * 0.6;
     st.pitchLag += (view.pitch - st.lastPitch) * 0.6;
     st.lastYaw = view.yaw;
@@ -135,36 +214,131 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     st.yawLag = Math.max(-0.3, Math.min(0.3, st.yawLag)) * Math.exp(-dt * 12);
     st.pitchLag = Math.max(-0.3, Math.min(0.3, st.pitchLag)) * Math.exp(-dt * 12);
     const bobAmt = (0.008 + Math.min(1, stance.speed / 7) * 0.02) * (1 - st.aim * 0.85) * (stance.moving && !stance.airborne ? 1 : 0.15);
-    const hip = 1 - st.aim;
-    // Hông → ngắm: đưa thước ngắm về giữa mắt. Sát tường: kéo súng về ngực, hạ thấp.
-    offset.set(
-      HIP.x * hip + Math.sin(st.bob) * bobAmt + st.yawLag * 0.3 * hip + st.side.x * 0.02 - st.wall * 0.06 - st.sprint * 0.06,
-      HIP.y * hip - sight * st.aim + (Math.abs(Math.cos(st.bob)) - 0.5) * bobAmt - st.drop * 0.12 + st.pitchLag * 0.2 * hip + st.land.x * 0.05 - st.wall * 0.06 - st.sprint * 0.03,
-      HIP.z * hip - 0.3 * st.aim + st.back.x * 0.05 + st.wall * 0.24 + st.sprint * 0.06,
-    );
-    offset.applyQuaternion(camera.quaternion);
-    m.position.copy(camera.position).add(offset);
-    // Nòng quay theo camera; súng GunModel chĩa +z nên xoay nửa vòng.
-    // Giật: hất nòng lên, lệch, nghiêng. Chạy: ôm chéo. Sát tường: dựng nòng lên trời.
-    q.copy(camera.quaternion);
-    tilt.setFromAxisAngle(axisX, st.rise.x * 0.08 - st.drop * 0.6 + st.wall * 1.05 + st.land.x * -0.08);
-    q.multiply(tilt);
-    tilt.setFromAxisAngle(axisY, st.side.x * 0.04 + st.sprint * 0.55 + st.wall * 0.25);
-    q.multiply(tilt);
-    tilt.setFromAxisAngle(axisZ, st.roll.x * 0.05 + st.sprint * 0.25 + st.wall * 0.35);
-    q.multiply(tilt);
-    m.quaternion.copy(q);
-    m.rotateY(Math.PI);
+    const bobX = Math.sin(st.bob) * bobAmt + st.yawLag * 0.3 * (1 - st.aim);
+    const bobY = (Math.abs(Math.cos(st.bob)) - 0.5) * bobAmt + st.pitchLag * 0.2 * (1 - st.aim) + st.land.x * 0.05;
+
+    // ---------------------------------------------------------------- súng
+    const gg = gunG.current;
+    if (gg) {
+      gg.visible = !!def;
+      if (def) {
+        // Thay đạn: tiến trình 0–1 theo thời gian thay đạn của súng.
+        const reloading = gun.reloadUntil > now;
+        const r = reloading ? 1 - (gun.reloadUntil - now) / (def.reload * 1000) : 1;
+        const tiltK = reloading ? ramp(r, 0, 0.12) * (1 - ramp(r, 0.86, 1)) : 0;
+        const lower = Math.max(raise, meleeOn ? bump(meleeK, 0, 1) * 0.9 : 0);
+        const hip = 1 - st.aim;
+        gg.position.set(
+          HIP.x * hip + bobX + st.side.x * 0.025 - st.wall * 0.06 - st.sprint * 0.06 - tiltK * 0.06 + lower * 0.05,
+          HIP.y * hip - sight * st.aim + bobY - st.wall * 0.06 - st.sprint * 0.03 + tiltK * 0.03 - lower * 0.32,
+          HIP.z * hip - 0.3 * st.aim + st.back.x * 0.07 + st.wall * 0.24 + st.sprint * 0.06 + tiltK * 0.05,
+        );
+        // Nòng hất lên khi giật, chúc xuống khi rút súng; sát tường dựng lên; thay đạn thì nghiêng súng (lật cửa
+        // băng đạn về phía mình) và ngóc nòng.
+        q.identity();
+        tilt.setFromAxisAngle(axisX, st.rise.x * 0.11 + st.wall * 1.05 - st.land.x * 0.08 + tiltK * 0.2 - lower * 0.9);
+        q.multiply(tilt);
+        tilt.setFromAxisAngle(axisY, st.side.x * 0.05 + st.sprint * 0.55 + st.wall * 0.25 + lower * 0.3);
+        q.multiply(tilt);
+        tilt.setFromAxisAngle(axisZ, st.roll.x * 0.07 + st.sprint * 0.25 + st.wall * 0.35 + tiltK * 0.55);
+        q.multiply(tilt);
+        gg.quaternion.copy(q);
+        gg.rotateY(Math.PI);
+
+        // Băng đạn: rút ra rơi xuống, lắp băng mới từ tay trái đẩy lên. Tay trái rời ốp lót tay đi lấy băng.
+        const magG = gg.getObjectByName("mag");
+        const withMag = hasMag(weapon);
+        if (magG) {
+          const out = reloading && withMag ? ramp(r, 0.12, 0.3) : 0;
+          const back = reloading && withMag ? ramp(r, 0.62, 0.76) : 1;
+          const gone = reloading && withMag && r > 0.3 && r < 0.62;
+          magG.visible = !gone;
+          const drop = r < 0.5 ? out : 1 - back;
+          magG.position.set(0, -0.22 * drop, -0.03 * drop);
+          magG.rotation.set(0.35 * drop, 0, 0);
+        }
+        const lg = leftG.current;
+        if (lg) {
+          // Các chặng: tới băng đạn (0,1–0,2) → theo băng xuống, khuất dưới (0,2–0,45) → mang băng mới lên (0,45–0,62)
+          // → đẩy băng vào (0,62–0,76) → về ốp lót tay (0,76–0,9).
+          _v.set(...support);
+          if (reloading) {
+            const toMag = ramp(r, 0.08, 0.2);
+            const down = ramp(r, 0.2, 0.36) * (1 - ramp(r, 0.44, 0.6));
+            const home = ramp(r, 0.76, 0.9);
+            _w.set(magAt[0] + 0.01, magAt[1] - 0.07, magAt[2]);
+            _v.lerp(_w, toMag * (1 - home));
+            _v.y -= down * 0.42;
+            _v.z -= down * 0.12;
+            _v.x += down * 0.08;
+            if (r > 0.62 && r < 0.76) _v.y += 0.02 * bump(r, 0.62, 0.76);
+          }
+          lg.position.copy(_v);
+          if (spareMag.current) spareMag.current.visible = reloading && withMag && r > 0.36 && r < 0.62;
+        }
+        // Khoá nòng / khối trượt: lùi về khi bắn; súng lục hết đạn thì khối trượt kẹt ở sau; súng khoá nòng kéo khoá
+        // sau mỗi phát; thay đạn xong thì kéo khoá lên đạn.
+        const act = gg.getObjectByName("action");
+        if (act) {
+          const travel = actionTravel(weapon);
+          const since = (now - st.actionAt) / 1000;
+          let k = 0;
+          if (def.class === "sniper") k = bump(since, 0.35, 0.95);
+          else k = since < 0.07 ? 1 - since / 0.07 : 0;
+          if (def.class === "pistol" && gun.mag <= 0 && !reloading) k = 1;
+          if (reloading && def.class !== "pistol") k = Math.max(k, bump(r, 0.8, 0.94));
+          if (reloading && def.class === "pistol") k = Math.max(k, 1 - ramp(r, 0.78, 0.86));
+          act.position.z = -travel * k;
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------- dao, lựu đạn trên tay phải
+    const ig = itemG.current;
+    const kg = knifeG.current;
+    const tg = throwG.current;
+    if (ig && kg && tg) {
+      const knifeIdle = !def && !thrown;
+      kg.visible = knifeIdle || meleeOn;
+      tg.visible = !!thrown && !meleeOn;
+      ig.visible = kg.visible || tg.visible;
+      if (kg.visible) {
+        // Dao: cầm thấp bên phải chĩa tới; chém là vung từ phải trên xuống trái dưới rồi thu về.
+        const swing = meleeOn ? meleeK : 1;
+        const cut = ramp(swing, 0.12, 0.45);
+        const back = ramp(swing, 0.55, 1);
+        const wind = bump(swing, 0, 0.2);
+        const k2 = cut * (1 - back);
+        kg.position.set(0.24 + wind * 0.1 - k2 * 0.42 + bobX, -0.24 + wind * 0.1 + bobY - (knifeIdle ? raise * 0.35 : 0), -0.42 - k2 * 0.12);
+        kg.rotation.set(-0.35 - wind * 0.5 + k2 * 0.3, 0.35 + k2 * 1.1, -0.25 - wind * 0.4 + k2 * 0.9);
+      }
+      if (tg.visible) {
+        // Lựu đạn: cầm trước ngực; rút chốt thì vung tay ra sau lên cao; ném thì vung tới trước rồi buông.
+        const cook = stance.cookAt ? ramp((now - stance.cookAt) / 1000, 0, 0.25) : 0;
+        const tt = (now - stance.throwAt) / 1000;
+        const throwing = tt < 0.3;
+        const fling = throwing ? ramp(tt, 0, 0.18) : 0;
+        const gone = tt >= 0.18 && tt < 0.7;
+        const reRaise = tt >= 0.7 && tt < 1.05 ? 1 - ramp(tt, 0.7, 1.05) : 0;
+        const low = Math.max(raise, reRaise);
+        tg.visible = !gone;
+        tg.position.set(
+          0.2 + bobX + cook * 0.1 - fling * 0.3,
+          -0.2 + bobY + cook * 0.2 - low * 0.35 + fling * 0.12,
+          -0.38 + cook * 0.24 - fling * 0.5,
+        );
+        tg.rotation.set(-0.3 + cook * 0.9 - fling * 1.4, -0.3, 0.2 - cook * 0.3);
+      }
+    }
 
     // Lửa đầu nòng: loé chừng 1–2 khung hình sau mỗi phát, to nhỏ, xoay ngẫu nhiên; chiếu sáng xung quanh.
     const f = flash.current;
-    if (f) {
-      const now = performance.now();
+    if (f && def) {
       const fs = flashState.current;
       if (recoil.fired !== fs.fired) {
         fs.fired = recoil.fired;
         fs.until = now + 45;
-        const big = def && (def.class === "sniper" || def.class === "shotgun" || def.class === "dmr") ? 1.5 : def?.class === "pistol" || def?.class === "smg" ? 0.8 : 1;
+        const big = def.class === "sniper" || def.class === "shotgun" || def.class === "dmr" ? 1.5 : def.class === "pistol" || def.class === "smg" ? 0.8 : 1;
         f.scale.setScalar(big * (0.8 + Math.random() * 0.45));
         f.rotation.z = Math.random() * Math.PI;
       }
@@ -176,23 +350,68 @@ export function ViewModel({ room }: { room: IslandRoom }) {
       muzzle.z = flashPos.z;
       muzzle.valid = true;
       if (f.visible && fs.until - now > 30) effects.flashes.push({ x: flashPos.x, y: flashPos.y, z: flashPos.z, born: now / 1000, lightOnly: true });
+      // Cửa thoát vỏ đạn (thế giới) và trục phải của súng, để vỏ đạn văng đúng chỗ.
+      const ej = ejectRef.current;
+      if (ej && gg) {
+        ej.getWorldPosition(_v);
+        eject.x = _v.x;
+        eject.y = _v.y;
+        eject.z = _v.z;
+        _w.set(-1, 0, 0).transformDirection(gg.matrixWorld);
+        eject.rx = _w.x;
+        eject.ry = _w.y;
+        eject.rz = _w.z;
+        eject.valid = true;
+      }
+    } else {
+      muzzle.valid = false;
+      eject.valid = false;
     }
   });
 
   return (
     <group ref={g}>
-      {def && (
-        <>
-          <GunModel weaponId={weapon} sight={sightId} scale={1} view />
-          {sightId && <Reticle weapon={weapon} sight={sightId} />}
-          <Hands weapon={weapon} outfit={outfit} pistol={def.class === "pistol"} />
-          <group position={muzzleOffset(weapon)}>
-            <group ref={flash} visible={false}>
-              <MuzzleFlash />
+      <group ref={gunG}>
+        {def && (
+          <>
+            <GunModel weaponId={weapon} sight={sightId} scale={1} view />
+            {sightId && <Reticle weapon={weapon} sight={sightId} />}
+            <RightHand />
+            <group ref={leftG} position={support}>
+              <LeftHand outfit={outfit} pistol={def.class === "pistol"} />
+              <group ref={spareMag} position={[-0.005, 0.045, 0]} visible={false}>
+                <MagModel weaponId={weapon} view />
+              </group>
             </group>
+            <RightArm outfit={outfit} />
+            <group position={ejectPort(weapon)}>
+              <group ref={ejectRef} />
+            </group>
+            <group position={muzzleOffset(weapon)}>
+              <group ref={flash} visible={false}>
+                <MuzzleFlash />
+              </group>
+            </group>
+          </>
+        )}
+      </group>
+      <group ref={itemG}>
+        <group ref={knifeG} visible={false}>
+          {/* Dao dựng mũi theo +z; toạ độ camera nhìn về −z nên quay nửa vòng cho mũi dao chĩa tới trước. */}
+          <group rotation-y={Math.PI}>
+            <KnifeModel view />
           </group>
-        </>
-      )}
+          <HoldingHand outfit={outfit} />
+        </group>
+        <group ref={throwG} visible={false}>
+          {thrown && (
+            <group position={[0, 0.02, 0.02]}>
+              <ThrowableModel id={thrown} view />
+            </group>
+          )}
+          <HoldingHand outfit={outfit} />
+        </group>
+      </group>
     </group>
   );
 }
@@ -213,7 +432,8 @@ const starFragment = /* glsl */ `
   void main() {
     vec2 p = vUv - 0.5;
     float r = length(p) * 2.0;
-    float a = atan(p.y, p.x);
+    // atan(0, 0) không xác định (NaN trên vài GPU → mảng đen nhấp nháy qua bloom): lệch một chút.
+    float a = atan(p.y, p.x + 1e-5);
     float petals = 0.45 + 0.55 * pow(abs(cos(a * 2.5)), 3.0);
     float glow = 1.0 - smoothstep(0.0, petals, r);
     float core = 1.0 - smoothstep(0.0, 0.35, r);
@@ -332,64 +552,81 @@ function Segment({ from, to, r1, r2, material }: { from: [number, number, number
   return <mesh geometry={geo} material={material} position={pos} quaternion={quat} renderOrder={1} />;
 }
 
-/**
- * Bàn tay đeo găng (lòng bàn tay, bốn ngón quặp, ngón cái, đốt tay) và cẳng tay. Toạ độ súng: gốc ở tay cầm, nòng +z,
- * bên phải khẩu súng là -x. Tay phải nắm tay cầm, ngón trỏ đặt cò; tay trái đỡ dưới ốp lót tay (súng lục thì ôm tay phải).
- */
-function Hands({ weapon, outfit, pistol }: { weapon: string; outfit: string; pistol: boolean }) {
+/** Tay phải nắm tay cầm (toạ độ súng: gốc ở tay cầm, nòng +z, bên phải khẩu súng là -x), ngón trỏ đặt cò, ngón cái vắt sang trái. */
+function RightHand() {
   const glove = viewMaterial("glove");
   const knuckle = viewMaterial("knuckle");
-  const sleeve = sleeveMaterial(outfit);
-  const support = useMemo(() => supportOffset(weapon), [weapon]);
-  const right = useMemo(
-    () => ({
-      wrist: [-0.004, -0.07, -0.055] as [number, number, number],
-      elbow: [-0.13, -0.24, -0.36] as [number, number, number],
-    }),
-    [],
+  return (
+    <group rotation-x={0.28}>
+      <mesh material={glove} position={[-0.004, -0.035, -0.022]} renderOrder={1}>
+        <boxGeometry args={[0.05, 0.085, 0.04]} />
+      </mesh>
+      <mesh material={glove} position={[-0.004, -0.045, 0.022]} renderOrder={1}>
+        <boxGeometry args={[0.048, 0.06, 0.022]} />
+      </mesh>
+      <mesh material={knuckle} position={[-0.026, -0.045, 0.0]} renderOrder={1}>
+        <boxGeometry args={[0.006, 0.06, 0.03]} />
+      </mesh>
+      <mesh material={glove} position={[0.0, 0.002, 0.03]} rotation-x={-0.25} renderOrder={1}>
+        <boxGeometry args={[0.014, 0.014, 0.05]} />
+      </mesh>
+      <mesh material={glove} position={[0.024, 0.012, 0.0]} rotation-y={-0.3} renderOrder={1}>
+        <capsuleGeometry args={[0.009, 0.04, 4, 8]} />
+      </mesh>
+    </group>
   );
-  const left = useMemo(() => {
-    const [sx, sy, sz] = support;
-    return pistol
-      ? { wrist: [sx + 0.03, sy - 0.06, sz - 0.05] as [number, number, number], elbow: [sx + 0.16, sy - 0.25, sz - 0.34] as [number, number, number] }
-      : { wrist: [sx + 0.045, sy - 0.05, sz - 0.05] as [number, number, number], elbow: [sx + 0.2, sy - 0.22, sz - 0.36] as [number, number, number] };
-  }, [support, pistol]);
+}
+
+const RIGHT_WRIST: [number, number, number] = [-0.004, -0.07, -0.055];
+const RIGHT_ELBOW: [number, number, number] = [-0.13, -0.24, -0.36];
+
+/** Cẳng tay phải từ cổ tay (sau tay cầm) ra sau, xuống dưới bên phải. */
+function RightArm({ outfit }: { outfit: string }) {
   return (
     <>
-      {/* Tay phải: lòng bàn tay ôm sau tay cầm, bốn ngón quặp phía trước, ngón trỏ trên cò, ngón cái vắt sang trái. */}
-      <group rotation-x={0.28}>
-        <mesh material={glove} position={[-0.004, -0.035, -0.022]} renderOrder={1}>
-          <boxGeometry args={[0.05, 0.085, 0.04]} />
-        </mesh>
-        <mesh material={glove} position={[-0.004, -0.045, 0.022]} renderOrder={1}>
-          <boxGeometry args={[0.048, 0.06, 0.022]} />
-        </mesh>
-        <mesh material={knuckle} position={[-0.026, -0.045, 0.0]} renderOrder={1}>
-          <boxGeometry args={[0.006, 0.06, 0.03]} />
-        </mesh>
-        <mesh material={glove} position={[0.0, 0.002, 0.03]} rotation-x={-0.25} renderOrder={1}>
-          <boxGeometry args={[0.014, 0.014, 0.05]} />
-        </mesh>
-        <mesh material={glove} position={[0.024, 0.012, 0.0]} rotation-y={-0.3} renderOrder={1}>
-          <capsuleGeometry args={[0.009, 0.04, 4, 8]} />
-        </mesh>
-      </group>
-      <Segment from={right.wrist} to={[-0.004, -0.06, -0.045]} r1={0.026} r2={0.028} material={knuckle} />
-      <Segment from={right.wrist} to={right.elbow} r1={0.03} r2={0.042} material={sleeve} />
-      {/* Tay trái: lòng tay đỡ dưới, ngón quặp lên sườn phải, ngón cái sườn trái. */}
-      <group position={support}>
-        <mesh material={glove} position={[0.0, -0.028, 0]} renderOrder={1}>
-          <boxGeometry args={[0.05, 0.022, 0.085]} />
-        </mesh>
-        <mesh material={glove} position={[-0.026, -0.008, 0.005]} renderOrder={1}>
-          <boxGeometry args={[0.014, 0.04, 0.075]} />
-        </mesh>
-        <mesh material={glove} position={[0.026, -0.006, 0.02]} rotation-x={0.3} renderOrder={1}>
-          <capsuleGeometry args={[0.008, 0.035, 4, 8]} />
-        </mesh>
-      </group>
-      <Segment from={left.wrist} to={left.elbow} r1={0.03} r2={0.042} material={sleeve} />
-      <Segment from={left.wrist} to={[support[0] + 0.02, support[1] - 0.035, support[2] - 0.035]} r1={0.025} r2={0.027} material={knuckle} />
+      <Segment from={RIGHT_WRIST} to={[-0.004, -0.06, -0.045]} r1={0.026} r2={0.028} material={viewMaterial("knuckle")} />
+      <Segment from={RIGHT_WRIST} to={RIGHT_ELBOW} r1={0.03} r2={0.042} material={sleeveMaterial(outfit)} />
+    </>
+  );
+}
+
+const LEFT_WRIST: [number, number, number] = [0.045, -0.05, -0.05];
+const LEFT_ELBOW: [number, number, number] = [0.2, -0.22, -0.36];
+
+/** Tay trái (toạ độ đặt tại chỗ đỡ): lòng tay đỡ dưới, ngón quặp lên sườn phải, ngón cái sườn trái, cẳng tay ra sau. */
+function LeftHand({ outfit, pistol }: { outfit: string; pistol: boolean }) {
+  const glove = viewMaterial("glove");
+  const wrist: [number, number, number] = pistol ? [0.03, -0.06, -0.05] : LEFT_WRIST;
+  const elbow: [number, number, number] = pistol ? [0.16, -0.25, -0.34] : LEFT_ELBOW;
+  return (
+    <>
+      <mesh material={glove} position={[0.0, -0.028, 0]} renderOrder={1}>
+        <boxGeometry args={[0.05, 0.022, 0.085]} />
+      </mesh>
+      <mesh material={glove} position={[-0.026, -0.008, 0.005]} renderOrder={1}>
+        <boxGeometry args={[0.014, 0.04, 0.075]} />
+      </mesh>
+      <mesh material={glove} position={[0.026, -0.006, 0.02]} rotation-x={0.3} renderOrder={1}>
+        <capsuleGeometry args={[0.008, 0.035, 4, 8]} />
+      </mesh>
+      <Segment from={wrist} to={elbow} r1={0.03} r2={0.042} material={sleeveMaterial(outfit)} />
+      <Segment from={wrist} to={[0.02, -0.035, -0.035]} r1={0.025} r2={0.027} material={viewMaterial("knuckle")} />
+    </>
+  );
+}
+
+/** Bàn tay nắm một món nhỏ (dao, lựu đạn) ở gốc toạ độ (toạ độ camera: −z phía trước), cẳng tay chìa về phía người, xuống dưới. */
+function HoldingHand({ outfit }: { outfit: string }) {
+  const glove = viewMaterial("glove");
+  return (
+    <>
+      <mesh material={glove} position={[0, -0.012, -0.005]} renderOrder={1}>
+        <boxGeometry args={[0.05, 0.05, 0.075]} />
+      </mesh>
+      <mesh material={glove} position={[0.026, 0.01, 0.012]} rotation-y={-0.4} renderOrder={1}>
+        <capsuleGeometry args={[0.009, 0.035, 4, 8]} />
+      </mesh>
+      <Segment from={[0, -0.025, 0.04]} to={[0.08, -0.22, 0.32]} r1={0.03} r2={0.042} material={sleeveMaterial(outfit)} />
     </>
   );
 }

@@ -19,7 +19,7 @@ import {
   type Mesh,
   type PointLight,
 } from "three";
-import { BULLET_GRAVITY, FRAG, SMOKE, battleMap, type World } from "@tentides/content";
+import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, battleMap, type World } from "@tentides/content";
 import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
 import type { IslandRoom } from "../../net.ts";
@@ -28,6 +28,7 @@ import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMine
 import { WEAPON } from "@tentides/content";
 import { bodies, effects, getBattleHud, setBattleHud } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
+import { Casings } from "./Casings.tsx";
 import { physicsProbe } from "./surface.ts";
 
 // Hiệu ứng của trận đấu: tường vùng an toàn (màn xanh cao vút, vân chạy), vòng kế tiếp vẽ trên mặt đất,
@@ -256,7 +257,21 @@ function SmokeEmitters({ room }: { room: IslandRoom }) {
   useFrame((_, dt) => {
     for (const [key, smoke] of room.state.smokes as unknown as Map<string, SmokeState>) {
       let a = (acc.current.get(key) ?? 0) + dt;
-      const rate = smoke.timeLeft > 3 ? 14 : 3;
+      // Vừa bị lựu đạn thổi thủng: khoảng trống quanh chỗ nổ, khói bị đẩy ra mép, co dần rồi khói lấp lại.
+      if (smoke.clear > 0) {
+        const r = SMOKE_CLEAR.radius * Math.min(1, smoke.clear / (SMOKE_CLEAR.seconds * 0.6));
+        for (const p of puffs) {
+          if (!p.dense) continue;
+          const dx = p.x - smoke.cx;
+          const dz = p.z - smoke.cz;
+          const dd = Math.hypot(dx, dz) || 1;
+          if (dd >= r) continue;
+          p.vx += (dx / dd) * 10 * dt;
+          p.vz += (dz / dd) * 10 * dt;
+          p.alpha = Math.max(0.05, p.alpha - dt * 0.8);
+        }
+      }
+      const rate = (smoke.timeLeft > 3 ? 14 : 3) * (smoke.clear > 0 ? 0.25 : 1);
       while (a > 1 / rate) {
         a -= 1 / rate;
         const ang = Math.random() * Math.PI * 2;
@@ -344,16 +359,19 @@ function Blasts() {
         continue;
       }
       if (b.kind === "smoke") continue;
-      const k = Math.min(1, age / 0.55);
+      const flash = b.kind === "flash";
+      // Bom choáng: chớp trắng rất ngắn, không có cầu lửa.
+      if (flash && age > 0.25) continue;
+      const k = Math.min(1, age / (flash ? 0.25 : 0.55));
       if (m && n < 32) {
-        dummy.position.set(b.x, b.y + 0.8 + age * 2, b.z);
-        dummy.scale.setScalar(2 + k * (b.kind === "mine" ? 7 : 6));
+        dummy.position.set(b.x, b.y + (flash ? 0.3 : 0.8 + age * 2), b.z);
+        dummy.scale.setScalar(flash ? 3 + k * 2 : 2 + k * (b.kind === "mine" ? 7 : 6));
         dummy.updateMatrix();
         m.setMatrixAt(n, dummy.matrix);
         kAttr.setX(n, k);
         n++;
       }
-      const glow = Math.max(0, 1 - age / 0.35);
+      const glow = Math.max(0, 1 - age / (flash ? 0.18 : 0.35)) * (flash ? 2.5 : 1);
       if (glow > brightest && light.current) {
         brightest = glow;
         light.current.position.set(b.x, b.y + 1.5, b.z);
@@ -386,6 +404,24 @@ function useBooms(room: IslandRoom) {
         return;
       }
       playExplosion(b, b.kind);
+      if (b.kind === "flash") {
+        // Bom choáng: vài cụm khói trắng mỏng; loá mắt, ù tai do BattleHud đọc từ trạng thái của mình.
+        for (let k = 0; k < 6; k++)
+          puffs.push({ x: b.x, y: b.y + 0.3, z: b.z, vx: (Math.random() - 0.5) * 2, vy: 0.6 + Math.random(), vz: (Math.random() - 0.5) * 2, size: 0.8, grow: 1.2, life: 2.5, age: 0, r: 0.85, g: 0.85, b: 0.85, alpha: 0.35, dense: false });
+        return;
+      }
+      // Sức ép thổi bạt khói gần đó ra xung quanh (server giữ khoảng trống một lúc, SmokeEmitters lo phần còn lại).
+      for (const p of puffs) {
+        if (!p.dense) continue;
+        const dx = p.x - b.x;
+        const dz = p.z - b.z;
+        const dd = Math.hypot(dx, dz) || 1;
+        if (dd > SMOKE_CLEAR.radius * 1.6) continue;
+        const push = 14 * (1 - dd / (SMOKE_CLEAR.radius * 1.6));
+        p.vx += (dx / dd) * push;
+        p.vz += (dz / dd) * push;
+        p.vy += push * 0.3;
+      }
       shake.amount = Math.min(1.4, shake.amount + Math.max(0, 1.3 - d / 30));
       // Khói đen bốc lên, bụi toả ra quanh chân.
       for (let k = 0; k < 26; k++) {
@@ -476,7 +512,8 @@ function Tracers() {
           void main() {
             vec2 p = vUv - 0.5;
             float r = length(p) * 2.0;
-            float a = atan(p.y, p.x);
+            // atan(0, 0) không xác định (ra NaN trên vài GPU, NaN qua bloom thành mảng đen nhấp nháy): lệch một chút.
+            float a = atan(p.y, p.x + 1e-5);
             float star = 0.55 + 0.45 * pow(abs(cos(a * 3.0)), 6.0);
             float core = 1.0 - smoothstep(0.0, star, r);
             gl_FragColor = vec4(vec3(1.0, 0.8, 0.45) * 8.0 * core, core);
@@ -634,6 +671,25 @@ function useShots(room: IslandRoom) {
       playGunshot(m.w, { x: ox, y: oy, z: oz }, false);
       const def = WEAPON.get(m.w);
       if (def?.class === "sniper") setTimeout(() => playBolt(), 450);
+      // Vỏ đạn của người bắn gần mình: văng ra bên phải người bắn, sau đầu nòng chừng nửa mét.
+      if (def && def.class !== "shotgun" && m.e[0] && Math.hypot(ox - localPosition.x, oz - localPosition.z) < 25) {
+        const [ex, , ez] = m.e[0];
+        const l = Math.hypot(ex - ox, ez - oz) || 1;
+        const fx = (ex - ox) / l;
+        const fz = (ez - oz) / l;
+        const sp = 1.6 + Math.random();
+        effects.casings.push({
+          x: ox - fx * 0.5,
+          y: oy - 0.03,
+          z: oz - fz * 0.5,
+          vx: -fz * sp,
+          vy: 1.3 + Math.random(),
+          vz: fx * sp,
+          at: now + (def.class === "sniper" ? 0.55 : 0),
+          kind: "brass",
+          size: def.class === "pistol" || def.class === "smg" ? 0.75 : def.class === "sniper" || def.class === "dmr" ? 1.3 : 1,
+        });
+      }
       let whizzed = false;
       for (const [ex, ey, ez] of m.e) {
         effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false, speed: def?.velocity });
@@ -753,6 +809,7 @@ export function BattleEffects({ room, world }: { room: IslandRoom; world: World 
       <Blasts />
       <Tracers />
       <BulletHoles world={world} />
+      <Casings world={world} />
       <Grenades room={room} />
       <MyMines room={room} />
     </>

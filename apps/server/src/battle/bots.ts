@@ -1,4 +1,4 @@
-import { MAX_HP, START_MONEY, WEAPON, insideBox, raycastBoxes, raycastTerrain } from "@tentides/content";
+import { MAX_HP, SMOKE_CLEAR, START_MONEY, WEAPON, insideBox, raycastBoxes, raycastTerrain } from "@tentides/content";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
 
@@ -195,12 +195,16 @@ export class Bots {
       const px = eye[0] + dir[0] * t - smoke.x;
       const py = eye[1] + dir[1] * t - smoke.y - 1.5;
       const pz = eye[2] + dir[2] * t - smoke.z;
+      // Lựu đạn vừa thổi thủng một khoảng trong khói thì nhìn xuyên qua được chỗ đó.
+      if (smoke.clear > 0 && Math.hypot(px + smoke.x - smoke.cx, pz + smoke.z - smoke.cz) < SMOKE_CLEAR.radius) continue;
       if (Math.hypot(px, py, pz) < 6) return false;
     }
     return raycastBoxes(this.room.map.index, eye, dir, d - 0.5) === Infinity && raycastTerrain(this.room.map.world, eye, dir, d - 0.5) === Infinity;
   }
 
   private shoot(id: string, b: Brain, dt: number, weaponId: string, eye: [number, number, number], target: { x: number; y: number; z: number; crouching: boolean; moving: boolean }, d: number) {
+    // Bị bom choáng loá mắt thì không bắn được.
+    if ((this.room.state.players.get(id)?.blind ?? 0) > 0) return;
     const def = WEAPON.get(weaponId)!;
     if (b.pause > 0) {
       b.pause -= dt;

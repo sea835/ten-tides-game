@@ -36,7 +36,7 @@ import { BattleIsland } from "./battle/BattleWorld.tsx";
 import { BattleEffects } from "./battle/Effects.tsx";
 import { BattleHud, SettingsButton } from "./battle/BattleHud.tsx";
 import { Shooter } from "./battle/Shooter.tsx";
-import { ViewModel } from "./battle/ViewModel.tsx";
+import { ViewModel, ViewPass } from "./battle/ViewModel.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -178,6 +178,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <DayCycle room={room} sun={sun} hemi={hemi} ibl={high} />
           <DebugHook room={room} />
           {high && <PostFx />}
+          {battle && <ViewPass post={high} />}
         </Suspense>
       </Canvas>
       {battle ? (

@@ -101,10 +101,12 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
   const look = useRoomSnapshot(room, () => {
     const k = player.kit;
     const slot = k.active;
-    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
   // Súng người khác chạm tường: dò tia từ ngực theo hướng họ ngắm (vài lần mỗi giây, chỉ khi ở gần).
   const wall = useRef({ value: 0, at: 0 });
+  // Thay đạn, rút súng của người khác: server chỉ báo cờ đang thay đạn và món đang cầm, máy mình tự đếm thời gian.
+  const anim = useRef({ reloadAt: 0, reloading: false, weapon: "", swapAt: 0 });
   const motion = useMemo(() => {
     const m: Motion = { moving: false };
     return () => {
@@ -123,6 +125,19 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
         }
       }
       m.wall = w.value;
+      const an = anim.current;
+      const k = player.kit;
+      const def = WEAPON.get(look.weapon);
+      if (k.reloading && !an.reloading) an.reloadAt = now;
+      an.reloading = k.reloading;
+      m.reload = k.reloading && def ? Math.min(0.99, (now - an.reloadAt) / (def.reload * 1000)) : undefined;
+      const current = `${k.active}|${look.weapon}`;
+      if (current !== an.weapon) {
+        if (an.weapon) an.swapAt = now;
+        an.weapon = current;
+      }
+      const sk = Math.min(1, (now - an.swapAt) / 500);
+      m.swap = 1 - sk * sk * (3 - 2 * sk);
       m.moving = player.moving;
       m.swimming = player.swimming;
       m.crouching = player.crouching;
@@ -154,7 +169,7 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
   });
   return (
     <group ref={root} position={[player.x, player.y, player.z]} visible={alive}>
-      <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
+      <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
     </group>
   );
 }

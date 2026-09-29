@@ -85,7 +85,7 @@ export function resetKit(kit: KitState, money: number) {
   kit.sight1 = kit.sight2 = kit.sightP = "";
   kit.active = "";
   kit.ammo.clear();
-  kit.frag = kit.smoke = kit.mine = kit.bandage = kit.medkit = 0;
+  kit.frag = kit.smoke = kit.flash = kit.mine = kit.bandage = kit.medkit = 0;
   kit.armor = kit.armorHp = kit.helmet = kit.helmetHp = 0;
   kit.reloading = false;
   kit.healing = "";
@@ -204,7 +204,7 @@ export function everything(kit: KitState): string[] {
   for (const [ammo, n] of kit.ammo) if (n > 0) out.push(`ammo:${ammo}:${n}`);
   if (kit.armor) out.push(`armor:${kit.armor}`);
   if (kit.helmet) out.push(`helmet:${kit.helmet}`);
-  for (const t of ["frag", "smoke", "mine", "bandage", "medkit"] as const) for (let k = 0; k < kit[t]; k++) out.push(t);
+  for (const t of ["frag", "smoke", "flash", "mine", "bandage", "medkit"] as const) for (let k = 0; k < kit[t]; k++) out.push(t);
   if (kit.money >= 100) out.push(`money:${Math.floor(kit.money / 2)}`);
   return out;
 }

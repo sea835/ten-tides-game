@@ -63,6 +63,7 @@ export const KitState = schema(
     ammo: t.map("uint16"),
     frag: t.uint8().default(0),
     smoke: t.uint8().default(0),
+    flash: t.uint8().default(0),
     mine: t.uint8().default(0),
     bandage: t.uint8().default(0),
     medkit: t.uint8().default(0),
@@ -437,6 +438,10 @@ export const SmokeState = schema(
     y: t.float32().default(0),
     z: t.float32().default(0),
     timeLeft: t.float32().default(0),
+    /** Lựu đạn vừa nổ trong khói: khoảng trống quanh (cx, cz) còn bao nhiêu giây (0 là khói kín). */
+    clear: t.float32().default(0),
+    cx: t.float32().default(0),
+    cz: t.float32().default(0),
   },
   "SmokeState",
 );
@@ -699,9 +704,11 @@ export const FireMessage = z.object({
   hits: z.array(z.object({ target: id, part: z.enum(["head", "body"]), d: z.number().min(0).max(1000), ray: z.int().min(0).max(11) })).max(12),
 });
 export type FireMessage = z.infer<typeof FireMessage>;
-export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "pistol", "frag", "smoke", "mine", ""]) });
+export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "pistol", "frag", "smoke", "flash", "mine", ""]) });
 export const BattleBuyMessage = z.object({ item: z.string().max(40) });
-export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke"]), o: vec3, v: vec3 });
+export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke", "flash"]), o: vec3, v: vec3 });
+/** Đâm dao: người bị đâm (máy mình dò trước, server kiểm tra lại tầm với, hướng, tường). Không trúng ai thì để trống. */
+export const MeleeMessage = z.object({ target: z.string().max(64).optional(), yaw: z.number() });
 export const HealMessage = z.object({ kind: z.enum(["bandage", "medkit"]) });
 export const BATTLE_WEATHERS = ["sunny", "cloudy", "rain", "fog", "storm", "snow"] as const;
 export const BATTLE_TIMES = ["dawn", "day", "dusk", "night"] as const;
@@ -732,7 +739,7 @@ export interface HurtMessage {
 }
 /** Nổ: lựu đạn, mìn. Khói: bom khói bung ra. */
 export interface BoomMessage {
-  kind: "frag" | "mine" | "smoke";
+  kind: "frag" | "mine" | "smoke" | "flash";
   x: number;
   y: number;
   z: number;
@@ -791,6 +798,7 @@ export const Messages = {
   battleBuy: "battleBuy",
   battleThrow: "battleThrow",
   placeMine: "placeMine",
+  melee: "melee",
   heal: "heal",
   battleSettings: "battleSettings",
   shot: "shot",

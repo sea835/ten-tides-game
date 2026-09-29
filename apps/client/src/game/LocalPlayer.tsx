@@ -30,6 +30,7 @@ import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { WEAPON } from "@tentides/content";
 import { bodies, getBattleHud, localAvatar, localBody, recoil, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
+import { gun } from "./battle/Shooter.tsx";
 import { playLand } from "./sound/guns.ts";
 import { aimZoom, getSettings } from "./settings.ts";
 
@@ -99,9 +100,9 @@ const BHOP_MAX = MAX_SPEED_BOOST - 1;
 /** Đứng trên đất quá khung giờ trên thì đà mất dần chừng này mỗi giây. */
 const BHOP_DECAY = 2;
 /** Battleground: tốc độ đi, chạy, ngồi xổm (m/s), camera qua vai (khoảng cách thường, khi ngắm, lệch sang phải). */
-const BATTLE_WALK = 4.8;
-const BATTLE_RUN = 7.2;
-const BATTLE_CROUCH = 2.6;
+const BATTLE_WALK = 5.6;
+const BATTLE_RUN = 8.6;
+const BATTLE_CROUCH = 3.2;
 const BATTLE_CAM_DIST = 3.4;
 const BATTLE_CAM_AIM = 1.9;
 const BATTLE_SHOULDER = 0.62;
@@ -111,8 +112,8 @@ const EYE_HEIGHT_CROUCH = 1.2;
  * Quán tính khi đi (1/giây, càng lớn càng bám): trên đất tăng tốc, hãm lại; trên không chỉ bẻ lái được chút ít,
  * không bấm gì thì giữ nguyên đà; Battleground nặng tay hơn chế độ khám phá (mang súng, giáp).
  */
-const GROUND_ACCEL = 9;
-const GROUND_BRAKE = 11;
+const GROUND_ACCEL = 11;
+const GROUND_BRAKE = 12;
 const STORY_ACCEL = 13;
 const STORY_BRAKE = 16;
 const AIR_CONTROL = 1.4;
@@ -343,7 +344,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     // Quá tải thì đi (và bơi) chậm hơn.
     // Battleground: nhịp chạy như game bắn súng (chậm hơn chế độ khám phá), súng nặng thì chậm hơn, ngắm thì đi chậm.
     const gun = battle && sheet ? WEAPON.get((sheet.kit as unknown as Record<string, string>)[sheet.kit.active] ?? "") : undefined;
-    const landSpeed = battle ? (running ? BATTLE_RUN : s.crouching ? BATTLE_CROUCH : BATTLE_WALK) * (gun?.speed ?? 1) * (stance.aiming ? 0.62 : 1) : running ? MAX_RUN_SPEED : WALK_SPEED;
+    const landSpeed = battle ? (running ? BATTLE_RUN : s.crouching ? BATTLE_CROUCH : BATTLE_WALK) * (gun?.speed ?? 1) * (stance.aiming ? 0.68 : 1) : running ? MAX_RUN_SPEED : WALK_SPEED;
     const baseSpeed = s.swimming ? (running ? SWIM_SPRINT_SPEED : SWIM_SPEED) : landSpeed;
     if (s.swimming) s.hop = 0;
     if (battle) s.hop = Math.min(s.hop, 0.3);
@@ -698,13 +699,25 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
 
     if (battle) {
       // Đồ gần nhất nhặt được.
+      // Đồ để nhặt: trong tầm với, ưu tiên món đang nhìn vào (tâm ngắm chĩa tới), không chỉ món gần chân nhất —
+      // đồ rơi thường nằm thành đống (súng, hộp đạn, băng gạc cạnh nhau), nhìn món nào nhặt món ấy.
       let near: { key: string; itemId: string } | null = null;
-      let bestD = 2.6;
+      let bestScore = Infinity;
+      const eyeX = state.camera.position.x;
+      const eyeY = state.camera.position.y;
+      const eyeZ = state.camera.position.z;
       if (!dead)
         for (const [key, g] of room.state.groundItems) {
           const d = Math.hypot(g.x - next.x, g.z - next.z);
-          if (d < bestD && Math.abs(g.y - feetY) < 2.2) {
-            bestD = d;
+          if (d > 2.6 || Math.abs(g.y - feetY) > 2.2) continue;
+          const tx = g.x - eyeX;
+          const ty = g.y + 0.1 - eyeY;
+          const tz = g.z - eyeZ;
+          const tl = Math.hypot(tx, ty, tz) || 1;
+          const facing = (tx * camDir.x + ty * camDir.y + tz * camDir.z) / tl;
+          const score = d * 0.35 + (1 - facing) * 3;
+          if (score < bestScore) {
+            bestScore = score;
             near = { key, itemId: g.itemId };
           }
         }
@@ -771,6 +784,14 @@ function readLocalMotion(room: IslandRoom): Motion {
   merged.actN = sheet?.actN;
   merged.stun = sheet?.stun;
   merged.dizzy = sheet?.dizzy;
+  if (room.state.mode === "battle") {
+    const now = performance.now();
+    const def = WEAPON.get(gun.weapon);
+    merged.reload = def && gun.reloadUntil > now ? 1 - (gun.reloadUntil - now) / (def.reload * 1000) : undefined;
+    const k = Math.min(1, (now - stance.swapAt) / (stance.swapDur * 1000));
+    merged.swap = 1 - k * k * (3 - 2 * k);
+    merged.cook = stance.cookAt > 0;
+  }
   return merged;
 }
 
@@ -907,13 +928,13 @@ function atDigSite(room: IslandRoom, x: number, z: number): boolean {
 
 /** Vẽ lại nhân vật khi mình bắt đầu hay thôi vác rương, hay đổi món cầm trên tay. */
 /** Battleground: súng đang cầm, áo ngụy trang, giáp, mũ của mình. */
-function BattleLook({ room, children }: { room: IslandRoom; children: (look: { weapon: string; sight: string; outfit: string; armor: number; helmet: number }) => ReactNode }) {
+function BattleLook({ room, children }: { room: IslandRoom; children: (look: { weapon: string; sight: string; throwable: string; knife: boolean; outfit: string; armor: number; helmet: number }) => ReactNode }) {
   const look = useRoomSnapshot(room, (s) => {
     const k = s.players.get(myId(room))?.kit;
-    if (!k) return { weapon: "", sight: "", outfit: "woodland", armor: 0, helmet: 0 };
+    if (!k) return { weapon: "", sight: "", throwable: "", knife: false, outfit: "woodland", armor: 0, helmet: 0 };
     const slot = k.active;
     const gunSlot = slot === "primary1" || slot === "primary2" || slot === "pistol";
-    return { weapon: gunSlot ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+    return { weapon: gunSlot ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
   return <>{children(look)}</>;
 }

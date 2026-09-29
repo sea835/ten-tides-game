@@ -4,6 +4,7 @@ import {
   AMMO,
   ARMOR,
   BATTLE_SITES,
+  FLASH,
   HEALS,
   HELMETS,
   MAP_HALF_SIZE,
@@ -26,7 +27,7 @@ import { myId, type IslandRoom } from "../../net.ts";
 import { look } from "../input.ts";
 import { localPosition } from "../shared.ts";
 import { DEFAULT_SETTINGS, getSettings, setSettings, useSettings } from "../settings.ts";
-import { playBuy, playCountdown, playZoneTick } from "../sound/guns.ts";
+import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/guns.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
 import { getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
@@ -63,6 +64,26 @@ function withSight(name: string | undefined, sight: string): string {
   if (!name) return "";
   const s = SIGHTS[sight as SightId];
   return s ? `${name} · ${s.id === "reddot" ? "Red Dot" : s.id === "holo" ? "Holo" : s.id.slice(1) + "x"}` : name;
+}
+
+/**
+ * Bị bom choáng: màn hình trắng xoá (nhạt dần theo thời gian còn loá), tai ù (tiếng rít cao, các tiếng khác nhỏ đi).
+ */
+function Flashed({ room }: { room: IslandRoom }) {
+  const blind = useRoomSnapshot(room, (s) => Math.round((s.players.get(myId(room))?.blind ?? 0) * 10) / 10);
+  const last = useRef(0);
+  const stop = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    // Vừa bị loá (thời gian loá tăng lên): ù tai theo độ nặng.
+    if (blind > last.current + 0.4) {
+      stop.current?.();
+      stop.current = playTinnitus(blind + 1.5, Math.min(1, blind / FLASH.seconds));
+    }
+    last.current = blind;
+  }, [blind]);
+  useEffect(() => () => stop.current?.(), []);
+  if (blind <= 0) return null;
+  return <div className="b-flashed" style={{ opacity: Math.min(1, blind / 1.6) }} />;
 }
 
 // ---------------------------------------------------------------------------- tâm ngắm, dấu trúng, bị bắn, ống ngắm
@@ -278,9 +299,10 @@ function Vitals({ room }: { room: IslandRoom }) {
         <div className="b-items">
           <span className={k.active === "frag" ? "on" : ""}>4 💣{k.frag}</span>
           <span className={k.active === "smoke" ? "on" : ""}>5 🌫{k.smoke}</span>
-          <span className={k.active === "mine" ? "on" : ""}>6 ⊚{k.mine}</span>
-          <span>7 🩹{k.bandage}</span>
-          <span>8 ✚{k.medkit}</span>
+          <span className={k.active === "flash" ? "on" : ""}>6 ✺{k.flash}</span>
+          <span className={k.active === "mine" ? "on" : ""}>7 ⊚{k.mine}</span>
+          <span>8 🩹{k.bandage}</span>
+          <span>9 ✚{k.medkit}</span>
         </div>
       </div>
       <div className="b-weapons">
@@ -401,7 +423,7 @@ function KillFeed({ room }: { room: IslandRoom }) {
       {feed.map((k) => (
         <div key={k.n} className={k.killer === me || k.victim === me ? "me" : ""}>
           {k.killer ? <b>{nameOf(room, k.killer)}</b> : null}
-          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
+          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
           <b className="v">{nameOf(room, k.victim)}</b>
         </div>
       ))}
@@ -601,7 +623,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <LogOut size={16} /> Rời phòng
       </button>
       <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · 4 lựu đạn · 5 bom khói · 6 mìn · 7–8 hồi máu · E nhặt · B cửa hàng · Tab bảng điểm · T đổi góc nhìn
+        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · E nhặt · B cửa hàng · Tab bảng điểm · T đổi góc nhìn
       </p>
     </div>
   );
@@ -789,6 +811,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
   return (
     <div className="hud battle-hud">
       {fighting && <Reticle room={room} />}
+      {fighting && <Flashed room={room} />}
       <Compass />
       {fighting && <TopBar room={room} />}
       <div className="b-right">

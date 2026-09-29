@@ -14,7 +14,15 @@ export const bodies = new Map<string, { x: number; y: number; z: number; crouch:
  * thước ngắm (m) — đạn đi đúng tâm ở cự ly này, xa hơn thì rơi dưới tâm.
  * `speed`: tốc độ ngang thật (m/s); `land`: độ nặng cú đáp đất vừa rồi (0–1, giảm dần) để camera, súng nhún theo.
  */
-export const stance = { firstPerson: false, aiming: false, scoped: false, sight: "", zero: 100, crouching: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
+export const stance = {
+  /** Mốc thời gian (performance.now, ms) các động tác: đâm dao, rút chốt lựu đạn (0 là chưa), ném, rút súng ra. */
+  meleeAt: 0,
+  cookAt: 0,
+  throwAt: 0,
+  swapAt: 0,
+  /** Rút súng mất chừng này giây (súng to lâu hơn súng lục, lựu đạn). */
+  swapDur: 0.5,
+  firstPerson: false, aiming: false, scoped: false, sight: "", zero: 100, crouching: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
 
 /**
  * Giật súng.
@@ -75,7 +83,7 @@ export interface Flash {
   lightOnly?: boolean;
 }
 export interface Blast {
-  kind: "frag" | "mine" | "smoke";
+  kind: "frag" | "mine" | "smoke" | "flash";
   x: number;
   y: number;
   z: number;
@@ -93,8 +101,26 @@ export interface Splat {
   scale: number;
 }
 
+/** Vỏ đạn văng ra từ cửa thoát bên phải súng (có thể trễ: súng khoá nòng kéo khoá xong mới văng). */
+export interface Casing {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  /** Lúc bắt đầu văng (giây, performance.now). */
+  at: number;
+  kind: "brass" | "shotgun";
+  /** Cỡ vỏ (1 là đạn súng trường; súng lục nhỏ hơn, đạn bắn tỉa dài hơn). */
+  size: number;
+}
+
+/** Cửa thoát vỏ đạn của súng trước mặt (ViewModel ghi mỗi khung hình) và trục phải của súng. */
+export const eject = { x: 0, y: 0, z: 0, rx: 1, ry: 0, rz: 0, valid: false };
+
 /** Hàng đợi hiệu ứng: bên bắn đẩy vào, bộ vẽ lấy ra. */
-export const effects = { tracers: [] as Tracer[], impacts: [] as Impact[], flashes: [] as Flash[], blasts: [] as Blast[], splats: [] as Splat[] };
+export const effects = { tracers: [] as Tracer[], impacts: [] as Impact[], flashes: [] as Flash[], blasts: [] as Blast[], splats: [] as Splat[], casings: [] as Casing[] };
 
 // ---------------------------------------------------------------------------- kho cho HUD
 

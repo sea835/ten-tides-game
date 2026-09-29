@@ -154,10 +154,11 @@ export function slotsFor(def: WeaponDef): WeaponSlot[] {
   return def.class === "pistol" ? ["pistol"] : ["primary1", "primary2"];
 }
 
-export type ThrowableId = "frag" | "smoke" | "mine";
+export type ThrowableId = "frag" | "smoke" | "flash" | "mine";
 export const THROWABLES: Record<ThrowableId, { name: string; price: number; max: number }> = {
   frag: { name: "Lựu đạn", price: 300, max: 4 },
   smoke: { name: "Bom khói", price: 200, max: 4 },
+  flash: { name: "Bom choáng", price: 250, max: 3 },
   mine: { name: "Mìn", price: 450, max: 3 },
 };
 
@@ -222,3 +223,9 @@ export function falloff(def: WeaponDef, distance: number): number {
 export const FRAG = { fuse: 3.5, radius: 8, damage: 120 };
 export const MINE = { trigger: 1.2, arm: 2, radius: 5, damage: 150 };
 export const SMOKE = { fuse: 2, seconds: 20, radius: 7 };
+/** Bom choáng: nổ sau `fuse` giây, loá mắt ai nhìn thấy trong `radius` m (nhìn thẳng vào thì lâu nhất `seconds` giây). */
+export const FLASH = { fuse: 1.6, radius: 28, seconds: 5 };
+/** Lựu đạn nổ trong đám khói thì thổi tan một khoảng bán kính `radius` m trong `seconds` giây rồi khói mới lấp lại. */
+export const SMOKE_CLEAR = { radius: 6, seconds: 6 };
+/** Cận chiến bằng dao: tầm với, sát thương (đâm sau lưng nhân đôi), thời gian hồi. */
+export const MELEE = { range: 2.4, damage: 50, backstab: 2, cooldown: 0.7 };

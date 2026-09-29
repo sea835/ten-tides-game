@@ -586,7 +586,12 @@ export const playImpact = safe((at: Place, surface: "dirt" | "concrete" | "metal
 // ---------------------------------------------------------------------------- lựu đạn, mìn, khói
 
 /** Nổ lựu đạn / mìn: tiếng nổ lớn với đuôi trầm lăn dài, xa thì có tiếng dội; gần thì rất mạnh và ù tai. */
-export const playExplosion = safe((at: Place, kind: "frag" | "mine") => {
+export const playExplosion = safe((at: Place, kind: "frag" | "mine" | "flash") => {
+  // Lựu đạn choáng có tiếng riêng.
+  if (kind === "flash") {
+    playFlashbang(at);
+    return;
+  }
   const sp = spatial(at, 500, 25);
   if (!sp) return;
   const d = sp.d;
@@ -788,5 +793,350 @@ export const playBuy = safe(() => {
   v.osc(0.06, { type: "triangle", freq: 1568, decay: 0.35, peak: 0.45 });
   v.osc(0.06, { type: "triangle", freq: 2093, decay: 0.45, peak: 0.4 });
   v.osc(0.06, { freq: 2093 * 2.7, decay: 0.15, peak: 0.1 });
+  v.done();
+});
+
+// ---------------------------------------------------------------------------- vỏ đạn, lựu choáng, ù tai
+
+/** Vỏ đạn rơi xuống đất: đồng thau trên nền cứng kêu "leng keng" nảy vài lần; vỏ shotgun (nhựa) kêu "cộc" đục; nền mềm thì gần như chỉ còn tiếng "bịch" nhỏ. */
+export const playShellDrop = safe((at: Place, kind: "brass" | "shotgun", surface: "hard" | "soft") => {
+  const sp = spatial(at, 12, 2);
+  if (!sp) return;
+  sp.delay = 0;
+  const soft = surface === "soft";
+  const v = voice("fx", (soft ? 0.12 : 0.22) * sp.gain, { sp });
+  if (!v) return;
+  const p = rand(0.88, 1.14);
+  if (soft) {
+    // Rơi vào cỏ, đất: tiếng bịch mờ, chút sột soạt.
+    v.noise(0, { brown: true, type: "lowpass", freq: 650 * p, decay: 0.035, peak: 0.8 });
+    v.noise(0, { type: "bandpass", freq: (kind === "brass" ? 2600 : 1500) * p, q: 1.2, decay: 0.02, peak: 0.2 });
+  } else if (kind === "brass") {
+    // Đồng thau: tiếng "ting" sáng, tần số không hòa âm, nảy 2–3 lần mỗi lần nhỏ và gần nhau hơn.
+    const bounces = Math.random() < 0.5 ? 2 : 3;
+    let t = 0;
+    let gap = rand(0.07, 0.11);
+    for (let i = 0; i < bounces; i++) {
+      const f = rand(3800, 5200) * p;
+      const k = Math.pow(0.55, i);
+      v.noise(t, { type: "highpass", freq: 5000, decay: 0.008, peak: 0.6 * k, attack: 0.0005 });
+      v.osc(t, { type: "triangle", freq: f, decay: 0.06 * (1 - i * 0.2), peak: 0.55 * k, attack: 0.001 });
+      v.osc(t, { freq: f * 2.41, decay: 0.035, peak: 0.2 * k, attack: 0.001 });
+      t += gap;
+      gap *= rand(0.55, 0.75);
+    }
+  } else {
+    // Vỏ nhựa shotgun: tiếng "cộc" rỗng, đục, nảy một lần.
+    for (let i = 0; i < 2; i++) {
+      const t = i * rand(0.09, 0.13);
+      const k = i ? 0.45 : 1;
+      v.noise(t, { type: "bandpass", freq: rand(900, 1200) * p, q: 3, decay: 0.03, peak: 0.8 * k, attack: 0.001 });
+      v.osc(t, { type: "triangle", freq: 420 * p, freqEnd: 300 * p, decay: 0.04, peak: 0.4 * k });
+    }
+  }
+  v.done();
+});
+
+/** Nổ lựu đạn choáng: tiếng nứt cực sắc, rất to, nhiều cao tần, ít trầm hơn lựu đạn nổ; nghe được rất xa. */
+export const playFlashbang = safe((at: Place) => {
+  const sp = spatial(at, 450, 25);
+  if (!sp) return;
+  const d = sp.d;
+  const v = voice("gun", 0.8 * sp.gain, { sp, reverb: 0.4 + Math.min(1, d / 150) });
+  if (!v) return;
+  const roll = 1 + d / 220;
+  // Tiếng "tách" siêu ngắn rồi tiếng nứt sắc kéo dài một chút.
+  v.noise(0, { type: "highpass", freq: 6500, decay: 0.02, peak: 1.1, attack: 0.0005 });
+  v.noise(0, { type: "highpass", freq: 2400, decay: 0.13, peak: 1.2, attack: 0.0008 });
+  v.noise(0, { type: "bandpass", freq: 3600, freqEnd: 2000, q: 1.2, decay: 0.22, peak: 0.6, attack: 0.001 });
+  // Khối giữa: đóng lại nhanh hơn lựu đạn thường.
+  v.noise(0, { type: "lowpass", freq: 6000, freqEnd: 700, decay: 0.25, peak: 0.7, attack: 0.002 });
+  // Thân trầm nhẹ (ít thuốc nổ).
+  v.osc(0, { freq: 150, freqEnd: 55, decay: 0.3, peak: 0.55, attack: 0.002 });
+  // Đuôi vang ngắn hơn, sáng hơn.
+  v.noise(0.03, { brown: true, type: "lowpass", freq: 700, freqEnd: 200, attack: 0.05, decay: 1.3 * roll, peak: 0.45 });
+  if (d > 90) {
+    v.noise(rand(0.45, 0.75), { brown: true, type: "lowpass", freq: 420, attack: 0.12, decay: 1.4 * roll, peak: 0.35 });
+  }
+  v.done();
+});
+
+/** Mức giảm hiện tại của các bus trò chơi khi ù tai; nhiều lần ù chồng nhau thì lấy mức nặng nhất. */
+interface Deafen {
+  start: number;
+  seconds: number;
+  depth: number;
+}
+const deafens = new Set<Deafen>();
+let deafTimer: ReturnType<typeof setInterval> | null = null;
+/** Độ to gốc của bus sfx và ambience (lấy ở lần giảm đầu tiên; không ai khác chỉnh hai bus này). */
+let deafBase: { sfx: number; ambience: number } | null = null;
+
+/** Độ giảm (0–1) của một lần ù tai ở thời điểm `now`: giảm nhanh, giữ một lúc rồi hồi dần về 0. */
+function deafAt(x: Deafen, now: number): number {
+  const s = (now - x.start) / 1000;
+  if (s < 0) return 0;
+  const hold = x.seconds * 0.3;
+  if (s < hold) return x.depth;
+  return x.depth * Math.max(0, 1 - (s - hold) / Math.max(0.1, x.seconds - hold));
+}
+
+/** Cập nhật độ to hai bus theo các lần ù tai đang còn; hết thì trả về mức gốc và dừng hẹn giờ. */
+function deafTick() {
+  try {
+    const ctx = audio.ctx;
+    const now = performance.now();
+    let depth = 0;
+    for (const x of deafens) {
+      const dx = deafAt(x, now);
+      if ((now - x.start) / 1000 >= x.seconds) deafens.delete(x);
+      else depth = Math.max(depth, dx);
+    }
+    if (ctx && deafBase) {
+      const t = ctx.currentTime;
+      audio.bus("sfx").gain.setTargetAtTime(deafBase.sfx * (1 - depth), t, deafens.size ? 0.05 : 0.25);
+      audio.bus("ambience").gain.setTargetAtTime(deafBase.ambience * (1 - depth), t, deafens.size ? 0.05 : 0.25);
+    }
+    if (!deafens.size && deafTimer) {
+      clearInterval(deafTimer);
+      deafTimer = null;
+    }
+  } catch {
+    // Lỗi âm thanh thì im lặng bỏ qua.
+  }
+}
+
+/**
+ * Ù tai sau khi bị lựu đạn choáng: tiếng rít sin cao (3.5–4.5 kHz) có nhịp phách nhẹ, tắt dần trong `seconds` giây,
+ * to theo `strength` (0–1). Trong lúc ù, tiếng trò chơi (sfx, ambience) bị giảm nhỏ rồi hồi lại êm. Tiếng ù đi qua
+ * bus giao diện nên không bị giảm theo. Trả về hàm dừng sớm.
+ */
+export function playTinnitus(seconds: number, strength: number): () => void {
+  try {
+    const s = clamp(Number.isFinite(seconds) ? seconds : 3, 0.3, 20);
+    const k = clamp(Number.isFinite(strength) ? strength : 1, 0, 1);
+    const v = voice("local", 0.16 * k, { bus: "ui" });
+    if (!v) return noop;
+    const f = rand(3500, 4500);
+    // Hai sin lệch vài Hz tạo nhịp phách chậm; thêm bồi âm mảnh cho khó chịu hơn.
+    v.osc(0, { freq: f, attack: 0.08, decay: s, peak: 1 });
+    v.osc(0, { freq: f + rand(3, 7), attack: 0.12, decay: s * 0.85, peak: 0.45 });
+    v.osc(0, { freq: f * 1.5, attack: 0.2, decay: s * 0.5, peak: 0.08 });
+    v.done();
+
+    if (!deafBase) deafBase = { sfx: audio.bus("sfx").gain.value, ambience: audio.bus("ambience").gain.value };
+    const me: Deafen = { start: performance.now(), seconds: s, depth: 0.75 * k };
+    deafens.add(me);
+    if (!deafTimer) deafTimer = setInterval(deafTick, 60);
+    deafTick();
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      try {
+        v.kill();
+        deafens.delete(me);
+        deafTick();
+      } catch {
+        // Lỗi âm thanh thì im lặng bỏ qua.
+      }
+    };
+  } catch {
+    return noop;
+  }
+}
+
+// ---------------------------------------------------------------------------- dao, đổi vũ khí, lựu đạn
+
+/** Vung dao (của mình): tiếng vút gió và chút vải sột soạt. */
+export const playKnifeSwing = safe(() => {
+  const v = voice("local", 0.35);
+  if (!v) return;
+  const p = rand(0.9, 1.12);
+  v.noise(0, { type: "bandpass", freq: 2400 * p, q: 0.7, attack: 0.02, decay: 0.08, peak: 0.25 }); // vải
+  v.noise(0.02, { type: "bandpass", freq: 450 * p, freqEnd: 1900 * p, q: 1.4, attack: 0.07, decay: 0.13, peak: 0.9 });
+  v.noise(0.04, { type: "highpass", freq: 3500, attack: 0.05, decay: 0.08, peak: 0.15 });
+  v.done();
+});
+
+/** Dao trúng: đâm vào người là tiếng "phập" trầm, ướt; trúng vật cứng là tiếng kim loại cào rít. */
+export const playKnifeHit = safe((at: Place, flesh: boolean) => {
+  const sp = spatial(at, 25, 3);
+  if (!sp) return;
+  sp.delay = 0;
+  const v = voice("fx", 0.45 * sp.gain, { sp, reverb: flesh ? 0 : 0.1 });
+  if (!v) return;
+  if (flesh) {
+    v.noise(0, { brown: true, type: "lowpass", freq: 900, freqEnd: 250, decay: 0.08, peak: 1 });
+    v.osc(0, { freq: rand(105, 125), freqEnd: 45, decay: 0.1, peak: 0.8 });
+    v.noise(0.004, { type: "bandpass", freq: rand(550, 750), q: 1.5, decay: 0.06, peak: 0.55 }); // tiếng ướt
+    v.noise(0.03, { type: "bandpass", freq: 1400, freqEnd: 800, q: 2, decay: 0.05, peak: 0.2 });
+  } else {
+    const f = rand(1900, 2600);
+    v.noise(0, { type: "highpass", freq: 3200, decay: 0.02, peak: 0.8, attack: 0.001 });
+    v.osc(0, { type: "triangle", freq: f, decay: 0.18, peak: 0.35 });
+    v.osc(0, { freq: f * 2.76, decay: 0.1, peak: 0.15 });
+    // Lưỡi dao cào dọc bề mặt.
+    v.noise(0.01, { type: "bandpass", freq: rand(3200, 4000), freqEnd: 2000, q: 5, attack: 0.015, decay: 0.14, peak: 0.45 });
+  }
+  v.done();
+});
+
+/** Đổi vũ khí: vải sột soạt rồi tiếng kim loại; súng lục nhẹ hơn, rút dao có tiếng lưỡi "xoẹt". */
+export const playWeaponSwap = safe((kind: "gun" | "pistol" | "throwable" | "knife") => {
+  const light = kind !== "gun";
+  const v = voice("local", light ? 0.32 : 0.4);
+  if (!v) return;
+  // Vải, bao súng sột soạt.
+  v.noise(0, { type: "bandpass", freq: rand(2000, 2400), freqEnd: 3400, q: 0.8, attack: 0.04, decay: light ? 0.09 : 0.13, peak: 0.3 });
+  switch (kind) {
+    case "gun":
+      clack(v, 0.14, 2400, 0.55);
+      clack(v, 0.22, 1600, 0.7);
+      v.osc(0.22, { freq: 180, freqEnd: 90, decay: 0.05, peak: 0.3 }); // báng súng chạm vai
+      break;
+    case "pistol":
+      clack(v, 0.11, 2900, 0.45);
+      clack(v, 0.17, 2200, 0.4);
+      break;
+    case "throwable":
+      clack(v, 0.1, 2700, 0.3);
+      v.osc(0.12, { type: "triangle", freq: 2500, decay: 0.06, peak: 0.12 }); // cần bẩy lựu đạn khẽ kêu
+      break;
+    case "knife":
+      // Lưỡi dao rút khỏi vỏ: tiếng "xoẹt" kim loại cao.
+      v.noise(0.08, { type: "bandpass", freq: 4800, freqEnd: 7200, q: 6, attack: 0.02, decay: 0.16, peak: 0.45 });
+      v.osc(0.1, { freq: rand(6000, 6600), attack: 0.01, decay: 0.18, peak: 0.08 });
+      clack(v, 0.2, 3200, 0.25);
+      break;
+  }
+  v.done();
+});
+
+/** Rút chốt lựu đạn: tiếng "tách" của vòng chốt và tiếng lò xo "ping" nhỏ. */
+export const playPinPull = safe(() => {
+  const v = voice("local", 0.4);
+  if (!v) return;
+  clack(v, 0, 3200, 0.45);
+  slide(v, 0.01, 2500, 4000, 0.05, 0.25); // chốt trượt khỏi lỗ
+  v.osc(0.05, { type: "triangle", freq: rand(2900, 3300), decay: 0.12, peak: 0.3 }); // vòng chốt
+  v.osc(0.06, { freq: 5200, freqEnd: 4700, decay: 0.16, peak: 0.12 }); // lò xo
+  v.done();
+});
+
+/** Cần bẩy (thìa) lựu đạn bật ra khi ném: tiếng "ting" kim loại nhẹ, lộn vòng. */
+export const playSpoon = safe((at: Place) => {
+  const sp = spatial(at, 25, 4);
+  if (!sp) return;
+  sp.delay = 0;
+  const v = voice("fx", 0.3 * sp.gain, { sp });
+  if (!v) return;
+  const f = rand(2600, 3100);
+  v.noise(0, { type: "highpass", freq: 4500, decay: 0.01, peak: 0.4, attack: 0.0005 });
+  v.osc(0, { type: "triangle", freq: f, decay: 0.16, peak: 0.5 });
+  v.osc(0, { freq: f * 2.7, decay: 0.07, peak: 0.18 });
+  // Lộn vòng trong không khí rồi chạm khẽ.
+  v.osc(rand(0.08, 0.12), { type: "triangle", freq: f * 1.08, decay: 0.08, peak: 0.2 });
+  v.done();
+});
+
+// ---------------------------------------------------------------------------- các bước thay đạn rời, cơ khí sau phát bắn
+
+function reloadClass(weaponId: string): WeaponClass {
+  return WEAPON.get(weaponId)?.class ?? "ar";
+}
+
+/** Bước tháo băng (hoặc bẻ nòng shotgun, mở khóa nòng súng bắn tỉa, mở nắp trung liên). */
+export const playMagOut = safe((weaponId: string) => {
+  const cls = reloadClass(weaponId);
+  const v = voice("local", cls === "pistol" ? 0.42 : 0.5);
+  if (!v) return;
+  if (cls === "shotgun") {
+    clack(v, 0, 1500, 0.8);
+    slide(v, 0.03, 1100, 600, 0.12, 0.3);
+  } else if (cls === "sniper") {
+    clack(v, 0, 2100, 0.5);
+    slide(v, 0.07, 1200, 2400, 0.14, 0.45);
+  } else {
+    if (cls === "lmg") clack(v, 0, 1900, 0.6); // mở nắp
+    magOut(v, cls === "lmg" ? 0.12 : 0);
+    // Băng cũ rơi / cất vào túi.
+    v.noise(0.25, { brown: true, type: "lowpass", freq: 900, decay: 0.08, peak: 0.25 });
+  }
+  v.done();
+});
+
+/** Bước lắp băng (shotgun và súng bắn tỉa: nạp một viên, gọi lại cho mỗi viên). */
+export const playMagIn = safe((weaponId: string) => {
+  const cls = reloadClass(weaponId);
+  const v = voice("local", cls === "pistol" ? 0.42 : 0.5);
+  if (!v) return;
+  if (cls === "shotgun") {
+    slide(v, 0, 700, 1400, 0.07, 0.3);
+    clack(v, 0.07, 1300, 0.5);
+  } else if (cls === "sniper") {
+    clack(v, 0, rand(2800, 3300), 0.4);
+  } else {
+    magIn(v, 0, cls === "lmg" ? 0.8 : cls === "pistol" ? 1.2 : 1);
+    if (cls === "lmg") {
+      // Đặt dây đạn rồi đóng nắp.
+      slide(v, 0.2, 2500, 3500, 0.2, 0.2);
+      clack(v, 0.45, 1500, 1);
+    }
+  }
+  v.done();
+});
+
+/** Bước lên đạn (kéo khóa nòng, nhả khóa trượt, đóng nòng shotgun, đẩy khóa nòng súng bắn tỉa). */
+export const playBoltRack = safe((weaponId: string) => {
+  const cls = reloadClass(weaponId);
+  const v = voice("local", cls === "pistol" ? 0.42 : 0.5);
+  if (!v) return;
+  switch (cls) {
+    case "pistol":
+      clack(v, 0, 2400, 0.9); // nhả khóa trượt
+      v.osc(0, { freq: 260, freqEnd: 130, decay: 0.04, peak: 0.25 });
+      break;
+    case "shotgun":
+      clack(v, 0, 1200, 1);
+      v.osc(0, { freq: 170, freqEnd: 80, decay: 0.08, peak: 0.5 });
+      break;
+    case "sniper":
+      slide(v, 0, 2300, 1300, 0.12, 0.4);
+      clack(v, 0.14, 1800, 0.9);
+      v.osc(0.14, { freq: 210, freqEnd: 100, decay: 0.05, peak: 0.35 });
+      break;
+    default:
+      charge(v, 0);
+  }
+  v.done();
+});
+
+/** Cơ khí sau mỗi phát (khóa trượt súng lục, bệ khóa nòng súng trường): tiếng lách cách khẽ, chỉ cho người bắn. */
+export const playShotMechanics = safe((weaponId: string) => {
+  const cls = reloadClass(weaponId);
+  const p = (0.94 + hash(weaponId) * 0.12) * rand(0.96, 1.04);
+  const v = voice("local", cls === "pistol" ? 0.16 : cls === "sniper" ? 0.1 : 0.14);
+  if (!v) return;
+  switch (cls) {
+    case "pistol":
+      // Khóa trượt lùi rồi lao tới.
+      clack(v, 0, 3100 * p, 0.5);
+      clack(v, 0.03, 2500 * p, 0.45);
+      break;
+    case "shotgun":
+      clack(v, 0.01, 1700 * p, 0.5);
+      break;
+    case "sniper":
+      clack(v, 0, 2300 * p, 0.3);
+      break;
+    default: {
+      // Bệ khóa nòng: lùi, lò xo nén "boing" khẽ, đóng lại.
+      const heavy = cls === "lmg" || cls === "dmr" ? 0.85 : cls === "smg" ? 1.15 : 1;
+      v.noise(0, { type: "bandpass", freq: 1900 * p * heavy, q: 2, decay: 0.018, peak: 0.45, attack: 0.001 });
+      v.osc(0.006, { freq: 950 * p * heavy, freqEnd: 720 * p * heavy, decay: 0.05, peak: 0.1 });
+      clack(v, 0.028 / heavy, 2300 * p * heavy, 0.4);
+    }
+  }
   v.done();
 });

@@ -1,13 +1,16 @@
 import { Room, matchMaker, type Client } from "@colyseus/core";
 import {
   ARMOR,
+  FLASH,
   FRAG,
+  MELEE,
   HEALS,
   HELMETS,
   KILL_REWARD,
   MAX_HP,
   MINE,
   SMOKE,
+  SMOKE_CLEAR,
   SIGHT_IDS,
   START_MONEY,
   WEAPON,
@@ -31,6 +34,7 @@ import {
   BATTLE_WEATHERS,
   BattleSettingsMessage,
   BattleThrowMessage,
+  MeleeMessage,
   CHAT_MIN_INTERVAL_MS,
   ChatMessage,
   FireMessage,
@@ -102,7 +106,7 @@ interface AuthData {
 
 interface Thrown {
   id: string;
-  kind: "frag" | "smoke";
+  kind: "frag" | "smoke" | "flash";
   owner: string;
   x: number;
   y: number;
@@ -139,6 +143,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private kicked = new Set<string>();
   private lastMoveAt = new Map<string, number>();
   private lastShotAt = new Map<string, number>();
+  private lastMeleeAt = new Map<string, number>();
   private lastChatAt = new Map<string, number>();
   private timers = new Map<string, Timed>();
   private thrown: Thrown[] = [];
@@ -239,6 +244,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.battleThrow, BattleThrowMessage, (client, msg) => {
       const id = this.playerOf(client);
       if (id) this.throwGrenade(id, msg.kind, msg.o, msg.v);
+    });
+
+    this.onMessage(Messages.melee, MeleeMessage, (client, msg) => {
+      const id = this.playerOf(client);
+      if (id) this.melee(id, msg.yaw, msg.target);
     });
 
     this.onMessage(Messages.placeMine, (client) => {
@@ -528,7 +538,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.tickTimers(dt);
     this.tickThrown(dt);
     this.tickMines(dt);
+    for (const p of s.players.values()) if (p.blind > 0) p.blind = Math.max(0, p.blind - dt);
     for (const [key, smoke] of s.smokes) {
+      if (smoke.clear > 0) smoke.clear = Math.max(0, smoke.clear - dt);
       smoke.timeLeft -= dt;
       if (smoke.timeLeft <= 0) s.smokes.delete(key);
     }
@@ -853,7 +865,41 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   // -------------------------------------------------------------------------- lựu đạn, khói, mìn
 
-  throwGrenade(id: string, kind: "frag" | "smoke", o: [number, number, number], v: [number, number, number]) {
+  /**
+   * Đâm dao: ai cũng thấy động tác; trúng thì server kiểm tra lại người bị đâm ở trong tầm với, phía trước mặt,
+   * không có tường chắn. Đâm từ sau lưng thì nhân đôi sát thương.
+   */
+  melee(id: string, yaw: number, targetId?: string) {
+    const p = this.state.players.get(id);
+    if (!p || !p.alive) return;
+    const now = Date.now();
+    if (now - (this.lastMeleeAt.get(id) ?? 0) < MELEE.cooldown * 1000 * 0.85) return;
+    this.lastMeleeAt.set(id, now);
+    this.cancelHeal(id);
+    p.act = "stab";
+    p.actN = (p.actN + 1) % 65536;
+    if (!targetId || this.state.phase !== "battle") return;
+    const t = this.state.players.get(targetId);
+    if (!t || !t.alive || targetId === id) return;
+    const dx = t.x - p.x;
+    const dz = t.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d > MELEE.range + 0.4 || Math.abs(t.y - p.y) > 1.6) return;
+    // Hướng nhìn của người đâm: (−sin yaw, −cos yaw) theo quy ước camera.
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    if (d > 0.6 && (dx * fx + dz * fz) / d < 0.35) return;
+    const eye: [number, number, number] = [p.x, p.y + 1.3, p.z];
+    const dir: [number, number, number] = [dx / (d || 1), (t.y - p.y) / (d || 1), dz / (d || 1)];
+    if (d > 0.5 && raycastBoxes(this.map.index, eye, dir, d) < d - 0.2) return;
+    // Người bị đâm quay lưng lại (mặt họ cùng hướng với hướng đâm) thì là đâm lén.
+    const back = Math.sin(t.rotY) * dir[0] + Math.cos(t.rotY) * dir[2] > 0.5;
+    const result = this.damage(targetId, MELEE.damage * (back ? MELEE.backstab : 1), "body", id, "knife", [p.x, p.z]);
+    if (result) this.clientOf(id)?.send(Messages.hit, { kind: result.killed ? "kill" : "body", armor: result.armor, amount: Math.round(result.amount) } satisfies HitMessage);
+    this.bots.onHurt(targetId, id);
+  }
+
+  throwGrenade(id: string, kind: "frag" | "smoke" | "flash", o: [number, number, number], v: [number, number, number]) {
     const p = this.state.players.get(id);
     if (!p || !p.alive || p.kit[kind] <= 0 || !this.fighting()) return;
     if (Math.hypot(o[0] - p.x, o[2] - p.z) > 3 || Math.abs(o[1] - p.y - 1.4) > 1.5) return;
@@ -863,7 +909,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (p.kit[kind] <= 0 && p.kit.active === kind) p.kit.active = p.kit.primary1 ? "primary1" : p.kit.pistol ? "pistol" : "";
     p.act = "throw";
     p.actN = (p.actN + 1) % 65536;
-    const g: Thrown = { id: `t${++this.seq}`, kind, owner: id, x: o[0], y: o[1], z: o[2], vx: v[0] * k, vy: v[1] * k, vz: v[2] * k, fuse: kind === "frag" ? FRAG.fuse : SMOKE.fuse, bounced: 0 };
+    const g: Thrown = { id: `t${++this.seq}`, kind, owner: id, x: o[0], y: o[1], z: o[2], vx: v[0] * k, vy: v[1] * k, vz: v[2] * k, fuse: kind === "frag" ? FRAG.fuse : kind === "flash" ? FLASH.fuse : SMOKE.fuse, bounced: 0 };
     this.thrown.push(g);
     const ps = new ProjectileState();
     ps.itemId = kind;
@@ -925,6 +971,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       }
       this.state.projectiles.delete(g.id);
       if (g.kind === "frag") this.explode(g.x, g.y, g.z, "frag", g.owner, FRAG.radius, FRAG.damage);
+      else if (g.kind === "flash") this.flashbang(g.x, g.y, g.z);
       else {
         const s = new SmokeState();
         s.x = g.x;
@@ -938,8 +985,39 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.thrown = keep;
   }
 
+  /**
+   * Bom choáng: ai thấy được chỗ nổ (không tường chắn) trong tầm thì loá mắt; nhìn thẳng vào, đứng gần thì lâu nhất,
+   * quay lưng lại thì chỉ loá thoáng qua. Không gây sát thương.
+   */
+  flashbang(x: number, y: number, z: number) {
+    this.broadcast(Messages.boom, { kind: "flash", x, y, z } satisfies BoomMessage);
+    for (const p of this.state.players.values()) {
+      if (!p.alive) continue;
+      const ey = p.y + (p.crouching ? 1.1 : 1.6);
+      const d = Math.hypot(p.x - x, ey - y, p.z - z);
+      if (d > FLASH.radius) continue;
+      const dir: [number, number, number] = [(p.x - x) / (d || 1), (ey - y) / (d || 1), (p.z - z) / (d || 1)];
+      if (d > 0.6 && raycastBoxes(this.map.index, [x, y + 0.15, z], dir, d) < d - 0.3) continue;
+      if (d > 0.6 && raycastTerrain(this.map.world, [x, y + 0.15, z], dir, d) < d - 0.3) continue;
+      // Hướng nhìn của người này (mặt nhân vật quay theo rotY, ngẩng theo aimPitch) so với hướng tới chỗ nổ.
+      const cp = Math.cos(p.aimPitch);
+      const look = Math.sin(p.rotY) * cp * -dir[0] + Math.sin(p.aimPitch) * -dir[1] + Math.cos(p.rotY) * cp * -dir[2];
+      const facing = 0.2 + 0.8 * Math.max(0, look);
+      const near = Math.pow(1 - d / FLASH.radius, 0.6);
+      const seconds = FLASH.seconds * near * facing;
+      if (seconds > 0.3) p.blind = Math.max(p.blind, seconds);
+    }
+  }
+
   explode(x: number, y: number, z: number, kind: "frag" | "mine", owner: string, radius: number, maxDamage: number) {
     this.broadcast(Messages.boom, { kind, x, y, z } satisfies BoomMessage);
+    // Sức ép thổi tan một khoảng trong đám khói gần đó một lúc.
+    for (const smoke of this.state.smokes.values()) {
+      if (Math.hypot(smoke.x - x, smoke.z - z) > SMOKE.radius + radius * 0.5) continue;
+      smoke.clear = SMOKE_CLEAR.seconds;
+      smoke.cx = x;
+      smoke.cz = z;
+    }
     if (this.state.phase !== "battle") return;
     for (const [id, p] of this.state.players) {
       if (!p.alive) continue;
@@ -950,7 +1028,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (d > radius) continue;
       // Tường chắn thì an toàn.
       const dir: [number, number, number] = [(cx - x) / (d || 1), (cy - y) / (d || 1), (cz - z) / (d || 1)];
-      if (d > 0.5 && raycastBoxes(this.map.index, [x, y + 0.3, z], dir, d - 0.3) < Infinity) continue;
+      if (d > 0.5 && raycastBoxes(this.map.index, [x, y + 0.3, z], dir, d - 0.3) < d - 0.3 - 1e-3) continue;
       const k = Math.pow(1 - d / radius, 1.3);
       const dealt = this.damage(id, maxDamage * k, "blast", owner, kind, [x, z]);
       const knock: KnockMessage = { dx: dir[0], dz: dir[2], force: 14 * k };

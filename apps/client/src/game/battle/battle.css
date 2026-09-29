@@ -954,3 +954,12 @@
 .story-settings {
   pointer-events: none;
 }
+
+/* Bị bom choáng: trắng xoá, nhạt dần. */
+.b-flashed {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 45%, #fff 0, #fff 45%, #f4f4ee 100%);
+  pointer-events: none;
+  transition: opacity 0.25s linear;
+}

@@ -18,7 +18,7 @@ import {
   type Group,
 } from "three";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
-import { GunModel, HelmetModel, VestModel, aimLineHeight, stockLength, supportOffset } from "./GunModel.tsx";
+import { GunModel, HelmetModel, KnifeModel, ThrowableModel, VestModel, aimLineHeight, stockLength, supportOffset } from "./GunModel.tsx";
 import { camoTexture } from "./camo.ts";
 import { mulberry32 } from "./nature.ts";
 import type { DetailKind } from "./textures.ts";
@@ -48,6 +48,12 @@ export interface Motion {
   firing?: number;
   /** Nòng súng sát vật cản (0–1): dựng súng lên (súng lục thì chĩa xuống) cho khỏi xuyên tường. */
   wall?: number;
+  /** Đang thay đạn: tiến trình 0–1 (không thay thì bỏ trống). */
+  reload?: number;
+  /** Vừa rút món mới: 1 là đang ở dưới, về 0 là đã cầm chắc. */
+  swap?: number;
+  /** Đang rút chốt lựu đạn (tay vung ra sau chờ ném). */
+  cook?: boolean;
 }
 
 /** Mỗi động tác kéo dài bao lâu (giây). */
@@ -391,6 +397,7 @@ const _shL = new Vector3(SHOULDER_X, SHOULDER_Y, 0);
 const _poleR = new Vector3();
 const _poleL = new Vector3();
 const X_AXIS = new Vector3(1, 0, 0);
+const Z_AXIS = new Vector3(0, 0, 1);
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
@@ -419,6 +426,8 @@ export function Character({
   helmet = 0,
   weapon,
   sight = "",
+  throwable = "",
+  knife = false,
   ref,
 }: {
   color: string;
@@ -438,6 +447,10 @@ export function Character({
   weapon?: string;
   /** Ống ngắm lắp trên súng đang cầm (id trong SIGHTS). */
   sight?: string;
+  /** Lựu đạn, bom khói, bom choáng, mìn đang cầm trên tay phải. */
+  throwable?: string;
+  /** Tay không (đã cất súng): cầm dao. */
+  knife?: boolean;
   ref?: Ref<Group>;
 }) {
   const look = useMemo(() => looks(color), [color]);
@@ -454,6 +467,7 @@ export function Character({
   const foreR = useRef<Group>(null);
   const handL = useRef<Group>(null);
   const handR = useRef<Group>(null);
+  const knifeR = useRef<Group>(null);
   const body = useRef<Group>(null);
   const torso = useRef<Group>(null);
   const head = useRef<Group>(null);
@@ -577,6 +591,11 @@ export function Character({
       armRx = armRx * 0.5 - 0.3;
       elbowR = 0.55;
     }
+    // Cầm lựu đạn: tay phải đưa ra trước ngực; rút chốt thì vung tay ra sau lên cao chờ ném. Cầm dao: tay thủ thấp.
+    if (!gunId && (throwable || knife) && climb < 0.5 && swim < 0.5) {
+      armRx = m.cook ? -2.7 : throwable ? -0.6 : -0.45;
+      elbowR = m.cook ? 1.5 : throwable ? 1.35 : 1.1;
+    }
     // Động tác một lần: vung, chặt, ném, bắn, đâm, ăn.
     const dur = ACT_SECONDS[a.act] ?? 0;
     let lunge = 0;
@@ -619,7 +638,10 @@ export function Character({
     }
 
     // ------------------------------------------------ thân: nhún, ngả, hạ thấp
-    const withGun = !!gunId && climb < 0.3 && swim < 0.3;
+    // Đâm dao thì cất súng ra sau lưng một nhịp, dao hiện trong tay phải.
+    const stabbing = a.act === "stab" && a.actT < (ACT_SECONDS.stab ?? 0);
+    const withGun = !!gunId && climb < 0.3 && swim < 0.3 && !stabbing;
+    if (knifeR.current) knifeR.current.visible = (knife || stabbing) && climb < 0.5 && swim < 0.5;
     if (body.current) {
       const bob = a.amount < 0.05 ? Math.sin(now / 700) * 0.008 : Math.abs(Math.cos(a.phase)) * 0.05 * amount;
       // Xoay quanh gót chân nên phải nhấc người lên theo góc nằm để đầu vẫn nhô khỏi mặt nước.
@@ -692,12 +714,30 @@ export function Character({
         _gunPos.addScaledVector(_t.set(0, 0, 1).applyQuaternion(_gunQ), -0.04 * a.kick * (pistol ? 0.7 : 1));
         _gunQ.multiply(_qA.setFromAxisAngle(X_AXIS, -(pistol ? 0.16 : 0.07) * a.kick));
       }
+      // Rút súng: đưa từ dưới lên, nòng chúc xuống; thay đạn: nghiêng súng lật cửa băng đạn ra ngoài.
+      const sw = m.swap ?? 0;
+      if (sw > 0.001) {
+        _gunPos.y -= 0.28 * sw;
+        _gunQ.multiply(_qA.setFromAxisAngle(X_AXIS, 0.9 * sw));
+      }
+      if (m.reload !== undefined && m.reload >= 0 && m.reload < 1) {
+        const cant = Math.sin(Math.min(1, m.reload / 0.9) * Math.PI);
+        _gunQ.multiply(_qA.setFromAxisAngle(Z_AXIS, -0.45 * cant));
+      }
       gun.current.position.copy(_gunPos);
       gun.current.quaternion.copy(_gunQ);
       // Tay phải nắm tay cầm, tay trái đỡ ốp lót tay (súng lục thì ôm tay phải). Đổi sang toạ độ thân trên.
       _inv.copy(torso.current.matrix).invert();
       _grip.copy(_gunPos).applyMatrix4(_inv);
       _support.set(...supportOffset(gunId)).applyQuaternion(_gunQ).add(_gunPos).applyMatrix4(_inv);
+      // Thay đạn: tay trái rời ốp lót tay xuống hông lấy băng mới rồi đẩy vào; băng cũ biến mất một lúc.
+      const r = m.reload;
+      const magG = gun.current.getObjectByName("mag");
+      if (magG) magG.visible = !(r !== undefined && r > 0.28 && r < 0.62);
+      if (r !== undefined && r >= 0 && r < 1) {
+        const away = Math.sin(Math.min(1, Math.max(0, (r - 0.12) / 0.66)) * Math.PI);
+        _support.lerp(_t.set(0.16, -0.32, 0.1), away * 0.85);
+      }
       // Cổ tay lùi khỏi điểm nắm một đoạn theo hướng từ vai tới (lòng bàn tay nằm đúng chỗ cầm).
       _grip.addScaledVector(_t.subVectors(_grip, _shR).normalize(), -0.065);
       _support.addScaledVector(_t.subVectors(_support, _shL).normalize(), -0.06);
@@ -776,6 +816,16 @@ export function Character({
             <P g={G.small} m={glove} p={[0, -0.05, 0.004]} s={[0.016, 0.046, 0.037]} />
             <P g={G.small} m={glove} p={[0, -0.098, 0.016]} s={[0.014, 0.038, 0.032]} r={[0.55, 0, 0]} />
             <P g={G.tiny} m={glove} p={[inward * 0.01, -0.045, 0.036]} s={[0.0095, 0.028, 0.0105]} r={[0.5, 0, inward * 0.3]} />
+            {right && (
+              <group ref={knifeR} visible={false} position={[0, -0.075, 0.012]} rotation={[Math.PI / 2 + 0.55, 0, 0]}>
+                <KnifeModel opacity={o} />
+              </group>
+            )}
+            {right && throwable && !gunId && (
+              <group position={[0, -0.085, 0.02]}>
+                <ThrowableModel id={throwable} />
+              </group>
+            )}
             {right && itemInHand && (
               // Cầm trong nắm tay phải: đồ dài chĩa ra trước theo cánh tay, đồ nhỏ nắm gọn.
               <group position={[0, -0.075, 0.01]} rotation={LONG_ITEMS.has(itemInHand) ? [Math.PI / 2 + 0.7, 0, 0] : [Math.PI, 0, 0]}>
