@@ -40,6 +40,8 @@ export interface Motion {
   dizzy?: number;
   /** Ngồi xổm (Battleground): hạ người, đi khom. */
   crouching?: boolean;
+  /** Nằm sấp (Battleground): cả người áp xuống đất, bò; súng tì vai ngắm về trước. */
+  prone?: boolean;
   /** Đang ngắm: giương súng lên vai. */
   aiming?: boolean;
   /** Góc ngẩng nhìn (radian, dương là nhìn lên). */
@@ -81,6 +83,11 @@ const NECK_Y = 0.55;
 const SIT_DROP = 0.74;
 /** Ngồi xổm: hông hạ chừng này. */
 const CROUCH_DROP = 0.45;
+/** Nằm sấp: thân ngả về trước gần nằm ngang (còn hơi chống khuỷu), dời ra sau cho hông nằm đúng chỗ đứng. */
+const _camDir = new Vector3();
+const PRONE_TILT = 1.42;
+const PRONE_BACK = 0.93;
+const PRONE_LIFT = 0.12;
 
 const SKIN = ["#f1c9a0", "#e0ac7e", "#c68a5e", "#9c6a44"];
 const HAIR = ["#2b1d14", "#4a3020", "#7a4a26", "#1c1c1c", "#b07a3a"];
@@ -409,8 +416,14 @@ type V3 = [number, number, number];
 
 /** Một khối của nhân vật: hình và vật liệu dùng chung, đổ bóng và nhận bóng. */
 function P({ g, m, p, s, r }: { g: BufferGeometry; m: MeshStandardMaterial; p?: V3; s?: V3 | number; r?: V3 }) {
-  return <mesh geometry={g} material={m} position={p} scale={s} rotation={r} castShadow receiveShadow />;
+  // Chi tiết nhỏ (mắt, lông mày, môi, mũi, tai): không đổ bóng (bóng vài mm không thấy mà tốn thêm một lệnh vẽ), và
+  // được đánh dấu để ẩn khi người ở xa.
+  const size = s === undefined ? 1 : typeof s === "number" ? s : Math.max(s[0], s[1], s[2]);
+  if (!g.boundingSphere) g.computeBoundingSphere();
+  const tiny = (g.boundingSphere?.radius ?? 1) * size < 0.035;
+  return <mesh geometry={g} material={m} position={p} scale={s} rotation={r} castShadow={!tiny} receiveShadow={!tiny} userData={tiny ? TINY : undefined} />;
 }
+const TINY = { tiny: true };
 
 /**
  * Nhân vật người: đầu có hàm, mũi, tai, mắt, lông mày, tóc; thân ngực eo hông; tay có khuỷu và bàn tay; chân có gối
@@ -477,13 +490,34 @@ export function Character({
   const butt = useRef<Group>(null);
   const stars = useRef<Group>(null);
   const swirl = useRef<Group>(null);
-  const anim = useRef({ phase: 0, amount: 0, sit: 0, slide: 0, swim: 0, lie: 0, climb: 0, crouch: 0, aim: 0, run: 0, pitch: 0, kick: 0, wall: 0, fireN: -1, actN: -1, act: "", actT: 99, climbPhase: 0 });
+  const anim = useRef({ phase: 0, amount: 0, sit: 0, slide: 0, swim: 0, lie: 0, climb: 0, crouch: 0, prone: 0, aim: 0, run: 0, pitch: 0, kick: 0, wall: 0, fireN: -1, actN: -1, act: "", actT: 99, climbPhase: 0 });
 
   const gunId = weapon || "";
   const pistol = gunId === "p92" || gunId === "deagle";
   const itemInHand = gunId ? "" : held;
 
-  useFrame((_, dt) => {
+  // Tiết kiệm: người ở sau lưng camera thì thôi tính dáng (đứng yên tư thế cũ), ở xa thì tính cách một khung hình;
+  // thời gian bỏ qua cộng dồn vào lần tính sau nên chuyển động vẫn đúng nhịp.
+  const skip = useRef({ acc: 0, odd: false });
+  useFrame(({ camera }, rawDt) => {
+    let dt = rawDt;
+    const bm = body.current?.matrixWorld.elements;
+    if (bm) {
+      const dx = bm[12]! - camera.position.x;
+      const dy = bm[13]! - camera.position.y;
+      const dz = bm[14]! - camera.position.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      camera.getWorldDirection(_camDir);
+      const ahead = dx * _camDir.x + dy * _camDir.y + dz * _camDir.z;
+      const sk = skip.current;
+      sk.odd = !sk.odd;
+      if ((d2 > 16 && ahead < -3) || (d2 > 30 * 30 && sk.odd)) {
+        sk.acc = Math.min(0.2, sk.acc + rawDt);
+        return;
+      }
+      dt += sk.acc;
+      sk.acc = 0;
+    }
     const m = motion?.() ?? { moving: false };
     const a = anim.current;
     const now = performance.now();
@@ -505,7 +539,10 @@ export function Character({
     const ease = (k: number) => Math.min(1, dt * k);
     a.climb += ((m.climbing ? 1 : 0) - a.climb) * ease(8);
     if (m.climbing && m.moving) a.climbPhase += dt * 9;
-    const crouching = !!m.crouching && !m.swimming && !m.climbing && !m.sitting && !m.sliding;
+    const proning = !!m.prone && !m.swimming && !m.climbing && !m.sitting && !m.sliding;
+    a.prone += ((proning ? 1 : 0) - a.prone) * ease(5);
+    const prone = a.prone;
+    const crouching = !!m.crouching && !proning && !m.swimming && !m.climbing && !m.sitting && !m.sliding;
     a.crouch += ((crouching ? 1 : 0) - a.crouch) * ease(9);
     const target = m.moving ? (m.running && !crouching ? 1 : 0.6) : 0;
     a.amount += (target - a.amount) * ease(10);
@@ -521,7 +558,7 @@ export function Character({
     const crouch = a.crouch;
     // Đi khom thì bước ngắn, chậm hơn.
     // Nhịp bước: biết tốc độ thật thì mỗi bước đi đúng một sải (đi khom sải ngắn, chạy sải dài), chân không trượt trên đất.
-    const stride = crouching ? 0.5 : m.running ? 1.05 : 0.7;
+    const stride = proning ? 0.35 : crouching ? 0.5 : m.running ? 1.05 : 0.7;
     const rate = m.swimming ? 7 : m.speed !== undefined ? Math.min(24, (Math.PI * m.speed) / stride) : m.running && !crouching ? 17 : 12.5 - 3 * crouch;
     a.phase += dt * rate * (a.amount > 0.05 || m.swimming ? 1 : 0);
     const swim = a.swim;
@@ -548,6 +585,10 @@ export function Character({
       const cK = lerp(2.16, kneelK, idleCrouch) + (0.55 * Math.max(0, -Math.cos(ph - 0.35)) - 0.3 * Math.max(0, Math.cos(ph))) * walkK;
       thigh = lerp(thigh, cT, crouch);
       knee = lerp(knee, cK, crouch);
+      // Nằm sấp: hai chân duỗi thẳng theo thân, bò thì co một gối lên, đổi bên.
+      const crawl = Math.min(1, a.amount / 0.3);
+      thigh = lerp(thigh, 0.05 - Math.max(0, Math.sin(ph)) * 0.45 * crawl, prone);
+      knee = lerp(knee, 0.12 + Math.max(0, Math.sin(ph)) * 0.9 * crawl, prone);
       // Ngồi bệt: đùi nằm ngang ra trước, gối hơi co.
       thigh = lerp(thigh, -1.42, sit);
       knee = lerp(knee, 0.25, sit);
@@ -561,7 +602,7 @@ export function Character({
       // Cổ chân giữ bàn chân gần song song mặt đất (quỳ thì mũi giày chống xuống).
       const flat = -(thigh + knee);
       const kneelFoot = side === -1 ? (1.25 + flat) * crouch * idleCrouch : 0;
-      const foot = flat * (1 - swim * 0.6) * (1 - climb * 0.5) + kneelFoot + (1 - sit) * (1 - crouch) * amount * 0.25 * Math.sin(ph + 0.6);
+      const foot = lerp(flat * (1 - swim * 0.6) * (1 - climb * 0.5) + kneelFoot + (1 - sit) * (1 - crouch) * amount * 0.25 * Math.sin(ph + 0.6), 1.1, prone);
       return { thigh, knee, foot };
     };
     for (const [side, leg, shin, foot] of [
@@ -572,7 +613,7 @@ export function Character({
       if (leg.current) {
         leg.current.rotation.x = p.thigh;
         // Ngồi thì hai chân hơi dạng; ngồi xổm thì hai gối mở ra.
-        leg.current.rotation.z = side * (0.04 + 0.1 * sit + 0.12 * crouch);
+        leg.current.rotation.z = side * (0.04 + 0.1 * sit + 0.12 * crouch + 0.14 * prone);
       }
       if (shin.current) shin.current.rotation.x = p.knee;
       if (foot.current) foot.current.rotation.x = p.foot;
@@ -593,6 +634,12 @@ export function Character({
     armRx = lerp(armRx, -0.35, crouch * 0.8);
     elbowL = lerp(elbowL, 0.9, crouch * 0.8);
     elbowR = lerp(elbowR, 0.8, crouch * 0.8);
+    // Nằm sấp tay không: hai tay chống ra trước (bò thì đổi tay).
+    const reach = Math.sin(a.phase) * 0.35 * Math.min(1, a.amount / 0.3);
+    armLx = lerp(armLx, -2.5 + reach, prone);
+    armRx = lerp(armRx, -2.5 - reach, prone);
+    elbowL = lerp(elbowL, 1.2, prone);
+    elbowR = lerp(elbowR, 1.2, prone);
     // Đang cầm đồ thì tay phải hơi đưa ra trước.
     if (itemInHand && climb < 0.5 && swim < 0.5) {
       armRx = armRx * 0.5 - 0.3;
@@ -652,19 +699,21 @@ export function Character({
     if (body.current) {
       const bob = a.amount < 0.05 ? Math.sin(now / 700) * 0.008 : Math.abs(Math.cos(a.phase)) * 0.05 * amount;
       // Xoay quanh gót chân nên phải nhấc người lên theo góc nằm để đầu vẫn nhô khỏi mặt nước.
-      body.current.position.y = (bob * (1 - sit) - SIT_DROP * sit - CROUCH_DROP * crouch) * (1 - swim) + 0.95 * Math.sin(a.lie) + Math.sin(a.phase * 0.5) * 0.04 * swim;
+      body.current.position.y = (bob * (1 - sit) - SIT_DROP * sit - CROUCH_DROP * crouch) * (1 - swim) * (1 - prone) + 0.95 * Math.sin(a.lie) + Math.sin(a.phase * 0.5) * 0.04 * swim + PRONE_LIFT * prone;
       // Chạy thì người đổ về trước; ngồi thì hơi ngả ra sau, trượt thì ngả hẳn ra sau; leo cây thì áp vào thân cây.
-      body.current.rotation.x = (0.1 * a.amount * (m.running ? 1.5 : 1) * (1 - slide) * (1 - crouch) - 0.4 * slide) * (1 - swim) * (1 - climb) + a.lie + 0.32 * climb + lunge * 0.4;
-      body.current.position.z = lunge * 0.5 - 0.2 * climb;
+      body.current.rotation.x = (0.1 * a.amount * (m.running ? 1.5 : 1) * (1 - slide) * (1 - crouch) - 0.4 * slide) * (1 - swim) * (1 - climb) * (1 - prone) + a.lie + 0.32 * climb + lunge * 0.4 + PRONE_TILT * prone;
+      body.current.position.z = lunge * 0.5 - 0.2 * climb - PRONE_BACK * prone;
       body.current.rotation.y = twist;
       // Chóng mặt thì loạng choạng.
       body.current.rotation.z = (m.dizzy ?? 0) > 0 ? Math.sin(now / 260) * 0.12 : 0;
     }
-    const aimW = withGun ? a.aim : 0;
-    const pitch = Math.max(-1.2, Math.min(1.2, a.pitch));
+    // Nằm sấp: súng luôn tì vai; góc nòng tính trong khung thân (thân đã ngả gần nằm ngang) nên cộng bù góc ngả.
+    const aimW = withGun ? Math.max(a.aim, prone) : 0;
+    const look = Math.max(-1.2, Math.min(1.2, a.pitch));
+    const pitch = look + PRONE_TILT * prone;
     if (torso.current) {
       // Ngồi xổm thì lưng khom về trước; ngắm súng trường thì vai trái đưa lên trước; ngắm cao thấp thì lưng cong theo.
-      torso.current.rotation.x = 0.28 * crouch * (1 - aimW * 0.5) - 0.12 * sit - pitch * 0.25 * aimW;
+      torso.current.rotation.x = 0.28 * crouch * (1 - aimW * 0.5) - 0.12 * sit - look * 0.25 * aimW - 0.3 * prone;
       torso.current.rotation.y = (withGun && !pistol ? -0.22 * aimW - 0.1 * (1 - aimW) : 0) + twist * 0.3;
       torso.current.rotation.z = Math.sin(a.phase) * 0.03 * amount;
       torso.current.position.set(0, WAIST_Y, 0);
@@ -672,7 +721,7 @@ export function Character({
     if (head.current) {
       // Đầu ngẩng theo hướng nhìn, bù lại độ khom lưng; áp má vào báng khi ngắm súng trường.
       const lean = torso.current ? torso.current.rotation.x : 0;
-      head.current.rotation.x = -pitch * (0.55 + 0.25 * aimW) - lean * 0.85 + (pistol ? 0.02 : 0.3) * aimW;
+      head.current.rotation.x = -look * (0.55 + 0.25 * aimW) - lean * 0.85 + (pistol ? 0.02 : 0.3) * aimW - (PRONE_TILT - 0.4) * prone;
       head.current.rotation.y = torso.current ? -torso.current.rotation.y * 0.8 : 0;
       head.current.rotation.z = withGun && !pistol ? 0.14 * aimW : 0;
       head.current.position.z = 0.012 + (pistol ? 0.01 : 0.045) * aimW;

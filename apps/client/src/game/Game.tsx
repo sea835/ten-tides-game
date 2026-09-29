@@ -38,6 +38,7 @@ import { BattleEffects } from "./battle/Effects.tsx";
 import { BattleHud, SettingsButton } from "./battle/BattleHud.tsx";
 import { Shooter } from "./battle/Shooter.tsx";
 import { ViewModel, ViewPass } from "./battle/ViewModel.tsx";
+import { Vehicles } from "./battle/Vehicles.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -207,6 +208,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
             {battle ? <BattleIsland room={room} world={world} /> : <Island room={room} world={world} />}
             <LocalPlayer room={room} world={world} />
             {battle && <Shooter room={room} />}
+            {battle && <Vehicles room={room} />}
           </Physics>
           <PlayerLight />
           {!battle && <FirstPersonHands room={room} />}

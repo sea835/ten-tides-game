@@ -19,14 +19,15 @@ import {
   type Mesh,
   type PointLight,
 } from "three";
-import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, battleMap, type World } from "@tentides/content";
+import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, type World } from "@tentides/content";
 import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
-import type { IslandRoom } from "../../net.ts";
+import { myId, type IslandRoom } from "../../net.ts";
 import { localPosition, shake } from "../shared.ts";
-import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt } from "../sound/guns.ts";
+import { audio } from "../sound/engine.ts";
+import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt, playCannon } from "../sound/guns.ts";
 import { WEAPON } from "@tentides/content";
-import { bodies, effects, getBattleHud, setBattleHud } from "./runtime.ts";
+import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
 import { Casings } from "./Casings.tsx";
 import { physicsProbe } from "./surface.ts";
@@ -395,8 +396,10 @@ function Blasts() {
 /** Nhận tin nổ, khói từ server: thêm hiệu ứng, tiếng, rung màn hình. */
 function useBooms(room: IslandRoom) {
   useEffect(() => {
-    const offBoom = room.onMessage(Messages.boom, (b: BoomMessage) => {
+    const offBoom = room.onMessage(Messages.boom, (raw: BoomMessage) => {
       const now = performance.now() / 1000;
+      // Đạn pháo xe tăng nổ (hay xe nổ tung): vẽ và phát tiếng như mìn (to hơn lựu đạn).
+      const b = { ...raw, kind: raw.kind === "shell" ? ("mine" as const) : raw.kind };
       effects.blasts.push({ kind: b.kind, x: b.x, y: b.y, z: b.z, born: now });
       const d = Math.hypot(b.x - localPosition.x, b.y - localPosition.y, b.z - localPosition.z);
       if (b.kind === "smoke") {
@@ -631,10 +634,10 @@ function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number
   // Đạn tới nơi sau chừng này giây (bụi, lỗ đạn hiện đúng lúc vệt đạn cắm tới).
   const flight = len / speed;
   const at = now + flight;
-  for (const b of [...bodies.values(), { x: localPosition.x, y: localPosition.y, z: localPosition.z, crouch: false, alive: true }]) {
+  for (const b of [...bodies.values(), { x: localPosition.x, y: localPosition.y, z: localPosition.z, crouch: stance.crouching, prone: stance.prone, alive: true }]) {
     if (!b.alive) continue;
-    const top = b.y + (b.crouch ? 1.3 : 1.8);
-    if (Math.hypot(ex - b.x, ez - b.z) < 0.45 && ey > b.y - 0.1 && ey < top) {
+    const top = b.y + (b.prone ? 0.6 : b.crouch ? 1.3 : 1.8);
+    if (Math.hypot(ex - b.x, ez - b.z) < (b.prone ? 1.1 : 0.45) && ey > b.y - 0.1 && ey < top) {
       effects.impacts.push({ x: ex, y: ey, z: ez, nx: (ox - ex) * 0.02, ny: 0.2, nz: (oz - ez) * 0.02, born: now, blood: true, at });
       return;
     }
@@ -667,6 +670,14 @@ function useShots(room: IslandRoom) {
     return room.onMessage(Messages.shot, (m: ShotMessage) => {
       const now = performance.now() / 1000;
       const [ox, oy, oz] = m.o;
+      const alive = room.state.players.get(myId(room))?.alive ?? false;
+      if (m.w === "tank") {
+        // Pháo xe tăng: vệt đạn to bay chậm (nổ do tin "boom" lo), lửa đầu nòng do xe tăng tự vẽ.
+        const [ex, ey, ez] = m.e[0] ?? m.o;
+        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: TANK.velocity });
+        if (m.id !== myId(room)) playCannon({ x: ox, y: oy, z: oz }, false);
+        return;
+      }
       effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
       playGunshot(m.w, { x: ox, y: oy, z: oz }, false);
       const def = WEAPON.get(m.w);
@@ -690,26 +701,38 @@ function useShots(room: IslandRoom) {
           size: def.class === "pistol" || def.class === "smg" ? 0.75 : def.class === "sniper" || def.class === "dmr" ? 1.3 : 1,
         });
       }
+      // Đạn sượt qua đầu mình: tìm điểm gần tai nhất trên đường đạn (người đang xem, nếu mình đã gục).
+      const ear = audio.listener;
+      const eyeX = localPosition.x;
+      const eyeY = localPosition.y + (stance.prone ? 0.35 : stance.crouching ? 1.1 : 1.6);
+      const eyeZ = localPosition.z;
+      const lx = alive ? eyeX : ear.x;
+      const ly = alive ? eyeY : ear.y;
+      const lz = alive ? eyeZ : ear.z;
       let whizzed = false;
+      // Bắn nhau ở rất xa (ngoài tầm sương mù): chỉ còn tiếng, khỏi vẽ vệt đạn, dò lỗ đạn.
+      const farFrom = (x: number, z: number) => Math.hypot(x - localPosition.x, z - localPosition.z) > 260;
+      if (farFrom(ox, oz) && m.e.every(([ex, , ez]) => farFrom(ex, ez))) return;
       for (const [ex, ey, ez] of m.e) {
         effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false, speed: def?.velocity });
         remoteImpact(ox, oy, oz, ex, ey, ez, now, def?.velocity ?? 900);
-        if (whizzed) continue;
-        // Điểm gần mình nhất trên đường đạn.
+        if (whizzed || m.id === myId(room)) continue;
         const dx = ex - ox;
         const dy = ey - oy;
         const dz = ez - oz;
         const len = Math.hypot(dx, dy, dz) || 1;
-        const px = localPosition.x - ox;
-        const py = localPosition.y + 1.6 - oy;
-        const pz = localPosition.z - oz;
-        const t = Math.max(0, Math.min(len, (px * dx + py * dy + pz * dz) / len));
+        const t = Math.max(0, Math.min(len, ((lx - ox) * dx + (ly - oy) * dy + (lz - oz) * dz) / len));
         const cx = ox + (dx / len) * t;
         const cy = oy + (dy / len) * t;
         const cz = oz + (dz / len) * t;
-        if (t > 3 && Math.hypot(cx - localPosition.x, cy - localPosition.y - 1.6, cz - localPosition.z) < 4) {
-          playBulletWhiz({ x: cx, y: cy, z: cz });
+        const miss = Math.hypot(cx - lx, cy - ly, cz - lz);
+        // Đạn găm vào chính mình (điểm cuối sát người) thì đã có tiếng trúng đạn.
+        const intoMe = Math.hypot(ex - lx, ey - ly, ez - lz) < 0.9;
+        if (t > 4 && miss < 7 && !intoMe) {
+          playBulletWhiz({ x: cx, y: cy, z: cz }, miss, t / (def?.velocity ?? 900), def?.velocity ?? 900);
           whizzed = true;
+          // Đạn sượt sát đầu: giật mình (rung nhẹ màn hình).
+          if (miss < 1.5 && alive) shake.amount = Math.min(0.4, shake.amount + 0.08);
         }
       }
     });

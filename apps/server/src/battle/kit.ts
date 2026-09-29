@@ -208,3 +208,33 @@ export function everything(kit: KitState): string[] {
   if (kit.money >= 100) out.push(`money:${Math.floor(kit.money / 2)}`);
   return out;
 }
+
+/** Chép toàn bộ hành trang (khi người chơi nhập vào một máy trong đội). */
+export function copyKit(from: KitState, to: KitState) {
+  to.money = from.money;
+  to.primary1 = from.primary1;
+  to.primary2 = from.primary2;
+  to.pistol = from.pistol;
+  to.mag1 = from.mag1;
+  to.mag2 = from.mag2;
+  to.magP = from.magP;
+  to.sight1 = from.sight1;
+  to.sight2 = from.sight2;
+  to.sightP = from.sightP;
+  to.active = from.active;
+  to.ammo.clear();
+  for (const [k, n] of from.ammo) to.ammo.set(k, n);
+  to.frag = from.frag;
+  to.smoke = from.smoke;
+  to.flash = from.flash;
+  to.mine = from.mine;
+  to.bandage = from.bandage;
+  to.medkit = from.medkit;
+  to.armor = from.armor;
+  to.armorHp = from.armorHp;
+  to.helmet = from.helmet;
+  to.helmetHp = from.helmetHp;
+  to.outfit = from.outfit;
+  to.reloading = false;
+  to.healing = "";
+}

@@ -22,7 +22,7 @@ import {
   type AmmoId,
   type WeaponClass,
 } from "@tentides/content";
-import { BATTLE_TIMES, BATTLE_WEATHERS, Messages } from "@tentides/protocol";
+import { BATTLE_TIMES, BATTLE_WEATHERS, MAX_BATTLE_BOTS, Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { look } from "../input.ts";
 import { localPosition } from "../shared.ts";
@@ -33,6 +33,8 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
 import { getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
 import { ItemIcon } from "./ItemIcons.tsx";
+import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.tsx";
+import { teamColor } from "./Vehicles.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -195,15 +197,15 @@ function Reticle({ room }: { room: IslandRoom }) {
       const p = room.state.players.get(myId(room));
       const hitAt = h.hit && t - h.hit.at < 260 ? h.hit.at : 0;
       const hurtAts = h.hurts.filter((x) => t - x.at < 1400).map((x) => x.at).join(",");
-      return `${p?.alive}|${(p?.hp ?? 100) < 30}|${stance.aiming}|${stance.scoped}|${stance.firstPerson}|${stance.sight}|${stance.zero}|${gun.weapon}|${hitAt}|${hurtAts}`;
+      return `${p?.alive}|${p?.vehicle}|${(p?.hp ?? 100) < 30}|${stance.aiming}|${stance.scoped}|${stance.firstPerson}|${stance.sight}|${stance.zero}|${gun.weapon}|${hitAt}|${hurtAts}`;
     },
   );
-  if (!me?.alive) return null;
+  if (!me?.alive || me.vehicle) return null;
   return (
     <>
       {scoped ? (
         <ScopeView />
-      ) : stance.aiming && stance.firstPerson && stance.sight ? null : (
+      ) : stance.aiming && stance.firstPerson ? null : (
         <div ref={cross} className={`b-cross ${stance.aiming ? "ads" : ""}`}>
           <i className="t" />
           <i className="b" />
@@ -319,6 +321,22 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
           {z.nr > 0 && <circle cx={z.nx} cy={z.nz} r={z.nr} className="bm-next" />}
         </>
       )}
+      {/* Xe tăng của đội mình và xe bỏ trống (xe địch thì không lộ trên bản đồ). */}
+      {[...room.state.vehicles.values()]
+        .filter((v) => v.hp > 0 && (!v.driver || (me?.team && v.team === me.team) || v.driver === myId(room)))
+        .map((v, i) => (
+          <rect key={`v${i}`} x={v.x - 4} y={v.z - 4} width={8} height={8} className="bm-tank" style={{ fill: v.driver ? teamColor(v.team) : "#bbb" }} />
+        ))}
+      {/* Đồng đội. */}
+      {me?.team &&
+        [...room.state.players.entries()]
+          .filter(([id, p]) => id !== myId(room) && p.alive && p.team === me.team)
+          .map(([id, p]) => <circle key={id} cx={p.x} cy={p.z} r={big ? 3.5 : 4.5} className="bm-mate" />)}
+      {me?.team === myId(room) && lastOrder.kind !== "follow" && lastOrder.at > 0 && (
+        <g transform={`translate(${lastOrder.x} ${lastOrder.z})`}>
+          <path d="M-6,-6 L6,6 M6,-6 L-6,6" className="bm-order" />
+        </g>
+      )}
       {me && (
         <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180})`}>
           <path d="M0,-9 L6,6 L0,3 L-6,6 Z" className="bm-me" />
@@ -333,7 +351,7 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
 function Vitals({ room }: { room: IslandRoom }) {
   useFrameTick(15);
   const me = room.state.players.get(myId(room));
-  if (!me || !me.alive) return null;
+  if (!me || !me.alive || me.vehicle) return null;
   const k = me.kit;
   const now = performance.now();
   const reloading = k.reloading || gun.reloadUntil > now;
@@ -490,12 +508,26 @@ function KillFeed({ room }: { room: IslandRoom }) {
       {feed.map((k) => (
         <div key={k.n} className={k.killer === me || k.victim === me ? "me" : ""}>
           {k.killer ? <b>{nameOf(room, k.killer)}</b> : null}
-          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
+          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : k.weapon === "tank" ? "⛟ pháo" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
           <b className="v">{nameOf(room, k.victim)}</b>
         </div>
       ))}
     </div>
   );
+}
+
+/** Thông báo ngắn giữa màn hình (lệnh cho đội, hết tiền...), tự tắt sau 1,8 giây. */
+function Toast() {
+  const hud = useBattleHud();
+  const [, tick] = useState(0);
+  const age = hud.toast ? performance.now() - hud.toast.at : Infinity;
+  useEffect(() => {
+    if (age > 1800) return;
+    const t = setTimeout(() => tick((n) => n + 1), 1800 - age);
+    return () => clearTimeout(t);
+  }, [age]);
+  if (!hud.toast || age > 1800) return null;
+  return <div className="b-toast">{hud.toast.text}</div>;
 }
 
 function Pickup() {
@@ -629,6 +661,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
     phase: st.phase,
     host: st.hostId,
     bots: st.bots,
+    mode: st.battleMode,
     weather: st.weatherPick,
     time: st.timePick,
     players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color })),
@@ -643,7 +676,21 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <strong>{room.roomId}</strong>
       </div>
       <h2>Battleground</h2>
-      <p>Xuất phát ngẫu nhiên khắp đảo · bấm B mua vũ khí · vùng an toàn thu hẹp dần · người cuối cùng còn sống thắng.</p>
+      <div className="b-mode-pick">
+        <button className={s.mode === "solo" ? "on" : ""} disabled={!isHost} onClick={() => room.send(Messages.battleSettings, { mode: "solo" })}>
+          <strong>Sinh tồn</strong>
+          <span>Một mình, người cuối cùng còn sống thắng</span>
+        </button>
+        <button className={s.mode === "squad" ? "on" : ""} disabled={!isHost} onClick={() => room.send(Messages.battleSettings, { mode: "squad" })}>
+          <strong>Đồng đội</strong>
+          <span>Mỗi người dẫn 5 máy (bắn tỉa, súng trường, súng máy, lái xe tăng), đội cuối cùng còn người thắng</span>
+        </button>
+      </div>
+      <p>
+        {s.mode === "squad"
+          ? "Mỗi đội xuất phát cùng một chỗ, có xe tăng riêng · F/G/H ra lệnh cho đội · gục thì nhập vào máy còn sống · Z nằm bắn · E lên xe tăng."
+          : "Xuất phát ngẫu nhiên khắp đảo · bấm B mua vũ khí · vùng an toàn thu hẹp dần · người cuối cùng còn sống thắng. Có vài xe tăng bỏ trống trên đảo."}
+      </p>
       <ul className="b-lobby-players">
         {s.players.map((p) => (
           <li key={p.id}>
@@ -654,8 +701,8 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         ))}
       </ul>
       <label className="b-bots">
-        Máy (bot) cùng chơi: <strong>{s.bots}</strong>
-        <input type="range" min={0} max={12} value={s.bots} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { bots: Number(e.target.value) })} />
+        {s.mode === "squad" ? "Tổng số máy (gồm 5 máy theo mỗi người, còn lại chia thành đội máy)" : "Máy (bot) cùng chơi"}: <strong>{s.mode === "squad" ? Math.max(s.bots, s.players.length * 5) : s.bots}</strong>
+        <input type="range" min={0} max={MAX_BATTLE_BOTS} value={s.bots} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { bots: Number(e.target.value) })} />
       </label>
       <div className="b-sky-pick">
         <label>
@@ -683,7 +730,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
       </div>
       {isHost ? (
         <button className="primary big" onClick={() => room.send(Messages.start)}>
-          <CrossIcon size={18} /> Bắt đầu trận ({s.players.length + s.bots} người)
+          <CrossIcon size={18} /> Bắt đầu trận ({s.players.length + (s.mode === "squad" ? Math.max(s.bots, s.players.length * 5) : s.bots)} người)
         </button>
       ) : (
         <p className="muted">Chờ chủ phòng bắt đầu…</p>
@@ -692,7 +739,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <LogOut size={16} /> Rời phòng
       </button>
       <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · E nhặt · B cửa hàng · Tab bảng điểm · T đổi góc nhìn
+        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · E nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: F tới điểm, G giữ chỗ, H theo sau
       </p>
     </div>
   );
@@ -701,7 +748,9 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
 function Scoreboard({ room }: { room: IslandRoom }) {
   const hud = useBattleHud();
   const rows = useRoomSnapshot(room, (s) =>
-    [...s.players.entries()].map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot })).sort((a, b) => Number(b.alive) - Number(a.alive) || b.kills - a.kills),
+    [...s.players.entries()]
+      .map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot, team: p.team }))
+      .sort((a, b) => (a.team < b.team ? -1 : a.team > b.team ? 1 : 0) || Number(b.alive) - Number(a.alive) || b.kills - a.kills),
   );
   const phase = useRoomSnapshot(room, (s) => s.phase);
   if (!hud.scoreboard && phase !== "ended") return null;
@@ -712,7 +761,10 @@ function Scoreboard({ room }: { room: IslandRoom }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className={`${r.alive ? "" : "dead"} ${r.id === myId(room) ? "me" : ""}`}>
-              <td>{r.name}</td>
+              <td>
+                {r.team && <i className="b-team-dot" style={{ background: teamColor(r.team) }} title={teamName(room, r.team)} />}
+                {r.name}
+              </td>
               <td>{r.kills} hạ gục</td>
               <td>{r.alive ? "còn sống" : "đã gục"}</td>
             </tr>
@@ -732,6 +784,8 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
       phase: st.phase,
       alive: p?.alive ?? false,
       winner: st.winner,
+      team: p?.team ?? "",
+      squad: st.battleMode === "squad",
       kills: p?.kills ?? 0,
       aliveCount: st.aliveCount,
       host: st.hostId,
@@ -746,7 +800,8 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
     if ((s.phase === "battle" || s.phase === "prep") && !s.alive && !rank) {
       setRank(s.aliveCount + 1);
       // Xem kẻ đã hạ mình, không thì người còn sống đầu tiên.
-      if (s.killer && room.state.players.get(s.killer)?.alive) setBattleHud({ spectating: s.killer });
+      // Đồng đội: xem người trong đội mình (để chọn máy nhập vào).
+      if (s.killer && !s.squad && room.state.players.get(s.killer)?.alive) setBattleHud({ spectating: s.killer });
       else nextSpectate(room);
     }
     if (s.alive && rank) setRank(0);
@@ -757,18 +812,18 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   });
 
   if (s.phase === "ended") {
-    const won = s.winner === me;
+    const won = s.squad ? !!s.team && s.winner === s.team : s.winner === me;
     return (
       <div className={`b-end ${won ? "win" : ""}`}>
         {won ? (
           <>
             <Trophy size={48} />
             <h1>WINNER WINNER!</h1>
-            <p>Bạn là người cuối cùng còn sống · {s.kills} hạ gục</p>
+            <p>{s.squad ? "Đội bạn là đội cuối cùng còn trụ lại" : "Bạn là người cuối cùng còn sống"} · {s.kills} hạ gục</p>
           </>
         ) : (
           <>
-            <h1>{s.winner ? `${nameOf(room, s.winner)} chiến thắng` : "Không ai sống sót"}</h1>
+            <h1>{s.winner ? `${s.squad ? teamName(room, s.winner) : nameOf(room, s.winner)} chiến thắng` : "Không ai sống sót"}</h1>
             <p>
               Hạng #{rank || 1} · {s.kills} hạ gục
             </p>
@@ -792,7 +847,7 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
         <Skull size={28} />
         <h2>{s.killer ? `${nameOf(room, s.killer)} đã hạ bạn` : "Bạn đã gục"}</h2>
         <p>
-          {s.weapon === "zone" ? "vùng độc" : WEAPON.get(s.weapon)?.name ?? (s.weapon === "mine" ? "mìn" : s.weapon === "frag" ? "lựu đạn" : "")} · Hạng #{rank} · {s.kills} hạ gục
+          {s.weapon === "zone" ? "vùng độc" : WEAPON.get(s.weapon)?.name ?? (s.weapon === "mine" ? "mìn" : s.weapon === "frag" ? "lựu đạn" : s.weapon === "tank" ? "pháo xe tăng" : "")} · Hạng #{rank} · {s.kills} hạ gục
         </p>
         {hud.spectating && <p className="muted">Đang xem {nameOf(room, hud.spectating)} · bấm chuột để đổi người</p>}
         <button className="ghost" onClick={onLeave}>
@@ -958,6 +1013,10 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       )}
       {fighting && <Vitals room={room} />}
       {fighting && <OutsideZone room={room} />}
+      {fighting && <SquadHud room={room} />}
+      {fighting && <TankHud />}
+      <Toast />
+      <TankPrompt />
       <Pickup />
       <BuyMenu room={room} />
       <Scoreboard room={room} />
