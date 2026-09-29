@@ -142,7 +142,8 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
         <Suspense fallback={null}>
           <SkyDome />
           {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
-          <Physics key={world.seed}>
+          {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
+          <Physics key={world.seed} timeStep="vary">
             <Island room={room} world={world} />
             <LocalPlayer room={room} world={world} />
           </Physics>

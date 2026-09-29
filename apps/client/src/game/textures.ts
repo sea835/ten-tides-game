@@ -354,7 +354,9 @@ type Compile = (shader: WebGLProgramParametersWithUniforms, renderer: WebGLRende
 
 /** Vá một vật liệu để phủ vân. Gọi lại trên vật liệu đã vá thì không làm gì. Giữ nguyên bản vá sẵn có (gió lay...). */
 export function applyDetail(material: MeshStandardMaterial, options: DetailOptions): MeshStandardMaterial {
-  if (material.userData.tenDetail) return material;
+  // Đánh dấu bằng tập hợp chứ không chỉ userData: React vẽ lại có thể thay cả userData (prop JSX) làm mất dấu,
+  // vá lần hai thì shader khai báo trùng, lỗi biên dịch và vật tàng hình.
+  if (patched.has(material) || material.userData.tenDetail) return material;
   const def = KINDS[options.kind];
   const world = (options.space ?? "world") === "world";
   const tex = detailTextures();
@@ -416,7 +418,7 @@ export function guessKind(color: Color): DetailKind {
 
 /** Vật liệu không nên phủ vân: phát sáng, trong suốt, hay có bản đồ riêng. */
 function skip(m: MeshStandardMaterial): boolean {
-  if (m.userData.tenDetail || m.userData.detail === "none") return true;
+  if (patched.has(m) || m.userData.tenDetail || m.userData.detail === "none") return true;
   if (m.map || m.wireframe) return true;
   if (m.transparent && m.opacity < 0.95) return true;
   if (m.emissiveIntensity > 0.2 && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.05) return true;

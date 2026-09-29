@@ -135,6 +135,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     sitting: false,
     swimming: false,
     camHeight: CAM_HEIGHT_STAND,
+    camDist: CAMERA_DISTANCE,
     /** Đang leo cây nào (server đã đồng ý), cao bao nhiêu trên gốc, đứng ở góc nào quanh thân. */
     climb: null as { tree: ClimbTree; h: number; angle: number } | null,
     wobble: 0,
@@ -466,8 +467,11 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     // Có vật cản (thân cây, vách hang, sườn đồi) giữa nhân vật và camera thì kéo camera lại gần.
     camDir.subVectors(camPos, camTarget).normalize();
     const hit = physics.castRay(new rapier.Ray(camTarget, camDir), CAMERA_DISTANCE, true, undefined, undefined, col);
-    const blocked = hit !== null;
-    if (hit) camPos.copy(camTarget).addScaledVector(camDir, Math.max(CAMERA_MIN_DISTANCE, hit.timeOfImpact - 0.3));
+    // Chỉ làm mượt độ dài cần camera (co lại ngay khi vướng, dãn ra từ từ); vị trí camera bám đúng nhân vật
+    // từng khung hình, không trễ theo sau nên chạy nhanh không rung.
+    const wantDist = hit ? Math.max(CAMERA_MIN_DISTANCE, hit.timeOfImpact - 0.3) : CAMERA_DISTANCE;
+    s.camDist = firstFrame || wantDist < s.camDist ? wantDist : s.camDist + (wantDist - s.camDist) * Math.min(1, dt * 4);
+    camPos.copy(camTarget).addScaledVector(camDir, s.camDist);
     // Đang lặn thì camera được xuống nước theo; bơi trên mặt thì giữ camera trên mặt nước.
     const headUnder = feetY + HEAD_HEIGHT < WATER_LEVEL - 0.05;
     const minCamY = (headUnder ? world.heightAt(camPos.x, camPos.z) : Math.max(world.heightAt(camPos.x, camPos.z), WATER_LEVEL + 0.25)) + 0.5;
@@ -481,9 +485,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       camTarget.copy(state.camera.position).add(camDir);
       state.camera.lookAt(camTarget);
     } else {
-      // Khung hình đầu đặt thẳng vào chỗ, không để camera bay từ giữa đảo tới.
-      if (blocked || firstFrame) state.camera.position.copy(camPos);
-      else state.camera.position.lerp(camPos, Math.min(1, dt * 10));
+      state.camera.position.copy(camPos);
       state.camera.lookAt(camTarget);
     }
     // Rung màn hình (bị đánh, cây đổ sát bên) và nghiêng ngả khi chóng mặt.
