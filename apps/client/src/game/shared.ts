@@ -16,6 +16,8 @@ export const localMotion = {
   aiming: false,
   aimPitch: 0,
   firing: 0,
+  /** Súng dí sát vật cản (0–1): dựng nòng lên. */
+  wall: 0,
 };
 
 /**

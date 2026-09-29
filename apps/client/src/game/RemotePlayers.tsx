@@ -9,7 +9,10 @@ import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
+import { WEAPON } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
+import { physicsProbe } from "./battle/surface.ts";
+import { muzzleOffset } from "./GunModel.tsx";
 import { localPosition } from "./shared.ts";
 import { playFootstep } from "./sound/guns.ts";
 
@@ -100,9 +103,26 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
     const slot = k.active;
     return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
+  // Súng người khác chạm tường: dò tia từ ngực theo hướng họ ngắm (vài lần mỗi giây, chỉ khi ở gần).
+  const wall = useRef({ value: 0, at: 0 });
   const motion = useMemo(() => {
     const m: Motion = { moving: false };
     return () => {
+      const w = wall.current;
+      const now = performance.now();
+      if (now - w.at > 120) {
+        w.at = now;
+        w.value = 0;
+        const def = WEAPON.get(look.weapon);
+        if (def && player.alive && physicsProbe.cast && Math.hypot(player.x - localPosition.x, player.z - localPosition.z) < 60) {
+          const reach = def.class === "pistol" ? 0.62 : 0.4 + muzzleOffset(def.id)[2];
+          const yaw = player.rotY;
+          const cp = Math.cos(player.aimPitch);
+          const hit = physicsProbe.cast(player.x, player.y + (player.crouching ? 1.05 : 1.42), player.z, Math.sin(yaw) * cp, Math.sin(player.aimPitch), Math.cos(yaw) * cp, reach + 0.15);
+          if (hit && hit.t > 0.2 && Math.abs(hit.ny) < 0.6) w.value = Math.min(1, Math.max(0, (reach + 0.15 - hit.t) / (reach * 0.55)));
+        }
+      }
+      m.wall = w.value;
       m.moving = player.moving;
       m.swimming = player.swimming;
       m.crouching = player.crouching;
@@ -113,7 +133,7 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
       m.actN = player.actN;
       return m;
     };
-  }, [player]);
+  }, [player, look.weapon]);
   // Tiếng bước chân: nhịp theo tốc độ đi thật (đo từ vị trí), mặt đất bê tông hay cỏ; ngồi xổm thì rón rén.
   const steps = useRef({ acc: 0, x: player.x, z: player.z });
   useFrame((_, dt) => {

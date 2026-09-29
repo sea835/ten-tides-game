@@ -7,11 +7,22 @@ import { useSyncExternalStore } from "react";
 /** Thân người khác đang vẽ ở đâu (nội suy), để dò đạn trúng người ngay trên máy mình. */
 export const bodies = new Map<string, { x: number; y: number; z: number; crouch: boolean; alive: boolean }>();
 
-/** Tư thế của mình: ngắm, ngồi xổm, phóng đại đang dùng, độ toả đạn hiện tại (radian). */
-export const stance = { aiming: false, crouching: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false };
+/**
+ * Tư thế của mình: ngắm, ngồi xổm, phóng đại đang dùng, độ toả đạn hiện tại (radian).
+ * `wall`: nòng súng sát vật cản (0 thoáng, 1 dí sát tường), súng dựng lên cho khỏi xuyên tường.
+ * `speed`: tốc độ ngang thật (m/s); `land`: độ nặng cú đáp đất vừa rồi (0–1, giảm dần) để camera, súng nhún theo.
+ */
+export const stance = { aiming: false, crouching: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
 
-/** Giật súng dồn lại (cộng vào góc nhìn rồi hồi dần), rung tay. */
-export const recoil = { pitch: 0, yaw: 0, kick: 0 };
+/**
+ * Giật súng.
+ * - `pendPitch`/`pendYaw`: phần giật chưa dồn vào góc nhìn (rải ra vài khung hình cho mượt, không giật cục).
+ * - `pitch`/`yaw`: phần đã dồn vào góc nhìn trong loạt bắn này, thả cò thì hồi về (trừ phần người chơi tự ghì).
+ * - `punchPitch/Yaw/Roll` và vận tốc `v*`: cú hất màn hình (lò xo), chỉ để nhìn, tự về 0.
+ * - `kick`: độ giật của khẩu súng trên tay (lùi báng), `shot`: số phát liên tiếp trong loạt.
+ * - `fired`: bộ đếm phát bắn (súng trước mặt bắt lấy để giật), `power`: độ mạnh cú giật của khẩu vừa bắn.
+ */
+export const recoil = { pitch: 0, yaw: 0, pendPitch: 0, pendYaw: 0, punchPitch: 0, punchYaw: 0, punchRoll: 0, vPitch: 0, vYaw: 0, vRoll: 0, kick: 0, shot: 0, fired: 0, power: 0 };
 
 /** Thân vật lý của mình (LocalPlayer ghi), để tia đạn bỏ qua chính mình. */
 export const localBody: { current: import("@react-three/rapier").RapierRigidBody | null } = { current: null };
@@ -42,6 +53,12 @@ export interface Impact {
   nz: number;
   born: number;
   blood: boolean;
+  /** Mặt bị găm (chọn lỗ đạn, bụi hay tia lửa); không có thì chỉ phụt bụi, không để lại lỗ. */
+  surface?: import("./surface.ts").HitSurface;
+  /** Đạn to (súng bắn tỉa, shotgun gần) thì lỗ to hơn. */
+  size?: number;
+  /** Không rõ mặt găm (pháp tuyến đoán): chỉ phụt bụi, không để lỗ. */
+  noHole?: boolean;
 }
 export interface Flash {
   x: number;
@@ -57,8 +74,19 @@ export interface Blast {
   born: number;
 }
 
+/** Vết máu bắn lên tường, sàn phía sau người trúng đạn. */
+export interface Splat {
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  scale: number;
+}
+
 /** Hàng đợi hiệu ứng: bên bắn đẩy vào, bộ vẽ lấy ra. */
-export const effects = { tracers: [] as Tracer[], impacts: [] as Impact[], flashes: [] as Flash[], blasts: [] as Blast[] };
+export const effects = { tracers: [] as Tracer[], impacts: [] as Impact[], flashes: [] as Flash[], blasts: [] as Blast[], splats: [] as Splat[] };
 
 // ---------------------------------------------------------------------------- kho cho HUD
 

@@ -2,11 +2,32 @@
 
 import { clampPitch } from "./camera.ts";
 import { aimZoom, getSettings } from "./settings.ts";
+import { recoil } from "./battle/runtime.ts";
 
 export const keys = new Set<string>();
 
 /** Góc camera: yaw quay quanh nhân vật, pitch ngẩng lên/cúi xuống. */
 export const look = { yaw: 0, pitch: 0.35 };
+
+/**
+ * Góc camera thật sự đang vẽ: đuổi theo `look` (chuột, giật súng) theo hàm mũ, nên cú vẩy chuột và các sự kiện chuột
+ * đến lệch nhịp khung hình không làm hình giật cục. Mức mượt theo cài đặt; 0 là bám sát tuyệt đối.
+ */
+export const view = { yaw: 0, pitch: 0.35 };
+
+export function smoothView(dt: number, snap = false) {
+  const k = getSettings().smoothing;
+  if (snap || k <= 0.001) {
+    view.yaw = look.yaw;
+    view.pitch = look.pitch;
+    return;
+  }
+  // Hằng số thời gian 8–45 ms: mượt mà không thấy trễ tay.
+  const tau = 0.008 + k * 0.037;
+  const a = 1 - Math.exp(-dt / tau);
+  view.yaw += (look.yaw - view.yaw) * a;
+  view.pitch += (look.pitch - view.pitch) * a;
+}
 
 const MOUSE_SENSITIVITY = 0.0025;
 
@@ -33,8 +54,13 @@ export function bindInput(canvas: HTMLElement): () => void {
     const set = getSettings();
     const zoomed = aimZoom.value > 1.01;
     const k = MOUSE_SENSITIVITY * set.sensitivity * (zoomed ? (aimZoom.value >= 3 ? set.scopeSensitivity : set.adsSensitivity) / Math.sqrt(aimZoom.value) : 1);
+    // Bỏ các cú nhảy chuột bất thường (trình duyệt đôi khi trả về một cú movementX khổng lồ khi khoá chuột).
+    if (Math.abs(e.movementX) > 600 || Math.abs(e.movementY) > 600) return;
+    const dy = e.movementY * k * (set.invertY ? -1 : 1);
     look.yaw -= e.movementX * k;
-    look.pitch = clampPitch(look.pitch + e.movementY * k * (set.invertY ? -1 : 1));
+    look.pitch = clampPitch(look.pitch + dy);
+    // Ghì chuột xuống chống giật: phần đã ghì không bị hồi lại sau loạt bắn nữa.
+    if (dy > 0 && recoil.pitch > 0) recoil.pitch = Math.max(0, recoil.pitch - dy);
   };
 
   window.addEventListener("keydown", onKeyDown);

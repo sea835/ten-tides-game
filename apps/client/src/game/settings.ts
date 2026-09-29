@@ -14,10 +14,14 @@ export interface Settings {
   toggleAim: boolean;
   /** Góc nhìn ngang (độ). */
   fov: number;
+  /** Làm mượt chuột (0 tắt, 1 mượt nhất): camera đuổi theo góc chuột trong vài phần trăm giây, khỏi giật cục. */
+  smoothing: number;
+  /** Camera nhún theo bước chân, cú đáp đất (0 tắt, 1 đầy đủ). */
+  headBob: number;
 }
 
 const KEY = "tentides.settings";
-export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, adsSensitivity: 0.75, scopeSensitivity: 0.55, invertY: false, toggleAim: false, fov: 70 };
+export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, adsSensitivity: 0.75, scopeSensitivity: 0.55, invertY: false, toggleAim: false, fov: 70, smoothing: 0.35, headBob: 1 };
 
 function load(): Settings {
   try {

@@ -684,10 +684,10 @@ export function rayBox(b: BattleBox, o: readonly [number, number, number], d: re
   return tmin;
 }
 
-/** Điểm có nằm trong khối đặc nào không (dùng để chọn chỗ xuất phát, chỗ rơi đồ). */
-export function insideBox(index: BoxIndex, x: number, y: number, z: number, pad = 0): boolean {
+/** Khối đặc chứa điểm (x, y, z) (nới thêm `pad`), hoặc null. */
+export function boxAt(index: BoxIndex, x: number, y: number, z: number, pad = 0): BattleBox | null {
   const list = index.grid.get(`${Math.floor(x / index.cell)},${Math.floor(z / index.cell)}`);
-  if (!list) return false;
+  if (!list) return null;
   for (const i of list) {
     const b = index.boxes[i]!;
     const { ux, uy, uz } = basis(b);
@@ -699,9 +699,14 @@ export function insideBox(index: BoxIndex, x: number, y: number, z: number, pad 
       Math.abs(rx * uy[0] + ry * uy[1] + rz * uy[2]) < b.h / 2 + pad &&
       Math.abs(rx * uz[0] + ry * uz[1] + rz * uz[2]) < b.d / 2 + pad
     )
-      return true;
+      return b;
   }
-  return false;
+  return null;
+}
+
+/** Điểm có nằm trong khối đặc nào không (dùng để chọn chỗ xuất phát, chỗ rơi đồ). */
+export function insideBox(index: BoxIndex, x: number, y: number, z: number, pad = 0): boolean {
+  return boxAt(index, x, y, z, pad) !== null;
 }
 
 /** Mặt sàn cao nhất (khối đặc) ngay dưới điểm (x, yTop, z), hoặc địa hình. */

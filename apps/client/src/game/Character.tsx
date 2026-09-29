@@ -46,6 +46,8 @@ export interface Motion {
   aimPitch?: number;
   /** Bộ đếm phát bắn: mỗi lần tăng thì súng giật một cái. */
   firing?: number;
+  /** Nòng súng sát vật cản (0–1): dựng súng lên (súng lục thì chĩa xuống) cho khỏi xuyên tường. */
+  wall?: number;
 }
 
 /** Mỗi động tác kéo dài bao lâu (giây). */
@@ -456,7 +458,7 @@ export function Character({
   const butt = useRef<Group>(null);
   const stars = useRef<Group>(null);
   const swirl = useRef<Group>(null);
-  const anim = useRef({ phase: 0, amount: 0, sit: 0, slide: 0, swim: 0, lie: 0, climb: 0, crouch: 0, aim: 0, run: 0, pitch: 0, kick: 0, fireN: -1, actN: -1, act: "", actT: 99, climbPhase: 0 });
+  const anim = useRef({ phase: 0, amount: 0, sit: 0, slide: 0, swim: 0, lie: 0, climb: 0, crouch: 0, aim: 0, run: 0, pitch: 0, kick: 0, wall: 0, fireN: -1, actN: -1, act: "", actT: 99, climbPhase: 0 });
 
   const gunId = weapon || "";
   const pistol = gunId === "p92" || gunId === "deagle";
@@ -494,6 +496,7 @@ export function Character({
     a.aim += ((m.aiming ? 1 : 0) - a.aim) * ease(12);
     a.run += ((m.running && m.moving && !m.aiming && !crouching ? 1 : 0) - a.run) * ease(8);
     a.pitch += ((m.aimPitch ?? 0) - a.pitch) * ease(20);
+    a.wall += ((m.wall ?? 0) - a.wall) * ease(10);
     // Bơi tới thì nằm sấp gần ngang mặt nước; đứng yên thì đạp nước, người thẳng đứng.
     a.lie += ((m.swimming ? (m.moving ? 1.3 : 0.12) : 0) - a.lie) * ease(4);
     const crouch = a.crouch;
@@ -674,6 +677,13 @@ export function Character({
       _gunQ.setFromEuler(_eul.set(rx, ry, rz));
       _qA.setFromEuler(_eul.set(-pitch, 0, 0));
       _gunQ.slerp(_qA, aimW);
+      // Sát tường: súng trường dựng nòng lên trời kéo sát ngực, súng lục chĩa xuống đất ôm trước ngực.
+      if (a.wall > 0.01) {
+        _off.copy(_anchor).add(pistol ? _t.set(-0.05, -0.3, 0.17) : _t.set(-0.1, -0.1, 0.12));
+        _gunPos.lerp(_off, a.wall);
+        _qA.setFromEuler(pistol ? _eul.set(1.25, 0.1, 0) : _eul.set(-1.15, 0.3, 0.35));
+        _gunQ.slerp(_qA, a.wall);
+      }
       // Giật: lùi về sau theo nòng, nòng hất lên.
       if (a.kick > 0.001) {
         _gunPos.addScaledVector(_t.set(0, 0, 1).applyQuaternion(_gunQ), -0.04 * a.kick * (pistol ? 0.7 : 1));

@@ -710,6 +710,21 @@ export const playFootstep = safe((at: Place, surface: "grass" | "concrete" | "me
   v.done();
 });
 
+/** Đáp đất sau cú nhảy, cú rơi: tiếng dậm trầm, đồ nghề trên người lách cách; `hard` 0–1 theo độ cao rơi. */
+export const playLand = safe((at: Place, hard: number) => {
+  const sp = spatial(at, 30, 4);
+  if (!sp) return;
+  sp.delay = 0;
+  const v = voice("fx", (0.3 + hard * 0.4) * sp.gain, { sp });
+  if (!v) return;
+  v.osc(0, { freq: rand(95, 120), freqEnd: 55, decay: 0.09 + hard * 0.08, peak: 0.9 });
+  v.noise(0, { brown: true, type: "lowpass", freq: 700, decay: 0.07 + hard * 0.05, peak: 0.8 });
+  v.noise(0.005, { type: "bandpass", freq: rand(1800, 2400), q: 1.2, decay: 0.05, peak: 0.35 });
+  // Đồ nghề (súng, băng đạn) va vào nhau.
+  v.noise(0.03, { type: "highpass", freq: 4200, decay: 0.05, peak: 0.25 + hard * 0.2, attack: 0.004 });
+  v.done();
+});
+
 /** Cảnh báo / trừ máu ngoài vùng an toàn. */
 export const playZoneTick = safe(() => {
   const v = voice("ui", 0.4, { bus: "ui" });

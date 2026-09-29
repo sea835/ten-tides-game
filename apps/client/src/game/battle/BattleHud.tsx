@@ -602,7 +602,7 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useSettings();
   if (!open) return null;
-  const slider = (label: string, key: "sensitivity" | "adsSensitivity" | "scopeSensitivity" | "fov", min: number, max: number, step: number, fmt: (v: number) => string) => (
+  const slider = (label: string, key: "sensitivity" | "adsSensitivity" | "scopeSensitivity" | "fov" | "smoothing" | "headBob", min: number, max: number, step: number, fmt: (v: number) => string) => (
     <label className="b-set-row">
       <span>{label}</span>
       <input type="range" min={min} max={max} step={step} value={s[key]} onChange={(e) => setSettings({ [key]: Number(e.target.value) })} />
@@ -621,6 +621,8 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
       {slider("Độ nhạy khi ngắm", "adsSensitivity", 0.1, 2, 0.05, (v) => v.toFixed(2))}
       {slider("Độ nhạy ống ngắm", "scopeSensitivity", 0.1, 2, 0.05, (v) => v.toFixed(2))}
       {slider("Góc nhìn (FOV)", "fov", 55, 100, 1, (v) => `${v}°`)}
+      {slider("Làm mượt camera", "smoothing", 0, 1, 0.05, (v) => (v === 0 ? "Tắt" : `${Math.round(v * 100)}%`))}
+      {slider("Nhún camera khi đi", "headBob", 0, 1, 0.05, (v) => (v === 0 ? "Tắt" : `${Math.round(v * 100)}%`))}
       <label className="b-set-check">
         <input type="checkbox" checked={s.invertY} onChange={(e) => setSettings({ invertY: e.target.checked })} /> Đảo trục dọc chuột
       </label>

@@ -86,6 +86,27 @@ export function gearMaterial(key: string, opacity = 1): MeshStandardMaterial {
   return m;
 }
 
+/**
+ * Vật liệu cho súng trước mặt (góc thứ nhất): nén độ sâu về sát mặt kính camera nên súng luôn vẽ đè lên tường,
+ * cây, người đứng sát (không bao giờ xuyên vào vật cản), mà các chi tiết của súng vẫn che nhau đúng thứ tự.
+ */
+const viewCache = new Map<string, MeshStandardMaterial>();
+export function viewMaterial(key: string): MeshStandardMaterial {
+  let m = viewCache.get(key);
+  if (m) return m;
+  m = gearMaterial(key).clone();
+  delete m.userData.tenDetail;
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <project_vertex>",
+      "#include <project_vertex>\n  gl_Position.z = gl_Position.z * 0.05 - 0.95 * gl_Position.w;",
+    );
+  };
+  m.customProgramCacheKey = () => "viewmodel";
+  viewCache.set(key, m);
+  return m;
+}
+
 // ---------------------------------------------------------------------------- khối hình
 
 const _m = new Matrix4();
@@ -503,21 +524,21 @@ export function stockLength(weaponId: string): number {
 }
 
 /** Vẽ các hình đã gộp với vật liệu dùng chung. */
-function Parts({ list, opacity = 1 }: { list: { key: string; geo: BufferGeometry }[]; opacity?: number }) {
+function Parts({ list, opacity = 1, view = false }: { list: { key: string; geo: BufferGeometry }[]; opacity?: number; view?: boolean }) {
   return (
     <>
       {list.map(({ key, geo }) => (
-        <mesh key={key} geometry={geo} material={gearMaterial(key, opacity)} castShadow receiveShadow />
+        <mesh key={key} geometry={geo} material={view ? viewMaterial(key) : gearMaterial(key, opacity)} castShadow={!view} receiveShadow />
       ))}
     </>
   );
 }
 
-/** Khẩu súng theo id (WEAPONS). Gốc ở tay cầm, nòng theo +z. */
-export function GunModel({ weaponId, scale = 1, opacity = 1 }: { weaponId: string; scale?: number; opacity?: number }) {
+/** Khẩu súng theo id (WEAPONS). Gốc ở tay cầm, nòng theo +z. `view`: súng trước mặt ở góc thứ nhất (vẽ đè lên cảnh). */
+export function GunModel({ weaponId, scale = 1, opacity = 1, view = false }: { weaponId: string; scale?: number; opacity?: number; view?: boolean }) {
   return (
     <group scale={scale}>
-      <Parts list={gunParts(weaponId)} opacity={opacity} />
+      <Parts list={gunParts(weaponId)} opacity={opacity} view={view} />
     </group>
   );
 }

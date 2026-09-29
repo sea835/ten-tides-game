@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BATTLE_SITES, battleMap, battleSpawn, insideBox, raycastBoxes, raycastTerrain } from "./battle.ts";
+import { BATTLE_SITES, battleMap, battleSpawn, boxAt, insideBox, raycastBoxes, raycastTerrain } from "./battle.ts";
 import { WEAPONS, falloff } from "./battleItems.ts";
 
 describe("bản đồ Battleground", () => {
@@ -46,5 +46,14 @@ describe("bản đồ Battleground", () => {
       expect(falloff(w, w.range)).toBe(1);
       expect(falloff(w, w.range * 10)).toBe(0.5);
     }
+  });
+});
+
+describe("boxAt", () => {
+  it("tìm đúng khối chứa điểm (để biết đạn găm vào chất liệu gì)", () => {
+    const map = battleMap(1);
+    const b = map.boxes.find((x) => x.solid && x.pitch === 0 && x.w > 2 && x.d > 2 && x.h > 2)!;
+    expect(boxAt(map.index, b.x, b.y, b.z)).not.toBeNull();
+    expect(boxAt(map.index, b.x, b.y + b.h + 50, b.z)).toBeNull();
   });
 });

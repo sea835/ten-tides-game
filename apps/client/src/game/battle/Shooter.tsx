@@ -9,8 +9,9 @@ import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
 import { isTyping, keys, look } from "../input.ts";
 import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
-import { playArmorHit, playDraw, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playImpact } from "../sound/guns.ts";
+import { playArmorHit, playDraw, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt } from "../sound/guns.ts";
 import { bodies, effects, getBattleHud, localAvatar, localBody, menuOpen, recoil, setBattleHud, stance } from "./runtime.ts";
+import { physicsProbe } from "./surface.ts";
 import { muzzleOffset } from "../GunModel.tsx";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
@@ -28,6 +29,41 @@ function magOf(kit: KitState, slot: string): number {
 
 /** Súng đang cầm và băng đạn dự đoán trên máy (server trả số thật sau). */
 export const gun = { slot: "" as Slot, weapon: "", mag: 0, lastShot: 0, reloadUntil: 0, cancelReload: null as null | (() => void), healUntil: 0, cancelHeal: null as null | (() => void) };
+
+/** Số giả ngẫu nhiên cố định theo tên súng: mỗi khẩu một kiểu lượn ngang riêng (học được, ghì được). */
+function weaponSeed(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+/** Cú hất màn hình (chỉ để nhìn) và độ giật tay theo loại súng. */
+const PUNCH: Record<WeaponDef["class"], { pitch: number; roll: number; body: number }> = {
+  pistol: { pitch: 0.9, roll: 0.012, body: 0.7 },
+  smg: { pitch: 0.55, roll: 0.006, body: 0.45 },
+  ar: { pitch: 0.7, roll: 0.01, body: 0.6 },
+  lmg: { pitch: 0.7, roll: 0.012, body: 0.65 },
+  dmr: { pitch: 0.9, roll: 0.02, body: 0.85 },
+  sniper: { pitch: 1.1, roll: 0.035, body: 1 },
+  shotgun: { pitch: 1.1, roll: 0.03, body: 1 },
+};
+
+/**
+ * Giật của một phát trong loạt (radian): dọc thì phát đầu nhẹ, nặng dần tới phát thứ tám rồi chững lại;
+ * ngang lượn theo một đường cố định của từng khẩu (sang một bên rồi quay lại), càng về cuối loạt càng lệch, cộng chút
+ * rung tay ngẫu nhiên. Ngắm, ngồi xổm thì đỡ giật; chạy, nhảy thì giật mạnh hơn.
+ */
+export function recoilFor(def: WeaponDef, shot: number, st: { aiming: boolean; crouching: boolean; moving: boolean; airborne: boolean }): { up: number; side: number } {
+  const tame = (st.aiming ? 0.78 : 1) * (st.crouching ? 0.8 : 1) * (st.moving ? 1.15 : 1) * (st.airborne ? 1.6 : 1);
+  const seed = weaponSeed(def.id) * Math.PI * 2;
+  // Liên thanh: phát đầu nhẹ, nặng dần tới phát thứ tám, sau đó chững lại (nòng đã "lên" hết cỡ, chủ yếu lượn ngang).
+  const ramp = def.auto ? (shot === 0 ? 0.7 : shot < 8 ? 0.9 + shot * 0.05 : Math.max(0.8, 1.25 - (shot - 8) * 0.04)) : 1;
+  const up = def.recoil * ramp * tame * (0.9 + Math.random() * 0.2);
+  const grow = def.auto ? Math.min(1, shot / 4) : 0.4;
+  const sway = Math.sin(shot * 0.42 + seed) * 0.9 + Math.sin(shot * 1.17 + seed * 1.7) * 0.35 + (seed > Math.PI ? 0.25 : -0.25) * Math.min(1, shot / 10);
+  const side = def.recoilSide * tame * (sway * grow * 1.6 + (Math.random() - 0.5) * 0.9);
+  return { up, side };
+}
 
 /** Tia gặp thân người (hình trụ đứng + đầu cầu). Trả về khoảng cách và phần trúng. */
 function rayPerson(o: Vector3, d: Vector3, b: { x: number; y: number; z: number; crouch: boolean }): { t: number; part: "head" | "body" } | null {
@@ -69,6 +105,23 @@ export function Shooter({ room }: { room: IslandRoom }) {
   const input = useRef({ fire: false, firePressed: false, aimHeld: false, aimToggle: false });
   const tmp = useRef({ o: new Vector3(), d: new Vector3(), p: new Vector3(), right: new Vector3(), fwd: new Vector3() });
   const bloom = useRef(0);
+
+  // Cho các phần ngoài Physics mượn tia vật lý (lỗ đạn của người khác, súng người khác chạm tường).
+  useEffect(() => {
+    physicsProbe.cast = (ox, oy, oz, dx, dy, dz, max) => {
+      const h = physics.castRayAndGetNormal(new rapier.Ray({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }), max, true, undefined, undefined, undefined, localBody.current ?? undefined);
+      return h ? { t: h.timeOfImpact, nx: h.normal.x, ny: h.normal.y, nz: h.normal.z } : null;
+    };
+    // Dev: xem trạng thái súng, giật, hiệu ứng khi thử (window.__tentides).
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __tentides?: Record<string, unknown> };
+      w.__tentides ??= {};
+      Object.assign(w.__tentides, { gun, recoil, stance, effects, hud: getBattleHud });
+    }
+    return () => {
+      physicsProbe.cast = null;
+    };
+  }, [physics, rapier]);
 
   const kit = () => room.state.players.get(myId(room))?.kit;
   const alive = () => room.state.players.get(myId(room))?.alive ?? false;
@@ -233,6 +286,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const k = me?.kit;
     const inp = input.current;
     const now = performance.now();
+    updateRecoil(dt, now);
     if (!me || !k || !me.alive || menuOpen()) {
       stance.aiming = false;
       inp.fire = false;
@@ -266,12 +320,6 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (stance.crouching) spread *= 0.75;
       stance.spread = spread + bloom.current;
     }
-
-    // Giật súng hồi dần một phần về chỗ cũ.
-    const back = recoil.pitch * Math.min(1, dt * 4);
-    recoil.pitch -= back;
-    look.pitch += back * 0.55;
-    recoil.kick = Math.max(0, recoil.kick - dt * 6);
 
     // Hướng camera, trục ngang.
     const { o, d, p, right, fwd } = tmp.current;
@@ -310,6 +358,46 @@ export function Shooter({ room }: { room: IslandRoom }) {
     fire(def, camera.position, fwd, right);
   });
 
+  /**
+   * Mỗi khung hình: rải phần giật còn nợ vào góc nhìn (khoảng 35 ms, không giật cục một khung), thả cò một nhịp thì
+   * tâm ngắm hồi về chỗ cũ (phần người chơi đã tự ghì xuống thì thôi), cú hất màn hình dao động tắt dần như lò xo.
+   */
+  const updateRecoil = (dt: number, now: number) => {
+    const take = 1 - Math.exp(-dt / 0.035);
+    const dp = recoil.pendPitch * take;
+    const dy = recoil.pendYaw * take;
+    recoil.pendPitch -= dp;
+    recoil.pendYaw -= dy;
+    look.pitch = clampPitch(look.pitch - dp);
+    look.yaw += dy;
+    recoil.pitch += dp;
+    recoil.yaw += dy;
+    const def = WEAPON.get(gun.weapon);
+    const interval = def ? 60000 / def.rpm : 100;
+    const idle = now - gun.lastShot;
+    if (idle > Math.max(140, interval * 1.3)) {
+      // Loạt bắn kết thúc: về lại phát đầu, tâm ngắm trôi về chỗ cũ.
+      recoil.shot = 0;
+      const back = 1 - Math.exp(-dt * 7);
+      const bp = recoil.pitch * back;
+      const by = recoil.yaw * back;
+      recoil.pitch -= bp;
+      recoil.yaw -= by;
+      look.pitch = clampPitch(look.pitch + bp);
+      look.yaw -= by * 0.5;
+    }
+    // Lò xo tắt dần (gần tới hạn): hất lên rồi về, không nảy qua lại.
+    const kStiff = 260;
+    const damp = 27;
+    recoil.vPitch += (-kStiff * recoil.punchPitch - damp * recoil.vPitch) * dt;
+    recoil.vYaw += (-kStiff * recoil.punchYaw - damp * recoil.vYaw) * dt;
+    recoil.vRoll += (-kStiff * recoil.punchRoll - damp * recoil.vRoll) * dt;
+    recoil.punchPitch += recoil.vPitch * dt;
+    recoil.punchYaw += recoil.vYaw * dt;
+    recoil.punchRoll += recoil.vRoll * dt;
+    recoil.kick = Math.max(0, recoil.kick - dt * 5);
+  };
+
   const fire = (def: WeaponDef, camPos: Vector3, fwd: Vector3, right: Vector3) => {
     const now = performance.now();
     const { o, d, p } = tmp.current;
@@ -339,6 +427,17 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (held?.visible) {
       const at = held.localToWorld(new Vector3(...muzzleOffset(def.id)));
       if (at.distanceTo(localPosition) < 3) muzzle = at;
+    }
+    // Đầu nòng thò qua tường (đứng sát vật cản): đạn xuất phát ngay mặt tường phía mình, không bắn xuyên qua được.
+    {
+      const from = first ? camPos.clone() : new Vector3(localPosition.x, localPosition.y + (stance.crouching ? 1.05 : 1.42), localPosition.z);
+      const to = muzzle.clone().sub(from);
+      const len = to.length();
+      if (len > 1e-3) {
+        to.divideScalar(len);
+        const block = physics.castRay(new rapier.Ray(from, to), len, true, undefined, undefined, undefined, localBody.current ?? undefined);
+        if (block) muzzle = from.addScaledVector(to, Math.max(0, block.timeOfImpact - 0.06));
+      }
     }
     const rays: [number, number, number][] = [];
     const hits: FireMessage["hits"] = [];
@@ -374,8 +473,16 @@ export function Shooter({ room }: { room: IslandRoom }) {
       ends.push(end);
       if (target) hits.push({ target, part, d: t, ray: k });
       if (t < maxRange) {
-        effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: normal.x, ny: normal.y, nz: normal.z, born: now / 1000, blood: !!target });
-        if (!target && t < 60) playImpact(end, end.y < 0.3 ? "water" : "concrete");
+        const size = def.class === "sniper" ? 1.35 : def.class === "dmr" ? 1.15 : def.pellets > 1 ? 0.6 : def.class === "smg" || def.class === "pistol" ? 0.85 : 1;
+        effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: normal.x, ny: normal.y, nz: normal.z, born: now / 1000, blood: !!target, size });
+        // Trúng người: máu bắn lên tường, sàn phía sau (nếu có gần đó).
+        if (target && k < 3) {
+          const behind = physics.castRayAndGetNormal(new rapier.Ray(end, d), 2.6, true, undefined, undefined, undefined, localBody.current ?? undefined);
+          if (behind) {
+            const at = end.clone().addScaledVector(d, behind.timeOfImpact);
+            effects.splats.push({ x: at.x, y: at.y, z: at.z, nx: behind.normal.x, ny: behind.normal.y, nz: behind.normal.z, scale: (part === "head" ? 1.2 : 0.8) * (1 - behind.timeOfImpact / 4) });
+          }
+        }
       }
     }
     const seconds = now / 1000;
@@ -384,18 +491,22 @@ export function Shooter({ room }: { room: IslandRoom }) {
     playGunshot(def.id, muzzle, true);
     if (def.class === "sniper") setTimeout(() => playBolt(), 450);
     room.send(Messages.fire, { weapon: def.id, o: [muzzle.x, muzzle.y, muzzle.z], rays, hits } satisfies FireMessage);
-    // Giật: nòng hất lên, lệch ngang ngẫu nhiên; ngắm, ngồi xổm thì đỡ giật.
-    const tame = (stance.aiming ? 0.7 : 1) * (stance.crouching ? 0.8 : 1);
-    const kick = def.recoil * tame * (0.85 + Math.random() * 0.3);
-    look.pitch -= kick;
-    recoil.pitch += kick;
-    look.yaw += (Math.random() - 0.45) * def.recoilSide * 2 * tame;
-    recoil.kick = Math.min(1, recoil.kick + 0.5);
+    // Giật: dồn vào góc nhìn trong vài khung hình tới (updateRecoil), hất màn hình một cái, súng trên tay lùi lại.
+    const { up, side } = recoilFor(def, recoil.shot, stance);
+    recoil.shot++;
+    recoil.pendPitch += up;
+    recoil.pendYaw += side;
+    const punch = PUNCH[def.class];
+    recoil.vPitch += up * punch.pitch * 40;
+    recoil.vYaw += side * 25;
+    recoil.vRoll += (Math.random() - 0.5) * 2 * punch.roll * 45;
+    recoil.kick = Math.min(1.4, recoil.kick + punch.body);
+    recoil.fired++;
+    recoil.power = punch.body;
     bloom.current = Math.min(def.hipSpread, bloom.current + def.recoil * 0.25);
     localMotion.firing = (localMotion.firing + 1) % 65536;
     localAim.yaw = look.yaw;
     localAim.at = now;
-    shake.amount = Math.min(0.25, shake.amount + (def.class === "sniper" || def.class === "shotgun" ? 0.12 : 0.03));
     if (gun.mag <= 0) setTimeout(reload, 200);
   };
 

@@ -25,7 +25,9 @@ import type { IslandRoom } from "../../net.ts";
 import { localPosition, shake } from "../shared.ts";
 import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt } from "../sound/guns.ts";
 import { WEAPON } from "@tentides/content";
-import { effects, getBattleHud, setBattleHud } from "./runtime.ts";
+import { bodies, effects, getBattleHud, setBattleHud } from "./runtime.ts";
+import { BulletHoles } from "./Decals.tsx";
+import { physicsProbe } from "./surface.ts";
 
 // Hiệu ứng của trận đấu: tường vùng an toàn (màn xanh cao vút, vân chạy), vòng kế tiếp vẽ trên mặt đất,
 // bom khói (hàng chục cụm khói mềm che tầm nhìn), vụ nổ (quả cầu lửa, chớp sáng, khói đen, mảnh văng, rung màn hình),
@@ -167,7 +169,7 @@ const puffFragment = /* glsl */ `
 
 const MAX_PUFFS = 900;
 
-interface Puff {
+export interface Puff {
   x: number;
   y: number;
   z: number;
@@ -555,30 +557,6 @@ function Tracers() {
       f.instanceMatrix.needsUpdate = true;
     }
     if (light.current) light.current.intensity = lit ? 25 : 0;
-
-    // Chỗ đạn găm: bụi (hoặc máu) phụt ra.
-    for (const imp of effects.impacts.splice(0)) {
-      const blood = imp.blood;
-      for (let k = 0; k < (blood ? 5 : 4); k++) {
-        puffs.push({
-          x: imp.x,
-          y: imp.y,
-          z: imp.z,
-          vx: imp.nx * (1 + Math.random() * 2) + (Math.random() - 0.5),
-          vy: imp.ny * (1 + Math.random() * 2) + Math.random() * 0.6,
-          vz: imp.nz * (1 + Math.random() * 2) + (Math.random() - 0.5),
-          size: blood ? 0.25 : 0.3,
-          grow: blood ? 0.6 : 1.2,
-          life: blood ? 0.5 : 0.9,
-          age: 0,
-          r: blood ? 0.45 : 0.62,
-          g: blood ? 0.03 : 0.57,
-          b: blood ? 0.03 : 0.5,
-          alpha: blood ? 0.9 : 0.6,
-          dense: false,
-        });
-      }
-    }
   });
   return (
     <>
@@ -587,6 +565,37 @@ function Tracers() {
       <pointLight ref={light} color="#ffc070" distance={12} decay={2} intensity={0} />
     </>
   );
+}
+
+/**
+ * Chỗ đạn của người khác găm vào: server chỉ gửi điểm cuối, nên dò lại tia trên máy mình để biết mặt nào (pháp tuyến,
+ * chất liệu, để lỗ đạn nằm áp đúng mặt tường). Trúng người thì phụt máu; bay ra ngoài xa thì thôi.
+ */
+function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number, ez: number, now: number) {
+  for (const b of [...bodies.values(), { x: localPosition.x, y: localPosition.y, z: localPosition.z, crouch: false, alive: true }]) {
+    if (!b.alive) continue;
+    const top = b.y + (b.crouch ? 1.3 : 1.8);
+    if (Math.hypot(ex - b.x, ez - b.z) < 0.45 && ey > b.y - 0.1 && ey < top) {
+      effects.impacts.push({ x: ex, y: ey, z: ez, nx: (ox - ex) * 0.02, ny: 0.2, nz: (oz - ez) * 0.02, born: now, blood: true });
+      return;
+    }
+  }
+  const dx = ex - ox;
+  const dy = ey - oy;
+  const dz = ez - oz;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  // Xa quá thì khỏi dò (không thấy rõ lỗ đạn), chỉ phụt bụi.
+  const far = Math.hypot(ex - localPosition.x, ez - localPosition.z) > 160;
+  const hit = far ? null : physicsProbe.cast?.(ox, oy, oz, dx / len, dy / len, dz / len, len + 0.5);
+  if (hit && Math.abs(hit.t - len) < 0.8) {
+    const t = hit.t;
+    effects.impacts.push({ x: ox + (dx / len) * t, y: oy + (dy / len) * t, z: oz + (dz / len) * t, nx: hit.nx, ny: hit.ny, nz: hit.nz, born: now, blood: false });
+    return;
+  }
+  // Không rõ mặt (ngoài tầm dò, hay đạn bay mất hút): chỉ phụt bụi ngược về phía người bắn, không để lỗ.
+  if (len > 590) return;
+  const k = 1 / len;
+  effects.impacts.push({ x: ex, y: ey, z: ez, nx: -dx * k, ny: -dy * k, nz: -dz * k, born: now, blood: false, noHole: true });
 }
 
 /** Phát bắn của người khác: vệt đạn, lửa đầu nòng, tiếng súng, tiếng đạn rít qua đầu nếu sượt gần mình. */
@@ -602,7 +611,7 @@ function useShots(room: IslandRoom) {
       let whizzed = false;
       for (const [ex, ey, ez] of m.e) {
         effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false });
-        effects.impacts.push({ x: ex, y: ey, z: ez, nx: (ox - ex) * 0.05, ny: 0.5, nz: (oz - ez) * 0.05, born: now, blood: false });
+        remoteImpact(ox, oy, oz, ex, ey, ez, now);
         if (whizzed) continue;
         // Điểm gần mình nhất trên đường đạn.
         const dx = ex - ox;
@@ -717,6 +726,7 @@ export function BattleEffects({ room, world }: { room: IslandRoom; world: World 
       <SmokeEmitters room={room} />
       <Blasts />
       <Tracers />
+      <BulletHoles world={world} />
       <Grenades room={room} />
       <MyMines room={room} />
     </>
