@@ -32,7 +32,7 @@ import { DIG_ITEM, type EndingId, type GhostActionId, type NightActionId, type R
 import { describe } from "./Feed.tsx";
 import { itemName } from "./format.ts";
 import { myId, type IslandRoom } from "../../net.ts";
-import { useQuality } from "../graphics.ts";
+import { QUALITY_LABEL, useQuality } from "../graphics.ts";
 import { useHud } from "../hudStore.ts";
 import { isTyping } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
@@ -361,8 +361,8 @@ export function KeyHints() {
         ))}
         {all && (
           <div className="key-row">
-            <kbd>P</kbd>
-            <span>Đồ họa: {quality === "high" ? "Cao" : "Thấp"}</span>
+            <kbd>P · F3</kbd>
+            <span>Đồ họa: {QUALITY_LABEL[quality]} · số liệu hiệu năng</span>
           </div>
         )}
         <button className="ghost small keys-more" onClick={() => setAll(!all)}>

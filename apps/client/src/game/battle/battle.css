@@ -83,6 +83,7 @@
     linear-gradient(-45deg, transparent 44%, #fff 44%, #fff 56%, transparent 56%) center / 100% 100%;
   -webkit-mask: radial-gradient(circle, transparent 5px, #000 6px);
   mask: radial-gradient(circle, transparent 5px, #000 6px);
+  animation: b-fade-out 260ms linear forwards;
 }
 .b-hitmark.head {
   filter: drop-shadow(0 0 3px #ffcc00) sepia(1) saturate(8) hue-rotate(5deg);
@@ -107,11 +108,30 @@
   -webkit-mask: linear-gradient(90deg, transparent 30%, #000 45%, #000 55%, transparent 70%);
   mask: linear-gradient(90deg, transparent 30%, #000 45%, #000 55%, transparent 70%);
   filter: blur(0.5px);
+  animation: b-fade-out 1400ms linear forwards;
 }
 .b-lowhp {
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse at center, transparent 45%, rgba(170, 0, 0, 0.55) 100%);
+  animation: b-lowhp 0.565s ease-in-out infinite alternate;
+}
+/* Dấu trúng, hướng bị bắn mờ dần; máu thấp thì viền đỏ đập nhịp (CSS lo, React khỏi dựng lại mỗi khung). */
+@keyframes b-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes b-lowhp {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.7;
+  }
 }
 
 /* Ống ngắm: tối xung quanh, vòng tròn, vạch chữ thập mảnh. */
@@ -789,6 +809,46 @@
   flex-direction: column;
   gap: 12px;
   z-index: 30;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.b-set-title {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+  font-weight: 700;
+}
+.b-set-seg {
+  display: flex;
+  gap: 4px;
+}
+.b-set-seg button {
+  flex: 1;
+  padding: 5px 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.b-set-seg button.on {
+  background: #ffd27a;
+  border-color: #ffd27a;
+  color: #1a1206;
+  font-weight: 700;
+}
+.b-set-row select {
+  padding: 5px 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 12.5px;
+}
+.b-set-row select option {
+  color: #111;
 }
 .b-set-row {
   display: grid;

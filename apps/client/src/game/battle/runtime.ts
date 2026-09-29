@@ -150,6 +150,8 @@ export function getBattleHud(): HudState {
 }
 
 export function setBattleHud(patch: Partial<HudState>) {
+  // Không đổi gì thì khỏi báo cho các khung HUD dựng lại.
+  if ((Object.keys(patch) as (keyof HudState)[]).every((k) => Object.is(hud[k], patch[k]))) return;
   hud = { ...hud, ...patch };
   listeners.forEach((l) => l());
 }

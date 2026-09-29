@@ -35,7 +35,7 @@ import { Landmarks } from "./Landmarks.tsx";
 import { detailed } from "./textures.ts";
 import { GrassField } from "./Grass.tsx";
 import { Flame } from "./Flame.tsx";
-import { useQuality } from "./graphics.ts";
+import { useProfile } from "./graphics.ts";
 
 // ---------------------------------------------------------------------------
 // Địa hình
@@ -358,7 +358,7 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   const clearings = useMemo(() => grassClearings(room, world), [room, world]);
   const chunks = useMemo(() => buildTerrain(world), [world]);
   const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
-  const high = useQuality() === "high";
+  const grass = useProfile().grass;
   const material = useMemo(() => {
     const m = detailed(new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), "grass");
     seabedLight(m);
@@ -376,7 +376,7 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
           <mesh geometry={c.geometry} material={material} receiveShadow />
         </group>
       ))}
-      {high && <GrassField geometries={geometries} count={120000} clearings={clearings} />}
+      {grass > 0 && <GrassField geometries={geometries} count={grass} clearings={clearings} heightAt={world.heightAt} />}
     </RigidBody>
   );
 }

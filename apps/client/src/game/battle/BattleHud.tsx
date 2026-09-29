@@ -27,6 +27,7 @@ import { myId, type IslandRoom } from "../../net.ts";
 import { look } from "../input.ts";
 import { localPosition } from "../shared.ts";
 import { DEFAULT_SETTINGS, getSettings, setSettings, useSettings } from "../settings.ts";
+import { DEFAULT_GRAPHICS, QUALITY_LABEL, setGraphics, toggleStats, useGraphics, useStatsOpen, type Quality } from "../graphics.ts";
 import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/guns.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
@@ -143,22 +144,67 @@ function ScopeView() {
   );
 }
 
+/**
+ * Vòng lặp theo khung hình cho HUD: `live()` chỉnh thẳng DOM (khoảng hở tâm ngắm, hướng la bàn...) mỗi khung,
+ * `signature()` tóm tắt phần cấu trúc; React chỉ dựng lại khi chữ ký đổi (bật ngắm, trúng đạn, bị bắn...), thay
+ * vì dựng lại cả khối 60 lần mỗi giây.
+ */
+function useLive(live: () => void, signature: () => string) {
+  const [, set] = useState("");
+  const liveRef = useRef(live);
+  const sigRef = useRef(signature);
+  liveRef.current = live;
+  sigRef.current = signature;
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      liveRef.current();
+      set(sigRef.current());
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+}
+
 function Reticle({ room }: { room: IslandRoom }) {
-  useFrameTick(60);
+  const cross = useRef<HTMLDivElement>(null);
+  const hurtBox = useRef<HTMLDivElement>(null);
   const hud = getBattleHud();
   const me = room.state.players.get(myId(room));
-  if (!me?.alive) return null;
   const now = performance.now();
   const scoped = stance.aiming && stance.scoped;
-  // Khoảng hở tâm ngắm theo độ toả (radian → điểm ảnh ở FOV hiện tại xấp xỉ).
-  const gap = Math.max(3, Math.min(60, stance.spread * 900 / (stance.aiming ? stance.zoom : 1)));
-  const hitAge = hud.hit ? now - hud.hit.at : 9999;
+  const hit = hud.hit && now - hud.hit.at < 260 ? hud.hit : null;
+  const hurts = hud.hurts.filter((h) => now - h.at < 1400);
+  useLive(
+    () => {
+      // Khoảng hở tâm ngắm theo độ toả (radian → điểm ảnh ở FOV hiện tại xấp xỉ).
+      const gap = Math.max(3, Math.min(60, (stance.spread * 900) / (stance.aiming ? stance.zoom : 1)));
+      cross.current?.style.setProperty("--gap", `${gap.toFixed(1)}px`);
+      // Hướng bị bắn so với hướng mình đang nhìn (look.yaw là hướng camera nhìn về −sin, −cos): xoay theo chuột.
+      const box = hurtBox.current;
+      if (box)
+        for (const el of box.children as HTMLCollectionOf<HTMLElement>) {
+          const rel = Number(el.dataset.angle) - (look.yaw + Math.PI);
+          el.style.transform = `rotate(${((-rel * 180) / Math.PI).toFixed(1)}deg)`;
+        }
+    },
+    () => {
+      const h = getBattleHud();
+      const t = performance.now();
+      const p = room.state.players.get(myId(room));
+      const hitAt = h.hit && t - h.hit.at < 260 ? h.hit.at : 0;
+      const hurtAts = h.hurts.filter((x) => t - x.at < 1400).map((x) => x.at).join(",");
+      return `${p?.alive}|${(p?.hp ?? 100) < 30}|${stance.aiming}|${stance.scoped}|${stance.firstPerson}|${stance.sight}|${stance.zero}|${gun.weapon}|${hitAt}|${hurtAts}`;
+    },
+  );
+  if (!me?.alive) return null;
   return (
     <>
       {scoped ? (
         <ScopeView />
       ) : stance.aiming && stance.firstPerson && stance.sight ? null : (
-        <div className={`b-cross ${stance.aiming ? "ads" : ""}`} style={{ ["--gap" as string]: `${gap}px` }}>
+        <div ref={cross} className={`b-cross ${stance.aiming ? "ads" : ""}`}>
           <i className="t" />
           <i className="b" />
           <i className="l" />
@@ -166,40 +212,60 @@ function Reticle({ room }: { room: IslandRoom }) {
           <b />
         </div>
       )}
-      {hitAge < 260 && <div className={`b-hitmark ${hud.hit!.kind}`} style={{ opacity: 1 - hitAge / 260 }} />}
-      {hud.hurts
-        .filter((h) => now - h.at < 1400)
-        .map((h) => {
-          // Hướng bị bắn so với hướng mình đang nhìn (look.yaw là hướng camera nhìn về −sin, −cos).
-          const rel = h.angle - (look.yaw + Math.PI);
-          return <div key={h.at} className="b-hurt" style={{ transform: `rotate(${(-rel * 180) / Math.PI}deg)`, opacity: 1 - (now - h.at) / 1400 }} />;
-        })}
-      {me.hp < 30 && <div className="b-lowhp" style={{ opacity: 0.35 + 0.35 * Math.sin(now / 180) }} />}
+      {/* Mờ dần bằng CSS animation (key đổi thì chạy lại từ đầu). */}
+      {hit && <div key={hit.at} className={`b-hitmark ${hit.kind}`} style={{ animationDelay: `${-(now - hit.at)}ms` }} />}
+      <div ref={hurtBox}>
+        {hurts.map((h) => (
+          <div key={h.at} className="b-hurt" data-angle={h.angle} style={{ animationDelay: `${-(now - h.at)}ms` }} />
+        ))}
+      </div>
+      {me.hp < 30 && <div className="b-lowhp" />}
     </>
   );
 }
 
 // ---------------------------------------------------------------------------- la bàn
 
+const COMPASS_MARKS = 13;
+
 function Compass() {
-  useFrameTick(30);
-  // Hướng nhìn: bắc (−z) là 0°.
-  const heading = ((((-look.yaw + Math.PI) * 180) / Math.PI) % 360 + 360) % 360;
-  const marks = [];
-  for (let d = -90; d <= 90; d += 15) {
-    const deg = Math.round((heading + d + 360) % 360 / 15) * 15 % 360;
-    const off = ((deg - heading + 540) % 360) - 180;
-    const label = { 0: "B", 90: "Đ", 180: "N", 270: "T" }[deg] ?? (deg % 45 === 0 ? String(deg) : "·");
-    marks.push(
-      <span key={d} style={{ left: `${50 + (off / 90) * 50}%` }} className={label.length === 1 && label !== "·" ? "card" : ""}>
-        {label}
-      </span>,
-    );
-  }
+  const marks = useRef<(HTMLSpanElement | null)[]>([]);
+  const readout = useRef<HTMLElement>(null);
+  const last = useRef(NaN);
+  useLive(
+    () => {
+      // Hướng nhìn: bắc (−z) là 0°. Chỉ chỉnh DOM khi hướng đổi quá một phần mười độ.
+      const heading = ((((-look.yaw + Math.PI) * 180) / Math.PI) % 360 + 360) % 360;
+      if (Math.abs(heading - last.current) < 0.1) return;
+      last.current = heading;
+      for (let n = 0; n < COMPASS_MARKS; n++) {
+        const el = marks.current[n];
+        if (!el) continue;
+        const d = -90 + n * 15;
+        const deg = ((Math.round(((heading + d + 360) % 360) / 15) * 15) % 360);
+        const off = ((deg - heading + 540) % 360) - 180;
+        const label = { 0: "B", 90: "Đ", 180: "N", 270: "T" }[deg] ?? (deg % 45 === 0 ? String(deg) : "·");
+        el.style.left = `${(50 + (off / 90) * 50).toFixed(2)}%`;
+        if (el.textContent !== label) {
+          el.textContent = label;
+          el.className = label.length === 1 && label !== "·" ? "card" : "";
+        }
+      }
+      if (readout.current) readout.current.textContent = `${Math.round(heading)}°`;
+    },
+    () => "",
+  );
   return (
     <div className="b-compass">
-      {marks}
-      <em>{Math.round(heading)}°</em>
+      {Array.from({ length: COMPASS_MARKS }, (_, n) => (
+        <span
+          key={n}
+          ref={(el) => {
+            marks.current[n] = el;
+          }}
+        />
+      ))}
+      <em ref={readout} />
     </div>
   );
 }
@@ -740,6 +806,60 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
 
 // ---------------------------------------------------------------------------- cài đặt
 
+const FPS_CHOICES = [30, 60, 90, 120, 0];
+const DPR_CHOICES = [0, 1, 1.25, 1.5, 2];
+
+/** Phần đồ hoạ của bảng cài đặt: mức chất lượng, giới hạn khung hình, độ phân giải, tự thích ứng, số liệu F3. */
+function GraphicsSettings() {
+  const g = useGraphics();
+  const stats = useStatsOpen();
+  const native = window.devicePixelRatio || 1;
+  return (
+    <>
+      <div className="b-set-title">Đồ hoạ</div>
+      <div className="b-set-row">
+        <span>Chất lượng</span>
+        <div className="b-set-seg">
+          {(["high", "medium", "low"] as Quality[]).map((q) => (
+            <button key={q} className={g.quality === q ? "on" : ""} onClick={() => setGraphics({ quality: q })}>
+              {QUALITY_LABEL[q]}
+            </button>
+          ))}
+        </div>
+        <em>P</em>
+      </div>
+      <label className="b-set-row">
+        <span>Giới hạn khung hình</span>
+        <select value={g.fpsCap} onChange={(e) => setGraphics({ fpsCap: Number(e.target.value) })}>
+          {FPS_CHOICES.map((f) => (
+            <option key={f} value={f}>
+              {f === 0 ? "Không giới hạn (nóng máy)" : `${f} FPS`}
+            </option>
+          ))}
+        </select>
+        <em />
+      </label>
+      <label className="b-set-row">
+        <span>Độ phân giải vẽ</span>
+        <select value={g.maxDpr} onChange={(e) => setGraphics({ maxDpr: Number(e.target.value) })}>
+          {DPR_CHOICES.filter((d) => d <= Math.max(1, native)).map((d) => (
+            <option key={d} value={d}>
+              {d === 0 ? "Tự động theo chất lượng" : d >= native ? `${d}x (gốc của màn hình)` : `${d}x`}
+            </option>
+          ))}
+        </select>
+        <em />
+      </label>
+      <label className="b-set-check">
+        <input type="checkbox" checked={g.adaptive} onChange={(e) => setGraphics({ adaptive: e.target.checked })} /> Tự hạ độ phân giải khi bị giật
+      </label>
+      <label className="b-set-check">
+        <input type="checkbox" checked={stats} onChange={toggleStats} /> Hiện số liệu hiệu năng (F3)
+      </label>
+    </>
+  );
+}
+
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useSettings();
   if (!open) return null;
@@ -753,7 +873,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
   return (
     <div className="b-settings" onMouseDown={(e) => e.stopPropagation()}>
       <header>
-        <Gear size={18} /> Cài đặt điều khiển
+        <Gear size={18} /> Cài đặt
         <button className="x" onClick={onClose} aria-label="Đóng">
           <X size={18} />
         </button>
@@ -770,7 +890,14 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
       <label className="b-set-check">
         <input type="checkbox" checked={s.toggleAim} onChange={(e) => setSettings({ toggleAim: e.target.checked })} /> Bấm chuột phải một lần để ngắm (không cần giữ)
       </label>
-      <button className="ghost" onClick={() => setSettings(DEFAULT_SETTINGS)}>
+      <GraphicsSettings />
+      <button
+        className="ghost"
+        onClick={() => {
+          setSettings(DEFAULT_SETTINGS);
+          setGraphics({ fpsCap: DEFAULT_GRAPHICS.fpsCap, maxDpr: DEFAULT_GRAPHICS.maxDpr, adaptive: DEFAULT_GRAPHICS.adaptive });
+        }}
+      >
         Về mặc định
       </button>
     </div>

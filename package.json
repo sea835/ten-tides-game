@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @tentides/server --filter @tentides/client dev",
+    "play": "pnpm --filter @tentides/client build && pnpm --parallel --filter @tentides/server --filter @tentides/client serve",
     "test": "vitest run",
     "typecheck": "pnpm -r typecheck"
   },

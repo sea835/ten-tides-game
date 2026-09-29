@@ -18,6 +18,7 @@ import {
   type Mesh,
 } from "three";
 import { MAP_HALF_SIZE, WATER_LEVEL, type World } from "@tentides/content";
+import { useProfile } from "./graphics.ts";
 import { sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
 import { fbm } from "./textures.ts";
@@ -313,7 +314,9 @@ const SIZE = 1400;
 export function Water({ world }: { world: World }) {
   const depthMap = useMemo(() => bakeDepth(world), [world]);
   useEffect(() => () => depthMap.dispose(), [depthMap]);
-  const geometry = useMemo(() => radialGrid(SIZE, 360, 2.2), []);
+  // Số ô lưới theo mức chất lượng: đỉnh dồn về gần camera nên bớt ô chủ yếu làm thưa phần xa (sương mù che).
+  const segments = useProfile().water;
+  const geometry = useMemo(() => radialGrid(SIZE, segments, 2.2), [segments]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const mesh = useRef<Mesh>(null);
   const material = useMemo(() => {
