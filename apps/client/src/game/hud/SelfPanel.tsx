@@ -3,7 +3,7 @@ import { Backpack, ChevronDown, ChevronUp, Drumstick, Heart, History, Smile, Zap
 import { BACKGROUND_LABELS, FLAW_LABELS } from "@tentides/content";
 import { STAT_IDS, STAT_LABELS } from "@tentides/rules";
 import { myId, type IslandRoom } from "../../net.ts";
-import { useHud } from "../hudStore.ts";
+import { useStamina } from "../hudStore.ts";
 import { usePrivate } from "../privateStore.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { Bar } from "./Bar.tsx";
@@ -53,7 +53,8 @@ export function SelfPanel({ room }: { room: IslandRoom }) {
     };
   });
   const view = usePrivate();
-  const { sprint } = useHud();
+  // Sức bền hồi liên tục nên nằm ở kho riêng: chỉ dòng này render lại, cả bảng không.
+  const sprint = useStamina();
   if (!me) return null;
 
   return (

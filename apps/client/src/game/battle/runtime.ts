@@ -119,6 +119,46 @@ export interface Casing {
 /** Cửa thoát vỏ đạn của súng trước mặt (ViewModel ghi mỗi khung hình) và trục phải của súng. */
 export const eject = { x: 0, y: 0, z: 0, rx: 1, ry: 0, rz: 0, valid: false };
 
+/**
+ * Súng đang cầm và băng đạn dự đoán trên máy (server trả số thật sau).
+ * Khai ở đây vì `LocalPlayer` (dùng chung cho cả chế độ cốt truyện và Battleground) cần đọc
+ * `gun.weapon` và `gun.reloadUntil`; nếu khai trong `Shooter.tsx` thì `LocalPlayer` sẽ import
+ * luôn cả module nặng của Battleground vào gói cốt truyện và không tách được chunk.
+ */
+export const gun = {
+  slot: "",
+  weapon: "",
+  mag: 0,
+  lastShot: 0,
+  /** Mốc phát bắn kế tiếp (xem Shooter): bắn theo lịch để RPM đúng ở mọi tần số khung hình. */
+  nextShotAt: 0,
+  readyAt: 0,
+  /** Vừa rút tay khỏi chạy: còn nhịp này nữa mới bắn như thường, phát đầu dễ trượt hơn. */
+  raiseUntil: 0,
+  lastMelee: 0,
+  reloadUntil: 0,
+  cancelReload: null as null | (() => void),
+  healUntil: 0,
+  cancelHeal: null as null | (() => void),
+};
+
+/**
+ * Đóng băng hình ảnh thật ngắn khi trúng đạn / hạ đối thủ (hitstop). Đây là công cụ chuẩn để tạo
+ * cảm giác "đòn" — thiếu nó thì phát bắn và cả cú hạ đều mềm.
+ * Các vòng lặp mô phỏng nhân `hitStop.scale` vào `dt`; HUD và âm thanh thì không nhân, để vẫn nghe rõ.
+ */
+export const hitStop = { until: 0, scale: 1 };
+
+/** Bật đóng băng cho tới `now + ms`. */
+export function stopHit(ms: number) {
+  hitStop.until = performance.now() + ms;
+}
+
+/** Hệ số thời gian cho khung hình hiện tại (1 = bình thường, 0.1 = đứng hình). */
+export function hitStopScale(): number {
+  return performance.now() < hitStop.until ? hitStop.scale : 1;
+}
+
 /** Hàng đợi hiệu ứng: bên bắn đẩy vào, bộ vẽ lấy ra. */
 export const effects = { tracers: [] as Tracer[], impacts: [] as Impact[], flashes: [] as Flash[], blasts: [] as Blast[], splats: [] as Splat[], casings: [] as Casing[] };
 
@@ -128,8 +168,8 @@ export interface HudState {
   buyOpen: boolean;
   scoreboard: boolean;
   settingsOpen: boolean;
-  /** Dấu trúng gần nhất (thời điểm, loại) để vẽ dấu X ở tâm ngắm. */
-  hit: { at: number; kind: "body" | "head" | "kill"; armor: boolean } | null;
+  /** Dấu trúng gần nhất (thời điểm, loại) để vẽ dấu X ở tâm ngắm. `amount` để hiện số sát thương. */
+  hit: { at: number; kind: "body" | "head" | "kill"; armor: boolean; amount: number } | null;
   /** Các lần bị bắn gần đây: hướng (radian, theo thế giới) và thời điểm. */
   hurts: { at: number; angle: number; amount: number }[];
   /** Đồ gần nhất nhặt được (key trong groundItems, id đồ). */

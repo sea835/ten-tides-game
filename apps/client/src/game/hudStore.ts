@@ -24,8 +24,36 @@ interface HudState {
   nearTarget: NearTarget | null;
   /** Điểm sự kiện đang đứng cạnh, nhấn E để mở. */
   nearAnchor: string | null;
-  /** Sức bền để chạy nhanh lúc này (0–100). */
-  sprint: number;
+  /** Đang đứng ở chỗ đào kho báu. */
+  atDigSite: boolean;
+  /** Đang ngồi; `hidden` là ngồi trong lõi đám cỏ cao, người khác không thấy tên và chấm trên bản đồ. */
+  sitting: boolean;
+  hidden: boolean;
+  /** Đang leo cây. */
+  climbing: boolean;
+  /** Đang chìm khi bơi: hết hơi, kiệt sức hay mang quá nặng. */
+  sinking: "" | "breath" | "tired" | "heavy";
+  /** Đang cầm đồ và đứng cạnh ai đó: nhấn G để đưa cho người đó. */
+  giveTo: { id: string; name: string } | null;
+  /** Kẻ phản bội đứng sát sau lưng ai đó: nhấn F để kết liễu. */
+  victim: { id: string; name: string } | null;
+  /** Chế độ dựng nhà: đang chọn công trình nào (rỗng là không dựng). */
+  build: string;
+  /** Chỗ dựng hợp lệ không (bóng xanh hay đỏ). */
+  buildOk: boolean;
+}
+
+interface HudState {
+  zone: ZoneId;
+  /** Tên nơi đang đứng: vùng của đảo chính, tên đảo nhỏ, tên hang, hầm mỏ, hay biển khơi. */
+  region: string;
+  /** Đang bơi, và đầu đang ở dưới mặt nước. */
+  swimming: boolean;
+  underwater: boolean;
+  /** Easter egg, điểm bất thường hay sinh vật thân thiện đang ở sát bên, nhấn E để xem xét. */
+  nearTarget: NearTarget | null;
+  /** Điểm sự kiện đang đứng cạnh, nhấn E để mở. */
+  nearAnchor: string | null;
   /** Đang đứng ở chỗ đào kho báu. */
   atDigSite: boolean;
   /** Đang ngồi; `hidden` là ngồi trong lõi đám cỏ cao, người khác không thấy tên và chấm trên bản đồ. */
@@ -52,7 +80,6 @@ let state: HudState = {
   underwater: false,
   nearTarget: null,
   nearAnchor: null,
-  sprint: 100,
   atDigSite: false,
   sitting: false,
   hidden: false,
@@ -88,5 +115,30 @@ export function useHud(): HudState {
       return () => listeners.delete(l);
     },
     () => state,
+  );
+}
+
+/**
+ * Sức bền để chạy (0–100), nằm riêng khỏi `HudState` có chủ đích: nó hồi liên tục 12 đơn vị/giây,
+ * nên nếu gộp vào store chung thì mọi thành phần `useHud()` render lại ~12 lần/giây vĩnh viễn.
+ * Ở đây chỉ thành phần nào `useStamina()` mới chịu render lại, thường là đúng một thanh.
+ */
+let staminaValue = 100;
+const staminaListeners = new Set<() => void>();
+
+export function setStamina(v: number) {
+  const n = Math.max(0, Math.min(100, v));
+  if (Math.abs(n - staminaValue) < 0.5) return;
+  staminaValue = n;
+  staminaListeners.forEach((l) => l());
+}
+
+export function useStamina(): number {
+  return useSyncExternalStore(
+    (l) => {
+      staminaListeners.add(l);
+      return () => staminaListeners.delete(l);
+    },
+    () => staminaValue,
   );
 }

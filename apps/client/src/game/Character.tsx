@@ -17,6 +17,7 @@ import {
   Euler,
   type Group,
 } from "three";
+import { hitStopScale } from "./battle/runtime.ts";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
 import { GunModel, HelmetModel, KnifeModel, ThrowableModel, VestModel, aimLineHeight, stockLength, supportOffset } from "./GunModel.tsx";
 import { camoTexture } from "./camo.ts";
@@ -483,7 +484,11 @@ export function Character({
   const pistol = gunId === "p92" || gunId === "deagle";
   const itemInHand = gunId ? "" : held;
 
-  useFrame((_, dt) => {
+  useFrame((_, raw) => {
+    // Chặn dt như LocalPlayer: dt thô khiến `a.actT` nhảy quá thời lượng trong một bước,
+    // nên hành động một lần (swing/chop/throw/shoot) bị bỏ qua hoàn toàn, không phát ra gì.
+    // Nhân hitstop thêm: nhân vật đứng lại một nhịp ngắn khi trúng đạn.
+    const dt = Math.min(raw, 0.05) * hitStopScale();
     const m = motion?.() ?? { moving: false };
     const a = anim.current;
     const now = performance.now();
@@ -522,8 +527,17 @@ export function Character({
     // Đi khom thì bước ngắn, chậm hơn.
     // Nhịp bước: biết tốc độ thật thì mỗi bước đi đúng một sải (đi khom sải ngắn, chạy sải dài), chân không trượt trên đất.
     const stride = crouching ? 0.5 : m.running ? 1.05 : 0.7;
-    const rate = m.swimming ? 7 : m.speed !== undefined ? Math.min(24, (Math.PI * m.speed) / stride) : m.running && !crouching ? 17 : 12.5 - 3 * crouch;
-    a.phase += dt * rate * (a.amount > 0.05 || m.swimming ? 1 : 0);
+    const moving = a.amount > 0.05 || m.swimming;
+    // Trần cao hơn trước (24) để bước ở tốc độ chạy 16 m/s còn khớp sải chân, không còn trượt nhẹ.
+    const rate = m.swimming ? 7 : m.speed !== undefined ? Math.min(40, (Math.PI * m.speed) / stride) : m.running && !crouching ? 17 : 12.5 - 3 * crouch;
+    if (moving) {
+      a.phase += dt * rate;
+    } else {
+      // Dừng lại thì nội suy về bội số gần nhất của π cho bằng 0. Trước đây phase đứng yên giữa
+      // chừng nên chân dừng ở góc ngẫu nhiên, khác nhau mỗi lần chạy.
+      const near = Math.round(a.phase / Math.PI) * Math.PI;
+      a.phase += (near - a.phase) * Math.min(1, dt * 10);
+    }
     const swim = a.swim;
     const climb = a.climb;
     const sit = a.sit * (1 - swim);

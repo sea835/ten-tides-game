@@ -617,17 +617,24 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     }
 
     // --- bước chân, bơi, leo
-    tm.step -= dt;
-    if (tm.step <= 0 && localMotion.moving) {
+    // Đi bộ: phát đúng theo bộ đếm nhịp chân mà LocalPlayer cộng dồn cùng phase với camera bob.
+    // Trước đây chạy timer riêng (0.42s/0.28s) trong khi bob chạy ~7.9 nhịp/s ⇒ lệch và trôi dần.
+    if (localMotion.stepHit && localMotion.moving) {
       if (localMotion.climbing) {
-        tm.step = 0.35;
         play("climb", { volume: 0.6 });
       } else if (localMotion.swimming) {
-        tm.step = localMotion.running ? 0.55 : 0.8;
         play("swim", { volume: 0.7 });
       } else if (p.y - world.heightAt(p.x, p.z) < 0.3) {
-        tm.step = localMotion.running ? 0.28 : 0.42;
         play(surfaceSound(world, p.x, p.z), { volume: localMotion.running ? 1 : 0.7 });
+      }
+    }
+    // Bơi và leo không có nhịp chân trên mặt đất nên vẫn giữ nhịp riêng cho chúng.
+    if (!localMotion.groundStep) {
+      tm.step -= dt;
+      if (tm.step <= 0 && localMotion.moving && (localMotion.climbing || localMotion.swimming)) {
+        tm.step = localMotion.climbing ? 0.35 : localMotion.running ? 0.55 : 0.8;
+        if (localMotion.climbing) play("climb", { volume: 0.6 });
+        else play("swim", { volume: 0.7 });
       }
     }
 

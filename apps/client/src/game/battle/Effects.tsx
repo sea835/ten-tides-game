@@ -234,7 +234,12 @@ function Puffs() {
       p.vz *= drag;
       if (p.dense) p.vy *= drag;
       p.size += p.grow * dt;
-      if (n >= MAX_PUFFS) continue;
+      // Quá hạn mức thì bỏ hẳn cụm cũ, không chỉ bỏ qua phần vẽ: trước đây mảng phình vô hạn
+      // nên mọi cụm vẫn được tích phân mỗi khung hình dù không hiện, và hiệu ứng mới bị đẩy ra.
+      if (n >= MAX_PUFFS) {
+        puffs.splice(i, 1);
+        continue;
+      }
       const k = p.age / p.life;
       const alpha = p.dense ? p.alpha * Math.min(1, p.age * 1.5) * (1 - Math.max(0, k - 0.8) / 0.2) : p.alpha * (1 - k);
       dummy.position.set(p.x, p.y, p.z);

@@ -313,7 +313,10 @@ const SIZE = 1400;
 export function Water({ world }: { world: World }) {
   const depthMap = useMemo(() => bakeDepth(world), [world]);
   useEffect(() => () => depthMap.dispose(), [depthMap]);
-  const geometry = useMemo(() => radialGrid(SIZE, 360, 2.2), []);
+  // 240 phân đoạn thay vì 360: lưới cực (power 2.2) dồn mật độ về quanh người nhìn, nên phần
+  // tinh chỉnh thừa nằm ở rìa ngoài tầm quan sát mà vẫn phải vẽ. 360×360 là 259 200 tam giác;
+  // 240×240 là 115 200, hình ảnh gần như không đổi.
+  const geometry = useMemo(() => radialGrid(SIZE, 240, 2.2), []);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const mesh = useRef<Mesh>(null);
   const material = useMemo(() => {

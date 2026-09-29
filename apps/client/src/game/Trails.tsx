@@ -42,6 +42,9 @@ export function Trails({ room, world }: { room: IslandRoom; world: World }) {
   const color = useMemo(() => new Color(), []);
   const sandColor = useMemo(() => new Color("#e3cf9e"), []);
   const dirtColor = useMemo(() => new Color("#9b8466"), []);
+  // Số ô đã từng vẽ, để chỉ tẩy phần vừa rút khỏi danh sách thay vì vẽ lại cả mảng.
+  const dustShown = useRef(0);
+  const ringShown = useRef(0);
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
@@ -104,19 +107,24 @@ export function Trails({ room, world }: { room: IslandRoom; world: World }) {
           p.y += 0.5 * dt;
         }
       }
-      for (let i = 0; i < DUST; i++) {
-        const p = list[i];
-        if (!p) dummy.scale.setScalar(0);
-        else {
-          const k = p.life / p.max;
-          dummy.position.set(p.x, p.y, p.z);
-          dummy.scale.setScalar(p.size * (0.6 + k * 1.4) * (1 - k * k));
-          d.setColorAt(i, p.sand ? sandColor : dirtColor);
-        }
+      // Chỉ vẽ tới độ dài thật của danh sách, tẩy đuôi khi danh sách ngắn lại.
+      // Trước đây 90 + 36 ô được ghi lại và tải lên GPU mỗi khung hình kể cả khi không có gì.
+      for (let i = 0; i < list.length; i++) {
+        const p = list[i]!;
+        const k = p.life / p.max;
+        dummy.position.set(p.x, p.y, p.z);
+        dummy.scale.setScalar(p.size * (0.6 + k * 1.4) * (1 - k * k));
+        d.setColorAt(i, p.sand ? sandColor : dirtColor);
         dummy.rotation.set(i, i * 0.7, 0);
         dummy.updateMatrix();
         d.setMatrixAt(i, dummy.matrix);
       }
+      for (let i = list.length; i < dustShown.current; i++) {
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        d.setMatrixAt(i, dummy.matrix);
+      }
+      dustShown.current = list.length;
       d.instanceMatrix.needsUpdate = true;
       if (d.instanceColor) d.instanceColor.needsUpdate = true;
     }
@@ -127,23 +135,26 @@ export function Trails({ room, world }: { room: IslandRoom; world: World }) {
         list[i]!.life += dt;
         if (list[i]!.life >= list[i]!.max) list.splice(i, 1);
       }
-      for (let i = 0; i < RIPPLES; i++) {
-        const ring = list[i];
-        if (!ring) {
-          dummy.scale.setScalar(0);
-          color.setScalar(0);
-        } else {
-          const k = ring.life / ring.max;
-          dummy.position.set(ring.x, WATER_LEVEL + 0.06, ring.z);
-          dummy.scale.setScalar(ring.size * (0.4 + k * 2.2));
-          // Vẽ cộng sáng: màu tối dần về đen là mờ dần.
-          color.setScalar(0.45 * (1 - k));
-        }
+      for (let i = 0; i < list.length; i++) {
+        const ring = list[i]!;
+        const k = ring.life / ring.max;
+        dummy.position.set(ring.x, WATER_LEVEL + 0.06, ring.z);
+        dummy.scale.setScalar(ring.size * (0.4 + k * 2.2));
+        // Vẽ cộng sáng: màu tối dần về đen là mờ dần.
+        color.setScalar(0.45 * (1 - k));
         dummy.rotation.set(-Math.PI / 2, 0, 0);
         dummy.updateMatrix();
         r.setMatrixAt(i, dummy.matrix);
         r.setColorAt(i, color);
       }
+      for (let i = list.length; i < ringShown.current; i++) {
+        dummy.scale.setScalar(0);
+        color.setScalar(0);
+        dummy.updateMatrix();
+        r.setMatrixAt(i, dummy.matrix);
+        r.setColorAt(i, color);
+      }
+      ringShown.current = list.length;
       r.instanceMatrix.needsUpdate = true;
       if (r.instanceColor) r.instanceColor.needsUpdate = true;
     }

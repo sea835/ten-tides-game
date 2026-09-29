@@ -150,9 +150,15 @@ function Reticle({ room }: { room: IslandRoom }) {
   if (!me?.alive) return null;
   const now = performance.now();
   const scoped = stance.aiming && stance.scoped;
-  // Khoảng hở tâm ngắm theo độ toả (radian → điểm ảnh ở FOV hiện tại xấp xỉ).
-  const gap = Math.max(3, Math.min(60, stance.spread * 900 / (stance.aiming ? stance.zoom : 1)));
+  // Khoảng hở tâm ngắm theo độ toả. Ánh xạ radian → điểm ảnh bằng tan() theo chiều cao màn hình và
+  // FOV đang dùng: trước đây dùng hằng số 900 nên ở FOV 100 khoảng hở báo thiếu ~30% so với
+  // góc tán thật, tức tâm ngắm nói dối về độ chính xác.
+  const pxPerRad = window.innerHeight / 2 / Math.tan((getSettings().fov * Math.PI) / 360 / (stance.aiming ? stance.zoom : 1));
+  const gap = Math.max(3, Math.min(60, Math.tan(stance.spread) * pxPerRad));
   const hitAge = hud.hit ? now - hud.hit.at : 9999;
+  // Sát thương vừa gặp: để hiện số đòn (đã có sẵn trong `hit`) cho người chơi biết mình bắn mạnh
+  // hay yếu, và biết bắn vào giáp có ăn không.
+  const dmgAge = hud.hit ? now - hud.hit.at : 9999;
   return (
     <>
       {scoped ? (
@@ -166,7 +172,14 @@ function Reticle({ room }: { room: IslandRoom }) {
           <b />
         </div>
       )}
-      {hitAge < 260 && <div className={`b-hitmark ${hud.hit!.kind}`} style={{ opacity: 1 - hitAge / 260 }} />}
+      {hitAge < 260 && (
+        <div className={`b-hitmark ${hud.hit!.kind}${hud.hit!.armor ? " armor" : ""}`} style={{ opacity: 1 - hitAge / 260 }} />
+      )}
+      {dmgAge < 800 && hud.hit!.kind !== "kill" && (
+        <div className={`b-dmg ${hud.hit!.kind}${hud.hit!.armor ? " armor" : ""}`} style={{ opacity: Math.min(1, (800 - dmgAge) / 300) }}>
+          {hud.hit!.amount}
+        </div>
+      )}
       {hud.hurts
         .filter((h) => now - h.at < 1400)
         .map((h) => {
@@ -174,9 +187,21 @@ function Reticle({ room }: { room: IslandRoom }) {
           const rel = h.angle - (look.yaw + Math.PI);
           return <div key={h.at} className="b-hurt" style={{ transform: `rotate(${(-rel * 180) / Math.PI}deg)`, opacity: 1 - (now - h.at) / 1400 }} />;
         })}
+      {newestHurt(hud, now) !== null && (
+        <div className="b-flash" style={{ opacity: Math.max(0, 1 - (now - newestHurt(hud, now)!) / 160) }} />
+      )}
       {me.hp < 30 && <div className="b-lowhp" style={{ opacity: 0.35 + 0.35 * Math.sin(now / 180) }} />}
     </>
   );
+}
+
+/** Mốc thời gian của cú trúng đòn mới nhất, hoặc null nếu đã quá 160ms (để quầng đỏ tắt). */
+function newestHurt(hud: ReturnType<typeof getBattleHud>, now: number): number | null {
+  let best: number | null = null;
+  for (const h of hud.hurts) {
+    if (now - h.at < 160 && (best === null || h.at > best)) best = h.at;
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------- la bàn

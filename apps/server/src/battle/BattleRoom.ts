@@ -21,6 +21,9 @@ import {
   battleSpawn,
   falloff,
   floorBelow,
+  hitPart,
+  hitboxHeight,
+  HITBOX,
   insideBox,
   makeRand,
   raycastBoxes,
@@ -594,12 +597,15 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (now - (this.lastShotAt.get(id) ?? 0) < (60000 / def.rpm) * 0.8) return;
     const mag = magOf(kit, slot);
     if (mag <= 0) return;
+    // Kiểm tra gốc tia TRƯỚC khi trừ đạn. Trước đây thứ tự là: trừ đạn → ghi lastShotAt → hủy hồi
+    // máu → mới kiểm tra gốc nòng, nên một phát bắn bị từ chối vì gốc sai vẫn mất một viên và vẫn
+    // chiếm slot tần số, đồng thời không phát `shot` cho ai: người chơi nghe tiếng và thấy hiệu ứng
+    // của một phát bắn không hề tồn tại.
+    if (Math.hypot(o[0] - p.x, o[2] - p.z) > 4 || o[1] < p.y - 1 || o[1] > p.y + 3) return;
     this.lastShotAt.set(id, now);
     setMag(kit, slot, mag - 1);
     p.shots = (p.shots + 1) % 65536;
     this.cancelHeal(id);
-    // Gốc tia phải ở sát người bắn.
-    if (Math.hypot(o[0] - p.x, o[2] - p.z) > 4 || o[1] < p.y - 1 || o[1] > p.y + 3) return;
     const maxRange = Math.min(600, def.range * 3);
     const dirs = rays.slice(0, def.pellets).map((r) => {
       const l = Math.hypot(r[0], r[1], r[2]) || 1;
@@ -625,11 +631,14 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const d = dirs[h.ray];
       const target = this.state.players.get(h.target);
       if (!d || !target || !target.alive || h.target === id || hitRay.has(h.ray)) continue;
-      if (h.d > walls[h.ray]! + 0.6 || h.d > maxRange) continue;
+      if (h.d > walls[h.ray]! + HITBOX.wallSlack || h.d > maxRange) continue;
       const [px, py, pz] = bulletAt(o, d, def.velocity, h.d);
-      const height = target.crouching ? 1.25 : 1.8;
-      if (Math.hypot(px - target.x, pz - target.z) > 1.6 || py < target.y - 0.5 || py > target.y + height + 0.5) continue;
-      const head = h.part === "head" && py > target.y + height - 0.55;
+      const height = hitboxHeight(target.crouching);
+      // Cùng hộp bao và cùng cách phân loại với client (HITBOX/hitPart trong @tentides/content):
+      // trước đây hai bên tự chế số riêng và lệch ~18cm ở chiều cao đứng, nên một phát bắn vào
+      // 1,5m bị client gọi là thân còn server gọi là đầu — và server thắng trong im lặng.
+      if (Math.hypot(px - target.x, pz - target.z) > HITBOX.slackXZ || py < target.y - HITBOX.slackDown || py > target.y + height + HITBOX.slackUp) continue;
+      const head = hitPart(h.part, py, target.y, target.crouching) === "head";
       hitRay.set(h.ray, h.d);
       const amount = def.damage * falloff(def, h.d) * (head ? def.headshot : 1);
       const prev = dealt.get(h.target);

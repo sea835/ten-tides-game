@@ -93,6 +93,39 @@
   margin: -17px 0 0 -17px;
   filter: sepia(1) saturate(10) hue-rotate(-40deg);
 }
+/* Bắn vào giáp: viền xám thay vì trắng — không có dấu hiệu này thì người chơi không biết mình
+   có ăn hay không (HitMessage.armor vốn đã được truyền xuống nhưng không ai đọc). */
+.b-hitmark.armor {
+  filter: grayscale(1) brightness(0.75);
+}
+
+/* Số sát thương vừa gây ra, nổi lên từ tâm ngắm. */
+.b-dmg {
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 26px);
+  transform: translateX(-50%);
+  font: 700 15px/1 ui-monospace, monospace;
+  color: #ffe9c9;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+}
+.b-dmg.head {
+  color: #ffcc4d;
+  font-size: 19px;
+}
+.b-dmg.armor {
+  color: #9fb4c7;
+  font-size: 13px;
+}
+
+/* Quầng đỏ khi vừa trúng đòn: 160ms thôi, chỉ để báo "có đòn vừa đến" chứ không che tầm nhìn. */
+.b-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(255, 40, 30, 0.05) 20%, rgba(190, 15, 20, 0.5) 100%);
+}
 
 /* Hướng bị bắn: cung đỏ quanh tâm màn hình. */
 .b-hurt {

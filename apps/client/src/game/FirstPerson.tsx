@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
 import { myId, type IslandRoom } from "../net.ts";
+import { hitStopScale } from "./battle/runtime.ts";
 import { useCameraView } from "./camera.ts";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
 import { localMotion } from "./shared.ts";
@@ -27,7 +28,9 @@ export function FirstPersonHands({ room }: { room: IslandRoom }) {
       swing.current = 1;
     }
   }, [actN]);
-  useFrame(({ camera, clock }, dt) => {
+  useFrame(({ camera, clock }, raw) => {
+    // Chặn dt như LocalPlayer, và nhân hitstop: khi trúng đạn cảnh đứng lại một nhịp ngắn.
+    const dt = Math.min(raw, 0.05) * hitStopScale();
     const g = root.current;
     const h = hand.current;
     if (!g || !h) return;

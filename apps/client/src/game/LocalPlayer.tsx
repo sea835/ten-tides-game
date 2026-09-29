@@ -20,7 +20,7 @@ import { INTERACT_RADIUS, MAX_RUN_SPEED, MAX_SPEED_BOOST, Messages, type Correct
 import { myId, type IslandRoom } from "../net.ts";
 import { getCameraView } from "./camera.ts";
 import { Character, type Motion } from "./Character.tsx";
-import { getHud, setHud, type NearTarget } from "./hudStore.ts";
+import { getHud, setHud, setStamina, type NearTarget } from "./hudStore.ts";
 import { isTyping, keys, look, smoothView, view } from "./input.ts";
 import { getHands } from "./handsStore.ts";
 import { getPrivate } from "./privateStore.ts";
@@ -28,7 +28,7 @@ import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake 
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { WEAPON } from "@tentides/content";
-import { bodies, getBattleHud, localAvatar, localBody, recoil, setBattleHud, stance } from "./battle/runtime.ts";
+import { bodies, getBattleHud, hitStopScale, localAvatar, localBody, recoil, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { gun } from "./battle/Shooter.tsx";
 import { playLand } from "./sound/guns.ts";
@@ -37,6 +37,16 @@ import { aimZoom, getSettings } from "./settings.ts";
 const WALK_SPEED = 8;
 const GRAVITY = 25;
 const JUMP_SPEED = 8;
+/**
+ * Rơi không nhanh hơn mức này (m/s). Không có chặn thì rơi 3 giây là -75 m/s, tức 3,75 m trong
+ * một bước solver ở dt=0.05 — vượt quãng `snapToGround(0.4)` nên bám đất nhấp nháy và nhảy mất.
+ */
+const MAX_FALL = 55;
+/**
+ * Rời mặt đất rồi bấm Space trong khoảng thời gian này vẫn nhảy được (coyote time).
+ * Không có nó, bấm Space hơi trễ 100 ms sau khi bước khỏi mép là rơi thẳng xuống.
+ */
+const COYOTE_TIME = 0.12;
 /** Nước sâu hơn mức này thì phải bơi; nông hơn mức kia thì lại chạm chân xuống đáy mà lội. */
 const SWIM_ENTER_DEPTH = 1.35;
 const SWIM_EXIT_DEPTH = 1.1;
@@ -118,7 +128,8 @@ const CAM_HEIGHT_CROUCH = 1.15;
 const EYE_HEIGHT_CROUCH = 1.2;
 /**
  * Quán tính khi đi (1/giây, càng lớn càng bám): trên đất tăng tốc, hãm lại; trên không chỉ bẻ lái được chút ít,
- * không bấm gì thì giữ nguyên đà; Battleground nặng tay hơn chế độ khám phá (mang súng, giáp).
+ * không bấm gì thì giữ nguyên đà. Số nhỏ hơn = nặng hơn, nên Battleground (mang súng, giáp) quán tính
+ * thấp hơn chế độ khám phá: 11/12 so với 13/16.
  */
 const GROUND_ACCEL = 11;
 const GROUND_BRAKE = 12;
@@ -131,10 +142,31 @@ const BATTLE_GRAVITY_UP = 22;
 const BATTLE_GRAVITY_DOWN = 30;
 /** Rơi nhanh hơn mức này (m/s) mới tính là cú đáp đất nặng (nhún camera, chậm lại, tiếng dậm). */
 const LAND_SOFT = 3.5;
+/** Chạy thì nới góc nhìn ra chừng này phần (phóng đại 1.06) để tốc độ đọc được bằng mắt. */
+const SPRINT_FOV = 1.06;
 /** Vừa đánh hay ném thì quay mặt theo hướng camera chừng này giây. */
 const AIM_FACE_MS = 450;
 
 type CharacterController = ReturnType<ReturnType<typeof useRapier>["world"]["createCharacterController"]>;
+
+/**
+ * Nhiễu một chiều nội suy mượt giữa hai số ngẫu nhiên, lấy mẫu theo thời gian chứ không theo
+ * khung hình. Dùng cho rung màn hình: `Math.random()` mỗi khung làm đặc tính của rung đổi theo
+ * FPS (144Hz rung mịn, 30Hz rung đục) dù cường độ giống nhau.
+ */
+function valueNoise(t: number, seed: number): number {
+  const i = Math.floor(t);
+  const f = t - i;
+  // Nội suy mượt (smoothstep) để không có bậc thang rõ rệt giữa hai mẫu.
+  const u = f * f * (3 - 2 * f);
+  const h = (n: number) => {
+    let x = Math.imul(n ^ seed, 2246822519);
+    x ^= x >>> 13;
+    x = Math.imul(x, 3266489917);
+    return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+  };
+  return (h(i) + (h(i + 1) - h(i)) * u) * 2 - 1;
+}
 
 export function LocalPlayer({ room, world }: { room: IslandRoom; world: World }) {
   const me = room.state.players.get(myId(room))!;
@@ -152,8 +184,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const c = physics.createCharacterController(0.05);
     c.enableAutostep(0.5, 0.2, false);
     c.enableSnapToGround(0.4);
-    c.setMaxSlopeClimbAngle((50 * Math.PI) / 180);
-    c.setMinSlopeSlideAngle((60 * Math.PI) / 180);
+    // Dốc tối đa leo được phải >= dốc nhẹ nhất bắt đầu trượt, nếu không sẽ có dải trống
+    // (trước đây 50° leo / 60° trượt) mà người chơi vừa không leo nổi vừa không trượt xuống — đứng yên.
+    c.setMaxSlopeClimbAngle((55 * Math.PI) / 180);
+    c.setMinSlopeSlideAngle((50 * Math.PI) / 180);
     controllerRef.current = c;
     return () => {
       controllerRef.current = null;
@@ -197,6 +231,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     airJump: false,
     landAt: -1,
     hopReady: false,
+    /** Còn bao lâu nữa thì mới mất quyền nhảy sau khi rời đất (coyote time, xem COYOTE_TIME). */
+    coyote: 0,
     /** Battleground: đang ngồi xổm; FOV đang dùng (mượt dần khi ngắm). */
     crouching: false,
     fov: 60,
@@ -207,6 +243,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     dip: 0,
     dipV: 0,
     stepPhase: 0,
+    /** Số nhịp chân đã đi qua, để tiếng bước chân (Soundscape) khớp đúng với camera bob. */
+    steps: 0,
     roll: 0,
     /** Súng dí sát vật cản (0–1). */
     wall: 0,
@@ -349,6 +387,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     };
   });
 
+  // priority = -1 để chạy TRƯỚC bước vật lý: setNextKinematicTranslation chỉ có tác dụng ở
+  // world.step() kế tiếp, nên nếu để cùng priority 0 (Rapier mount trước children) thì avatar
+  // mesh chậm đúng một khung so với camera (~0.27m ở 16 m/s). Số âm không kích hoạt chế độ
+  // R3F tự render (chỉ priority > 0 mới chiếm quyền render), nên vẫn an toàn.
   useFrame((state, rawDt) => {
     const rb = body.current;
     localBody.current = rb;
@@ -356,7 +398,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const col = collider.current;
     const controller = controllerRef.current;
     if (!rb || !col || !controller) return;
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const s = sim.current;
     const firstFrame = !s.started;
     if (firstFrame) {
@@ -574,20 +616,26 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         }
         if (s.vault) {
           // Đang vượt: không nhảy.
-        } else if (s.grounded && !frozen && keys.has("Space")) {
+        } else if ((s.grounded || s.coyote > 0) && !frozen && keys.has("Space")) {
           // Nhảy thỏ: bấm lại đúng lúc vừa đáp đất sau cú nhảy trước thì được thêm đà; nhảy từ cú trượt thì giữ nguyên đà trượt.
           const timed = s.hopReady && s.clock - s.landAt <= BHOP_WINDOW && s.jumpPressAt >= s.landAt - BHOP_BUFFER;
           if (s.slide) {
             s.hop = Math.max(0, Math.min(BHOP_MAX, s.slide.speed / Math.max(1, baseSpeed) - 1));
             endSlide();
-          } else if (timed && moving) s.hop = Math.min(BHOP_MAX, s.hop + BHOP_GAIN);
+          } else if (timed && moving && s.grounded) s.hop = Math.min(BHOP_MAX, s.hop + BHOP_GAIN);
           else s.hop = 0;
           s.vy = battle ? BATTLE_JUMP : JUMP_SPEED;
           s.airJump = true;
           s.jumpAt = s.clock;
           s.hopReady = false;
+          // Xoá coyote ngay: Space là kiểu giữ, nếu không xoá thì khung sau vẫn còn quyền nhảy
+          // và giữ Space sẽ nhảy liên tục trên không trung.
+          s.coyote = 0;
         }
         s.vy -= (battle ? (s.vy > 0 ? BATTLE_GRAVITY_UP : BATTLE_GRAVITY_DOWN) : GRAVITY) * dt;
+        // Chặn tốc độ rơi: xem MAX_FALL. Không có chặn thì rơi sâu làm mất bám đất (bước solver
+        // dài hơn quãng snapToGround) và cú đáp tay càng lúc càng mạnh vô hạn.
+        if (s.vy < -MAX_FALL) s.vy = -MAX_FALL;
       }
 
       let vaultNext: { x: number; y: number; z: number } | null = null;
@@ -638,6 +686,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         playLand({ x: pos.x, y: feetNow, z: pos.z }, hard);
       }
       if (s.grounded && s.vy < 0) s.vy = 0;
+      // Coyote time: đang đất thì hồn đầy, rời đất thì đếm ngược (xem COYOTE_TIME).
+      s.coyote = s.grounded ? COYOTE_TIME : Math.max(0, s.coyote - dt);
       if (s.airJump && s.grounded && s.clock - s.jumpAt > 0.1) {
         s.airJump = false;
         s.landAt = s.clock;
@@ -700,10 +750,14 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       camTarget.x += Math.cos(view.yaw) * shoulder;
       camTarget.z -= Math.sin(view.yaw) * shoulder;
     }
-    // FOV theo cài đặt, thu hẹp khi ngắm.
+    // FOV theo cài đặt ở CẢ HAI chế độ, thu hẹp khi ngắm, nới ra nhẹ khi chạy.
+    // Trước đây story mode cứ để cứng 60 nên đổi cài đặt FOV trong chế độ khám phá không có tác dụng.
     // Phóng đại thật: thu góc nhìn theo tang (ống 4x thì vật to gấp 4 lần), không chia thẳng độ.
-    const mag = battle && stance.aiming ? (scoped ? zoom : Math.max(1.15, zoom)) : 1;
-    const baseFov = battle ? getSettings().fov : 60;
+    // `running && moving` thay vì `stance.sprinting`: stance được gán ở cuối vòng lặp nên đọc ở
+    // đây là giá trị khung trước, tức FOV kick trễ một khung hình.
+    const sprinting = running && moving;
+    const mag = battle && stance.aiming ? (scoped ? zoom : Math.max(1.15, zoom)) : sprinting ? SPRINT_FOV : 1;
+    const baseFov = getSettings().fov;
     const wantFov = mag > 1 ? (2 * Math.atan(Math.tan((baseFov * Math.PI) / 360) / mag) * 180) / Math.PI : baseFov;
     s.fov += (wantFov - s.fov) * Math.min(1, dt * (scoped ? 30 : 12));
     const cam = state.camera as import("three").PerspectiveCamera;
@@ -718,12 +772,37 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const bobK = getSettings().headBob * (battle && stance.aiming ? 0.25 : 1);
     const hSpeed = Math.hypot(s.vx, s.vz);
     stance.speed = hSpeed;
-    if (s.grounded && !s.swimming && hSpeed > 0.5) s.stepPhase += dt * (5.2 + hSpeed * 0.9);
+    // Nhịp bước cộng dồn ở đây thay vì ở Soundscape để tiếng chân và camera bob cùng một đồng hồ.
+    // Bộ đếm `steps` tăng mỗi lần phase cắt qua mốc π (mỗi chân chạm đất một lần).
+    if (s.grounded && !s.swimming && hSpeed > 0.5) {
+      const before = Math.floor(s.stepPhase / Math.PI);
+      s.stepPhase += dt * (5.2 + hSpeed * 0.9);
+      s.steps += Math.floor(s.stepPhase / Math.PI) - before;
+    }
     const stepAmt = s.grounded && !s.swimming ? Math.min(1, hSpeed / 7) : 0;
+    // Dừng lại thì nội suy nhịp về bội số gần nhất của π cho bằng 0. Trước đây phase đứng yên
+    // giữa chừng nên camera "cụp" mỗi lần start/stop và tư thế dừng khác nhau mỗi lần.
+    if (stepAmt < 0.05) {
+      const near = Math.round(s.stepPhase / Math.PI) * Math.PI;
+      s.stepPhase += (near - s.stepPhase) * Math.min(1, dt * 10);
+    }
     const bobY = (Math.abs(Math.sin(s.stepPhase)) - 0.5) * 0.045 * stepAmt * bobK;
     const bobX = Math.cos(s.stepPhase) * 0.025 * stepAmt * bobK;
     const side = s.vx * Math.cos(view.yaw) - s.vz * Math.sin(view.yaw);
     s.roll += (-side * 0.0045 * bobK - s.roll) * Math.min(1, dt * 6);
+    // Đầu chìm dưới mặt nước (dùng ở cả hai nhánh camera, nên tính trước khi tách).
+    const headUnder = feetY + HEAD_HEIGHT < WATER_LEVEL - 0.05;
+    if (firstPerson) {
+      // Góc nhất: mắt ở trên đỉnh đầu một chút, nhìn theo yaw/pitch (pitch dương là cúi xuống).
+      // Cả khối camera góc ba bên dưới đều bị bỏ qua: dựng vị trí quanh rồi bỏ lại là tốn một
+      // tia castRay Rapier vào toàn bộ lưới địa hình mỗi khung hình, không dùng đến.
+      const eyeY = feetY + (s.sitting || sliding ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : s.crouching ? EYE_HEIGHT_CROUCH : EYE_HEIGHT);
+      state.camera.position.set(next.x + Math.cos(view.yaw) * bobX, eyeY + s.dip + bobY, next.z - Math.sin(view.yaw) * bobX);
+      camDir.set(-Math.sin(view.yaw) * Math.cos(view.pitch), -Math.sin(view.pitch), -Math.cos(view.yaw) * Math.cos(view.pitch));
+      camTarget.copy(state.camera.position).add(camDir);
+      state.camera.lookAt(camTarget);
+      state.camera.rotateZ(s.roll);
+    } else {
     camTarget.y += s.dip * 0.6 + bobY * 0.35;
     const horizontal = Math.cos(view.pitch) * camDistance;
     camPos.set(
@@ -740,22 +819,12 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     s.camDist = firstFrame || wantDist < s.camDist ? wantDist : s.camDist + (wantDist - s.camDist) * Math.min(1, dt * 4);
     camPos.copy(camTarget).addScaledVector(camDir, s.camDist);
     // Đang lặn thì camera được xuống nước theo; bơi trên mặt thì giữ camera trên mặt nước.
-    const headUnder = feetY + HEAD_HEIGHT < WATER_LEVEL - 0.05;
     const minCamY = (headUnder ? world.heightAt(camPos.x, camPos.z) : Math.max(world.heightAt(camPos.x, camPos.z), WATER_LEVEL + 0.25)) + 0.5;
     if (camPos.y < minCamY) camPos.y = minCamY;
     if (headUnder && camPos.y > WATER_LEVEL - 0.3) camPos.y = WATER_LEVEL - 0.3;
-    if (firstPerson) {
-      // Mắt ở trên đỉnh đầu một chút, nhìn theo yaw/pitch (pitch dương là cúi xuống).
-      const eyeY = feetY + (s.sitting || sliding ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : s.crouching ? EYE_HEIGHT_CROUCH : EYE_HEIGHT);
-      state.camera.position.set(next.x + Math.cos(view.yaw) * bobX, eyeY + s.dip + bobY, next.z - Math.sin(view.yaw) * bobX);
-      camDir.set(-Math.sin(view.yaw) * Math.cos(view.pitch), -Math.sin(view.pitch), -Math.cos(view.yaw) * Math.cos(view.pitch));
-      camTarget.copy(state.camera.position).add(camDir);
-      state.camera.lookAt(camTarget);
-      state.camera.rotateZ(s.roll);
-    } else {
-      state.camera.position.copy(camPos);
-      state.camera.lookAt(camTarget);
-      state.camera.rotateZ(s.roll * 0.4);
+    state.camera.position.copy(camPos);
+    state.camera.lookAt(camTarget);
+    state.camera.rotateZ(s.roll * 0.4);
     }
     // Cú hất màn hình khi bắn (lò xo, Shooter đẩy): ngẩng lên, lệch ngang, nghiêng chút rồi về.
     if (battle && !dead) {
@@ -764,11 +833,17 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       state.camera.rotateZ(recoil.punchRoll);
     }
     // Rung màn hình (bị đánh, cây đổ sát bên) và nghiêng ngả khi chóng mặt.
+    // Rung: lấy mẫu nhiễu theo THỜI GIAN chứ không theo khung hình. Math.random() mỗi khung cho
+    // cùng một cường độ lại rung mịn ở 144Hz và rung đục ở 30Hz — tính chất của rung đổi theo FPS.
     if (shake.amount > 0.005) {
       const a = shake.amount * 0.35;
-      state.camera.position.x += (Math.random() - 0.5) * a;
-      state.camera.position.y += (Math.random() - 0.5) * a;
-      state.camera.position.z += (Math.random() - 0.5) * a;
+      const t = state.clock.elapsedTime;
+      state.camera.position.x += valueNoise(t * 34, 1) * a;
+      state.camera.position.y += valueNoise(t * 31, 2) * a;
+      state.camera.position.z += valueNoise(t * 37, 3) * a * 0.6;
+      // Rung xoay đọc được rõ hơn rung tịnh tiến (mắt nhạy với góc hơn với dịch chuyển).
+      state.camera.rotateZ(valueNoise(t * 29, 4) * a * 0.5);
+      state.camera.rotateX(valueNoise(t * 26, 5) * a * 0.3);
       shake.amount *= Math.exp(-dt * 7);
     } else shake.amount = 0;
     if (dizzy > 0) state.camera.rotateZ(Math.sin(s.wobble * 1.7) * 0.14 * Math.min(1, dizzy));
@@ -780,7 +855,15 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     localPosition.set(next.x, feetY, next.z);
     // Battleground: chân bước theo tốc độ thật (còn trôi theo quán tính thì vẫn bước, đứng hẳn mới dừng).
     localMotion.moving = s.climb ? climbMoving : battle ? hSpeed > 0.35 || sliding : moving || sliding;
-    localMotion.speed = battle ? hSpeed : undefined;
+    // Cấp tốc độ thật cho cả hai chế độ: Character dùng nó để mỗi bước đúng một sải
+    // (chân không trượt). Trước đây chỉ Battleground có, nên ở chế độ khám phá nhịp chân
+    // rơi về hằng số 12.5–17 rad/s trong khi đang đi 8–16 m/s ⇒ trượt chân 65–76%.
+    localMotion.speed = hSpeed;
+    // Tiếng bước chân bám theo bộ đếm nhịp (xem localMotion.steps) thay vì timer riêng.
+    const stepping = s.grounded && !s.swimming && hSpeed > 0.5;
+    localMotion.stepHit = stepping && s.steps !== localMotion.steps;
+    localMotion.groundStep = stepping;
+    localMotion.steps = s.steps;
     localMotion.crouching = s.crouching || !!s.vault;
     localMotion.running = (moving && running) || sliding;
     localMotion.sliding = sliding;
@@ -813,8 +896,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const indoorTarget = inside ? 0.45 + 0.55 * (inside.depth / maxDepth) : 0;
     localEnv.indoor += (indoorTarget - localEnv.indoor) * Math.min(1, dt * 3);
     localEnv.underwater = state.camera.position.y < WATER_LEVEL - 0.05;
-    const items = sheet ? [...sheet.items] : [];
-    localEnv.light = items.includes("lantern") || items.includes("torch");
+    // Không copy cả mảng mỗi khung hình chỉ để chạy hai phép includes (trước đây là
+    // `[...sheet.items]` + 2 lần quét tuyến tính, ở mọi khung hình).
+    const items = sheet?.items;
+    localEnv.light = !!items && (items.includes("lantern") || items.includes("torch"));
 
     if (battle) {
       // Đồ gần nhất nhặt được.
@@ -856,16 +941,19 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       sinking: s.swimming ? s.sinking : "",
       victim: frozen || s.climb ? null : nearestVictim(room, next.x, feetY, next.z),
       giveTo: frozen || s.climb || !getHands() ? null : nearestPlayer(room, next.x, feetY, next.z, GIVE_RADIUS),
-      sprint: Math.round(s.energy),
       atDigSite: !frozen && atDigSite(room, next.x, next.z),
       sitting: s.sitting,
       hidden: s.sitting && world.inTallGrass(next.x, next.z),
     });
     }
+    // Sức bền nằm ở kho riêng (useStamina): hồi 12 đơn vị/giây nên gộp vào setHud sẽ khiến
+    // mọi thành phần useHud() render lại ~12 lần/giây vĩnh viễn.
+    setStamina(s.energy);
 
     s.sendTimer += dt;
     if (s.sendTimer >= SEND_INTERVAL) {
-      s.sendTimer = 0;
+      // Trừ chứ không đặt 0: đặt 0 làm dồn sai số cố định ~4% trên tần số gửi 15Hz.
+      s.sendTimer -= SEND_INTERVAL;
       const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving: s.climb ? climbMoving : battle ? hSpeed > 0.35 || sliding : moving || sliding, sitting: s.sitting, swimming: s.swimming };
       if (battle) {
         msg.crouching = s.crouching;
@@ -878,7 +966,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         room.send(Messages.move, msg);
       }
     }
-  });
+  }, -1);
 
   return (
     <RigidBody ref={body} type="kinematicPosition" colliders={false} position={[spawn.x, spawn.y + FEET_OFFSET, spawn.z]}>
@@ -940,9 +1028,11 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
   if (state.phase !== "dawn" && state.phase !== "explore" && state.phase !== "dusk") return null;
   let best: NearTarget | null = null;
   let bestDist = INTERACT_RADIUS;
-  const found = new Set(state.discovered);
+  // `discovered` đã là mảng; quét trực tiếp còn nhanh hơn dựng Set mới ở mỗi khung hình
+  // (hàm này chạy 60 lần/giây).
+  const found = state.discovered;
   for (const p of world.pois) {
-    if (found.has(p.id) || (p.day !== 0 && p.day !== state.day) || Math.abs(p.y - y) > 3.5) continue;
+    if (found.includes(p.id) || (p.day !== 0 && p.day !== state.day) || Math.abs(p.y - y) > 3.5) continue;
     const d = Math.hypot(p.x - x, p.z - z);
     if (d <= bestDist) {
       const def = worldCatalog.pois.get(p.defId);
@@ -973,7 +1063,7 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
   if (best) return best;
   // Trang nhật ký của hôm nay, chưa ai nhặt.
   for (const page of world.pages) {
-    if (page.day !== state.day || found.has(page.id) || Math.abs(page.y - y) > 3) continue;
+    if (page.day !== state.day || found.includes(page.id) || Math.abs(page.y - y) > 3) continue;
     if (Math.hypot(page.x - x, page.z - z) <= INTERACT_RADIUS) return { id: page.id, kind: "page", label: "Nhặt trang nhật ký" };
   }
   // Cạnh lửa trại: đang cầm đồ ăn thì nướng hoặc góp vào kho; sáng sớm hay ban ngày thì nhổ trại vác đi chỗ khác.
@@ -987,7 +1077,7 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
   }
   // Cây đủ lớn: leo lên.
   bestDist = CLIMB_REACH;
-  for (const t of climbTrees(room, world)) {
+  for (const t of climbTrees(room, world, true)) {
     if (Math.abs(t.y - y) > 2) continue;
     const d = Math.hypot(t.x - x, t.z - z);
     if (d <= bestDist) {
