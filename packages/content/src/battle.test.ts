@@ -71,3 +71,23 @@ describe("đường đạn", () => {
     expect(bulletDrop(WEAPON.get("ump45")!.velocity, 100)).toBeGreaterThan(bulletDrop(WEAPON.get("m416")!.velocity, 100) * 5);
   });
 });
+
+describe("mái nhà dốc", () => {
+  it("hai tấm mái chụm lên nóc (hình chữ Λ), không chúc xuống giữa", () => {
+    const map = battleMap(1);
+    const roofs = map.boxes.filter((b) => b.mat === "roof" && b.pitch !== 0);
+    expect(roofs.length).toBeGreaterThan(1);
+    for (let i = 0; i + 1 < roofs.length; i += 2) {
+      const a = roofs[i]!;
+      const b = roofs[i + 1]!;
+      // Đầu mép của tấm a ở phía tấm b phải cao hơn tâm tấm (dốc lên phía nóc).
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const l = Math.hypot(dx, dz);
+      const probe = { x: a.x + (dx / l) * 1, z: a.z + (dz / l) * 1 };
+      // Trục v của khối: (sin rot, cos rot); đi 1 m về phía b theo trục v thì độ cao đổi −sin(pitch)·(hướng).
+      const along = (probe.x - a.x) * Math.sin(a.rot) + (probe.z - a.z) * Math.cos(a.rot);
+      expect(-Math.sin(a.pitch) * along).toBeGreaterThan(0);
+    }
+  });
+});

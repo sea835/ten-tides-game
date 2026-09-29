@@ -125,6 +125,7 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
         }
       }
       m.wall = w.value;
+      m.speed = speedNow.current;
       const an = anim.current;
       const k = player.kit;
       const def = WEAPON.get(look.weapon);
@@ -151,7 +152,19 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
   }, [player, look.weapon]);
   // Tiếng bước chân: nhịp theo tốc độ đi thật (đo từ vị trí), mặt đất bê tông hay cỏ; ngồi xổm thì rón rén.
   const steps = useRef({ acc: 0, x: player.x, z: player.z });
+  // Tốc độ thật (đo từ vị trí đang vẽ, làm mượt) để chân bước khớp tốc độ, không lướt.
+  const speedNow = useRef(0);
+  const lastPos = useRef<{ x: number; z: number } | null>(null);
   useFrame((_, dt) => {
+    const r = root.current;
+    if (r && dt > 0) {
+      const lp = lastPos.current;
+      if (lp) {
+        const v = Math.hypot(r.position.x - lp.x, r.position.z - lp.z) / dt;
+        speedNow.current += (Math.min(15, v) - speedNow.current) * Math.min(1, dt * 8);
+      }
+      lastPos.current = { x: r.position.x, z: r.position.z };
+    }
     const st = steps.current;
     const speed = Math.hypot(player.x - st.x, player.z - st.z) / Math.max(dt, 1e-3);
     st.x = player.x;

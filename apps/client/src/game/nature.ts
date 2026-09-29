@@ -65,7 +65,10 @@ export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMa
           float phase = 0.0;
         #endif
         float k = max(0.0, position.y - ${from.toFixed(2)});
-        float sway = k * k * ${amount.toFixed(3)} * uWindStrength;
+        // Gió bão lắc mạnh hơn nhưng có chừng mực, và độ lệch không vượt quá một góc nghiêng hợp lý: tán cây
+        // luôn dính vào thân (trước đây gió mưa bão đẩy tán cây cao lệch hẳn khỏi thân).
+        float gust = 1.0 + (uWindStrength - 1.0) * 0.35;
+        float sway = min(k * k * ${amount.toFixed(3)}, 0.12 + k * 0.05) * gust;
         transformed.x += sin(uWind * 1.3 + phase) * sway;
         transformed.z += cos(uWind * 1.1 + phase * 1.7) * sway * 0.6;`,
       );

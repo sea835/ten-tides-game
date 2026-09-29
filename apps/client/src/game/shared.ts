@@ -18,6 +18,8 @@ export const localMotion = {
   firing: 0,
   /** Súng dí sát vật cản (0–1): dựng nòng lên. */
   wall: 0,
+  /** Tốc độ ngang thật (m/s), để nhịp bước khớp tốc độ; không có thì theo cờ đi / chạy. */
+  speed: undefined as number | undefined,
 };
 
 /**

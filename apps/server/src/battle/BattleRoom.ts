@@ -639,6 +639,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const t = hitRay.get(i) ?? walls[i]!;
       ends.push(bulletAt(o, d, def.velocity, t));
     });
+    // Máy ở gần nghe tiếng súng (súng to nghe xa hơn) thì đi dò về hướng đó.
+    this.bots.onShot(id, p.x, p.z, def.class === "sniper" || def.class === "dmr" ? 140 : def.class === "pistol" || def.class === "smg" ? 60 : 90);
     const shot: ShotMessage = { id, w: weaponId, o, e: ends };
     this.broadcast(Messages.shot, shot, { except: this.clientOf(id) });
     if (this.state.phase !== "battle") return;

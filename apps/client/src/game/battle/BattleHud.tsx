@@ -31,6 +31,7 @@ import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/gun
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
 import { getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
+import { ItemIcon } from "./ItemIcons.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -436,6 +437,7 @@ function Pickup() {
   if (!hud.nearItem) return null;
   return (
     <div className="b-pickup">
+      <ItemIcon id={hud.nearItem.itemId} />
       <kbd>E</kbd> Nhặt {lootLabel(hud.nearItem.itemId)}
     </div>
   );
@@ -464,6 +466,7 @@ function BuyMenu({ room }: { room: IslandRoom }) {
   };
   const item = (id: string, label: string, price: number, sub?: string) => (
     <button key={id} className="b-buy-item" disabled={price > kit.money} onClick={() => buy(id)}>
+      <ItemIcon id={id} />
       <span className="n">{label}</span>
       {sub && <span className="s">{sub}</span>}
       <span className="p">{price ? `${price}$` : "Miễn phí"}</span>

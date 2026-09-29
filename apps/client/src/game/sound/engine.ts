@@ -56,7 +56,18 @@ class AudioEngine {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
     comp.ratio.value = 4;
-    this.muffle.connect(this.master).connect(comp).connect(ctx.destination);
+    comp.knee.value = 12;
+    // Nhả hơi chậm để một tràng súng liên thanh không làm nền "thở" giật cục.
+    comp.attack.value = 0.003;
+    comp.release.value = 0.22;
+    // Chặn đỉnh (limiter) sau cùng: tiếng súng, tiếng nổ dồn dập to cỡ nào cũng không vượt 0 dBFS, không rè vỡ.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2.5;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.09;
+    this.muffle.connect(this.master).connect(comp).connect(limiter).connect(ctx.destination);
     const levels: Record<Bus, number> = { sfx: 0.9, ambience: 0.55, music: this.settings.music ? 0.32 : 0, ui: 0.5 };
     for (const [bus, level] of Object.entries(levels) as [Bus, number][]) {
       const g = ctx.createGain();

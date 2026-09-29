@@ -179,6 +179,15 @@ export const RECIPES: Record<string, Recipe> = {
     noiseBurst(o, t, { brown: true, type: "lowpass", freq: 200, attack: 0.3, decay: 2, peak: 0.6 });
   },
   ended: (o, t) => arpeggio(o, t, [262, 330, 392, 523, 659], 0.18, "triangle", 0.45, 1.6),
+  // Hết trận Battleground: cú taiko trầm rồi hợp âm Rê thứ nở chậm, không vui tươi.
+  battle_end: (o, t) => {
+    tone(o, t, { freq: 90, freqEnd: 38, attack: 0.003, decay: 1.3, peak: 0.9 });
+    noiseBurst(o, t, { brown: true, type: "lowpass", freq: 420, freqEnd: 100, decay: 0.6, peak: 0.7 });
+    tone(o, t + 0.05, { type: "triangle", freq: 146.83, attack: 0.7, decay: 3.2, peak: 0.28 });
+    tone(o, t + 0.05, { type: "triangle", freq: 220, attack: 0.8, decay: 3, peak: 0.2 });
+    tone(o, t + 0.05, { freq: 349.23, attack: 1, decay: 2.6, peak: 0.12 });
+    tone(o, t + 0.05, { freq: 73.42, attack: 0.5, decay: 3.4, peak: 0.3 });
+  },
 };
 
 export type SoundName = keyof typeof RECIPES;
@@ -236,6 +245,7 @@ export const TRIM: Record<string, number> = {
   death: 0.69,
   twist: 1.54,
   ended: 0.81,
+  battle_end: 0.6,
 };
 
 /** Phát một tiếng động (không vị trí thì nghe như ở ngay tai). */

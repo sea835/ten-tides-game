@@ -54,6 +54,8 @@ export interface Motion {
   swap?: number;
   /** Đang rút chốt lựu đạn (tay vung ra sau chờ ném). */
   cook?: boolean;
+  /** Tốc độ ngang thật (m/s): có thì nhịp bước khớp tốc độ (không lướt), không thì theo cờ đi / chạy. */
+  speed?: number;
 }
 
 /** Mỗi động tác kéo dài bao lâu (giây). */
@@ -518,7 +520,10 @@ export function Character({
     a.lie += ((m.swimming ? (m.moving ? 1.3 : 0.12) : 0) - a.lie) * ease(4);
     const crouch = a.crouch;
     // Đi khom thì bước ngắn, chậm hơn.
-    a.phase += dt * (m.swimming ? 7 : m.running && !crouching ? 17 : 12.5 - 3 * crouch) * (a.amount > 0.05 || m.swimming ? 1 : 0);
+    // Nhịp bước: biết tốc độ thật thì mỗi bước đi đúng một sải (đi khom sải ngắn, chạy sải dài), chân không trượt trên đất.
+    const stride = crouching ? 0.5 : m.running ? 1.05 : 0.7;
+    const rate = m.swimming ? 7 : m.speed !== undefined ? Math.min(24, (Math.PI * m.speed) / stride) : m.running && !crouching ? 17 : 12.5 - 3 * crouch;
+    a.phase += dt * rate * (a.amount > 0.05 || m.swimming ? 1 : 0);
     const swim = a.swim;
     const climb = a.climb;
     const sit = a.sit * (1 - swim);
@@ -537,8 +542,10 @@ export function Character({
       const idleCrouch = 1 - Math.min(1, a.amount / 0.3);
       const kneelT = side === 1 ? -1.3 : -0.4;
       const kneelK = side === 1 ? 2.05 : 1.95;
-      const cT = lerp(-1.08, kneelT, idleCrouch) + sw * 0.6;
-      const cK = lerp(2.16, kneelK, idleCrouch) + knee * 0.5;
+      // Đi khom: đùi vung rõ trước sau, gối gập thêm khi nhấc chân (pha vung), duỗi ra khi chân chống sau.
+      const walkK = Math.min(1, a.amount / 0.5);
+      const cT = lerp(-1.08, kneelT, idleCrouch) + Math.sin(ph) * 0.5 * walkK;
+      const cK = lerp(2.16, kneelK, idleCrouch) + (0.55 * Math.max(0, -Math.cos(ph - 0.35)) - 0.3 * Math.max(0, Math.cos(ph))) * walkK;
       thigh = lerp(thigh, cT, crouch);
       knee = lerp(knee, cK, crouch);
       // Ngồi bệt: đùi nằm ngang ra trước, gối hơi co.

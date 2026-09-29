@@ -5,6 +5,9 @@ import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts
 // Máy (bot) cho Battleground: đi lang thang trong vùng an toàn, tránh tường và nước, thấy ai trong tầm nhìn
 // (không bị tường, đồi che) thì quay lại bắn từng loạt, trúng hay trật tuỳ khoảng cách; bị bắn thì quay sang
 // kẻ bắn mình. Bắn qua đúng hàm `fire` của người chơi nên cũng bị kiểm tra đạn, tốc độ bắn, tường chắn như ai.
+// Công bằng: máy chỉ nhìn thấy trong hình nón phía trước (sát bên thì nghe tiếng chân), người ngồi xổm, mặc ghillie
+// thì khó thấy hơn; chỉ bắn khi đang thật sự thấy mục tiêu; mất dấu thì đi tới chỗ thấy lần cuối chứ không bám theo
+// vị trí thật; nghe tiếng súng hay bị bắn trúng thì chỉ biết hướng đại khái để đi dò.
 
 const NAMES = ["Hải Âu", "Cá Mập", "Kền Kền", "Rắn Hổ", "Bão Cát", "Sói Xám", "Đại Bàng", "Chim Cắt", "Báo Đốm", "Gấu Nâu", "Cú Mèo", "Mãng Xà"];
 const LOADOUTS = ["m416", "akm", "scar", "ump45", "vector", "sks", "s686", "m416", "akm"];
@@ -14,6 +17,11 @@ interface Brain {
   wx: number;
   wz: number;
   target: string;
+  /** Chỗ thấy mục tiêu lần cuối, và lúc này có đang thấy không. */
+  lx: number;
+  ly: number;
+  lz: number;
+  sees: boolean;
   seen: number;
   react: number;
   burst: number;
@@ -69,15 +77,38 @@ export class Bots {
 
   onHurt(target: string, attacker: string) {
     const b = this.brains.get(target);
-    if (b && attacker && attacker !== target) {
-      if (b.target !== attacker) b.react = 0.35 + Math.random() * 0.3;
-      b.target = attacker;
-      b.seen = 3;
+    const me = this.room.state.players.get(target);
+    const a = this.room.state.players.get(attacker);
+    if (!b || !me || !a || attacker === target) return;
+    // Bị bắn: quay về phía đạn tới, biết đại khái chỗ kẻ bắn (lệch vài mét theo khoảng cách), chưa khoá mục tiêu
+    // cho tới khi tự nhìn thấy.
+    if (b.target !== attacker) b.react = 0.45 + Math.random() * 0.4;
+    const d = Math.hypot(a.x - me.x, a.z - me.z);
+    const err = Math.min(12, 1 + d * 0.12);
+    b.target = attacker;
+    b.lx = a.x + (Math.random() - 0.5) * 2 * err;
+    b.lz = a.z + (Math.random() - 0.5) * 2 * err;
+    b.ly = a.y;
+    b.seen = 4;
+    me.rotY = Math.atan2(a.x - me.x, a.z - me.z);
+  }
+
+  /** Nghe tiếng súng: máy đang rảnh ở gần thì đi dò về hướng đó (chỉ biết đại khái). */
+  onShot(shooter: string, x: number, z: number, loud: number) {
+    for (const [id, p] of this.room.state.players) {
+      if (!p.bot || !p.alive || id === shooter) continue;
+      const b = this.brains.get(id);
+      if (!b || b.target) continue;
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d > loud) continue;
+      const err = 4 + d * 0.25;
+      b.wx = x + (Math.random() - 0.5) * 2 * err;
+      b.wz = z + (Math.random() - 0.5) * 2 * err;
     }
   }
 
   private fresh(x: number, z: number): Brain {
-    return { wx: x, wz: z, target: "", seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.5, strafe: 0 };
+    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.5, strafe: 0 };
   }
 
   tick(dt: number) {
@@ -93,25 +124,56 @@ export class Bots {
       }
       const eye: [number, number, number] = [p.x, p.y + 1.55, p.z];
 
-      // Tìm mục tiêu mỗi nửa giây.
+      // Nhìn quanh mỗi 0,3 giây: chỉ thấy trong hình nón phía trước (hoặc sát bên), không bị tường, đồi, khói che.
       b.scan -= dt;
       if (b.scan <= 0) {
-        b.scan = 0.5;
-        let best = "";
-        let bestD = SIGHT;
-        for (const [oid, o] of s.players) {
-          if (oid === id || !o.alive) continue;
-          const d = Math.hypot(o.x - p.x, o.z - p.z);
-          if (d > bestD || !this.visible(eye, o.x, o.y + (o.crouching ? 0.8 : 1.2), o.z)) continue;
-          best = oid;
-          bestD = d;
+        b.scan = 0.3;
+        const fx = Math.sin(p.rotY);
+        const fz = Math.cos(p.rotY);
+        const canSee = (o: typeof p, range: number) => {
+          const dx = o.x - p.x;
+          const dz = o.z - p.z;
+          const d = Math.hypot(dx, dz);
+          // Ngồi xổm, đứng yên, mặc ghillie thì khó phát hiện hơn.
+          const stealth = (o.crouching ? 0.7 : 1) * (o.moving ? 1 : 0.8) * (o.kit.outfit === "ghillie" ? 0.6 : 1);
+          if (d > range * stealth) return false;
+          if (d > 5 && (dx * fx + dz * fz) / (d || 1) < 0.35) return false;
+          return this.visible(eye, o.x, o.y + (o.crouching ? 0.8 : 1.2), o.z);
+        };
+        const cur = b.target ? s.players.get(b.target) : undefined;
+        b.sees = !!cur && cur.alive && canSee(cur, SIGHT * 1.3);
+        if (!b.sees) {
+          let best = "";
+          let bestD = SIGHT;
+          for (const [oid, o] of s.players) {
+            if (oid === id || !o.alive) continue;
+            const d = Math.hypot(o.x - p.x, o.z - p.z);
+            if (d > bestD || !canSee(o, SIGHT)) continue;
+            best = oid;
+            bestD = d;
+          }
+          if (best) {
+            if (best !== b.target) b.react = 0.8 + Math.random() * 0.7;
+            b.target = best;
+            b.sees = true;
+          }
         }
-        if (best) {
-          if (best !== b.target) b.react = 0.8 + Math.random() * 0.7;
-          b.target = best;
-          b.seen = 2.5;
-        } else b.seen -= 0.5;
-        if (b.seen <= 0) b.target = "";
+        const t = b.target ? s.players.get(b.target) : undefined;
+        if (b.sees && t) {
+          b.lx = t.x;
+          b.ly = t.y;
+          b.lz = t.z;
+          b.seen = 4;
+        } else b.seen -= 0.3;
+        if (b.seen <= 0 || (t && !t.alive)) {
+          // Mất dấu hẳn: thôi, đi dò quanh chỗ thấy lần cuối.
+          if (b.target) {
+            b.wx = b.lx + (Math.random() - 0.5) * 10;
+            b.wz = b.lz + (Math.random() - 0.5) * 10;
+          }
+          b.target = "";
+          b.sees = false;
+        }
       }
 
       const target = b.target ? s.players.get(b.target) : undefined;
@@ -124,7 +186,20 @@ export class Bots {
       let mx = 0;
       let mz = 0;
       let speed = 5;
-      if (target && target.alive && s.phase === "battle") {
+      if (target && target.alive && s.phase === "battle" && !b.sees) {
+        // Mất dấu: đi tới chỗ thấy lần cuối, súng chĩa về đó, không bắn.
+        const dx = b.lx - p.x;
+        const dz = b.lz - p.z;
+        const d = Math.hypot(dx, dz) || 1;
+        p.rotY = Math.atan2(dx, dz);
+        p.aimPitch = 0;
+        p.aiming = false;
+        if (d > 2.5) {
+          mx = dx / d;
+          mz = dz / d;
+          speed = 4;
+        }
+      } else if (target && target.alive && s.phase === "battle") {
         const dx = target.x - p.x;
         const dz = target.z - p.z;
         const d = Math.hypot(dx, dz) || 1;

@@ -262,8 +262,9 @@ function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
         const half = D / 2 + 0.4;
         const ang = Math.atan2(rise, half);
         const len = Math.hypot(rise, half);
-        add(0, y + rise / 2, -half / 2, W + 0.6, 0.18, len, "roof", { pitch: ang });
-        add(0, y + rise / 2, half / 2, W + 0.6, 0.18, len, "roof", { pitch: -ang });
+        // Nghiêng dương là hạ đầu +v xuống: tấm phía −v phải ngóc đầu +v lên nóc (nghiêng âm), tấm phía +v ngược lại.
+        add(0, y + rise / 2, -half / 2, W + 0.6, 0.18, len, "roof", { pitch: -ang });
+        add(0, y + rise / 2, half / 2, W + 0.6, 0.18, len, "roof", { pitch: ang });
         add(0, y - SLAB_T / 2, 0, W, SLAB_T, D, "concrete");
       } else {
         // Sân thượng: lan can bao quanh.

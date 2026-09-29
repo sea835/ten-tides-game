@@ -90,8 +90,24 @@ function canopy(): { leaves: BufferGeometry; core: BufferGeometry } {
 }
 
 /** Thân cây rừng kèm vài cành chĩa lên đỡ tán (thân cao 1 đơn vị, co giãn theo cây). */
+/**
+ * Độ cao để cắm gốc cây: điểm thấp nhất của mặt đất quanh gốc (bán kính `r`), trừ thêm một chút. Trên sườn dốc
+ * mà đặt theo độ cao ngay tâm thì phía dưới dốc gốc cây lơ lửng, lộ đáy; cắm theo điểm thấp nhất thì gốc luôn
+ * chìm vào đất cả hai phía.
+ */
+export function rootDepth(world: World, x: number, z: number, r: number): { ground: number; root: number } {
+  const ground = world.heightAt(x, z);
+  let low = ground;
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    low = Math.min(low, world.heightAt(x + Math.cos(a) * r, z + Math.sin(a) * r));
+  }
+  return { ground, root: low - 0.2 };
+}
+
 function broadTrunk(): BufferGeometry {
-  const trunk = new CylinderGeometry(0.2, 0.4, 1, 12, 4).translate(0, 0.5, 0);
+  // Thân kéo dài xuống dưới gốc (y âm) một đoạn: phần chìm trong đất, để trên dốc không hở đáy.
+  const trunk = new CylinderGeometry(0.2, 0.4, 1.15, 12, 5).translate(0, 0.425, 0);
   // Gốc loe ra như rễ bạnh.
   const p = trunk.attributes.position!;
   for (let i = 0; i < p.count; i++) {
@@ -236,7 +252,8 @@ function PalmForest({ trees, world }: { trees: Tree[]; world: World }) {
     if (!trunks.current || !crowns.current || !nuts.current) return;
     const color = new Color();
     trees.forEach((tree, i) => {
-      const m = palmMatrices(tree, world.heightAt(tree.x, tree.z), 1);
+      // Cây dừa trên dốc: hạ cả cây xuống theo điểm thấp nhất quanh gốc cho gốc không lơ lửng.
+      const m = palmMatrices(tree, rootDepth(world, tree.x, tree.z, 0.4).root + 0.1, 1);
       trunks.current!.setMatrixAt(i, m.trunk);
       crowns.current!.setMatrixAt(i, m.crown);
       nuts.current!.setMatrixAt(i, m.crown);
@@ -267,11 +284,13 @@ function BroadleafForest({ trees, world }: { trees: Tree[]; world: World }) {
     const dummy = new Object3D();
     const color = new Color();
     trees.forEach((t, i) => {
-      const ground = world.heightAt(t.x, t.z);
+      const { ground, root } = rootDepth(world, t.x, t.z, 0.75 * t.lean);
       const p = pose(t);
-      dummy.position.set(t.x, ground, t.z);
+      // Gốc cắm ở điểm thấp nhất quanh gốc, ngọn vẫn ở đúng độ cao cũ (thân dài thêm phần chìm).
+      const height = t.height + (ground - root);
+      dummy.position.set(t.x, root, t.z);
       dummy.rotation.set(0, p.yaw, 0);
-      dummy.scale.set(t.lean, t.height, t.lean);
+      dummy.scale.set(t.lean, height, t.lean);
       dummy.updateMatrix();
       trunks.current!.setMatrixAt(i, dummy.matrix);
       trunks.current!.setColorAt(i, color.setHSL(0.07, 0.35, 0.22 + grain(i, 15) * 0.06));

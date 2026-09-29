@@ -89,6 +89,14 @@ const SLIDE_END_SPEED = 9;
 const SLIDE_TURN = 1.2;
 const SLIDE_COST = 8;
 const SLIDE_COOLDOWN = 0.35;
+/** Battleground: trượt từ tốc độ chạy (nhanh hơn chạy một chút), hãm nhanh hơn, dưới mức kia thì thành ngồi xổm. */
+const BATTLE_SLIDE_BOOST = 1.3;
+const BATTLE_SLIDE_FRICTION = 7.5;
+const BATTLE_SLIDE_END = 3.6;
+/** Vượt vật cản (bậu cửa sổ, bao cát, tường thấp): cao chừng này (m) mới vượt, mất chừng này giây. */
+const VAULT_MIN = 0.45;
+const VAULT_MAX = 1.35;
+const VAULT_TIME = 0.5;
 /**
  * Nhảy thỏ: vừa đáp đất sau một cú nhảy mà bấm Space lại trong chừng này giây (hoặc bấm sớm hơn lúc sắp chạm đất
  * chừng kia giây) thì cú nhảy mới được cộng thêm đà. Giữ Space cho tự nảy hay bấm trễ thì mất đà.
@@ -202,6 +210,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     roll: 0,
     /** Súng dí sát vật cản (0–1). */
     wall: 0,
+    /** Đang vượt vật cản: đường cong từ chỗ đứng, qua đỉnh vật cản, xuống phía bên kia (toạ độ tâm thân). */
+    vault: null as null | { t: number; ax: number; ay: number; az: number; bx: number; by: number; bz: number; cx: number; cy: number; cz: number },
   });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
@@ -274,6 +284,70 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [room]);
+
+  /**
+   * Thử vượt vật cản phía trước: có vật cản ngay trước mặt ở tầm gối, mặt trên cao 0,45–1,35 m (bậu cửa sổ, bao cát,
+   * tường thấp), phía trên còn trống (ô cửa sổ) và phía bên kia có chỗ đặt chân. Trả về đường cong vượt, hoặc null.
+   */
+  const tryVault = (pos: { x: number; y: number; z: number }, feet: number) => {
+    const col = collider.current;
+    if (!col) return null;
+    const fx = -Math.sin(look.yaw);
+    const fz = -Math.cos(look.yaw);
+    const ray = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, len: number) =>
+      physics.castRay(new rapier.Ray({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }), len, true, undefined, undefined, col);
+    const front = ray(pos.x, feet + 0.55, pos.z, fx, 0, fz, 1.1);
+    if (!front) return null;
+    const d = front.timeOfImpact;
+    // Mặt trên của vật cản: dò từ trên xuống ngay sau mép gần.
+    const px = pos.x + fx * (d + 0.12);
+    const pz = pos.z + fz * (d + 0.12);
+    const topHit = ray(px, feet + VAULT_MAX + 0.3, pz, 0, -1, 0, VAULT_MAX + 0.3);
+    if (!topHit) return null;
+    const top = feet + VAULT_MAX + 0.3 - topHit.timeOfImpact;
+    const h = top - feet;
+    if (h < VAULT_MIN || h > VAULT_MAX) return null;
+    // Phía trên mặt vật cản phải trống một khoảng (ô cửa sổ): người chui qua được khi khom.
+    if (ray(pos.x, top + 0.35, pos.z, fx, 0, fz, d + 1.2)) return null;
+    // Bề dày vật cản: đi tới khi mặt trên hết (tối đa 1,2 m); bên kia phải có chỗ đứng.
+    let far = 0.3;
+    for (; far <= 1.2; far += 0.15) {
+      const qx = pos.x + fx * (d + far);
+      const qz = pos.z + fz * (d + far);
+      const under = ray(qx, top + 0.25, qz, 0, -1, 0, 0.4);
+      if (!under) break;
+    }
+    if (far > 1.2) return null;
+    const land = d + far + 0.45;
+    const lx = pos.x + fx * land;
+    const lz = pos.z + fz * land;
+    if (ray(lx, top + 0.3, lz, 0, 1, 0, 1.4)) return null;
+    const lift = top + FEET_OFFSET + 0.08;
+    return {
+      t: 0,
+      ax: pos.x,
+      ay: pos.y,
+      az: pos.z,
+      bx: pos.x + fx * (d + far * 0.5),
+      by: lift + 0.35,
+      bz: pos.z + fz * (d + far * 0.5),
+      cx: lx,
+      cy: lift,
+      cz: lz,
+    };
+  };
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const w = window as unknown as { __tentides?: Record<string, unknown> };
+    w.__tentides ??= {};
+    w.__tentides.sim = sim.current;
+    w.__tentides.keys = keys;
+    w.__tentides.tryVault = () => {
+      const p = body.current?.translation();
+      return p ? tryVault(p, p.y - FEET_OFFSET) : "no body";
+    };
+  });
 
   useFrame((state, rawDt) => {
     const rb = body.current;
@@ -383,7 +457,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (s.crouchPressed) {
       s.crouchPressed = false;
       if (running && moving && s.grounded && !s.slide && !s.climb && !s.swimming && s.clock >= s.slideReadyAt) {
-        s.slide = { dir: Math.atan2(wantX, wantZ), speed: Math.min(TOP_SPEED, Math.max(speed, Math.hypot(s.vx, s.vz)) * SLIDE_BOOST) };
+        const cur = Math.max(speed, Math.hypot(s.vx, s.vz));
+        s.slide = { dir: Math.atan2(wantX, wantZ), speed: Math.min(TOP_SPEED, cur * (battle ? BATTLE_SLIDE_BOOST : SLIDE_BOOST)) };
+        if (battle) playLand({ x: pos.x, y: feetNow, z: pos.z }, 0.2);
         s.energy = Math.max(0, s.energy - SLIDE_COST);
         s.sitting = false;
       } else if (!s.slide && !s.swimming) {
@@ -399,13 +475,17 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         const turn = Math.atan2(Math.sin(Math.atan2(mx, mz) - sl.dir), Math.cos(Math.atan2(mx, mz) - sl.dir));
         sl.dir += Math.max(-SLIDE_TURN * dt, Math.min(SLIDE_TURN * dt, turn));
       }
-      sl.speed -= SLIDE_FRICTION * dt;
+      sl.speed -= (battle ? BATTLE_SLIDE_FRICTION : SLIDE_FRICTION) * dt;
       s.vx = Math.sin(sl.dir) * sl.speed;
       s.vz = Math.cos(sl.dir) * sl.speed;
       mx = s.vx * dt;
       mz = s.vz * dt;
       s.facing = sl.dir;
-      if (sl.speed < SLIDE_END_SPEED) endSlide();
+      if (sl.speed < (battle ? BATTLE_SLIDE_END : SLIDE_END_SPEED)) {
+        endSlide();
+        // Battleground: trượt hết đà thì ở tư thế ngồi xổm (như game bắn súng), bấm C hay chạy để đứng dậy.
+        if (battle) s.crouching = true;
+      }
     }
     const sliding = !!s.slide;
 
@@ -479,7 +559,22 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         // Không nhô khỏi mặt nước khi đang bơi (trừ khi tới chỗ nông thì lội lên bờ).
         if (feetNow + s.vy * dt > surface + 0.05 && s.vy > 0) s.vy = Math.max(0, (surface + 0.05 - feetNow) / dt);
       } else {
-        if (s.grounded && !frozen && keys.has("Space")) {
+        if (battle && s.grounded && !frozen && !s.vault && !s.slide && keys.has("Space") && s.jumpPressAt === s.clock) {
+          // Bấm Space trước bậu cửa sổ, bao cát, tường thấp: chống tay vượt qua thay vì nhảy.
+          const v = tryVault(pos, feetNow);
+          if (v) {
+            s.vault = v;
+            s.vx *= 0.4;
+            s.vz *= 0.4;
+            s.crouching = false;
+            stance.swapAt = performance.now();
+            stance.swapDur = VAULT_TIME + 0.15;
+            playLand({ x: pos.x, y: feetNow, z: pos.z }, 0.1);
+          }
+        }
+        if (s.vault) {
+          // Đang vượt: không nhảy.
+        } else if (s.grounded && !frozen && keys.has("Space")) {
           // Nhảy thỏ: bấm lại đúng lúc vừa đáp đất sau cú nhảy trước thì được thêm đà; nhảy từ cú trượt thì giữ nguyên đà trượt.
           const timed = s.hopReady && s.clock - s.landAt <= BHOP_WINDOW && s.jumpPressAt >= s.landAt - BHOP_BUFFER;
           if (s.slide) {
@@ -495,10 +590,32 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         s.vy -= (battle ? (s.vy > 0 ? BATTLE_GRAVITY_UP : BATTLE_GRAVITY_DOWN) : GRAVITY) * dt;
       }
 
+      let vaultNext: { x: number; y: number; z: number } | null = null;
+      if (s.vault) {
+        // Vượt vật cản: đi theo đường cong Bézier (lên đỉnh vật cản rồi xuống phía bên kia), bỏ qua va chạm
+        // (người lách qua ô cửa sổ thấp hơn mình). Hết đường thì rơi tự nhiên xuống đất phía bên kia.
+        const vt = s.vault;
+        vt.t = Math.min(1, vt.t + dt / VAULT_TIME);
+        const u = vt.t;
+        const w0 = (1 - u) * (1 - u);
+        const w1 = 2 * u * (1 - u);
+        const w2 = u * u;
+        const vx = w0 * vt.ax + w1 * vt.bx + w2 * vt.cx;
+        const vy = w0 * vt.ay + w1 * vt.by + w2 * vt.cy;
+        const vz = w0 * vt.az + w1 * vt.bz + w2 * vt.cz;
+        if (u >= 1) {
+          s.vault = null;
+          s.vy = 0;
+          s.grounded = false;
+          s.vx = Math.sin(s.facing) * 2.5;
+          s.vz = Math.cos(s.facing) * 2.5;
+        }
+        vaultNext = { x: vx, y: vy, z: vz };
+      }
       // Bị đánh bật lùi: cộng thêm vận tốc đẩy, giảm dần.
       mx += knock.vx * dt;
       mz += knock.vz * dt;
-      controller.computeColliderMovement(col, { x: mx, y: s.vy * dt, z: mz });
+      controller.computeColliderMovement(col, vaultNext ? { x: 0, y: 0, z: 0 } : { x: mx, y: s.vy * dt, z: mz });
       const delta = controller.computedMovement();
       const wasGrounded = s.grounded;
       const fallSpeed = -s.vy;
@@ -534,7 +651,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         endSlide();
       }
 
-      next = { x: pos.x + delta.x, y: pos.y + delta.y, z: pos.z + delta.z };
+      next = vaultNext ?? { x: pos.x + delta.x, y: pos.y + delta.y, z: pos.z + delta.z };
       if (next.y < world.heightAt(next.x, next.z) - 5) {
         // Lỡ lọt khỏi địa hình thì đưa về điểm xuất phát.
         next.x = spawn.x;
@@ -661,13 +778,15 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     }
 
     localPosition.set(next.x, feetY, next.z);
-    localMotion.moving = s.climb ? climbMoving : moving || sliding;
+    // Battleground: chân bước theo tốc độ thật (còn trôi theo quán tính thì vẫn bước, đứng hẳn mới dừng).
+    localMotion.moving = s.climb ? climbMoving : battle ? hSpeed > 0.35 || sliding : moving || sliding;
+    localMotion.speed = battle ? hSpeed : undefined;
+    localMotion.crouching = s.crouching || !!s.vault;
     localMotion.running = (moving && running) || sliding;
     localMotion.sliding = sliding;
     localMotion.climbing = !!s.climb;
     localMotion.sitting = s.sitting;
     localMotion.swimming = s.swimming;
-    localMotion.crouching = s.crouching;
     localMotion.aiming = battle && stance.aiming;
     stance.crouching = s.crouching;
     stance.moving = moving || sliding;
@@ -747,7 +866,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     s.sendTimer += dt;
     if (s.sendTimer >= SEND_INTERVAL) {
       s.sendTimer = 0;
-      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving: s.climb ? climbMoving : moving || sliding, sitting: s.sitting, swimming: s.swimming };
+      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving: s.climb ? climbMoving : battle ? hSpeed > 0.35 || sliding : moving || sliding, sitting: s.sitting, swimming: s.swimming };
       if (battle) {
         msg.crouching = s.crouching;
         msg.aiming = stance.aiming;
