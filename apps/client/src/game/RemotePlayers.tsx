@@ -10,6 +10,8 @@ import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { bodies } from "./battle/runtime.ts";
+import { localPosition } from "./shared.ts";
+import { playFootstep } from "./sound/guns.ts";
 
 const BUBBLE_MS = 6000;
 
@@ -112,6 +114,24 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
       return m;
     };
   }, [player]);
+  // Tiếng bước chân: nhịp theo tốc độ đi thật (đo từ vị trí), mặt đất bê tông hay cỏ; ngồi xổm thì rón rén.
+  const steps = useRef({ acc: 0, x: player.x, z: player.z });
+  useFrame((_, dt) => {
+    const st = steps.current;
+    const speed = Math.hypot(player.x - st.x, player.z - st.z) / Math.max(dt, 1e-3);
+    st.x = player.x;
+    st.z = player.z;
+    if (!player.alive || !player.moving || speed < 0.5 || player.swimming) return;
+    const run = speed > 6;
+    st.acc += dt;
+    const interval = player.crouching ? 0.75 : run ? 0.32 : 0.5;
+    if (st.acc < interval) return;
+    st.acc = 0;
+    if (Math.hypot(player.x - localPosition.x, player.z - localPosition.z) > 60) return;
+    const ground = currentWorld(room).surface(player.x, player.z).ground;
+    const onDeck = player.y > currentWorld(room).heightAt(player.x, player.z) + 0.8;
+    playFootstep({ x: player.x, y: player.y, z: player.z }, onDeck ? "metal" : ground && ground !== "dirt" ? "concrete" : "grass", run && !player.crouching);
+  });
   return (
     <group ref={root} position={[player.x, player.y, player.z]} visible={alive}>
       <Character ref={avatar} color={player.color} weapon={look.weapon} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />

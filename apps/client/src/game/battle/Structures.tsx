@@ -23,15 +23,15 @@ import { detailed, type DetailKind } from "../textures.ts";
 
 const MAT: Record<BoxMat, { color: string; kind: DetailKind | "none"; roughness: number; metalness?: number; strength?: number }> = {
   concrete: { color: "#a19d95", kind: "rock", roughness: 0.95, strength: 0.18 },
-  plaster: { color: "#ffffff", kind: "rock", roughness: 0.9, strength: 0.1 },
+  plaster: { color: "#d8d2c4", kind: "rock", roughness: 0.9, strength: 0.1 },
   brick: { color: "#ffffff", kind: "none", roughness: 0.92 },
-  metal: { color: "#ffffff", kind: "metal", roughness: 0.55, metalness: 0.35, strength: 0.12 },
+  metal: { color: "#8a8f94", kind: "metal", roughness: 0.55, metalness: 0.35, strength: 0.12 },
   container: { color: "#ffffff", kind: "none", roughness: 0.6, metalness: 0.3 },
   wood: { color: "#8a6a44", kind: "wood", roughness: 0.9 },
-  stone: { color: "#ffffff", kind: "cliff", roughness: 1, strength: 0.28 },
+  stone: { color: "#9a948a", kind: "cliff", roughness: 1, strength: 0.28 },
   sandbag: { color: "#a8966b", kind: "fabric", roughness: 1, strength: 0.25 },
-  road: { color: "#ffffff", kind: "none", roughness: 0.7 },
-  hull: { color: "#ffffff", kind: "metal", roughness: 0.6, metalness: 0.3, strength: 0.2 },
+  road: { color: "#e8e0c0", kind: "none", roughness: 0.7 },
+  hull: { color: "#6e1f1a", kind: "metal", roughness: 0.6, metalness: 0.3, strength: 0.2 },
   rust: { color: "#6e4a32", kind: "dirt", roughness: 0.9, metalness: 0.2, strength: 0.35 },
   sign: { color: "#ffffff", kind: "none", roughness: 0.6 },
   fence: { color: "#8a8a8a", kind: "none", roughness: 0.5, metalness: 0.6 },
@@ -170,7 +170,8 @@ function worldMapped(m: MeshStandardMaterial, scale: number) {
 
 function makeMaterial(mat: BoxMat): MeshStandardMaterial {
   const def = MAT[mat];
-  const m = new MeshStandardMaterial({ color: def.color, roughness: def.roughness, metalness: def.metalness ?? 0 });
+  // Màu gốc của chất liệu đi theo từng khối (khối có màu riêng thì thay hẳn), không nhân hai lần cho tối đi.
+  const m = new MeshStandardMaterial({ color: "#ffffff", roughness: def.roughness, metalness: def.metalness ?? 0 });
   if (mat === "brick") {
     m.map = brickTexture();
     worldMapped(m, 1 / 2.2);
@@ -229,7 +230,7 @@ function BoxGroup({ mat, boxes }: { mat: BoxMat; boxes: BattleBox[] }) {
       scl.set(b.w, b.h, b.d);
       matrix.compose(pos, boxQuaternion(b, quat), scl);
       m.setMatrixAt(i, matrix);
-      color.set(b.tint ?? "#ffffff");
+      color.set(b.tint ?? MAT[mat].color);
       m.setColorAt(i, color);
     });
     m.instanceMatrix.needsUpdate = true;

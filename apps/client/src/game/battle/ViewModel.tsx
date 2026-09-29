@@ -13,7 +13,7 @@ import { recoil, stance } from "./runtime.ts";
 // Súng trước mặt khi nhìn bằng mắt (góc thứ nhất): cầm thấp bên phải, lắc theo bước chân, giật lùi khi bắn,
 // ngắm thì nâng lên giữa mắt cho thước ngắm trùng tâm màn hình; thay đạn thì hạ nòng xuống. Nhìn qua ống ngắm thì ẩn.
 
-const HIP = new Vector3(0.2, -0.2, -0.42);
+const HIP = new Vector3(0.24, -0.25, -0.5);
 const offset = new Vector3();
 const q = new Quaternion();
 const tilt = new Quaternion();

@@ -104,15 +104,15 @@ function faceColor(world: World, out: Color, x: number, z: number, h: number, sl
       case "atoll":
         return inland < 6 + n * 2 ? out.copy(C.sand) : out.copy(C.sand).lerp(C.grassLight, 0.5 + 0.3 * n);
       case "jungle":
-        if (inland < 4 + n * 1.5) return out.copy(C.sand).lerp(C.wetSand, Math.max(0, 1 - inland / 2) * 0.8);
-        if (inland < 7) return out.copy(C.sand).lerp(C.grassLight, (inland - 4) / 3);
+        if (inland < 4 + n * 1.5) return out.copy(C.sand).lerp(C.wetSand, Math.min(1, Math.max(0, 1 - inland / 2)) * 0.8);
+        if (inland < 7) return out.copy(C.sand).lerp(C.grassLight, Math.max(0, (inland - 4) / 3));
         return out.copy(C.grass).lerp(C.forest, 0.5 + 0.5 * n);
     }
   }
   if (world.zoneAt(x, z) === "volcano" && h > 6) return out.copy(C.ash).lerp(C.rockDark, Math.max(0, n) * 0.6);
   if (h > 8) return out.copy(C.rock).lerp(C.rockDark, 0.5 + 0.5 * n);
-  if (inland < 12 + n * 3) return out.copy(C.sand).lerp(C.wetSand, Math.max(0, 1 - inland / 4) * 0.8);
-  if (inland < 16) return out.copy(C.sand).lerp(C.grassLight, (inland - 12) / 4);
+  if (inland < 12 + n * 3) return out.copy(C.sand).lerp(C.wetSand, Math.min(1, Math.max(0, 1 - inland / 4)) * 0.8);
+  if (inland < 16) return out.copy(C.sand).lerp(C.grassLight, Math.max(0, (inland - 12) / 4));
   if (inland < 40) out.copy(C.grass).lerp(C.forest, 0.5 + 0.5 * n);
   else out.copy(C.forest).lerp(n > 0.2 ? C.forestDark : C.grassLight, Math.abs(n) * 0.8);
   // Nền dưới đám cỏ tranh ngả màu rơm.
@@ -153,7 +153,7 @@ function splatAt(world: World, x: number, z: number, h: number, slope: number): 
         return surf.inland < 6 + n * 2 ? SAND : mix(0.5, SAND, GRASS);
       case "jungle":
         if (surf.inland < 4 + n * 1.5) return SAND;
-        if (surf.inland < 7) return mix((surf.inland - 4) / 3, SAND, GRASS);
+        if (surf.inland < 7) return mix(Math.max(0, (surf.inland - 4) / 3), SAND, GRASS);
         return GRASS;
     }
   }
@@ -161,7 +161,7 @@ function splatAt(world: World, x: number, z: number, h: number, slope: number): 
   if (h > 8) return mix(Math.min(1, (h - 8) / 3), GRASS, CLIFF);
   const inland = surf.inland;
   if (inland < 12 + n * 3) return SAND;
-  if (inland < 16) return mix((inland - 12) / 4, SAND, GRASS);
+  if (inland < 16) return mix(Math.max(0, (inland - 12) / 4), SAND, GRASS);
   // Rừng sâu: đất lẫn cỏ.
   return inland > 40 && n > 0.2 ? mix(0.35, GRASS, DIRT) : GRASS;
 }

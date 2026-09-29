@@ -23,6 +23,17 @@ Hiện tại: **graybox giai đoạn 1** với phần lớn tính năng của MV
 - **Kết thúc:** đào kho báu ở chỗ bí mật (cần xẻng), giữ thuyền đủ tốt, rời đảo tối ngày 10; 8 kết thúc, màn lật bài và biên niên sử.
 - **Kể chuyện:** không dùng mô hình AI. Bộ sinh truyện chọn cốt truyện theo seed từ thư viện 110 yếu tố viết sẵn, rồi kể bình minh, hoàng hôn, lời kể riêng từng người và biên niên sử từ sự thật trong ván.
 
+### Chế độ Battleground
+
+Ở sảnh bấm **Tạo phòng Battleground** (bạn bè vào bằng mã phòng như thường). Bản đồ riêng: một hòn đảo lớn có núi, rừng, bãi biển, **thành phố** nhà cao 3–8 tầng (cầu thang lên tới sân thượng, cửa sổ bắn qua được), **cảng biển** lớn (bờ kè, cầu tàu, tàu hàng neo có đài chỉ huy, bãi container, nhà kho, cần cẩu giàn), **pháo đài** đá trên đồi (tường có lối đi, tháp góc, nhà chính), **bãi mìn** có rào thép gai (mìn chôn sẵn, giẫm là nổ), **kho vũ khí** quân sự (đồ hiếm: M249, AWM, giáp và mũ cấp 3) và mấy làng nhỏ.
+
+- Bắt đầu trận: ai cũng xuất phát ở một chỗ ngẫu nhiên, có 20 giây chuẩn bị, 4000$ để bấm **B** mua súng (12 khẩu: súng lục, tiểu liên, súng trường, súng máy, bắn tỉa, shotgun), đạn, giáp, mũ, lựu đạn, bom khói, mìn, đồ hồi máu và trang phục ngụy trang (rừng rậm, sa mạc, thành phố, kỹ thuật số, tuyết, ghillie). Hạ gục ai được thêm 800$; người gục rơi hết đồ.
+- Vùng an toàn thu hẹp dần qua 7 vòng, đứng ngoài vùng mất máu (càng về sau càng nhanh). Người cuối cùng còn sống thắng. Chủ phòng thêm được 0–12 máy (bot).
+- Điều khiển: chuột trái bắn (giữ để liên thanh), chuột phải ngắm (camera qua vai; súng có ống ngắm thì nhìn qua ống 4x/8x), R thay đạn, 1–3 đổi súng, 4 lựu đạn, 5 bom khói, 6 mìn (chuột trái để ném/đặt), 7 băng gạc, 8 hộp cứu thương, X cất súng, E nhặt đồ, C ngồi xổm (đang chạy thì trượt), Shift chạy, Space nhảy, T đổi góc nhìn, M bản đồ lớn, Tab bảng điểm, O (hoặc nút bánh răng) mở cài đặt.
+- Súng có độ toả (ngắm, ngồi xổm thì chụm; chạy nhảy thì toả), giật nòng, sát thương giảm theo tầm, trúng đầu nhân thêm; giáp và mũ chặn một phần sát thương và mòn dần. Máy mình dò trúng (khớp với những gì mình thấy), server kiểm tra lại từng phát (tốc độ bắn, đạn, vị trí, tường hay đồi chắn giữa).
+- Cài đặt (cả hai chế độ): độ nhạy chuột, độ nhạy khi ngắm và khi nhìn qua ống ngắm, đảo trục dọc, bấm hay giữ để ngắm, góc nhìn (FOV).
+- Test nhanh: `BATTLE_SCALE=0.25 pnpm dev` thu ngắn pha chuẩn bị và các vòng thu hẹp.
+
 Chưa có: bot tự chơi thay người rời ván, tự khôi phục phòng khi server khởi động lại, lưu ván xuống database.
 
 ## Chạy thử
@@ -61,6 +72,7 @@ Biến môi trường:
 
 - `PORT`: cổng của server, mặc định 2567.
 - `PHASE_SCALE`: co giãn thời lượng các pha, mặc định 1.
+- `BATTLE_SCALE`: co giãn thời gian chuẩn bị và các vòng thu hẹp của Battleground, mặc định 1.
 - `GAME_LOG_DIR`: thư mục ghi log ván (seed + chuỗi hành động + chat), mặc định `logs/`.
 - `VITE_SERVER_URL`: địa chỉ server cho client, dùng khi server không nằm cùng máy (vd. `wss://tentides.fly.dev`).
 

@@ -227,7 +227,8 @@ function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
   const add = b.local(u0, v0, rot);
   const { floors, w: W, d: D } = o;
   const mat = o.mat ?? "plaster";
-  const tint = o.tint ?? PLASTER[Math.floor(b.rand() * PLASTER.length)]!;
+  // Tường gạch giữ màu gạch của ảnh; tường vữa mỗi nhà một màu sơn.
+  const tint = o.tint ?? (mat === "brick" ? "#ffffff" : mat === "stone" ? "#a39d92" : mat === "wood" ? "#9a7a52" : PLASTER[Math.floor(b.rand() * PLASTER.length)]!);
   const hw = FLOOR_H - SLAB_T;
   // Hai vế cầu thang sát tường trái, đi dọc chiều sâu.
   const sA = -W / 2 + WALL_T + 0.75;
@@ -333,7 +334,7 @@ function buildCity(b: Builder) {
     const floors = i === 4 ? 8 : 3 + Math.floor(b.rand() * 4);
     const w = 12 + Math.floor(b.rand() * 3) * 2;
     const d = 11 + Math.floor(b.rand() * 2) * 2;
-    tower(b, u + (b.rand() - 0.5) * 3, v + (b.rand() - 0.5) * 2, (Math.floor(b.rand() * 4) * Math.PI) / 2, { floors, w, d, tier: floors >= 6 ? 2 : 1, mat: b.rand() < 0.3 ? "brick" : "plaster", tint: b.rand() < 0.3 ? "#9c5a45" : undefined });
+    tower(b, u + (b.rand() - 0.5) * 3, v + (b.rand() - 0.5) * 2, (Math.floor(b.rand() * 4) * Math.PI) / 2, { floors, w, d, tier: floors >= 6 ? 2 : 1, mat: b.rand() < 0.3 ? "brick" : "plaster" });
   });
   // Xe hỏng, rào chắn bê tông trên phố làm chỗ nấp.
   for (let k = 0; k < 14; k++) {
@@ -554,12 +555,12 @@ function buildArmory(b: Builder) {
     const W = 11;
     const D = 8;
     const H = 3.6;
-    add(0, H / 2, D / 2, W, H, 0.6, "concrete", { tint: "#8e8b7e" });
-    add(-W / 2, H / 2, 0, 0.6, H, D, "concrete", { tint: "#8e8b7e" });
-    add(W / 2, H / 2, 0, 0.6, H, D, "concrete", { tint: "#8e8b7e" });
-    add(-W / 4 - 1, H / 2, -D / 2, W / 2 - 2, H, 0.6, "concrete", { tint: "#8e8b7e" });
-    add(W / 4 + 1, H / 2, -D / 2, W / 2 - 2, H, 0.6, "concrete", { tint: "#8e8b7e" });
-    add(0, H + 0.4, 0, W + 1, 0.8, D + 1, "concrete", { tint: "#7c796d" });
+    add(0, H / 2, D / 2, W, H, 0.6, "concrete", { tint: "#a8a596" });
+    add(-W / 2, H / 2, 0, 0.6, H, D, "concrete", { tint: "#a8a596" });
+    add(W / 2, H / 2, 0, 0.6, H, D, "concrete", { tint: "#a8a596" });
+    add(-W / 4 - 1, H / 2, -D / 2, W / 2 - 2, H, 0.6, "concrete", { tint: "#a8a596" });
+    add(W / 4 + 1, H / 2, -D / 2, W / 2 - 2, H, 0.6, "concrete", { tint: "#a8a596" });
+    add(0, H + 0.4, 0, W + 1, 0.8, D + 1, "concrete", { tint: "#96927f" });
     add(0, 0.5, 2.6, 6, 1, 1, "wood", { tint: "#4f5a32" });
     b.lootLocal(u, v, rot, -2, 0.05, 1, 3);
     b.lootLocal(u, v, rot, 2, 0.05, 1, 3);

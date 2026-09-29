@@ -224,8 +224,11 @@ function Puffs() {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
-      p.vx *= 0.98;
-      p.vz *= 0.98;
+      // Chậm dần theo thời gian (không theo số khung hình).
+      const drag = Math.exp(-dt * (p.dense ? 0.55 : 1.2));
+      p.vx *= drag;
+      p.vz *= drag;
+      if (p.dense) p.vy *= drag;
       p.size += p.grow * dt;
       if (n >= MAX_PUFFS) continue;
       const k = p.age / p.life;
@@ -260,17 +263,17 @@ function SmokeEmitters({ room }: { room: IslandRoom }) {
           x: smoke.x + Math.cos(ang) * r * 0.3,
           y: smoke.y + 0.4,
           z: smoke.z + Math.sin(ang) * r * 0.3,
-          vx: Math.cos(ang) * (1.2 + Math.random()),
-          vy: 0.35 + Math.random() * 0.5,
-          vz: Math.sin(ang) * (1.2 + Math.random()),
-          size: 2.5,
-          grow: 0.9,
+          vx: Math.cos(ang) * (1.5 + Math.random() * 2.5),
+          vy: 0.25 + Math.random() * 0.45,
+          vz: Math.sin(ang) * (1.5 + Math.random() * 2.5),
+          size: 2.2,
+          grow: 0.75,
           life: Math.min(9, smoke.timeLeft + 2),
           age: 0,
           r: grey,
           g: grey,
           b: grey * 1.02,
-          alpha: 0.55,
+          alpha: 0.7,
           dense: true,
         });
       }
