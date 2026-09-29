@@ -8,6 +8,8 @@ export interface Motion {
   moving: boolean;
   running?: boolean;
   sitting?: boolean;
+  /** Đang trượt (chạy rồi bấm ngồi). */
+  sliding?: boolean;
   swimming?: boolean;
   /** Đang leo cây (id cây hoặc true). */
   climbing?: boolean | string;
@@ -65,7 +67,7 @@ export function Character({
   const butt = useRef<Group>(null);
   const stars = useRef<Group>(null);
   const swirl = useRef<Group>(null);
-  const anim = useRef({ phase: 0, amount: 0, sit: 0, swim: 0, lie: 0, climb: 0, actN: -1, act: "", actT: 99, climbPhase: 0 });
+  const anim = useRef({ phase: 0, amount: 0, sit: 0, slide: 0, swim: 0, lie: 0, climb: 0, actN: -1, act: "", actT: 99, climbPhase: 0 });
 
   useFrame((_, dt) => {
     const m = motion?.() ?? { moving: false };
@@ -83,7 +85,8 @@ export function Character({
     if (m.climbing && m.moving) a.climbPhase += dt * 9;
     const target = m.moving ? (m.running ? 1 : 0.6) : 0;
     a.amount += (target - a.amount) * Math.min(1, dt * 10);
-    a.sit += ((m.sitting && !m.moving ? 1 : 0) - a.sit) * Math.min(1, dt * 8);
+    a.sit += (((m.sitting && !m.moving) || m.sliding ? 1 : 0) - a.sit) * Math.min(1, dt * 8);
+    a.slide += ((m.sliding ? 1 : 0) - a.slide) * Math.min(1, dt * 12);
     a.swim += ((m.swimming ? 1 : 0) - a.swim) * Math.min(1, dt * 5);
     // Bơi tới thì nằm sấp gần ngang mặt nước; đứng yên thì đạp nước, người thẳng đứng.
     a.lie += ((m.swimming ? (m.moving ? 1.3 : 0.12) : 0) - a.lie) * Math.min(1, dt * 4);
@@ -92,6 +95,7 @@ export function Character({
     // Bơi: chân đập nhanh biên độ nhỏ, tay sải vòng; đứng yên dưới nước thì đạp nước nhẹ.
     const swing = Math.sin(a.phase) * 0.75 * a.amount * (1 - swim) + Math.sin(a.phase * 2) * 0.35 * swim;
     const sit = a.sit * (1 - swim);
+    const slide = a.slide * (1 - swim);
     // Ngồi: đùi gập ra trước gần nằm ngang, hai chân hơi dạng; tay chống lên gối.
     if (legL.current) {
       legL.current.rotation.x = swing * (1 - sit) - 1.45 * sit;
@@ -106,7 +110,8 @@ export function Character({
     // Leo cây: hai tay vươn ôm thân cây thay phiên kéo lên, hai chân co quặp, mông chổng ra sau.
     const pull = Math.sin(a.climbPhase);
     if (armL.current) {
-      armL.current.rotation.x = ((-swing * 0.9 * (1 - sit) - 0.75 * sit) * (1 - swim) + (-Math.PI + Math.sin(a.phase) * 1.6) * stroke) * (1 - climb) + (-2.6 + pull * 0.45) * climb;
+      // Trượt thì tay trái vươn ra trước giữ thăng bằng.
+      armL.current.rotation.x = ((-swing * 0.9 * (1 - sit) - 0.75 * sit - 0.7 * slide) * (1 - swim) + (-Math.PI + Math.sin(a.phase) * 1.6) * stroke) * (1 - climb) + (-2.6 + pull * 0.45) * climb;
       armL.current.rotation.z = 0.12 * (1 - climb) + 0.35 * climb;
     }
     let armRx = ((swing * 0.9 * (1 - sit) - 0.75 * sit) * (1 - swim) + (-Math.PI - Math.sin(a.phase) * 1.6) * stroke) * (1 - climb) + (-2.6 - pull * 0.45) * climb;
@@ -154,8 +159,8 @@ export function Character({
       const bob = a.amount < 0.05 ? Math.sin(performance.now() / 700) * 0.012 : Math.abs(Math.cos(a.phase)) * 0.06 * a.amount;
       // Xoay quanh gót chân nên phải nhấc người lên theo góc nằm để đầu vẫn nhô khỏi mặt nước.
       body.current.position.y = (bob * (1 - sit) - SIT_DROP * sit) * (1 - swim) + 0.95 * Math.sin(a.lie) + Math.sin(a.phase * 0.5) * 0.04 * swim;
-      // Chạy thì người đổ về trước; ngồi thì hơi ngả ra sau; leo cây thì ngực áp vào thân cây, mông chổng ra.
-      body.current.rotation.x = (0.12 * a.amount * (m.running ? 1.5 : 1) - 0.12 * sit) * (1 - swim) * (1 - climb) + a.lie + 0.32 * climb + lunge * 0.4;
+      // Chạy thì người đổ về trước; ngồi thì hơi ngả ra sau, trượt thì ngả hẳn ra sau; leo cây thì ngực áp vào thân cây, mông chổng ra.
+      body.current.rotation.x = (0.12 * a.amount * (m.running ? 1.5 : 1) * (1 - slide) - 0.12 * sit - 0.4 * slide) * (1 - swim) * (1 - climb) + a.lie + 0.32 * climb + lunge * 0.4;
       body.current.position.z = lunge * 0.5 - 0.2 * climb;
       body.current.rotation.y = twist;
       // Chóng mặt thì loạng choạng.

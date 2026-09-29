@@ -290,8 +290,8 @@ export function PausedOverlay({ room }: { room: IslandRoom }) {
 const KEYS: [string, string][] = [
   ["WASD", "Di chuyển"],
   ["Shift", "Chạy"],
-  ["Space", "Nhảy · ngoi lên"],
-  ["C", "Ngồi · giữ để lặn"],
+  ["Space", "Nhảy · ngoi lên · bấm lại lúc vừa chạm đất để lấy đà"],
+  ["C", "Ngồi · đang chạy thì trượt · giữ để lặn"],
   ["E", "Sự kiện · đào · nhặt · leo cây"],
   ["Chuột trái", "Đánh · chặt · ăn · trồng"],
   ["Giữ chuột phải", "Ném món đang cầm"],

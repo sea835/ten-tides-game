@@ -16,7 +16,7 @@ import {
   worldCatalog,
   type World,
 } from "@tentides/content";
-import { INTERACT_RADIUS, MAX_RUN_SPEED, Messages, type CorrectMessage, type KnockMessage, type MoveMessage } from "@tentides/protocol";
+import { INTERACT_RADIUS, MAX_RUN_SPEED, MAX_SPEED_BOOST, Messages, type CorrectMessage, type KnockMessage, type MoveMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { getCameraView } from "./camera.ts";
 import { Character, type Motion } from "./Character.tsx";
@@ -73,6 +73,26 @@ const CLIMB_HUG = 0.72;
 const CLIMB_SPEED = 2.2;
 const CLIMB_SPRINT_SPEED = 3.4;
 const CLIMB_TURN = 2.2;
+/** Tốc độ ngang cao nhất khi có đà (trượt, nhảy thỏ); server cũng cho phép tới mức này. */
+const TOP_SPEED = MAX_RUN_SPEED * MAX_SPEED_BOOST;
+/** Trượt: đang chạy bấm C thì lao tới nhanh hơn chừng này lần, chậm dần, dưới mức kia thì đứng dậy. */
+const SLIDE_BOOST = 1.25;
+const SLIDE_FRICTION = 9;
+const SLIDE_END_SPEED = 9;
+/** Khi trượt chỉ bẻ lái được chừng này rad/giây. */
+const SLIDE_TURN = 1.2;
+const SLIDE_COST = 8;
+const SLIDE_COOLDOWN = 0.35;
+/**
+ * Nhảy thỏ: vừa đáp đất sau một cú nhảy mà bấm Space lại trong chừng này giây (hoặc bấm sớm hơn lúc sắp chạm đất
+ * chừng kia giây) thì cú nhảy mới được cộng thêm đà. Giữ Space cho tự nảy hay bấm trễ thì mất đà.
+ */
+const BHOP_WINDOW = 0.15;
+const BHOP_BUFFER = 0.1;
+const BHOP_GAIN = 0.1;
+const BHOP_MAX = MAX_SPEED_BOOST - 1;
+/** Đứng trên đất quá khung giờ trên thì đà mất dần chừng này mỗi giây. */
+const BHOP_DECAY = 2;
 /** Vừa đánh hay ném thì quay mặt theo hướng camera chừng này giây. */
 const AIM_FACE_MS = 450;
 
@@ -122,6 +142,22 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     leap: false,
     /** Đang chìm khi bơi: vì hết hơi, kiệt sức hay mang quá nặng (rỗng là nổi bình thường). */
     sinking: "" as "" | "breath" | "tired" | "heavy",
+    /** Đồng hồ riêng (giây) để canh nhịp nhảy thỏ và trượt. */
+    clock: 0,
+    /** Vừa bấm C (khung hình sau mới biết là trượt hay ngồi). */
+    crouchPressed: false,
+    /** Đang trượt: hướng và tốc độ còn lại. */
+    slide: null as { dir: number; speed: number } | null,
+    slideReadyAt: 0,
+    /** Đà nhảy thỏ: tốc độ được cộng thêm chừng này phần. */
+    hop: 0,
+    spaceHeld: false,
+    jumpPressAt: -1,
+    jumpAt: -1,
+    /** Đang bay vì vừa nhảy; đáp đất thì mở khung giờ nhảy thỏ. */
+    airJump: false,
+    landAt: -1,
+    hopReady: false,
   });
   const camTarget = useMemo(() => new Vector3(), []);
   const camPos = useMemo(() => new Vector3(), []);
@@ -154,8 +190,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || isTyping(e)) return;
       if (e.code === "KeyC") {
-        // Đang bơi thì C là giữ để lặn, không phải ngồi.
-        if (!sim.current.swimming) sim.current.sitting = !sim.current.sitting;
+        // Đang bơi thì C là giữ để lặn, không phải ngồi. Đang chạy thì C là trượt (khung hình sau quyết định).
+        if (!sim.current.swimming) sim.current.crouchPressed = true;
         return;
       }
       // Đang leo thì E là buông tay tụt xuống, Space là nhún người nhảy ra khỏi cây.
@@ -196,6 +232,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const stunned = (sheet?.stun ?? 0) > 0;
     const frozen = room.state.paused || isBusy(room.state, myId(room)) || stunned;
     const dizzy = sheet?.dizzy ?? 0;
+    s.clock += dt;
+    // Nhảy thỏ cần bấm Space lại mỗi lần (cả nút cảm ứng, vốn chỉ giữ phím), nên tự bắt lúc vừa nhấn.
+    if (keys.has("Space") && !s.spaceHeld && !frozen) s.jumpPressAt = s.clock;
+    s.spaceHeld = keys.has("Space");
 
     const forward = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const strafe = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
@@ -233,7 +273,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     s.energy = Math.min(s.energy, sheet?.stamina ?? 100);
     // Quá tải thì đi (và bơi) chậm hơn.
     const baseSpeed = s.swimming ? (running ? SWIM_SPRINT_SPEED : SWIM_SPEED) : running ? MAX_RUN_SPEED : WALK_SPEED;
-    const speed = baseSpeed * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
+    if (s.swimming) s.hop = 0;
+    const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
     // Chóng mặt thì đi loạng choạng: hướng đi bị lệch qua lệch lại.
@@ -251,6 +292,35 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       mz = (mz / len) * speed * dt;
       s.facing = Math.atan2(mx, mz);
     }
+
+    const endSlide = () => {
+      s.slide = null;
+      s.slideReadyAt = s.clock + SLIDE_COOLDOWN;
+    };
+    // Đang chạy trên đất mà bấm C thì trượt tới theo đà; không thì ngồi xuống/đứng dậy như cũ.
+    if (s.crouchPressed) {
+      s.crouchPressed = false;
+      if (running && moving && s.grounded && !s.slide && !s.climb && !s.swimming && s.clock >= s.slideReadyAt) {
+        s.slide = { dir: Math.atan2(mx, mz), speed: Math.min(TOP_SPEED, speed * SLIDE_BOOST) };
+        s.energy = Math.max(0, s.energy - SLIDE_COST);
+        s.sitting = false;
+      } else if (!s.slide && !s.swimming) s.sitting = !s.sitting;
+    }
+    if (s.slide && (frozen || s.swimming || s.climb)) s.slide = null;
+    if (s.slide) {
+      // Trượt: chậm dần, chỉ bẻ lái được chút ít theo hướng đang bấm.
+      const sl = s.slide;
+      if (moving) {
+        const turn = Math.atan2(Math.sin(Math.atan2(mx, mz) - sl.dir), Math.cos(Math.atan2(mx, mz) - sl.dir));
+        sl.dir += Math.max(-SLIDE_TURN * dt, Math.min(SLIDE_TURN * dt, turn));
+      }
+      sl.speed -= SLIDE_FRICTION * dt;
+      mx = Math.sin(sl.dir) * sl.speed * dt;
+      mz = Math.cos(sl.dir) * sl.speed * dt;
+      s.facing = sl.dir;
+      if (sl.speed < SLIDE_END_SPEED) endSlide();
+    }
+    const sliding = !!s.slide;
 
     // Bị trói thì chỉ quanh quẩn trong trại (server cũng chặn).
     const tied = room.state.players.get(myId(room))?.tied ?? false;
@@ -297,6 +367,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       s.facing = c.angle + Math.PI;
       s.grounded = false;
       s.sitting = false;
+      s.hop = 0;
+      s.airJump = false;
     } else {
       if (s.swimming) {
         // Giữ C (hoặc Ctrl) để lặn, Space để ngoi; thả tay thì nổi dần lên mặt nước. Hết hơi thì bị đẩy lên.
@@ -319,7 +391,19 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         // Không nhô khỏi mặt nước khi đang bơi (trừ khi tới chỗ nông thì lội lên bờ).
         if (feetNow + s.vy * dt > surface + 0.05 && s.vy > 0) s.vy = Math.max(0, (surface + 0.05 - feetNow) / dt);
       } else {
-        if (s.grounded && !frozen && keys.has("Space")) s.vy = JUMP_SPEED;
+        if (s.grounded && !frozen && keys.has("Space")) {
+          // Nhảy thỏ: bấm lại đúng lúc vừa đáp đất sau cú nhảy trước thì được thêm đà; nhảy từ cú trượt thì giữ nguyên đà trượt.
+          const timed = s.hopReady && s.clock - s.landAt <= BHOP_WINDOW && s.jumpPressAt >= s.landAt - BHOP_BUFFER;
+          if (s.slide) {
+            s.hop = Math.max(0, Math.min(BHOP_MAX, s.slide.speed / Math.max(1, baseSpeed) - 1));
+            endSlide();
+          } else if (timed && moving) s.hop = Math.min(BHOP_MAX, s.hop + BHOP_GAIN);
+          else s.hop = 0;
+          s.vy = JUMP_SPEED;
+          s.airJump = true;
+          s.jumpAt = s.clock;
+          s.hopReady = false;
+        }
         s.vy -= GRAVITY * dt;
       }
 
@@ -330,6 +414,18 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       const delta = controller.computedMovement();
       s.grounded = controller.computedGrounded();
       if (s.grounded && s.vy < 0) s.vy = 0;
+      if (s.airJump && s.grounded && s.clock - s.jumpAt > 0.1) {
+        s.airJump = false;
+        s.landAt = s.clock;
+        s.hopReady = true;
+      }
+      // Đáp đất rồi mà không nhảy tiếp kịp (hay đứng lại) thì đà mất dần.
+      if (s.hop > 0 && s.grounded && !s.airJump && (!moving || s.clock - s.landAt > BHOP_WINDOW)) s.hop = Math.max(0, s.hop - BHOP_DECAY * dt);
+      // Trượt qua mép dốc thì rơi xuống, giữ đà trượt.
+      if (s.slide && !s.grounded && s.vy < -2) {
+        s.hop = Math.max(s.hop, Math.min(BHOP_MAX, s.slide.speed / Math.max(1, baseSpeed) - 1));
+        endSlide();
+      }
 
       next = { x: pos.x + delta.x, y: pos.y + delta.y, z: pos.z + delta.z };
       if (next.y < world.heightAt(next.x, next.z) - 5) {
@@ -359,7 +455,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const feetY = next.y - FEET_OFFSET;
     const firstPerson = getCameraView() === "first";
     if (avatar.current) avatar.current.visible = !firstPerson;
-    s.camHeight += ((s.sitting ? CAM_HEIGHT_SIT : CAM_HEIGHT_STAND) - s.camHeight) * Math.min(1, dt * 6);
+    s.camHeight += ((s.sitting || sliding ? CAM_HEIGHT_SIT : CAM_HEIGHT_STAND) - s.camHeight) * Math.min(1, dt * 6);
     camTarget.set(next.x, feetY + s.camHeight, next.z);
     const horizontal = Math.cos(look.pitch) * CAMERA_DISTANCE;
     camPos.set(
@@ -379,7 +475,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (headUnder && camPos.y > WATER_LEVEL - 0.3) camPos.y = WATER_LEVEL - 0.3;
     if (firstPerson) {
       // Mắt ở trên đỉnh đầu một chút, nhìn theo yaw/pitch (pitch dương là cúi xuống).
-      const eyeY = feetY + (s.sitting ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : EYE_HEIGHT);
+      const eyeY = feetY + (s.sitting || sliding ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : EYE_HEIGHT);
       state.camera.position.set(next.x, eyeY, next.z);
       camDir.set(-Math.sin(look.yaw) * Math.cos(look.pitch), -Math.sin(look.pitch), -Math.cos(look.yaw) * Math.cos(look.pitch));
       camTarget.copy(state.camera.position).add(camDir);
@@ -405,8 +501,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     }
 
     localPosition.set(next.x, feetY, next.z);
-    localMotion.moving = s.climb ? climbMoving : moving;
-    localMotion.running = moving && running;
+    localMotion.moving = s.climb ? climbMoving : moving || sliding;
+    localMotion.running = (moving && running) || sliding;
+    localMotion.sliding = sliding;
     localMotion.climbing = !!s.climb;
     localMotion.sitting = s.sitting;
     localMotion.swimming = s.swimming;
@@ -439,7 +536,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     s.sendTimer += dt;
     if (s.sendTimer >= SEND_INTERVAL) {
       s.sendTimer = 0;
-      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving: s.climb ? climbMoving : moving, sitting: s.sitting, swimming: s.swimming };
+      const msg: MoveMessage = { x: next.x, y: feetY, z: next.z, rotY: s.facing, moving: s.climb ? climbMoving : moving || sliding, sitting: s.sitting, swimming: s.swimming };
       const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming}`;
       if (key !== s.lastSent) {
         s.lastSent = key;

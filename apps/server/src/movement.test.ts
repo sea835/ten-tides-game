@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CAMP, heightAt } from "@tentides/content";
-import { MAX_RUN_SPEED } from "@tentides/protocol";
+import { MAX_RUN_SPEED, MAX_SPEED_BOOST } from "@tentides/protocol";
 import { isPlausibleMove } from "./movement.ts";
 
 const ground = heightAt(CAMP.x, CAMP.z) + 1;
@@ -10,6 +10,10 @@ const move = (dx: number, dz: number, y = ground) => ({ x: CAMP.x + dx, y, z: CA
 describe("isPlausibleMove", () => {
   it("nhận bước chạy bình thường", () => {
     expect(isPlausibleMove(from, move(MAX_RUN_SPEED * 0.066, 0), 66)).toBe(true);
+  });
+
+  it("nhận đà trượt và nhảy thỏ ở tốc độ tối đa", () => {
+    expect(isPlausibleMove(from, move(MAX_RUN_SPEED * MAX_SPEED_BOOST * 0.066, 0), 66)).toBe(true);
   });
 
   it("từ chối dịch chuyển tức thời", () => {

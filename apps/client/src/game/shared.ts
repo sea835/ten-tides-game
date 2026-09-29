@@ -4,7 +4,7 @@ import { Vector3 } from "three";
 export const localPosition = new Vector3();
 
 /** Mình có đang đi/chạy/ngồi/bơi không, để nhân vật tạo dáng. LocalPlayer ghi mỗi khung hình. */
-export const localMotion = { moving: false, running: false, sitting: false, swimming: false, climbing: false };
+export const localMotion = { moving: false, running: false, sitting: false, swimming: false, climbing: false, sliding: false };
 
 /**
  * Môi trường quanh mình, LocalPlayer ghi mỗi khung hình: `indoor` là độ sâu trong hang/hầm (0 ngoài trời, 1 sâu nhất),

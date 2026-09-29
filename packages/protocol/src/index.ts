@@ -16,6 +16,8 @@ export const ROOM_CODE_LENGTH = 4;
 
 /** Tốc độ chạy tối đa (m/s). Server dùng để loại vị trí bất thường. */
 export const MAX_RUN_SPEED = 16;
+/** Trượt và nhảy thỏ (bunny hop) đẩy tốc độ vượt mức chạy, tối đa gấp chừng này lần. */
+export const MAX_SPEED_BOOST = 1.5;
 
 /** Thời lượng mỗi pha (giây), theo PROJECT.md. Server có thể co giãn bằng biến PHASE_SCALE khi dev. */
 export const PHASE_SECONDS = {
