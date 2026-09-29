@@ -8,10 +8,13 @@ import {
   MAX_HP,
   MINE,
   SMOKE,
+  SIGHT_IDS,
   START_MONEY,
   WEAPON,
   WEAPONS,
   battleMap,
+  bulletAt,
+  bulletSteps,
   battleSpawn,
   falloff,
   floorBelow,
@@ -24,6 +27,8 @@ import {
 } from "@tentides/content";
 import {
   BattleBuyMessage,
+  BATTLE_TIMES,
+  BATTLE_WEATHERS,
   BattleSettingsMessage,
   BattleThrowMessage,
   CHAT_MIN_INTERVAL_MS,
@@ -69,6 +74,10 @@ const TICK_MS = 50;
 /** Co giãn thời gian (vùng, pha chuẩn bị) khi dev, vd. BATTLE_SCALE=0.3. */
 const SCALE = Number(process.env.BATTLE_SCALE ?? 1);
 const PREP_SECONDS = 20;
+/** Một ngày trôi hết trong chừng này giây (trận chừng 15–20 phút thì trời chuyển độ một buổi). */
+const DAY_SECONDS = 60 * 60;
+/** Thời tiết giữ ít nhất chừng này giây rồi mới có thể đổi. */
+const WEATHER_MIN = 150;
 const ENDED_SECONDS = 20;
 const GRAVITY = 20;
 const PICKUP_RADIUS = 3;
@@ -143,6 +152,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private entrants = 0;
   private rand = Math.random;
   bots!: Bots;
+  private weatherLeft = WEATHER_MIN;
 
   async onCreate() {
     this.roomId = await this.uniqueRoomCode();
@@ -183,6 +193,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.battleSettings, BattleSettingsMessage, (client, s) => {
       if (!this.hostOnly(client) || this.state.phase !== "lobby") return;
       if (s.bots !== undefined) this.state.bots = s.bots;
+      if (s.weather !== undefined) this.state.weatherPick = s.weather;
+      if (s.time !== undefined) this.state.timePick = s.time;
     });
 
     this.onMessage(Messages.settings, (client, raw: unknown) => {
@@ -385,6 +397,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     }
     this.bots.equipAll();
     this.spawnLoot(this.map.loot);
+    this.rollSky();
     // Vùng an toàn phủ cả đảo; vòng kế tiếp chọn khi vào trận.
     s.zone.x = s.zone.nx = 0;
     s.zone.z = s.zone.nz = 0;
@@ -456,8 +469,46 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     z.timeLeft = Math.max(0, Math.ceil(this.zoneLeft));
   }
 
+  /** Bốc thăm thời tiết và giờ trong ngày cho trận (theo lựa chọn của chủ phòng nếu có). */
+  private rollSky() {
+    const s = this.state;
+    const weighted = <T extends string>(table: [T, number][]): T => {
+      let r = this.rand() * table.reduce((a, [, w]) => a + w, 0);
+      for (const [v, w] of table) if ((r -= w) <= 0) return v;
+      return table[0]![0];
+    };
+    s.weather = (BATTLE_WEATHERS as readonly string[]).includes(s.weatherPick)
+      ? s.weatherPick
+      : weighted([["sunny", 3], ["cloudy", 2], ["rain", 2], ["fog", 1.4], ["storm", 1.2], ["snow", 1.4]]);
+    const time = (BATTLE_TIMES as readonly string[]).includes(s.timePick) ? s.timePick : weighted([["day", 5], ["dawn", 1.5], ["dusk", 1.5], ["night", 2]]);
+    const base = time === "dawn" ? 0.1 : time === "dusk" ? 0.72 : time === "night" ? 0.88 : 0.25 + this.rand() * 0.3;
+    s.clock = base + (time === "day" ? 0 : this.rand() * 0.04);
+    this.weatherLeft = WEATHER_MIN + this.rand() * WEATHER_MIN;
+  }
+
+  /** Giữa trận thời tiết có thể chuyển (trời quang kéo mây rồi mưa, bão tan...), trời trôi dần theo giờ. */
+  private tickSky(dt: number) {
+    const s = this.state;
+    s.clock = (s.clock + dt / DAY_SECONDS) % 1;
+    if (s.weatherPick !== "random") return;
+    this.weatherLeft -= dt;
+    if (this.weatherLeft > 0) return;
+    this.weatherLeft = WEATHER_MIN + this.rand() * WEATHER_MIN;
+    const next: Record<string, string[]> = {
+      sunny: ["cloudy", "sunny", "fog"],
+      cloudy: ["rain", "sunny", "snow", "fog"],
+      rain: ["storm", "cloudy", "rain"],
+      storm: ["rain", "cloudy"],
+      fog: ["cloudy", "sunny", "rain"],
+      snow: ["snow", "cloudy", "fog"],
+    };
+    const list = next[s.weather] ?? ["sunny"];
+    s.weather = list[Math.floor(this.rand() * list.length)]!;
+  }
+
   private tick(dt: number) {
     const s = this.state;
+    if (s.phase === "prep" || s.phase === "battle") this.tickSky(dt);
     this.secondAcc += dt;
     const second = this.secondAcc >= 1;
     if (second) this.secondAcc -= 1;
@@ -543,7 +594,19 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       return [r[0] / l, r[1] / l, r[2] / l] as [number, number, number];
     });
     const ends: [number, number, number][] = [];
-    const walls = dirs.map((d) => Math.min(raycastBoxes(this.map.index, o, d, maxRange), raycastTerrain(this.map.world, o, d, maxRange), maxRange));
+    // Đạn bay theo đường cong (rơi dần do trọng lực): dò tường từng đoạn dây cung; `walls` là quãng đường `s` tới chỗ găm.
+    const steps = bulletSteps(def.velocity, maxRange);
+    const walls = dirs.map((d) => {
+      for (let i = 1; i < steps.length; i++) {
+        const a = bulletAt(o, d, def.velocity, steps[i - 1]!);
+        const b = bulletAt(o, d, def.velocity, steps[i]!);
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
+        const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
+        const t = Math.min(raycastBoxes(this.map.index, a, cd, len), raycastTerrain(this.map.world, a, cd, len));
+        if (t < len) return steps[i - 1]! + (t / len) * (steps[i]! - steps[i - 1]!);
+      }
+      return maxRange;
+    });
     const dealt = new Map<string, { amount: number; head: boolean; d: number }>();
     const hitRay = new Map<number, number>();
     for (const h of hits) {
@@ -551,9 +614,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const target = this.state.players.get(h.target);
       if (!d || !target || !target.alive || h.target === id || hitRay.has(h.ray)) continue;
       if (h.d > walls[h.ray]! + 0.6 || h.d > maxRange) continue;
-      const px = o[0] + d[0] * h.d;
-      const py = o[1] + d[1] * h.d;
-      const pz = o[2] + d[2] * h.d;
+      const [px, py, pz] = bulletAt(o, d, def.velocity, h.d);
       const height = target.crouching ? 1.25 : 1.8;
       if (Math.hypot(px - target.x, pz - target.z) > 1.6 || py < target.y - 0.5 || py > target.y + height + 0.5) continue;
       const head = h.part === "head" && py > target.y + height - 0.55;
@@ -564,7 +625,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     }
     dirs.forEach((d, i) => {
       const t = hitRay.get(i) ?? walls[i]!;
-      ends.push([o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t]);
+      ends.push(bulletAt(o, d, def.velocity, t));
     });
     const shot: ShotMessage = { id, w: weaponId, o, e: ends };
     this.broadcast(Messages.shot, shot, { except: this.clientOf(id) });
@@ -715,7 +776,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (p.kit.money < price) return this.reject(client, "Không đủ tiền.");
     const dropped: string[] = [];
     const weapon = WEAPON.get(item);
-    if (!receive(p.kit, item, dropped)) return this.reject(client, "Không mang thêm được.");
+    if (!receive(p.kit, item, dropped)) return this.reject(client, item.startsWith("sight:") ? "Chưa có súng nào lắp được ống ngắm này." : "Không mang thêm được.");
     p.kit.money -= price;
     // Mua súng được tặng kèm một hộp đạn.
     if (weapon) addAmmo(p.kit, weapon.ammo, weapon.mag * 2);
@@ -771,6 +832,12 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const r2 = this.rand();
       if (spot.tier >= 2 && r2 < 0.4) extras.push(this.rand() < 0.5 ? `armor:${Math.min(3, spot.tier)}` : `helmet:${Math.min(3, spot.tier)}`);
       else if (r2 < 0.3) extras.push(this.rand() < 0.5 ? "armor:1" : "helmet:1");
+      // Ống ngắm: chỗ thường ra kính phản xạ, 2x; chỗ khá tới 4x; kho vũ khí có 8x.
+      const r4 = this.rand();
+      if (r4 < (spot.tier === 1 ? 0.18 : spot.tier === 2 ? 0.3 : 0.6)) {
+        const pool = spot.tier === 1 ? SIGHT_IDS.slice(0, 3) : spot.tier === 2 ? SIGHT_IDS.slice(0, 4) : SIGHT_IDS.slice(2);
+        extras.push(`sight:${pick(pool)}`);
+      }
       const r3 = this.rand();
       if (r3 < 0.25) extras.push(pick(["frag", "smoke", "bandage", "bandage", "medkit"]));
       if (this.rand() < 0.15) extras.push(`money:${100 * (1 + Math.floor(this.rand() * 5))}`);

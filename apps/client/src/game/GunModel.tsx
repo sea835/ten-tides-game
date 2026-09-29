@@ -44,6 +44,12 @@ const MATS: Record<string, MatDef> = {
   tan: { color: "#b39c74", rough: 0.75, detail: "none" },
   olive: { color: "#4c5838", rough: 0.75, detail: "none" },
   glass: { color: "#0d1b26", metal: 0.9, rough: 0.08, detail: "none" },
+  /** Kính ống ngắm: xanh tím phản quang, trong một phần. */
+  glove: { color: "#2a2b26", rough: 0.88, detail: "fabric" },
+  knuckle: { color: "#1c1d1a", rough: 0.6, detail: "none" },
+  lens: { color: "#3a5a8a", metal: 0.9, rough: 0.05, detail: "none", opacity: 0.45, double: true },
+  /** Kính red dot / holo: phủ màu hổ phách nhạt, gần trong suốt. */
+  reflex: { color: "#c8a060", metal: 0.6, rough: 0.05, detail: "none", opacity: 0.18, double: true },
   brass: { color: "#c9a14a", metal: 0.85, rough: 0.3, detail: "none" },
   white: { color: "#e8e6e0", rough: 0.85, detail: "fabric" },
   red: { color: "#b8282a", rough: 0.6, detail: "none" },
@@ -94,16 +100,19 @@ const viewCache = new Map<string, MeshStandardMaterial>();
 export function viewMaterial(key: string): MeshStandardMaterial {
   let m = viewCache.get(key);
   if (m) return m;
-  m = gearMaterial(key).clone();
+  m = drawOnTop(gearMaterial(key).clone());
+  viewCache.set(key, m);
+  return m;
+}
+
+/** Nén độ sâu của vật liệu về sát camera (dùng cho mọi thứ của súng trước mặt: súng, tay, lửa đầu nòng). */
+export const DRAW_ON_TOP_GLSL = "gl_Position.z = gl_Position.z * 0.05 - 0.95 * gl_Position.w;";
+export function drawOnTop<M extends MeshStandardMaterial>(m: M): M {
   delete m.userData.tenDetail;
   m.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <project_vertex>",
-      "#include <project_vertex>\n  gl_Position.z = gl_Position.z * 0.05 - 0.95 * gl_Position.w;",
-    );
+    shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n  ${DRAW_ON_TOP_GLSL}`);
   };
   m.customProgramCacheKey = () => "viewmodel";
-  viewCache.set(key, m);
   return m;
 }
 
@@ -178,18 +187,16 @@ function rail(z0: number, z1: number, y: number, w = 0.028): Part[] {
   return out;
 }
 
-/** Ống ngắm: thân ống, loa vật kính trước, thị kính sau, hai núm chỉnh, hai chân kẹp, mặt kính. */
-function scope(y: number, z: number, len: number, r: number, bell: number): Part[] {
+/**
+ * Thước ngắm sắt của súng trường bắn tỉa (ống ngắm giờ là phụ kiện rời): đầu ruồi trên nòng gần miệng, thước ngắm
+ * sau trên hộp khoá nòng, và đế ray để lắp ống.
+ */
+function irons(y: number, frontZ: number, rearZ: number, barrelTop: number): Part[] {
   return [
-    cyl("metal", r, len, [0, y, z]),
-    cyl("metal", bell, 0.07, [0, y, z + len / 2 + 0.025], { r2: r }),
-    cyl("metal", bell * 0.88, 0.05, [0, y, z - len / 2 - 0.015], { r2: r * 1.05 }),
-    cyl("glass", bell * 0.85, 0.004, [0, y, z + len / 2 + 0.061]),
-    cyl("glass", bell * 0.7, 0.004, [0, y, z - len / 2 - 0.041]),
-    cyl("metal", r * 0.62, 0.035, [0, y + r + 0.012, z], { axis: "y" }),
-    cyl("metal", r * 0.62, 0.035, [-(r + 0.012), y, z], { axis: "x" }),
-    box("metal", 0.022, y - 0.12, 0.022, [0, (y + 0.12) / 2, z - len * 0.3]),
-    box("metal", 0.022, y - 0.12, 0.022, [0, (y + 0.12) / 2, z + len * 0.3]),
+    box("metal", 0.004, y - barrelTop + 0.004, 0.006, [0, (y + barrelTop) / 2, frontZ]),
+    box("metal", 0.018, 0.014, 0.012, [0, barrelTop + 0.006, frontZ]),
+    box("metal", 0.024, 0.016, 0.02, [0, y - 0.008, rearZ]),
+    box("metal", 0.03, 0.01, 0.16, [0, y - 0.017, 0.07]),
   ];
 }
 
@@ -422,7 +429,7 @@ const GUNS: Record<string, GunSpec> = {
   // SKS: báng gỗ liền thân, lưỡi lê gấp dưới nòng, ống ngắm 4x.
   sks: {
     muzzle: [0, 0.095, 0.66],
-    sight: 0.165,
+    sight: 0.13,
     support: [0.0, 0.05, 0.2],
     stock: 0.42,
     parts: () => [
@@ -438,13 +445,13 @@ const GUNS: Record<string, GunSpec> = {
       box("metal", 0.012, 0.035, 0.015, [0, 0.12, 0.6]),
       box("steel", 0.008, 0.012, 0.26, [0, 0.074, 0.47]),
       ...trigger(0.0, 0.035),
-      ...scope(0.165, 0.0, 0.26, 0.015, 0.022),
+      ...irons(0.13, 0.62, 0.17, 0.105),
     ],
   },
   // Kar98k: súng trường khoá nòng cổ điển, báng gỗ dài, tay khoá cong bên phải, ống ngắm.
   kar98k: {
     muzzle: [0, 0.095, 0.71],
-    sight: 0.152,
+    sight: 0.13,
     support: [0.0, 0.05, 0.25],
     stock: 0.45,
     parts: () => [
@@ -461,13 +468,13 @@ const GUNS: Record<string, GunSpec> = {
       box("metal", 0.016, 0.03, 0.02, [0, 0.115, 0.69]),
       box("metal", 0.03, 0.012, 0.07, [0, 0.03, 0.03]),
       ...trigger(-0.01, 0.035),
-      ...scope(0.152, -0.01, 0.28, 0.015, 0.022),
+      ...irons(0.13, 0.67, 0.18, 0.105),
     ],
   },
   // AWM: khung báng xanh ô liu có lỗ ngón cái, nòng to với hãm nẩy, ống ngắm lớn, chân chống.
   awm: {
     muzzle: [0, 0.1, 0.78],
-    sight: 0.178,
+    sight: 0.13,
     support: [0.0, 0.04, 0.25],
     stock: 0.46,
     parts: () => [
@@ -486,7 +493,7 @@ const GUNS: Record<string, GunSpec> = {
       box("metal", 0.035, 0.06, 0.1, [0, 0.015, 0.07]),
       ...bipod(0.05, 0.42, 0.28),
       ...rail(-0.1, 0.14, 0.142, 0.026),
-      ...scope(0.178, 0.0, 0.32, 0.017, 0.028),
+      ...irons(0.13, 0.72, 0.19, 0.115),
     ],
   },
 };
@@ -523,6 +530,78 @@ export function stockLength(weaponId: string): number {
   return (GUNS[weaponId] ?? DEFAULT_GUN).stock;
 }
 
+// ---------------------------------------------------------------------------- ống ngắm
+
+/** Chỗ đặt ống ngắm trên ray (toạ độ súng): z giữa ống; y là mặt ray (ngay dưới thước ngắm sắt). */
+export function railMount(weaponId: string): V3 {
+  const g = GUNS[weaponId] ?? DEFAULT_GUN;
+  return [0, g.sight - 0.012, g.stock === 0 ? 0.045 : 0.07];
+}
+
+/** Tâm ống ngắm cao hơn mặt ray chừng này (mắt nhìn qua đúng tâm ống khi ngắm). */
+export function opticHeight(sight: string): number {
+  return sight === "reddot" ? 0.024 : sight === "holo" ? 0.028 : sight === "x2" ? 0.032 : sight === "x4" ? 0.036 : sight === "x8" ? 0.04 : 0.012;
+}
+
+/** Độ cao đường ngắm so với tay cầm khi lắp ống này (không có ống thì là thước ngắm sắt). */
+export function aimLineHeight(weaponId: string, sight: string): number {
+  return sight ? railMount(weaponId)[1] + opticHeight(sight) : sightHeight(weaponId);
+}
+
+/** Ống ngắm dựng quanh gốc (mặt ray ở y = 0, giữa ống ở z = 0, nhìn theo +z). */
+function sightParts(id: string): Part[] {
+  const h = opticHeight(id);
+  const mount = (len: number): Part[] => [box("metal", 0.03, 0.012, len, [0, 0.006, 0]), box("metal", 0.036, 0.006, 0.012, [0, 0.003, -len / 2 + 0.01]), box("metal", 0.036, 0.006, 0.012, [0, 0.003, len / 2 - 0.01])];
+  switch (id) {
+    case "reddot":
+      // Hộp nhỏ, ống kính tròn ngắn, núm chỉnh độ sáng bên hông.
+      return [
+        ...mount(0.05),
+        cyl("metal", 0.02, 0.045, [0, h, 0], { segs: 16, open: true }),
+        cyl("reflex", 0.016, 0.004, [0, h, 0.018], { segs: 16 }),
+        cyl("metal", 0.007, 0.012, [-0.024, h - 0.004, -0.004], { axis: "x", segs: 8 }),
+      ];
+    case "holo":
+      // Khung chữ nhật mở, kính phẳng đứng, đế pin phía sau.
+      return [
+        box("metal", 0.036, 0.018, 0.075, [0, 0.009, 0]),
+        box("metal", 0.004, 0.036, 0.03, [0.021, h, 0.02]),
+        box("metal", 0.004, 0.036, 0.03, [-0.021, h, 0.02]),
+        box("metal", 0.046, 0.005, 0.03, [0, h + 0.02, 0.02]),
+        box("reflex", 0.038, 0.032, 0.002, [0, h, 0.03]),
+        box("poly", 0.032, 0.014, 0.03, [0, 0.022, -0.022]),
+      ];
+    case "x2":
+      return [...mount(0.07), cyl("metal", 0.018, 0.1, [0, h, 0], { segs: 16 }), cyl("metal", 0.022, 0.02, [0, h, 0.05], { segs: 16 }), cyl("lens", 0.018, 0.003, [0, h, 0.061], { segs: 16 })];
+    case "x4":
+      // ACOG: thân tam giác gọn, vỏ tối, ống kính trước to, sợi quang đỏ trên nóc.
+      return [
+        ...mount(0.08),
+        box("metal", 0.034, 0.03, 0.1, [0, h - 0.004, 0]),
+        cyl("metal", 0.022, 0.035, [0, h, 0.062], { segs: 16 }),
+        cyl("metal", 0.017, 0.03, [0, h, -0.062], { segs: 16 }),
+        cyl("lens", 0.02, 0.003, [0, h, 0.081], { segs: 16 }),
+        box("red", 0.006, 0.004, 0.06, [0, h + 0.012, 0]),
+      ];
+    default:
+      // 8x: ống dài, hai đầu loe, núm chỉnh trên nóc và hông.
+      return [
+        ...mount(0.11),
+        cyl("metal", 0.017, 0.2, [0, h, 0], { segs: 16 }),
+        cyl("metal", 0.028, 0.06, [0, h, 0.12], { segs: 18, r2: 0.018 }),
+        cyl("metal", 0.018, 0.05, [0, h, -0.115], { segs: 18, r2: 0.024 }),
+        cyl("lens", 0.026, 0.003, [0, h, 0.152], { segs: 18 }),
+        cyl("metal", 0.012, 0.02, [0, h + 0.022, 0.005], { axis: "y", segs: 10 }),
+        cyl("metal", 0.012, 0.02, [-0.022, h, 0.005], { axis: "x", segs: 10 }),
+      ];
+  }
+}
+
+/** Ống ngắm theo id (SIGHTS), gốc ở mặt ray. */
+export function SightModel({ id, opacity = 1, view = false }: { id: string; opacity?: number; view?: boolean }) {
+  return <Parts list={gearParts(`sight:${id}`, () => sightParts(id))} opacity={opacity} view={view} />;
+}
+
 /** Vẽ các hình đã gộp với vật liệu dùng chung. */
 function Parts({ list, opacity = 1, view = false }: { list: { key: string; geo: BufferGeometry }[]; opacity?: number; view?: boolean }) {
   return (
@@ -535,10 +614,15 @@ function Parts({ list, opacity = 1, view = false }: { list: { key: string; geo: 
 }
 
 /** Khẩu súng theo id (WEAPONS). Gốc ở tay cầm, nòng theo +z. `view`: súng trước mặt ở góc thứ nhất (vẽ đè lên cảnh). */
-export function GunModel({ weaponId, scale = 1, opacity = 1, view = false }: { weaponId: string; scale?: number; opacity?: number; view?: boolean }) {
+export function GunModel({ weaponId, sight = "", scale = 1, opacity = 1, view = false }: { weaponId: string; sight?: string; scale?: number; opacity?: number; view?: boolean }) {
   return (
     <group scale={scale}>
       <Parts list={gunParts(weaponId)} opacity={opacity} view={view} />
+      {sight && (
+        <group position={railMount(weaponId)}>
+          <SightModel id={sight} opacity={opacity} view={view} />
+        </group>
+      )}
     </group>
   );
 }
@@ -732,6 +816,7 @@ export function LootModel({ id }: { id: string }) {
     );
   }
   const [kind, arg = ""] = id.split(":");
+  if (kind === "sight") return <SightModel id={arg} />;
   if (kind === "ammo") return <Parts list={gearParts(id, () => ammoParts(arg))} />;
   if (kind === "armor") {
     // Áo giáp nằm sấp gập dẹt trên đất (mặt trước có tấm chắn, túi đạn quay lên).

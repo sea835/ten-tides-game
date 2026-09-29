@@ -54,6 +54,10 @@ export const KitState = schema(
     mag1: t.uint16().default(0),
     mag2: t.uint16().default(0),
     magP: t.uint16().default(0),
+    /** Ống ngắm lắp trên từng khẩu (id trong SIGHTS, rỗng là thước ngắm sắt). */
+    sight1: t.string().default(""),
+    sight2: t.string().default(""),
+    sightP: t.string().default(""),
     /** Ô đang cầm: primary1, primary2, pistol, frag, smoke, mine hoặc rỗng (tay không). */
     active: t.string().default(""),
     ammo: t.map("uint16"),
@@ -447,6 +451,14 @@ export const IslandState = schema(
     worldSeed: t.uint32().default(0),
     /** story: chế độ cốt truyện · battle: Battleground. */
     mode: t.string().default("story"),
+    /**
+     * Battleground: giờ trong ngày (0–1, 0,5 là giữa trưa, 0,9 là giữa đêm), bốc ngẫu nhiên mỗi trận rồi trôi chậm.
+     * Thời tiết của trận nằm ở `weather` (sunny, cloudy, rain, fog, storm, snow).
+     */
+    clock: t.float32().default(0.35),
+    /** Lựa chọn của chủ phòng cho trận tới ("random" hoặc một kiểu cụ thể). */
+    weatherPick: t.string().default("random"),
+    timePick: t.string().default("random"),
     zone: t.ref(ZoneState).default(() => new ZoneState()),
     feed: t.array(KillState),
     smokes: t.map(SmokeState),
@@ -691,7 +703,12 @@ export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "p
 export const BattleBuyMessage = z.object({ item: z.string().max(40) });
 export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke"]), o: vec3, v: vec3 });
 export const HealMessage = z.object({ kind: z.enum(["bandage", "medkit"]) });
-export const BattleSettingsMessage = z.object({ bots: z.int().min(0).max(12) }).partial();
+export const BATTLE_WEATHERS = ["sunny", "cloudy", "rain", "fog", "storm", "snow"] as const;
+export const BATTLE_TIMES = ["dawn", "day", "dusk", "night"] as const;
+/** Chủ phòng chỉnh: số máy, thời tiết và giờ trong ngày của trận ("random" là để máy bốc thăm). */
+export const BattleSettingsMessage = z
+  .object({ bots: z.int().min(0).max(12), weather: z.enum(["random", ...BATTLE_WEATHERS]), time: z.enum(["random", ...BATTLE_TIMES]) })
+  .partial();
 
 /** Server báo mọi người: một phát bắn (để vẽ vệt đạn, chớp lửa, phát tiếng). `e` là điểm cuối từng tia. */
 export interface ShotMessage {

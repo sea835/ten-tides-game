@@ -18,7 +18,7 @@ import {
   type Group,
 } from "three";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
-import { GunModel, HelmetModel, VestModel, sightHeight, stockLength, supportOffset } from "./GunModel.tsx";
+import { GunModel, HelmetModel, VestModel, aimLineHeight, stockLength, supportOffset } from "./GunModel.tsx";
 import { camoTexture } from "./camo.ts";
 import { mulberry32 } from "./nature.ts";
 import type { DetailKind } from "./textures.ts";
@@ -418,6 +418,7 @@ export function Character({
   armor = 0,
   helmet = 0,
   weapon,
+  sight = "",
   ref,
 }: {
   color: string;
@@ -435,6 +436,8 @@ export function Character({
   helmet?: number;
   /** Súng đang cầm (id trong WEAPONS): cầm hai tay, được ưu tiên hơn `held`. */
   weapon?: string;
+  /** Ống ngắm lắp trên súng đang cầm (id trong SIGHTS). */
+  sight?: string;
   ref?: Ref<Group>;
 }) {
   const look = useMemo(() => looks(color), [color]);
@@ -652,7 +655,7 @@ export function Character({
     if (withGun && gun.current && torso.current && body.current && armR.current && armL.current && foreR.current && foreL.current) {
       torso.current.updateMatrix();
       _anchor.set(0, SHOULDER_Y, 0).applyMatrix4(torso.current.matrix);
-      const sight = sightHeight(gunId);
+      const sightH = aimLineHeight(gunId, sight);
       // Mắt phải (toạ độ thân) là tâm xoay khi ngắm: đường ngắm luôn đi qua mắt.
       _eye.copy(_anchor).add(_off.set(-0.035, pistol ? 0.22 : 0.14, pistol ? 0.11 : 0.17));
       const runW = a.run * (1 - aimW);
@@ -663,14 +666,14 @@ export function Character({
         rx = 0.55 - pitch * 0.5;
         ry = 0.05;
         rz = 0;
-        _off.set(0, -sight - 0.015, 0.44).applyAxisAngle(X_AXIS, -pitch);
+        _off.set(0, -sightH - 0.015, 0.44).applyAxisAngle(X_AXIS, -pitch);
       } else {
         // Súng trường: cầm ngang hông chĩa về trước; chạy thì ôm chéo trước ngực; ngắm thì tì báng vào vai.
         _gunPos.copy(_anchor).add(_off.set(lerp(-0.13, -0.08, runW), lerp(-0.22, -0.18, runW), lerp(0.24, 0.18, runW)));
         rx = lerp(0.22 - pitch * 0.55, 0.45, runW);
         ry = lerp(0.14, 0.75, runW);
         rz = lerp(0, 0.25, runW);
-        _off.set(0, -sight - 0.008, Math.max(0.2, stockLength(gunId) - 0.1)).applyAxisAngle(X_AXIS, -pitch);
+        _off.set(0, -sightH - 0.008, Math.max(0.2, stockLength(gunId) - 0.1)).applyAxisAngle(X_AXIS, -pitch);
       }
       _off.add(_eye);
       _gunPos.lerp(_off, aimW);
@@ -859,7 +862,7 @@ export function Character({
         {/* Súng: cầm hai tay (vị trí và hướng đặt mỗi khung hình). */}
         {gunId && (
           <group ref={gun} name="weapon" visible={false}>
-            <GunModel weaponId={gunId} opacity={o} />
+            <GunModel weaponId={gunId} sight={sight} opacity={o} />
           </group>
         )}
         {/* Choáng: sao vàng bay vòng quanh đầu. Chóng mặt: vòng xoáy. */}

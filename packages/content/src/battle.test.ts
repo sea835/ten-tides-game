@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BATTLE_SITES, battleMap, battleSpawn, boxAt, insideBox, raycastBoxes, raycastTerrain } from "./battle.ts";
-import { WEAPONS, falloff } from "./battleItems.ts";
+import { WEAPON, WEAPONS, bulletAt, bulletDrop, falloff } from "./battleItems.ts";
 
 describe("bản đồ Battleground", () => {
   const map = battleMap(12345);
@@ -55,5 +55,19 @@ describe("boxAt", () => {
     const b = map.boxes.find((x) => x.solid && x.pitch === 0 && x.w > 2 && x.d > 2 && x.h > 2)!;
     expect(boxAt(map.index, b.x, b.y, b.z)).not.toBeNull();
     expect(boxAt(map.index, b.x, b.y + b.h + 50, b.z)).toBeNull();
+  });
+});
+
+describe("đường đạn", () => {
+  it("đạn rơi dần theo quãng bay, súng bắn tỉa ở 400 m rơi cỡ một mét rưỡi", () => {
+    const kar = WEAPON.get("kar98k")!;
+    expect(bulletDrop(kar.velocity, 50)).toBeLessThan(0.05);
+    expect(bulletDrop(kar.velocity, 400)).toBeGreaterThan(1);
+    expect(bulletDrop(kar.velocity, 400)).toBeLessThan(2);
+    const p = bulletAt([0, 10, 0], [1, 0, 0], kar.velocity, 200);
+    expect(p[0]).toBe(200);
+    expect(p[1]).toBeCloseTo(10 - bulletDrop(kar.velocity, 200), 6);
+    // Đạn chậm (tiểu liên .45) rơi nhiều hơn đạn nhanh ở cùng tầm.
+    expect(bulletDrop(WEAPON.get("ump45")!.velocity, 100)).toBeGreaterThan(bulletDrop(WEAPON.get("m416")!.velocity, 100) * 5);
   });
 });

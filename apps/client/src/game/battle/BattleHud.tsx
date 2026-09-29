@@ -8,19 +8,24 @@ import {
   HELMETS,
   MAP_HALF_SIZE,
   OUTFITS,
+  SIGHTS,
+  SIGHT_IDS,
   THROWABLES,
   WEAPON,
   WEAPONS,
   battleMap,
+  bulletDrop,
   lootLabel,
+  sightFits,
+  type SightId,
   type AmmoId,
   type WeaponClass,
 } from "@tentides/content";
-import { Messages } from "@tentides/protocol";
+import { BATTLE_TIMES, BATTLE_WEATHERS, Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { look } from "../input.ts";
 import { localPosition } from "../shared.ts";
-import { DEFAULT_SETTINGS, setSettings, useSettings } from "../settings.ts";
+import { DEFAULT_SETTINGS, getSettings, setSettings, useSettings } from "../settings.ts";
 import { playBuy, playCountdown, playZoneTick } from "../sound/guns.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
@@ -53,7 +58,68 @@ function nameOf(room: IslandRoom, id: string): string {
   return room.state.players.get(id)?.name ?? (id ? "?" : "");
 }
 
+/** Tên súng kèm ống ngắm đang lắp (vd. "Kar98k · 8x"). */
+function withSight(name: string | undefined, sight: string): string {
+  if (!name) return "";
+  const s = SIGHTS[sight as SightId];
+  return s ? `${name} · ${s.id === "reddot" ? "Red Dot" : s.id === "holo" ? "Holo" : s.id.slice(1) + "x"}` : name;
+}
+
 // ---------------------------------------------------------------------------- tâm ngắm, dấu trúng, bị bắn, ống ngắm
+
+/**
+ * Nhìn qua ống kính: khung đen tròn, tâm theo loại ống (2x chữ thập, 4x ACOG chữ V đỏ, 8x vạch mil), kèm vạch bù đạn
+ * rơi (BDC) tính đúng theo sơ tốc khẩu đang cầm và cự ly đã chỉnh: đặt vạch "300" lên mục tiêu cách 300 m là trúng.
+ */
+function ScopeView() {
+  const def = WEAPON.get(gun.weapon);
+  const sight = SIGHTS[stance.sight as SightId];
+  if (!def || !sight) return null;
+  // Điểm ảnh theo chiều dọc: nửa màn hình (50vh) ứng với tan(FOV/2) của góc nhìn đã phóng đại.
+  const halfTan = Math.tan((getSettings().fov * Math.PI) / 360) / sight.zoom;
+  const vh = (angle: number) => (50 * Math.tan(angle)) / halfTan;
+  const lift = bulletDrop(def.velocity, stance.zero) / stance.zero;
+  const ticks: { d: number; y: number }[] = [];
+  if (sight.reticle !== "cross")
+    for (let d = Math.ceil((stance.zero + 1) / 100) * 100; d <= 800; d += 100) {
+      const y = vh(bulletDrop(def.velocity, d) / d - lift);
+      if (y > 30) break;
+      // Vạch quá sát vạch trước (đạn nhanh, cự ly gần) thì bỏ, khỏi chồng chữ lên nhau.
+      if (y - (ticks[ticks.length - 1]?.y ?? 0) < 1.4) continue;
+      ticks.push({ d, y });
+    }
+  const red = sight.reticle === "chevron";
+  return (
+    <div className="b-scope">
+      <div className="b-scope-ring" />
+      {sight.reticle === "cross" && (
+        <>
+          <div className="b-scope-line h" />
+          <div className="b-scope-line v" />
+          <div className="b-scope-dot" />
+        </>
+      )}
+      {sight.reticle === "mil" && (
+        <>
+          <div className="b-scope-line h" />
+          <div className="b-scope-line v" />
+          <div className="b-scope-line h thick l" />
+          <div className="b-scope-line h thick r" />
+          <div className="b-scope-line v thick b" />
+        </>
+      )}
+      {red && <div className="b-scope-chevron" />}
+      {ticks.map((t) => (
+        <div key={t.d} className={`b-scope-tick ${red ? "red" : ""}`} style={{ top: `calc(50% + ${t.y}vh)`, width: `${Math.max(1.2, 6 - t.d / 150)}vh` }}>
+          <span>{t.d / 100}</span>
+        </div>
+      ))}
+      <div className="b-scope-zero">
+        {sight.name} · chỉnh {stance.zero} m <kbd>PgUp</kbd>/<kbd>PgDn</kbd>
+      </div>
+    </div>
+  );
+}
 
 function Reticle({ room }: { room: IslandRoom }) {
   useFrameTick(60);
@@ -61,19 +127,15 @@ function Reticle({ room }: { room: IslandRoom }) {
   const me = room.state.players.get(myId(room));
   if (!me?.alive) return null;
   const now = performance.now();
-  const scoped = stance.aiming && stance.zoom >= 3;
+  const scoped = stance.aiming && stance.scoped;
   // Khoảng hở tâm ngắm theo độ toả (radian → điểm ảnh ở FOV hiện tại xấp xỉ).
   const gap = Math.max(3, Math.min(60, stance.spread * 900 / (stance.aiming ? stance.zoom : 1)));
   const hitAge = hud.hit ? now - hud.hit.at : 9999;
   return (
     <>
       {scoped ? (
-        <div className="b-scope">
-          <div className="b-scope-ring" />
-          <div className="b-scope-line h" />
-          <div className="b-scope-line v" />
-        </div>
-      ) : (
+        <ScopeView />
+      ) : stance.aiming && stance.firstPerson && stance.sight ? null : (
         <div className={`b-cross ${stance.aiming ? "ads" : ""}`} style={{ ["--gap" as string]: `${gap}px` }}>
           <i className="t" />
           <i className="b" />
@@ -189,9 +251,9 @@ function Vitals({ room }: { room: IslandRoom }) {
   const reloading = k.reloading || gun.reloadUntil > now;
   const healing = k.healing || gun.healUntil > now;
   const slots: { key: string; slot: string; label: string; mag: number }[] = [
-    { key: "1", slot: "primary1", label: WEAPON.get(k.primary1)?.name ?? "", mag: k.mag1 },
-    { key: "2", slot: "primary2", label: WEAPON.get(k.primary2)?.name ?? "", mag: k.mag2 },
-    { key: "3", slot: "pistol", label: WEAPON.get(k.pistol)?.name ?? "", mag: k.magP },
+    { key: "1", slot: "primary1", label: withSight(WEAPON.get(k.primary1)?.name, k.sight1), mag: k.mag1 },
+    { key: "2", slot: "primary2", label: withSight(WEAPON.get(k.primary2)?.name, k.sight2), mag: k.mag2 },
+    { key: "3", slot: "pistol", label: withSight(WEAPON.get(k.pistol)?.name, k.sightP), mag: k.magP },
   ];
   const active = WEAPON.get((k as unknown as Record<string, string>)[k.active] ?? "");
   const mag = active ? (gun.weapon === active.id ? gun.mag : slots.find((s) => s.slot === k.active)?.mag ?? 0) : 0;
@@ -253,6 +315,17 @@ function Vitals({ room }: { room: IslandRoom }) {
 
 // ---------------------------------------------------------------------------- trên cùng: còn sống, hạ gục, vùng
 
+const WEATHER_LABEL: Record<string, string> = { sunny: "☀ Nắng", cloudy: "☁ Nhiều mây", rain: "🌧 Mưa", fog: "🌫 Sương mù", storm: "⛈ Bão", snow: "❄ Tuyết" };
+const TIME_LABEL: Record<string, string> = { dawn: "Bình minh", day: "Ban ngày", dusk: "Hoàng hôn", night: "Ban đêm" };
+
+/** Giờ trong ngày (0–1) ra chữ: 0 là rạng đông (5 giờ), 0,82 là lúc mặt trời lặn (19 giờ). */
+function clockLabel(clock: number): string {
+  const hours = clock < 0.82 ? 5 + (clock / 0.82) * 14 : 19 + ((clock - 0.82) / 0.18) * 10;
+  const h = Math.floor(hours) % 24;
+  const m = Math.floor((hours % 1) * 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function TopBar({ room }: { room: IslandRoom }) {
   const s = useRoomSnapshot(room, (st) => ({
     phase: st.phase,
@@ -260,6 +333,8 @@ function TopBar({ room }: { room: IslandRoom }) {
     kills: st.players.get(myId(room))?.kills ?? 0,
     zone: { timeLeft: st.zone.timeLeft, shrinking: st.zone.shrinking, stage: st.zone.stage, dps: st.zone.dps },
     timeLeft: st.timeLeft,
+    weather: st.weather,
+    clock: Math.floor(st.clock * 288) / 288,
   }));
   const last = useRef(0);
   // Đếm ngược mấy giây cuối pha chuẩn bị.
@@ -278,6 +353,11 @@ function TopBar({ room }: { room: IslandRoom }) {
       <div className="b-count">
         <CrossIcon size={15} /> <strong>{s.kills}</strong> hạ gục
       </div>
+      {s.weather && (
+        <div className="b-count" title="Thời tiết và giờ trong trận">
+          {WEATHER_LABEL[s.weather] ?? s.weather} · {clockLabel(s.clock)}
+        </div>
+      )}
       {s.phase === "battle" && (
         <div className={`b-zone ${s.zone.shrinking ? "shrinking" : ""}`}>
           {s.zone.shrinking ? "Vùng an toàn đang thu hẹp" : `Vùng thu hẹp sau ${s.zone.timeLeft}s`}
@@ -341,7 +421,7 @@ function Pickup() {
 
 // ---------------------------------------------------------------------------- cửa hàng
 
-type Tab = "guns" | "gear" | "ammo" | "outfit";
+type Tab = "guns" | "sights" | "gear" | "ammo" | "outfit";
 
 function BuyMenu({ room }: { room: IslandRoom }) {
   const hud = useBattleHud();
@@ -381,6 +461,7 @@ function BuyMenu({ room }: { room: IslandRoom }) {
         {(
           [
             ["guns", "Súng"],
+            ["sights", "Ống ngắm"],
             ["ammo", "Đạn"],
             ["gear", "Giáp · ném · hồi máu"],
             ["outfit", "Trang phục"],
@@ -396,10 +477,19 @@ function BuyMenu({ room }: { room: IslandRoom }) {
           [...byClass.entries()].map(([cls, list]) => (
             <section key={cls}>
               <h4>{CLASS_LABEL[cls]}</h4>
-              {list.map((w) => item(w.id, w.name, w.price, `${w.damage}${w.pellets > 1 ? `×${w.pellets}` : ""} sát thương · ${w.rpm} phát/phút · băng ${w.mag}${w.zoom >= 3 ? ` · ống ${w.zoom}x` : ""}`))}
+              {list.map((w) => item(w.id, w.name, w.price, `${w.damage}${w.pellets > 1 ? `×${w.pellets}` : ""} sát thương · ${w.rpm} phát/phút · băng ${w.mag} · đạn bay ${w.velocity} m/s`))}
             </section>
           ))}
         {tab === "guns" && <p className="b-buy-note">M249, AWM và giáp, mũ cấp 3 chỉ có trong Kho vũ khí, trên tàu và ở bãi mìn. Mua súng được tặng 2 băng đạn.</p>}
+        {tab === "sights" && (
+          <section>
+            {SIGHT_IDS.filter((id) => SIGHTS[id].price > 0).map((id) => {
+              const fits = WEAPONS.filter((w) => sightFits(id, w)).length === WEAPONS.length ? "mọi súng" : WEAPONS.filter((w) => sightFits(id, w) && w.price > 0).map((w) => w.name).join(", ");
+              return item(`sight:${id}`, SIGHTS[id].name, SIGHTS[id].price, `phóng ${SIGHTS[id].zoom}x · ${SIGHTS[id].scope ? "ống kính" : "kính phản xạ"} · lắp cho ${fits}`);
+            })}
+            <p className="b-buy-note">Mua hay nhặt ống ngắm thì tự lắp lên khẩu đang cầm (hoặc khẩu hợp nhất), ống cũ rơi xuống đất. Ống 8x chỉ nhặt được ở kho vũ khí, trên tàu. Có ống kính thì PageUp/PageDown chỉnh cự ly ngắm (đạn rơi theo quỹ đạo, bắn xa phải ngắm cao hơn hoặc dùng vạch bù).</p>
+          </section>
+        )}
         {tab === "ammo" && (
           <section>
             {(Object.keys(AMMO) as AmmoId[]).map((a) => item(`ammo:${a}`, AMMO[a].name, AMMO[a].price, `${AMMO[a].pack} viên · dùng cho ${WEAPONS.filter((w) => w.ammo === a).map((w) => w.name).join(", ")}`))}
@@ -448,6 +538,8 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
     phase: st.phase,
     host: st.hostId,
     bots: st.bots,
+    weather: st.weatherPick,
+    time: st.timePick,
     players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color })),
   }));
   const me = myId(room);
@@ -474,6 +566,30 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         Máy (bot) cùng chơi: <strong>{s.bots}</strong>
         <input type="range" min={0} max={12} value={s.bots} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { bots: Number(e.target.value) })} />
       </label>
+      <div className="b-sky-pick">
+        <label>
+          Thời tiết
+          <select value={s.weather} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { weather: e.target.value as "random" })}>
+            <option value="random">Ngẫu nhiên (đổi dần giữa trận)</option>
+            {BATTLE_WEATHERS.map((w) => (
+              <option key={w} value={w}>
+                {WEATHER_LABEL[w]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Giờ
+          <select value={s.time} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { time: e.target.value as "random" })}>
+            <option value="random">Ngẫu nhiên</option>
+            {BATTLE_TIMES.map((t) => (
+              <option key={t} value={t}>
+                {TIME_LABEL[t]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {isHost ? (
         <button className="primary big" onClick={() => room.send(Messages.start)}>
           <CrossIcon size={18} /> Bắt đầu trận ({s.players.length + s.bots} người)

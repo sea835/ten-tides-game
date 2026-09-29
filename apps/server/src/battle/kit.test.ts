@@ -66,4 +66,24 @@ describe("hành trang Battleground", () => {
     expect(items).toContain("ammo:556:30");
     expect(items).toContain("money:2000");
   });
+
+  it("ống ngắm lắp lên khẩu hợp, thay ống cũ (ống cũ rơi), súng lục không lắp ống 4x", () => {
+    const k = kit();
+    const dropped: string[] = [];
+    expect(receive(k, "sight:x4", dropped)).toBe(false);
+    receive(k, "p92", dropped);
+    expect(receive(k, "sight:x4", dropped)).toBe(false);
+    expect(receive(k, "sight:reddot", dropped)).toBe(true);
+    expect(k.sightP).toBe("reddot");
+    receive(k, "kar98k", dropped);
+    expect(receive(k, "sight:x4", dropped)).toBe(true);
+    expect(k.sight1).toBe("x4");
+    k.active = "primary1";
+    receive(k, "sight:x8", dropped);
+    expect(k.sight1).toBe("x8");
+    expect(dropped).toEqual(["sight:x4"]);
+    expect(everything(k)).toContain("sight:x8");
+    expect(priceOf("sight:x8")).toBeNull();
+    expect(priceOf("sight:x2")).toBe(300);
+  });
 });

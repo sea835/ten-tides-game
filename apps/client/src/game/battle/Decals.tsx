@@ -231,6 +231,7 @@ export function BulletHoles({ world }: { world: World }) {
   const bitMesh = useRef<InstancedMesh>(null);
   const sparkMesh = useRef<InstancedMesh>(null);
   const bits = useRef<Bit[]>([]);
+  const pending = useRef<Impact[]>([]);
 
   // Tạo và huỷ trong cùng một effect (StrictMode chạy hai lần).
   const res = useMemo(() => ({ geometry: new PlaneGeometry(1, 1), bitGeo: new BoxGeometry(1, 1, 1) }), []);
@@ -371,7 +372,16 @@ export function BulletHoles({ world }: { world: World }) {
   useFrame(({ camera }, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const cam = camera.position;
-    for (const imp of effects.impacts.splice(0)) spawn(imp, Math.hypot(imp.x - cam.x, imp.y - cam.y, imp.z - cam.z));
+    // Đạn bay xa tới nơi muộn hơn: giữ lại tới lúc đạn tới mới phụt bụi, để lỗ.
+    const nowS = performance.now() / 1000;
+    const waiting = pending.current;
+    waiting.push(...effects.impacts.splice(0));
+    for (let i = waiting.length - 1; i >= 0; i--) {
+      const imp = waiting[i]!;
+      if ((imp.at ?? 0) > nowS) continue;
+      waiting.splice(i, 1);
+      spawn(imp, Math.hypot(imp.x - cam.x, imp.y - cam.y, imp.z - cam.z));
+    }
     for (const s of effects.splats.splice(0)) if (Math.hypot(s.x - cam.x, s.y - cam.y, s.z - cam.z) < 120) addDecal("blood", s.x, s.y, s.z, s.nx, s.ny, s.nz, s.scale);
 
     const bm = bitMesh.current;

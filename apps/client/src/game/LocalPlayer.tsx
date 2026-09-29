@@ -564,9 +564,11 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const feetY = next.y - FEET_OFFSET;
     // Battleground: ngắm qua ống (phóng đại từ 3 lần) thì nhìn bằng mắt; ngắm thường thì kéo camera sát vai.
     const zoom = battle && stance.aiming ? stance.zoom : 1;
-    const scoped = zoom >= 3;
+    const scoped = battle && stance.aiming && stance.scoped;
     aimZoom.value = zoom;
-    const firstPerson = getCameraView() === "first" || scoped;
+    // Ngắm bằng ống ngắm (kể cả red dot, holo) thì luôn nhìn bằng mắt qua kính như súng thật.
+    const firstPerson = getCameraView() === "first" || scoped || (battle && stance.aiming && !!stance.sight && !dead);
+    stance.firstPerson = firstPerson && !dead;
     if (avatar.current) avatar.current.visible = !firstPerson && !dead;
     const standCam = s.crouching ? CAM_HEIGHT_CROUCH : CAM_HEIGHT_STAND;
     s.camHeight += ((s.sitting || sliding ? CAM_HEIGHT_SIT : standCam) - s.camHeight) * Math.min(1, dt * 6);
@@ -581,7 +583,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       camTarget.z -= Math.sin(view.yaw) * shoulder;
     }
     // FOV theo cài đặt, thu hẹp khi ngắm.
-    const wantFov = battle ? getSettings().fov / (stance.aiming ? (scoped ? zoom : Math.max(1.15, zoom)) : 1) : 60;
+    // Phóng đại thật: thu góc nhìn theo tang (ống 4x thì vật to gấp 4 lần), không chia thẳng độ.
+    const mag = battle && stance.aiming ? (scoped ? zoom : Math.max(1.15, zoom)) : 1;
+    const baseFov = battle ? getSettings().fov : 60;
+    const wantFov = mag > 1 ? (2 * Math.atan(Math.tan((baseFov * Math.PI) / 360) / mag) * 180) / Math.PI : baseFov;
     s.fov += (wantFov - s.fov) * Math.min(1, dt * (scoped ? 30 : 12));
     const cam = state.camera as import("three").PerspectiveCamera;
     if (Math.abs(cam.fov - s.fov) > 0.01) {
@@ -902,12 +907,13 @@ function atDigSite(room: IslandRoom, x: number, z: number): boolean {
 
 /** Vẽ lại nhân vật khi mình bắt đầu hay thôi vác rương, hay đổi món cầm trên tay. */
 /** Battleground: súng đang cầm, áo ngụy trang, giáp, mũ của mình. */
-function BattleLook({ room, children }: { room: IslandRoom; children: (look: { weapon: string; outfit: string; armor: number; helmet: number }) => ReactNode }) {
+function BattleLook({ room, children }: { room: IslandRoom; children: (look: { weapon: string; sight: string; outfit: string; armor: number; helmet: number }) => ReactNode }) {
   const look = useRoomSnapshot(room, (s) => {
     const k = s.players.get(myId(room))?.kit;
-    if (!k) return { weapon: "", outfit: "woodland", armor: 0, helmet: 0 };
+    if (!k) return { weapon: "", sight: "", outfit: "woodland", armor: 0, helmet: 0 };
     const slot = k.active;
-    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+    const gunSlot = slot === "primary1" || slot === "primary2" || slot === "pistol";
+    return { weapon: gunSlot ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
   return <>{children(look)}</>;
 }

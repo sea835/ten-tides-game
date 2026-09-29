@@ -76,7 +76,9 @@ export function DayCycle({
     const now = performance.now();
     if (state.timeLeft !== timer.current.timeLeft) timer.current = { timeLeft: state.timeLeft, at: now };
     const remaining = Math.max(state.timeLeft - 1, state.timeLeft - (now - timer.current.at) / 1000);
-    const t = dayTime(state.phase, remaining, state.phaseDuration);
+    // Battleground: giờ trong ngày do server bốc thăm mỗi trận (sáng sớm, trưa, chiều tà, đêm) rồi trôi chậm.
+    const battle = state.mode === "battle";
+    const t = battle ? state.clock : dayTime(state.phase, remaining, state.phaseDuration);
 
     const u = Math.min(1, t / SUNSET);
     const elevation = t < SUNSET ? Math.sin(Math.PI * u) : 0;
@@ -136,7 +138,8 @@ export function DayCycle({
         light.color.copy(SUN_WARM).lerp(SUN_NOON, day);
         light.position.copy(localPosition).addScaledVector(sunDir, 80);
       } else {
-        light.intensity = 0.45 * shade * (1 - 0.5 * overcast) + w.flash * 3;
+        // Đêm Battleground: trăng sáng hơn cho vẫn đánh nhau được (bóng người vẫn thấy, xa thì chìm vào tối).
+        light.intensity = (battle ? 0.8 : 0.45) * shade * (1 - 0.5 * overcast) + w.flash * 3;
         light.color.copy(MOON);
         light.position.set(localPosition.x - 30, localPosition.y + 45, localPosition.z + 20);
       }

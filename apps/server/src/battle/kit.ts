@@ -4,7 +4,9 @@ import {
   HEALS,
   HELMETS,
   OUTFITS,
+  SIGHTS,
   THROWABLES,
+  sightFits,
   WEAPON,
   type AmmoId,
   type HealId,
@@ -36,6 +38,38 @@ export function setMag(kit: KitState, slot: GunSlot, n: number) {
   else kit.magP = n;
 }
 
+/** Ống ngắm đang lắp trên khẩu ở ô này. */
+export function sightOf(kit: KitState, slot: GunSlot): string {
+  return slot === "primary1" ? kit.sight1 : slot === "primary2" ? kit.sight2 : kit.sightP;
+}
+
+export function setSight(kit: KitState, slot: GunSlot, sight: string) {
+  if (slot === "primary1") kit.sight1 = sight;
+  else if (slot === "primary2") kit.sight2 = sight;
+  else kit.sightP = sight;
+}
+
+/**
+ * Lắp ống ngắm: ưu tiên khẩu đang cầm, rồi khẩu chưa có ống, rồi khẩu đang có ống kém hơn. Ống cũ tháo ra rơi xuống.
+ * Không khẩu nào lắp được thì không nhận.
+ */
+export function attachSight(kit: KitState, sight: string, dropped: Dropped): boolean {
+  const fits = GUN_SLOTS.filter((slot) => {
+    const def = weaponIn(kit, slot);
+    return def && sightFits(sight, def) && sightOf(kit, slot) !== sight;
+  });
+  if (!fits.length) return false;
+  const zoom = (id: string) => (id in SIGHTS ? SIGHTS[id as keyof typeof SIGHTS].zoom : 0);
+  const slot =
+    fits.find((sl) => sl === kit.active) ??
+    fits.find((sl) => !sightOf(kit, sl)) ??
+    [...fits].sort((a, b) => zoom(sightOf(kit, a)) - zoom(sightOf(kit, b)))[0]!;
+  const old = sightOf(kit, slot);
+  if (old) dropped.push(`sight:${old}`);
+  setSight(kit, slot, sight);
+  return true;
+}
+
 export function ammoOf(kit: KitState, ammo: string): number {
   return kit.ammo.get(ammo) ?? 0;
 }
@@ -48,6 +82,7 @@ export function resetKit(kit: KitState, money: number) {
   kit.money = money;
   kit.primary1 = kit.primary2 = kit.pistol = "";
   kit.mag1 = kit.mag2 = kit.magP = 0;
+  kit.sight1 = kit.sight2 = kit.sightP = "";
   kit.active = "";
   kit.ammo.clear();
   kit.frag = kit.smoke = kit.mine = kit.bandage = kit.medkit = 0;
@@ -75,6 +110,12 @@ export function giveWeapon(kit: KitState, def: WeaponDef, mag = def.mag): Droppe
   }
   kit[slot] = def.id;
   setMag(kit, slot, mag);
+  // Ống ngắm của khẩu cũ: lắp được lên khẩu mới thì giữ, không thì tháo ra để lại.
+  const sight = sightOf(kit, slot);
+  if (sight && !sightFits(sight, def)) {
+    dropped.push(`sight:${sight}`);
+    setSight(kit, slot, "");
+  }
   kit.active = slot;
   kit.reloading = false;
   return dropped;
@@ -96,6 +137,7 @@ export function receive(kit: KitState, item: string, dropped: Dropped): boolean 
     kit.money += Number(arg) || 0;
     return true;
   }
+  if (kind === "sight" && arg && arg in SIGHTS) return attachSight(kit, arg, dropped);
   if (kind === "armor" || kind === "helmet") {
     const level = Number(arg);
     const table = kind === "armor" ? ARMOR : HELMETS;
@@ -141,6 +183,7 @@ export function priceOf(item: string): number | null {
   if (kind === "armor") return ARMOR[Number(arg) - 1]?.price || null;
   if (kind === "helmet") return HELMETS[Number(arg) - 1]?.price || null;
   if (kind === "outfit") return 0;
+  if (kind === "sight") return (arg && arg in SIGHTS && SIGHTS[arg as keyof typeof SIGHTS].price) || null;
   if (item in THROWABLES) return THROWABLES[item as ThrowableId].price;
   if (item in HEALS) return HEALS[item as HealId].price;
   return null;
@@ -153,6 +196,8 @@ export function everything(kit: KitState): string[] {
     const def = weaponIn(kit, slot);
     if (!def) continue;
     out.push(def.id);
+    const sight = sightOf(kit, slot);
+    if (sight) out.push(`sight:${sight}`);
     const inMag = magOf(kit, slot);
     if (inMag) addAmmo(kit, def.ammo, inMag);
   }

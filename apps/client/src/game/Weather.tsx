@@ -15,6 +15,7 @@ import type { IslandRoom } from "../net.ts";
 import { useQuality } from "./graphics.ts";
 import { mulberry32, windStrength } from "./nature.ts";
 import { play } from "./sound/sfx.ts";
+import { weatherUniforms } from "./textures.ts";
 import { localEnv, localPosition, shake, sky, weatherFx } from "./shared.ts";
 
 // Thời tiết của ngày hiện ra trên trời và dưới đất (mây vẽ trong vòm trời, xem Sky.tsx): mưa rơi quanh người,
@@ -29,6 +30,8 @@ const TARGETS: Record<string, Partial<typeof weatherFx>> = {
   fog: { cloud: 0.4, fog: 1 },
   storm: { cloud: 1, rain: 1, storm: 1 },
   quake: { cloud: 0.45, quake: 1 },
+  // Battleground: tuyết rơi, trời trắng đục, nhìn không xa lắm.
+  snow: { cloud: 0.75, fog: 0.4, snow: 1 },
 };
 
 /** Chuyển dần sang thời tiết mới; tính mức gió cho cây cỏ. */
@@ -38,11 +41,16 @@ function WeatherState({ room }: { room: IslandRoom }) {
     const s = room.state;
     const target = s.phase === "lobby" || s.phase === "create" || s.phase === "pack" ? {} : (TARGETS[s.weather] ?? {});
     const k = Math.min(1, dt * 0.35);
-    for (const key of ["cloud", "rain", "fog", "storm", "quake"] as const) {
+    for (const key of ["cloud", "rain", "fog", "storm", "quake", "snow"] as const) {
       const goal = target[key] ?? (key === "cloud" ? 0.15 : 0);
       weatherFx[key] += (goal - weatherFx[key]) * k;
     }
-    windStrength.value = 1 + weatherFx.rain * 0.8 + weatherFx.storm * 2.2;
+    windStrength.value = 1 + weatherFx.rain * 0.8 + weatherFx.storm * 2.2 + weatherFx.snow * 0.4;
+    // Tuyết đọng dần (chậm hơn trời chuyển), tan cũng chậm; mưa thì ướt nhanh, khô chậm.
+    const snowGoal = weatherFx.snow > 0.5 ? 1 : 0;
+    weatherUniforms.uSnow.value += (snowGoal - weatherUniforms.uSnow.value) * Math.min(1, dt * (snowGoal ? 0.08 : 0.03));
+    const wetGoal = Math.min(1, weatherFx.rain * 1.3);
+    weatherUniforms.uWet.value += (wetGoal - weatherUniforms.uWet.value) * Math.min(1, dt * (wetGoal > weatherUniforms.uWet.value ? 0.25 : 0.04));
   });
   return null;
 }
@@ -108,6 +116,63 @@ function Rain({ count }: { count: number }) {
     <instancedMesh ref={mesh} args={[undefined, undefined, count]} frustumCulled={false}>
       <boxGeometry args={[0.018, 0.7, 0.018]} />
       <meshBasicMaterial color="#b9cfdf" transparent opacity={0.45} depthWrite={false} />
+    </instancedMesh>
+  );
+}
+
+// ---------------------------------------------------------------------------- tuyết
+
+const SNOW_AREA = 24;
+const SNOW_HEIGHT = 16;
+
+/** Bông tuyết: rơi chậm, lượn ngang theo gió, bay theo camera trong một hộp quanh người nhìn. */
+function Snow({ count }: { count: number }) {
+  const mesh = useRef<InstancedMesh>(null);
+  const flakes = useMemo(() => {
+    const rand = mulberry32(11);
+    return Array.from({ length: count }, () => ({
+      x: (rand() - 0.5) * 2 * SNOW_AREA,
+      y: rand() * SNOW_HEIGHT,
+      z: (rand() - 0.5) * 2 * SNOW_AREA,
+      speed: 0.9 + rand() * 1.1,
+      phase: rand() * 6.28,
+      size: 0.6 + rand() * 0.8,
+    }));
+  }, [count]);
+  const dummy = useMemo(() => new Object3D(), []);
+  useFrame(({ camera, clock }, rawDt) => {
+    const m = mesh.current;
+    if (!m) return;
+    const dt = Math.min(rawDt, 0.05);
+    const amount = weatherFx.snow * (1 - localEnv.indoor) * (localEnv.underwater ? 0 : 1);
+    const visible = Math.floor(count * amount);
+    m.visible = visible > 0;
+    if (!m.visible) return;
+    const t = clock.elapsedTime;
+    const wind = 0.6 + weatherFx.storm;
+    const wrap = (v: number, c: number, half: number) => c + ((((v - c) % (2 * half)) + 3 * half) % (2 * half)) - half;
+    for (let i = 0; i < count; i++) {
+      const f = flakes[i]!;
+      if (i >= visible) {
+        dummy.scale.setScalar(0);
+      } else {
+        f.y -= f.speed * dt;
+        f.x += (wind + Math.sin(t * 0.9 + f.phase) * 0.6) * dt;
+        f.z += Math.cos(t * 0.7 + f.phase * 1.3) * 0.5 * dt;
+        if (f.y < -3) f.y += SNOW_HEIGHT;
+        // Bông tuyết neo theo thế giới (đi qua thì lướt qua người), gói vòng quanh camera.
+        dummy.position.set(wrap(f.x, camera.position.x, SNOW_AREA), camera.position.y - 5 + f.y, wrap(f.z, camera.position.z, SNOW_AREA));
+        dummy.scale.setScalar(f.size);
+      }
+      dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix);
+    }
+    m.instanceMatrix.needsUpdate = true;
+  });
+  return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, count]} frustumCulled={false}>
+      <icosahedronGeometry args={[0.025, 0]} />
+      <meshBasicMaterial color="#f4f8ff" transparent opacity={0.9} depthWrite={false} />
     </instancedMesh>
   );
 }
@@ -260,6 +325,7 @@ export function Weather({ room, world }: { room: IslandRoom; world: World }) {
     <>
       <WeatherState room={room} />
       <Rain count={high ? 1600 : 600} />
+      <Snow count={high ? 2400 : 900} />
       <Lightning />
       <Quake />
       <Fireflies world={world} />

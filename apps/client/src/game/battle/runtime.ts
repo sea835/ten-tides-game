@@ -10,9 +10,11 @@ export const bodies = new Map<string, { x: number; y: number; z: number; crouch:
 /**
  * Tư thế của mình: ngắm, ngồi xổm, phóng đại đang dùng, độ toả đạn hiện tại (radian).
  * `wall`: nòng súng sát vật cản (0 thoáng, 1 dí sát tường), súng dựng lên cho khỏi xuyên tường.
+ * `scoped`: đang nhìn qua ống kính (khung đen quanh); `sight`: ống ngắm lắp trên khẩu đang cầm; `zero`: cự ly chỉnh
+ * thước ngắm (m) — đạn đi đúng tâm ở cự ly này, xa hơn thì rơi dưới tâm.
  * `speed`: tốc độ ngang thật (m/s); `land`: độ nặng cú đáp đất vừa rồi (0–1, giảm dần) để camera, súng nhún theo.
  */
-export const stance = { aiming: false, crouching: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
+export const stance = { firstPerson: false, aiming: false, scoped: false, sight: "", zero: 100, crouching: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
 
 /**
  * Giật súng.
@@ -43,6 +45,8 @@ export interface Tracer {
   born: number;
   /** Vệt của mình thì sáng hơn. */
   mine: boolean;
+  /** Sơ tốc (m/s): vệt bay tới đích mất chừng ấy thời gian, võng xuống theo đường đạn rơi. */
+  speed?: number;
 }
 export interface Impact {
   x: number;
@@ -59,12 +63,16 @@ export interface Impact {
   size?: number;
   /** Không rõ mặt găm (pháp tuyến đoán): chỉ phụt bụi, không để lỗ. */
   noHole?: boolean;
+  /** Đạn tới nơi lúc này (giây, theo performance.now): bắn xa thì bụi, lỗ đạn hiện muộn hơn một chút. */
+  at?: number;
 }
 export interface Flash {
   x: number;
   y: number;
   z: number;
   born: number;
+  /** Chỉ chiếu sáng (lửa đã vẽ trên súng trước mặt). */
+  lightOnly?: boolean;
 }
 export interface Blast {
   kind: "frag" | "mine" | "smoke";

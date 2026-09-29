@@ -101,7 +101,7 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
   const look = useRoomSnapshot(room, () => {
     const k = player.kit;
     const slot = k.active;
-    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
   // Súng người khác chạm tường: dò tia từ ngực theo hướng họ ngắm (vài lần mỗi giây, chỉ khi ở gần).
   const wall = useRef({ value: 0, at: 0 });
@@ -154,7 +154,7 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
   });
   return (
     <group ref={root} position={[player.x, player.y, player.z]} visible={alive}>
-      <Character ref={avatar} color={player.color} weapon={look.weapon} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
+      <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
     </group>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, WEAPON, type WeaponDef } from "@tentides/content";
+import { HEALS, SIGHTS, WEAPON, bulletAt, bulletDrop, bulletSteps, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
@@ -10,7 +10,7 @@ import { isTyping, keys, look } from "../input.ts";
 import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
 import { playArmorHit, playDraw, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt } from "../sound/guns.ts";
-import { bodies, effects, getBattleHud, localAvatar, localBody, menuOpen, recoil, setBattleHud, stance } from "./runtime.ts";
+import { bodies, effects, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, setBattleHud, stance } from "./runtime.ts";
 import { physicsProbe } from "./surface.ts";
 import { muzzleOffset } from "../GunModel.tsx";
 
@@ -25,6 +25,18 @@ const GUN_SLOTS = ["primary1", "primary2", "pistol"] as const;
 
 function magOf(kit: KitState, slot: string): number {
   return slot === "primary1" ? kit.mag1 : slot === "primary2" ? kit.mag2 : slot === "pistol" ? kit.magP : 0;
+}
+
+export function sightOf(kit: KitState, slot: string): string {
+  return slot === "primary1" ? kit.sight1 : slot === "primary2" ? kit.sight2 : slot === "pistol" ? kit.sightP : "";
+}
+
+/** Cự ly chỉnh thước ngắm mặc định và lớn nhất (m) theo loại súng; PageUp/PageDown đổi từng 100 m khi có ống ngắm. */
+export function zeroRange(def: WeaponDef, sight: string): { base: number; max: number } {
+  const base = def.class === "pistol" || def.class === "shotgun" || def.class === "smg" ? 50 : 100;
+  const scoped = sight in SIGHTS && SIGHTS[sight as SightId].scope;
+  if (!scoped) return { base, max: base };
+  return { base, max: def.class === "sniper" ? 1000 : def.class === "dmr" ? 800 : def.class === "ar" || def.class === "lmg" ? 500 : 300 };
 }
 
 /** Súng đang cầm và băng đạn dự đoán trên máy (server trả số thật sau). */
@@ -174,6 +186,18 @@ export function Shooter({ room }: { room: IslandRoom }) {
           return;
         case "KeyR":
           return reload();
+        case "PageUp":
+        case "PageDown": {
+          // Chỉnh cự ly thước ngắm (ống ngắm): đạn đi đúng tâm ở cự ly này.
+          const k = kit();
+          const def = k && WEAPON.get((k as unknown as Record<string, string>)[k.active] ?? "");
+          if (!k || !def) return;
+          const { base, max } = zeroRange(def, sightOf(k, k.active));
+          stance.zero = Math.max(base, Math.min(max, stance.zero + (e.code === "PageUp" ? 100 : -100)));
+          if (stance.zero < 100) stance.zero = base;
+          playDryFire();
+          return;
+        }
         case "Digit7":
           return heal("bandage");
         case "Digit8":
@@ -297,10 +321,13 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const def = WEAPON.get(weaponId);
     // Đổi súng hoặc server cập nhật băng đạn: lấy lại số đạn thật (trừ lúc vừa bắn, gói tin chưa kịp về).
     const serverMag = magOf(k, slot);
-    if (gun.slot !== slot || gun.weapon !== weaponId) {
-      gun.mag = serverMag;
+    const sight = def ? sightOf(k, slot) : "";
+    if (gun.slot !== slot || gun.weapon !== weaponId || stance.sight !== sight) {
+      if (gun.slot !== slot || gun.weapon !== weaponId) gun.mag = serverMag;
       gun.slot = slot;
       gun.weapon = weaponId;
+      stance.sight = sight;
+      stance.zero = def ? zeroRange(def, sight).base : 100;
     } else if (now - gun.lastShot > 350) gun.mag = serverMag;
     if (!k.reloading && gun.reloadUntil && now > gun.reloadUntil + 400) gun.reloadUntil = 0;
     const reloading = k.reloading || gun.reloadUntil > now;
@@ -308,7 +335,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Ngắm.
     const wantAim = (getSettings().toggleAim ? inp.aimToggle : inp.aimHeld) && !!def && !reloading && !stance.sprinting;
     stance.aiming = wantAim;
-    stance.zoom = def ? def.zoom : 1;
+    stance.zoom = def ? zoomOf(def, sight) : 1;
+    stance.scoped = !!sight && SIGHTS[sight as SightId]?.scope === true;
     stance.holdFire = inp.fire;
 
     // Độ toả: ngắm thì chụm, đi lại, nhảy thì toả; bắn liền nhiều phát thì toả dần (hồi lại khi thả cò).
@@ -405,7 +433,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     gun.mag -= 1;
     const me = myId(room);
     // Điểm muốn bắn: tia từ camera qua tâm ngắm, bỏ qua đoạn từ camera tới trước mặt nhân vật (khỏi trúng chính mình).
-    const first = getCameraView() === "first" || (stance.aiming && stance.zoom >= 3);
+    const first = stance.firstPerson;
     const skip = first ? 0.3 : Math.max(0, (localPosition.x - camPos.x) * fwd.x + (localPosition.y + 1.5 - camPos.y) * fwd.y + (localPosition.z - camPos.z) * fwd.z) + 0.6;
     const maxRange = Math.min(600, def.range * 3);
     o.copy(camPos).addScaledVector(fwd, skip);
@@ -441,7 +469,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
     }
     const rays: [number, number, number][] = [];
     const hits: FireMessage["hits"] = [];
-    const ends: Vector3[] = [];
+    const ends: { at: Vector3; s: number }[] = [];
+    const o3: [number, number, number] = [muzzle.x, muzzle.y, muzzle.z];
+    // Thước ngắm chỉnh ở cự ly `zero`: nòng ngóc lên một chút để đường đạn cắt tâm ngắm đúng ở cự ly đó.
+    const lift = bulletDrop(def.velocity, stance.zero) / stance.zero;
+    const steps = bulletSteps(def.velocity, maxRange);
+    const a3 = new Vector3();
+    const b3 = new Vector3();
+    const cd = new Vector3();
     for (let k = 0; k < def.pellets; k++) {
       d.copy(p).sub(muzzle).normalize();
       // Lệch ngẫu nhiên trong hình nón độ toả.
@@ -449,45 +484,66 @@ export function Shooter({ room }: { room: IslandRoom }) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.sqrt(Math.random()) * spread;
       const up = new Vector3().crossVectors(d, right).normalize();
-      d.addScaledVector(right, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r).normalize();
+      d.addScaledVector(right, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r);
+      d.y += lift * Math.sqrt(1 - d.y * d.y);
+      d.normalize();
       rays.push([d.x, d.y, d.z]);
-      let t = maxRange;
+      const d3: [number, number, number] = [d.x, d.y, d.z];
+      // Đạn bay theo đường cong: dò từng đoạn dây cung, gặp tường hay người trước thì dừng.
+      let sHit = maxRange;
       let normal = { x: 0, y: 1, z: 0 };
-      const hw = physics.castRayAndGetNormal(new rapier.Ray(muzzle, d), maxRange, true, undefined, undefined, undefined, localBody.current ?? undefined);
-      if (hw) {
-        t = hw.timeOfImpact;
-        normal = hw.normal;
-      }
       let target = "";
       let part: "head" | "body" = "body";
-      for (const [id, b] of bodies) {
-        if (id === me || !b.alive) continue;
-        const h = rayPerson(muzzle, d, b);
-        if (h && h.t < t) {
-          t = h.t;
-          target = id;
-          part = h.part;
+      let wall = false;
+      for (let i = 1; i < steps.length; i++) {
+        a3.set(...bulletAt(o3, d3, def.velocity, steps[i - 1]!));
+        b3.set(...bulletAt(o3, d3, def.velocity, steps[i]!));
+        const len = cd.subVectors(b3, a3).length();
+        cd.divideScalar(len || 1);
+        let t = len;
+        const hw = physics.castRayAndGetNormal(new rapier.Ray(a3, cd), len, true, undefined, undefined, undefined, localBody.current ?? undefined);
+        if (hw) {
+          t = hw.timeOfImpact;
+          normal = hw.normal;
+          wall = true;
+        }
+        for (const [id, b] of bodies) {
+          if (id === me || !b.alive) continue;
+          const h = rayPerson(a3, cd, b);
+          if (h && h.t < t) {
+            t = h.t;
+            target = id;
+            part = h.part;
+          }
+        }
+        if (target || wall) {
+          sHit = steps[i - 1]! + (t / (len || 1)) * (steps[i]! - steps[i - 1]!);
+          break;
         }
       }
-      const end = muzzle.clone().addScaledVector(d, t);
-      ends.push(end);
-      if (target) hits.push({ target, part, d: t, ray: k });
-      if (t < maxRange) {
+      const end = new Vector3(...bulletAt(o3, d3, def.velocity, sHit));
+      ends.push({ at: end, s: sHit });
+      if (target) hits.push({ target, part, d: sHit, ray: k });
+      if (target || wall) {
         const size = def.class === "sniper" ? 1.35 : def.class === "dmr" ? 1.15 : def.pellets > 1 ? 0.6 : def.class === "smg" || def.class === "pistol" ? 0.85 : 1;
-        effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: normal.x, ny: normal.y, nz: normal.z, born: now / 1000, blood: !!target, size });
+        const arrive = now / 1000 + sHit / def.velocity;
+        effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: target ? -cd.x : normal.x, ny: target ? -cd.y : normal.y, nz: target ? -cd.z : normal.z, born: now / 1000, blood: !!target, size, at: arrive });
         // Trúng người: máu bắn lên tường, sàn phía sau (nếu có gần đó).
         if (target && k < 3) {
-          const behind = physics.castRayAndGetNormal(new rapier.Ray(end, d), 2.6, true, undefined, undefined, undefined, localBody.current ?? undefined);
+          const behind = physics.castRayAndGetNormal(new rapier.Ray(end, cd), 2.6, true, undefined, undefined, undefined, localBody.current ?? undefined);
           if (behind) {
-            const at = end.clone().addScaledVector(d, behind.timeOfImpact);
+            const at = end.clone().addScaledVector(cd, behind.timeOfImpact);
             effects.splats.push({ x: at.x, y: at.y, z: at.z, nx: behind.normal.x, ny: behind.normal.y, nz: behind.normal.z, scale: (part === "head" ? 1.2 : 0.8) * (1 - behind.timeOfImpact / 4) });
           }
         }
       }
     }
     const seconds = now / 1000;
-    for (const e of ends) effects.tracers.push({ ox: muzzle.x, oy: muzzle.y, oz: muzzle.z, ex: e.x, ey: e.y, ez: e.z, born: seconds, mine: true });
-    effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
+    // Vệt đạn: góc nhất thì bay ra từ đầu nòng khẩu súng trước mặt (chỗ lửa đầu nòng), không phải từ mắt.
+    const from = first && muzzleView.valid ? new Vector3(muzzleView.x, muzzleView.y, muzzleView.z) : muzzle;
+    for (const e of ends) effects.tracers.push({ ox: from.x, oy: from.y, oz: from.z, ex: e.at.x, ey: e.at.y, ez: e.at.z, born: seconds, mine: true, speed: def.velocity });
+    // Lửa đầu nòng: góc nhất thì ViewModel tự vẽ trên súng; góc ba vẽ ở đầu nòng thật.
+    if (!first) effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
     playGunshot(def.id, muzzle, true);
     if (def.class === "sniper") setTimeout(() => playBolt(), 450);
     room.send(Messages.fire, { weapon: def.id, o: [muzzle.x, muzzle.y, muzzle.z], rays, hits } satisfies FireMessage);

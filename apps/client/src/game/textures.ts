@@ -278,6 +278,8 @@ function vertexBody(world: boolean) {
 }
 
 const FRAGMENT_HEAD = /* glsl */ `
+uniform float uSnow;
+uniform float uWet;
 uniform sampler2D uDetailA;
 uniform sampler2D uDetailB;
 uniform vec4 uMaskA;
@@ -331,6 +333,14 @@ const FRAGMENT_COLOR = /* glsl */ `
     vec4 tenFine = texture2D( uDetailB, vDetailPos.xz * uDetailScale * 4.3 );
     diffuseColor.rgb *= 1.0 + ( dot( tenFine, vSplat ) / max( dot( vSplat, vec4( 1.0 ) ), 1e-3 ) - 0.5 ) * 0.3 * tenFade;
   #endif
+  #ifdef TEN_WORLD
+    // Thời tiết: mưa thì mặt đất, tường sẫm lại (ướt); tuyết phủ trắng các mặt hướng lên (đất, mái, bậu cửa, lá cây),
+    // dày mỏng loang lổ theo vân, mặt dốc đứng thì không đọng.
+    diffuseColor.rgb *= 1.0 - 0.22 * uWet;
+    float tenUp = normalize( vDetailNormal ).y;
+    float tenSnow = uSnow * smoothstep( 0.45, 0.8, tenUp ) * smoothstep( 0.25, 0.6, tenH + 0.25 * uSnow );
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( tenSnow, 0.0, 0.92 ) );
+  #endif
 `;
 
 const FRAGMENT_NORMAL = /* glsl */ `
@@ -339,6 +349,9 @@ const FRAGMENT_NORMAL = /* glsl */ `
     if ( tenBumpFade > 0.0 && uDetailBump > 0.0 ) normal = tenPerturb( -vViewPosition, normal, vec2( dFdx( tenH ), dFdy( tenH ) ) * uDetailBump * tenBumpFade, faceDirection );
   }
 `;
+
+/** Mức tuyết phủ và độ ướt của cả cảnh (Weather cập nhật theo thời tiết), dùng chung cho mọi vật liệu đã vá vân. */
+export const weatherUniforms = { uSnow: { value: 0 }, uWet: { value: 0 } };
 
 /** Bật tắt vân cho cả cảnh (đồ hoạ thấp thì tắt cho nhẹ máy). Đổi thì các vật liệu đã vá tự dựng lại shader. */
 export const detailSettings = { enabled: true };
@@ -374,8 +387,9 @@ export function applyDetail(material: MeshStandardMaterial, options: DetailOptio
   material.onBeforeCompile = (shader, renderer) => {
     prev?.call(material, shader, renderer);
     if (!detailSettings.enabled) return;
-    Object.assign(shader.uniforms, uniforms);
+    Object.assign(shader.uniforms, uniforms, weatherUniforms);
     if (options.splat) shader.defines = { ...shader.defines, TEN_SPLAT: "" };
+    if (world) shader.defines = { ...shader.defines, TEN_WORLD: "" };
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
       .replace("#include <fog_vertex>", `#include <fog_vertex>\n${vertexBody(world)}`);

@@ -13,12 +13,13 @@ import {
   Object3D,
   PlaneGeometry,
   ShaderMaterial,
+  Vector3,
   type InstancedMesh,
   type LineLoop,
   type Mesh,
   type PointLight,
 } from "three";
-import { FRAG, SMOKE, battleMap, type World } from "@tentides/content";
+import { BULLET_GRAVITY, FRAG, SMOKE, battleMap, type World } from "@tentides/content";
 import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
 import type { IslandRoom } from "../../net.ts";
@@ -422,6 +423,12 @@ function useBooms(room: IslandRoom) {
 
 const MAX_TRACERS = 64;
 
+const headV = new Vector3();
+const tailV = new Vector3();
+const axisV = new Vector3();
+const sideV = new Vector3();
+const toCam = new Vector3();
+
 function Tracers() {
   const mesh = useRef<InstancedMesh>(null);
   const flashes = useRef<InstancedMesh>(null);
@@ -494,36 +501,44 @@ function Tracers() {
       const dx = t.ex - t.ox;
       const dy = t.ey - t.oy;
       const dz = t.ez - t.oz;
-      const len = Math.hypot(dx, dy, dz);
-      // Viên đạn bay 900 m/s: vệt dài vài mét lướt từ nòng tới đích.
-      const travel = age * 900;
-      if (travel > len + 6 || age > 0.6) {
+      const len = Math.hypot(dx, dy, dz) || 1;
+      // Viên đạn bay đúng sơ tốc của súng, theo đường cong rơi dần (parabol qua nòng và chỗ găm):
+      // vệt sáng dài vài mét lướt đi, bắn xa thì thấy rõ đạn võng lên rồi cắm xuống.
+      const speed = t.speed ?? 900;
+      const flight = len / speed;
+      const streak = Math.min(len, Math.max(4, Math.min(14, speed * 0.016)));
+      const lag = streak / speed;
+      if (age > flight + lag || age > 3) {
         effects.tracers.splice(i, 1);
         continue;
       }
       if (n >= MAX_TRACERS) continue;
-      const head = Math.min(len, travel);
-      const tail = Math.max(0, head - Math.min(12, len * 0.5));
-      const k0 = tail / (len || 1);
-      const k1 = head / (len || 1);
-      dummy.position.set(t.ox + dx * k0, t.oy + dy * k0, t.oz + dz * k0);
-      dummy.lookAt(t.ox + dx * k1, t.oy + dy * k1, t.oz + dz * k1);
-      dummy.rotateX(Math.PI / 2);
-      // Xoay tấm quanh trục vệt cho quay mặt về camera.
-      const toCam = camera.position.clone().sub(dummy.position);
+      const at = (tau: number, out: Vector3) => {
+        const k = Math.max(0, Math.min(1, tau / flight));
+        const tt = Math.max(0, Math.min(flight, tau));
+        return out.set(t.ox + dx * k, t.oy + dy * k + 0.5 * BULLET_GRAVITY * tt * (flight - tt), t.oz + dz * k);
+      };
+      at(age, headV);
+      at(age - lag, tailV);
+      axisV.subVectors(headV, tailV);
+      const segLen = axisV.length();
+      if (segLen < 1e-3) continue;
+      axisV.divideScalar(segLen);
+      dummy.position.copy(tailV);
       dummy.updateMatrix();
-      const axis = { x: dx / len, y: dy / len, z: dz / len };
-      const side = { x: axis.y * toCam.z - axis.z * toCam.y, y: axis.z * toCam.x - axis.x * toCam.z, z: axis.x * toCam.y - axis.y * toCam.x };
-      const sl = Math.hypot(side.x, side.y, side.z) || 1;
-      const w = t.mine ? 0.035 : 0.05;
+      toCam.subVectors(camera.position, tailV);
+      const dist = toCam.length();
+      sideV.crossVectors(axisV, toCam).normalize();
+      // Xa thì vệt to ra một chút cho còn thấy được (như mắt thấy vệt sáng chói).
+      const w = (t.mine ? 0.03 : 0.045) * Math.max(1, dist / 45);
       const e = dummy.matrix.elements;
       // Cột 0: bề ngang (vuông góc với vệt và hướng nhìn), cột 1: dọc vệt, cột 2: pháp tuyến.
-      e[0] = (side.x / sl) * w;
-      e[1] = (side.y / sl) * w;
-      e[2] = (side.z / sl) * w;
-      e[4] = dx * (k1 - k0);
-      e[5] = dy * (k1 - k0);
-      e[6] = dz * (k1 - k0);
+      e[0] = sideV.x * w;
+      e[1] = sideV.y * w;
+      e[2] = sideV.z * w;
+      e[4] = axisV.x * segLen;
+      e[5] = axisV.y * segLen;
+      e[6] = axisV.z * segLen;
       m.setMatrixAt(n, dummy.matrix);
       n++;
     }
@@ -540,7 +555,7 @@ function Tracers() {
         effects.flashes.splice(i, 1);
         continue;
       }
-      if (f && fn < 16) {
+      if (f && fn < 16 && !fl.lightOnly) {
         dummy.position.set(fl.x, fl.y, fl.z);
         dummy.scale.setScalar(0.18 + Math.random() * 0.14);
         dummy.rotation.set(0, 0, Math.random() * 6);
@@ -571,31 +586,42 @@ function Tracers() {
  * Chỗ đạn của người khác găm vào: server chỉ gửi điểm cuối, nên dò lại tia trên máy mình để biết mặt nào (pháp tuyến,
  * chất liệu, để lỗ đạn nằm áp đúng mặt tường). Trúng người thì phụt máu; bay ra ngoài xa thì thôi.
  */
-function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number, ez: number, now: number) {
-  for (const b of [...bodies.values(), { x: localPosition.x, y: localPosition.y, z: localPosition.z, crouch: false, alive: true }]) {
-    if (!b.alive) continue;
-    const top = b.y + (b.crouch ? 1.3 : 1.8);
-    if (Math.hypot(ex - b.x, ez - b.z) < 0.45 && ey > b.y - 0.1 && ey < top) {
-      effects.impacts.push({ x: ex, y: ey, z: ez, nx: (ox - ex) * 0.02, ny: 0.2, nz: (oz - ez) * 0.02, born: now, blood: true });
-      return;
-    }
-  }
+function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number, ez: number, now: number, speed: number) {
   const dx = ex - ox;
   const dy = ey - oy;
   const dz = ez - oz;
   const len = Math.hypot(dx, dy, dz) || 1;
+  // Đạn tới nơi sau chừng này giây (bụi, lỗ đạn hiện đúng lúc vệt đạn cắm tới).
+  const flight = len / speed;
+  const at = now + flight;
+  for (const b of [...bodies.values(), { x: localPosition.x, y: localPosition.y, z: localPosition.z, crouch: false, alive: true }]) {
+    if (!b.alive) continue;
+    const top = b.y + (b.crouch ? 1.3 : 1.8);
+    if (Math.hypot(ex - b.x, ez - b.z) < 0.45 && ey > b.y - 0.1 && ey < top) {
+      effects.impacts.push({ x: ex, y: ey, z: ez, nx: (ox - ex) * 0.02, ny: 0.2, nz: (oz - ez) * 0.02, born: now, blood: true, at });
+      return;
+    }
+  }
+  // Hướng bay lúc cắm xuống (tiếp tuyến cuối đường cong: ngang theo dây cung, dọc chúi xuống do rơi).
+  let tx = dx / flight;
+  let ty = dy / flight - 0.5 * BULLET_GRAVITY * flight;
+  let tz = dz / flight;
+  const tl = Math.hypot(tx, ty, tz) || 1;
+  tx /= tl;
+  ty /= tl;
+  tz /= tl;
   // Xa quá thì khỏi dò (không thấy rõ lỗ đạn), chỉ phụt bụi.
   const far = Math.hypot(ex - localPosition.x, ez - localPosition.z) > 160;
-  const hit = far ? null : physicsProbe.cast?.(ox, oy, oz, dx / len, dy / len, dz / len, len + 0.5);
-  if (hit && Math.abs(hit.t - len) < 0.8) {
-    const t = hit.t;
-    effects.impacts.push({ x: ox + (dx / len) * t, y: oy + (dy / len) * t, z: oz + (dz / len) * t, nx: hit.nx, ny: hit.ny, nz: hit.nz, born: now, blood: false });
+  const back = Math.min(2, len);
+  const hit = far ? null : physicsProbe.cast?.(ex - tx * back, ey - ty * back, ez - tz * back, tx, ty, tz, back + 1);
+  if (hit && Math.abs(hit.t - back) < 0.8) {
+    const t = hit.t - back;
+    effects.impacts.push({ x: ex + tx * t, y: ey + ty * t, z: ez + tz * t, nx: hit.nx, ny: hit.ny, nz: hit.nz, born: now, blood: false, at });
     return;
   }
   // Không rõ mặt (ngoài tầm dò, hay đạn bay mất hút): chỉ phụt bụi ngược về phía người bắn, không để lỗ.
   if (len > 590) return;
-  const k = 1 / len;
-  effects.impacts.push({ x: ex, y: ey, z: ez, nx: -dx * k, ny: -dy * k, nz: -dz * k, born: now, blood: false, noHole: true });
+  effects.impacts.push({ x: ex, y: ey, z: ez, nx: -tx, ny: -ty, nz: -tz, born: now, blood: false, noHole: true, at });
 }
 
 /** Phát bắn của người khác: vệt đạn, lửa đầu nòng, tiếng súng, tiếng đạn rít qua đầu nếu sượt gần mình. */
@@ -610,8 +636,8 @@ function useShots(room: IslandRoom) {
       if (def?.class === "sniper") setTimeout(() => playBolt(), 450);
       let whizzed = false;
       for (const [ex, ey, ez] of m.e) {
-        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false });
-        remoteImpact(ox, oy, oz, ex, ey, ez, now);
+        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false, speed: def?.velocity });
+        remoteImpact(ox, oy, oz, ex, ey, ez, now, def?.velocity ?? 900);
         if (whizzed) continue;
         // Điểm gần mình nhất trên đường đạn.
         const dx = ex - ox;

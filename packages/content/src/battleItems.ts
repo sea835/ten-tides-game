@@ -39,8 +39,10 @@ export interface WeaponDef {
   auto: boolean;
   /** Thời gian thay đạn (giây). */
   reload: number;
-  /** Phóng đại khi ngắm (1 là ngắm thường, 4 là ống 4x...). */
+  /** Phóng đại khi ngắm bằng thước ngắm sắt (lắp ống ngắm thì theo ống, xem SIGHTS). */
   zoom: number;
+  /** Sơ tốc đầu nòng (m/s): đạn bay càng chậm thì càng rơi nhiều ở xa (xem bulletAt). */
+  velocity: number;
   /** Nhân tốc độ chạy khi cầm súng này. */
   speed: number;
   /** Giá ở cửa hàng (0 là chỉ nhặt được ở kho vũ khí). */
@@ -51,10 +53,14 @@ export interface WeaponDef {
   rare?: boolean;
 }
 
-const w = (d: Omit<WeaponDef, "pellets" | "headshot" | "speed"> & Partial<Pick<WeaponDef, "pellets" | "headshot" | "speed">>): WeaponDef => ({
+/** Sơ tốc đầu nòng (m/s), gần với súng thật. */
+const VELOCITY: Record<string, number> = { p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, s686: 380, sks: 800, kar98k: 760, awm: 945 };
+
+const w = (d: Omit<WeaponDef, "pellets" | "headshot" | "speed" | "velocity"> & Partial<Pick<WeaponDef, "pellets" | "headshot" | "speed">>): WeaponDef => ({
   pellets: 1,
   headshot: 2.2,
   speed: 1,
+  velocity: VELOCITY[d.id] ?? 800,
   ...d,
 });
 
@@ -68,12 +74,79 @@ export const WEAPONS: readonly WeaponDef[] = [
   w({ id: "scar", name: "SCAR-L", class: "ar", ammo: "556", mag: 30, rpm: 625, damage: 41, range: 120, hipSpread: 0.026, adsSpread: 0.006, recoil: 0.011, recoilSide: 0.005, auto: true, reload: 2.4, zoom: 1.6, price: 2800, speed: 0.95 }),
   w({ id: "m249", name: "M249", class: "lmg", ammo: "556", mag: 100, rpm: 750, damage: 40, range: 110, hipSpread: 0.04, adsSpread: 0.012, recoil: 0.01, recoilSide: 0.008, auto: true, reload: 5.5, zoom: 1.6, price: 0, speed: 0.85, rare: true }),
   w({ id: "s686", name: "S686", class: "shotgun", ammo: "12g", mag: 2, rpm: 200, damage: 24, pellets: 9, range: 22, hipSpread: 0.075, adsSpread: 0.06, recoil: 0.06, recoilSide: 0.02, auto: false, reload: 2.2, zoom: 1.2, price: 1100, headshot: 1.5 }),
-  w({ id: "sks", name: "SKS", class: "dmr", ammo: "762", mag: 10, rpm: 330, damage: 55, range: 220, hipSpread: 0.035, adsSpread: 0.003, recoil: 0.03, recoilSide: 0.008, auto: false, reload: 2.9, zoom: 4, price: 3200, speed: 0.95, headshot: 2.3 }),
-  w({ id: "kar98k", name: "Kar98k", class: "sniper", ammo: "762", mag: 5, rpm: 48, damage: 80, range: 400, hipSpread: 0.05, adsSpread: 0.0008, recoil: 0.06, recoilSide: 0.01, auto: false, reload: 3.8, zoom: 8, price: 3800, speed: 0.95, headshot: 2.5 }),
-  w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, rpm: 40, damage: 105, range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 8, price: 0, speed: 0.93, headshot: 2.5, rare: true }),
+  w({ id: "sks", name: "SKS", class: "dmr", ammo: "762", mag: 10, rpm: 330, damage: 55, range: 220, hipSpread: 0.035, adsSpread: 0.003, recoil: 0.03, recoilSide: 0.008, auto: false, reload: 2.9, zoom: 1.5, price: 3200, speed: 0.95, headshot: 2.3 }),
+  w({ id: "kar98k", name: "Kar98k", class: "sniper", ammo: "762", mag: 5, rpm: 48, damage: 80, range: 400, hipSpread: 0.05, adsSpread: 0.0008, recoil: 0.06, recoilSide: 0.01, auto: false, reload: 3.8, zoom: 1.5, price: 3800, speed: 0.95, headshot: 2.5 }),
+  w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, rpm: 40, damage: 105, range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, headshot: 2.5, rare: true }),
 ];
 
 export const WEAPON: ReadonlyMap<string, WeaponDef> = new Map(WEAPONS.map((d) => [d.id, d]));
+
+// ---------------------------------------------------------------------------- đường đạn
+
+/** Gia tốc trọng trường kéo đạn xuống (m/s²). */
+export const BULLET_GRAVITY = 9.81;
+
+/**
+ * Điểm trên đường đạn sau khi đi được `s` mét theo hướng bắn `d` (vector đơn vị) từ `o`: bay thẳng theo hướng bắn
+ * và rơi dần xuống do trọng lực (rơi g·t²/2 với t = s / sơ tốc), càng xa rơi càng nhanh. Server và máy người bắn tính
+ * cùng một hàm nên kiểm tra trúng đích khớp nhau.
+ */
+export function bulletAt(o: readonly [number, number, number], d: readonly [number, number, number], velocity: number, s: number): [number, number, number] {
+  const t = s / velocity;
+  return [o[0] + d[0] * s, o[1] + d[1] * s - 0.5 * BULLET_GRAVITY * t * t, o[2] + d[2] * s];
+}
+
+/** Đạn rơi bao nhiêu mét so với đường thẳng khi đã bay `s` mét. */
+export function bulletDrop(velocity: number, s: number): number {
+  const t = s / velocity;
+  return 0.5 * BULLET_GRAVITY * t * t;
+}
+
+/** Chia đường đạn thành các đoạn thẳng ngắn (để dò tường, dò người): mốc `s` từ 0 tới `max`. */
+export function bulletSteps(velocity: number, max: number): number[] {
+  // Đạn nhanh thì đoạn dài hơn (đường cong thoải); sai lệch giữa dây cung và cung dưới 2 cm.
+  const seg = Math.max(12, Math.min(60, velocity / 18));
+  const out = [0];
+  for (let s = seg; s < max; s += seg) out.push(s);
+  out.push(max);
+  return out;
+}
+
+// ---------------------------------------------------------------------------- ống ngắm
+
+export type SightId = "reddot" | "holo" | "x2" | "x4" | "x8";
+export interface SightDef {
+  id: SightId;
+  name: string;
+  /** Phóng đại khi ngắm. */
+  zoom: number;
+  /** Ống kính (nhìn qua ống, khung đen quanh) hay kính phản xạ (chấm đỏ nổi trên kính, vẫn thấy xung quanh). */
+  scope: boolean;
+  /** Giá ở cửa hàng; 0 là chỉ nhặt được. */
+  price: number;
+  /** Kiểu tâm: chấm, vòng holo, chữ thập có vạch, chữ V (ACOG), vạch mil. */
+  reticle: "dot" | "holo" | "cross" | "chevron" | "mil";
+}
+export const SIGHTS: Record<SightId, SightDef> = {
+  reddot: { id: "reddot", name: "Red Dot", zoom: 1.35, scope: false, price: 150, reticle: "dot" },
+  holo: { id: "holo", name: "Holo", zoom: 1.35, scope: false, price: 150, reticle: "holo" },
+  x2: { id: "x2", name: "Ống 2x", zoom: 2, scope: true, price: 300, reticle: "cross" },
+  x4: { id: "x4", name: "Ống 4x (ACOG)", zoom: 4, scope: true, price: 700, reticle: "chevron" },
+  x8: { id: "x8", name: "Ống 8x", zoom: 8, scope: true, price: 0, reticle: "mil" },
+};
+export const SIGHT_IDS = Object.keys(SIGHTS) as SightId[];
+
+/** Ống ngắm nào lắp được lên súng nào (súng lục chỉ kính phản xạ, shotgun tới 2x, tiểu liên tới 4x). */
+export function sightFits(sight: string, def: WeaponDef): boolean {
+  if (!(sight in SIGHTS)) return false;
+  const max = def.class === "pistol" ? 1.5 : def.class === "shotgun" ? 2 : def.class === "smg" ? 4 : 8;
+  return SIGHTS[sight as SightId].zoom <= max;
+}
+
+/** Phóng đại khi ngắm: theo ống ngắm đang lắp, không có thì theo thước ngắm sắt của súng. */
+export function zoomOf(def: WeaponDef, sight: string): number {
+  return sight in SIGHTS ? SIGHTS[sight as SightId].zoom : def.zoom;
+}
 
 /** Ô đeo súng: hai súng chính và một súng lục. */
 export type WeaponSlot = "primary1" | "primary2" | "pistol";
@@ -128,6 +201,7 @@ export function lootLabel(id: BattleLootId): string {
   if (kind === "armor") return ARMOR[Number(arg) - 1]?.name ?? id;
   if (kind === "helmet") return HELMETS[Number(arg) - 1]?.name ?? id;
   if (kind === "money") return `${arg}$`;
+  if (kind === "sight") return SIGHTS[arg as SightId]?.name ?? id;
   if (id in THROWABLES) return THROWABLES[id as ThrowableId].name;
   if (id in HEALS) return HEALS[id as HealId].name;
   return id;
