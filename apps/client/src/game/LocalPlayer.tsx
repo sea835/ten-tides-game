@@ -179,6 +179,17 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
   const camPos = useMemo(() => new Vector3(), []);
   const camDir = useMemo(() => new Vector3(), []);
 
+  // Dev: dịch chuyển tức thời để thử bản đồ (window.__tentides.teleport(x, y, z)).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const w = window as unknown as { __tentides?: Record<string, unknown> };
+    w.__tentides ??= {};
+    w.__tentides.teleport = (x: number, y: number, z: number) => {
+      body.current?.setTranslation({ x, y: y + FEET_OFFSET, z }, true);
+      sim.current.vy = 0;
+    };
+  }, []);
+
   // Server từ chối vị trí thì dịch về đúng chỗ server giữ.
   useEffect(
     () =>

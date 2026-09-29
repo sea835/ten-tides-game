@@ -46,7 +46,10 @@ function DebugHook({ room }: { room: IslandRoom }) {
   const scene = useThree((s) => s.scene);
   const world = useWorld(room);
   useEffect(() => {
-    if (import.meta.env.DEV) Object.assign(window, { __tentides: { room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx, audio } });
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __tentides?: Record<string, unknown> };
+      w.__tentides = { ...(w.__tentides ?? {}), room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx, audio };
+    }
   }, [room, camera, scene, world]);
   return null;
 }
