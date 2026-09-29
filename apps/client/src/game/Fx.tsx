@@ -84,6 +84,9 @@ export function Fx() {
   const [words, setWords] = useState<Word[]>([]);
   const mesh = useRef<InstancedMesh>(null);
   const bits = useRef<Bit[]>([]);
+  // Số ô đã vẽ ở khung hình trước, để tẩy đúng phần dư. Phải khai báo ở đây chứ không gọi `useRef`
+  // bên trong `useFrame`: hook chạy mỗi khung hình, React báo "Invalid hook call".
+  const shown = useRef(0);
   const dummy = useMemo(() => new Object3D(), []);
 
   useFx((fx) => {
@@ -144,7 +147,6 @@ export function Fx() {
     }
     // Chỉ vẽ tới `list.length` và tẩy đúng phần vừa rút khỏi danh sách. Trước đây vòng lặp chạy
     // hết 260 ô mỗi khung hình (kể cả lúc không còn mảnh nào) và tải lại toàn bộ instanceMatrix.
-    const shown = useRef(0);
     const n = list.length;
     for (let i = 0; i < n; i++) {
       const b = list[i]!;

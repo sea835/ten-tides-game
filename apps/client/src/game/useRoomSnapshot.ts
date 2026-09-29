@@ -31,10 +31,15 @@ export function useRoomSnapshot<T>(room: IslandRoom, select: (state: IslandState
 
   const getSnapshot = () => {
     const state = room.state;
+    // Phải liệt kê *mọi* trường mà `select` đọc, nếu không component sẽ đóng băng theo chữ ký cũ.
+    // Riêng các lựa chọn của phòng Battleground (`hostId`, `bots`, thời tiết, giờ) trước đây thiếu mất:
+    // pha lobby không cho `clock` chạy nên chữ ký đứng yên, server đã đổi `state.bots` mà UI không vẽ lại,
+    // làm thanh trượt số máy (và hai ô chọn kèm theo) bật lại về giá trị cũ.
     const sig =
       `${state.phase}|${state.mode}|${state.clock}|${state.campX}|${state.campZ}|` +
       `${state.treasureSite}|${state.treasureDug}|${state.stumps.length}|${state.plants.size}|${state.buildings.size}|` +
-      `${state.players.size}|${state.anchors.size}|${state.groundItems.size}|${state.discovered.length}|${state.traps.size}`;
+      `${state.players.size}|${state.anchors.size}|${state.groundItems.size}|${state.discovered.length}|${state.traps.size}|` +
+      `${state.hostId}|${state.bots}|${state.weatherPick}|${state.timePick}`;
     if (bySig.current?.sig === sig) return bySig.current.value;
 
     const value = selectRef.current(state);

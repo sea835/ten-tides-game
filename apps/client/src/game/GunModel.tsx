@@ -5,6 +5,7 @@ import {
   CylinderGeometry,
   DoubleSide,
   Euler,
+  FrontSide,
   LatheGeometry,
   Matrix4,
   MeshStandardMaterial,
@@ -91,7 +92,7 @@ export function gearMaterial(key: string, opacity = 1): MeshStandardMaterial {
   if (m) return m;
   const d = MATS[key] ?? MATS.metal!;
   const alpha = Math.min(opacity, d.opacity ?? 1);
-  m = new MeshStandardMaterial({ color: d.color, metalness: d.metal ?? 0, roughness: d.rough ?? 0.7, transparent: alpha < 1, opacity: alpha, side: d.double ? DoubleSide : undefined });
+  m = new MeshStandardMaterial({ color: d.color, metalness: d.metal ?? 0, roughness: d.rough ?? 0.7, transparent: alpha < 1, opacity: alpha, side: d.double ? DoubleSide : FrontSide });
   if (alpha < 1) m.depthWrite = false;
   m.userData.detail = d.detail ?? "none";
   m.userData.detailSpace = "object";

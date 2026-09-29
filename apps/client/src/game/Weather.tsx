@@ -62,6 +62,9 @@ const RAIN_HEIGHT = 22;
 
 function Rain({ count }: { count: number }) {
   const mesh = useRef<InstancedMesh>(null);
+  // Số hạt đã vẽ ở khung hình trước. Khai báo ở thân component, không gọi `useRef` bên trong
+  // `useFrame` — React sẽ báo "Invalid hook call".
+  const shown = useRef(0);
   const drops = useMemo(() => {
     const rand = mulberry32(5);
     return Array.from({ length: count }, () => ({ x: (rand() - 0.5) * 2 * RAIN_AREA, y: rand() * RAIN_HEIGHT, z: (rand() - 0.5) * 2 * RAIN_AREA, speed: 24 + rand() * 10 }));
@@ -110,7 +113,6 @@ function Rain({ count }: { count: number }) {
       m.setMatrixAt(i, dummy.matrix);
     }
     // Tẩy phần vừa bị ẩn đi, thay vì tẩy lại toàn bộ mỗi khung hình.
-    const shown = useRef(0);
     for (let i = visible; i < shown.current; i++) {
       dummy.scale.setScalar(0);
       dummy.updateMatrix();
@@ -135,6 +137,8 @@ const SNOW_HEIGHT = 16;
 /** Bông tuyết: rơi chậm, lượn ngang theo gió, bay theo camera trong một hộp quanh người nhìn. */
 function Snow({ count }: { count: number }) {
   const mesh = useRef<InstancedMesh>(null);
+  // Xem giải thích ở `Rain`.
+  const shown = useRef(0);
   const flakes = useMemo(() => {
     const rand = mulberry32(11);
     return Array.from({ length: count }, () => ({
@@ -171,7 +175,6 @@ function Snow({ count }: { count: number }) {
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
-    const shown = useRef(0);
     for (let i = visible; i < shown.current; i++) {
       dummy.scale.setScalar(0);
       dummy.updateMatrix();
