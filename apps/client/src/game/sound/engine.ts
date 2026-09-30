@@ -14,14 +14,30 @@ const STORAGE_KEY = "tentides.sound";
 /** Xa hơn chừng này mét thì không nghe thấy. */
 const HEARING = 70;
 
-function readSetting(): { muted: boolean; music: boolean } {
+/** Âm lượng từng nhóm (0–1), chỉnh trong bảng Cài đặt. */
+export type VolumeKey = "master" | "sfx" | "ambience" | "music";
+export interface SoundSettings {
+  muted: boolean;
+  music: boolean;
+  volume: Record<VolumeKey, number>;
+}
+/** Mặc định nhỏ hơn trước (tổng 0.8 → 0.56, nền 0.4 → 0.28): người chơi báo quá ồn mà không chỉnh được. */
+export const DEFAULT_VOLUME: Record<VolumeKey, number> = { master: 0.7, sfx: 0.85, ambience: 0.7, music: 0.6 };
+/** Mức gốc của từng nhóm trước khi nhân âm lượng người chơi chọn. */
+const BASE: Record<Bus | "master", number> = { master: 0.8, sfx: 1, ambience: 0.4, music: 0.32, ui: 0.5 };
+
+function readSetting(): SoundSettings {
+  const def: SoundSettings = { muted: false, music: true, volume: { ...DEFAULT_VOLUME } };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { muted: false, music: true, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<SoundSettings>;
+      return { ...def, ...saved, volume: { ...DEFAULT_VOLUME, ...saved.volume } };
+    }
   } catch {
     // Không đọc được thì dùng mặc định.
   }
-  return { muted: false, music: true };
+  return def;
 }
 
 class AudioEngine {
@@ -51,7 +67,7 @@ class AudioEngine {
     this.muffle.type = "lowpass";
     this.muffle.frequency.value = 20000;
     this.master = ctx.createGain();
-    this.master.gain.value = this.settings.muted ? 0 : 0.8;
+    this.master.gain.value = this.masterLevel();
     // Nén nhẹ để tiếng nổ, sấm không làm vỡ loa.
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
@@ -68,10 +84,9 @@ class AudioEngine {
     limiter.attack.value = 0.001;
     limiter.release.value = 0.09;
     this.muffle.connect(this.master).connect(comp).connect(limiter).connect(ctx.destination);
-    const levels: Record<Bus, number> = { sfx: 1, ambience: 0.4, music: this.settings.music ? 0.32 : 0, ui: 0.5 };
-    for (const [bus, level] of Object.entries(levels) as [Bus, number][]) {
+    for (const bus of ["sfx", "ambience", "music", "ui"] as Bus[]) {
       const g = ctx.createGain();
-      g.gain.value = level;
+      g.gain.value = this.busLevel(bus);
       // Giao diện không bị nước làm ù.
       g.connect(bus === "ui" ? this.master : this.muffle);
       this.buses.set(bus, g);
@@ -123,13 +138,31 @@ class AudioEngine {
     this.save();
     // Bấm nút bật tiếng cũng là một thao tác: bật luôn bộ máy nếu chưa.
     if (!muted) this.start();
-    if (this.ctx) this.master.gain.setTargetAtTime(muted ? 0 : 0.8, this.ctx.currentTime, 0.05);
+    if (this.ctx) this.master.gain.setTargetAtTime(this.masterLevel(), this.ctx.currentTime, 0.05);
   }
 
   setMusic(on: boolean) {
     this.settings = { ...this.settings, music: on };
     this.save();
-    if (this.ctx) this.bus("music").gain.setTargetAtTime(on ? 0.32 : 0, this.ctx.currentTime, 0.3);
+    if (this.ctx) this.bus("music").gain.setTargetAtTime(this.busLevel("music"), this.ctx.currentTime, 0.3);
+  }
+
+  /** Chỉnh âm lượng một nhóm (0–1), áp ngay và nhớ lại cho lần sau. */
+  setVolume(key: VolumeKey, value: number) {
+    this.settings = { ...this.settings, volume: { ...this.settings.volume, [key]: Math.max(0, Math.min(1, value)) } };
+    this.save();
+    if (!this.ctx) return;
+    if (key === "master") this.master.gain.setTargetAtTime(this.masterLevel(), this.ctx.currentTime, 0.05);
+    else this.bus(key).gain.setTargetAtTime(this.busLevel(key), this.ctx.currentTime, 0.05);
+  }
+
+  private masterLevel(): number {
+    return this.settings.muted ? 0 : BASE.master * this.settings.volume.master;
+  }
+
+  private busLevel(bus: Bus): number {
+    if (bus === "music" && !this.settings.music) return 0;
+    return BASE[bus] * (bus === "ui" ? 1 : this.settings.volume[bus]);
   }
 
   private save() {

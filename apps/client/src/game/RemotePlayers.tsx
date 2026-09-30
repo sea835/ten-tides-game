@@ -75,7 +75,7 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
     if (battle) {
       let b = bodies.get(id);
       if (!b) {
-        b = { x: 0, y: 0, z: 0, crouch: false, prone: false, rotY: 0, alive: false, team: "" };
+        b = { x: 0, y: 0, z: 0, crouch: false, prone: false, rotY: 0, lean: 0, alive: false, team: "" };
         bodies.set(id, b);
       }
       b.x = g.position.x;
@@ -83,6 +83,7 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
       b.z = g.position.z;
       b.crouch = player.crouching;
       b.prone = player.prone;
+      b.lean = player.lean;
       b.rotY = avatar.current ? avatar.current.rotation.y : player.rotY;
       b.alive = player.alive && !player.vehicle;
       b.team = player.team;
@@ -183,6 +184,7 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       m.prone = player.prone;
       m.aiming = player.aiming;
       m.aimPitch = player.aimPitch;
+      m.lean = player.lean;
       m.firing = player.shots;
       m.act = player.act;
       m.actN = player.actN;

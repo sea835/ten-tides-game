@@ -8,7 +8,7 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { getBattleHud, setBattleHud, useBattleHud } from "./runtime.ts";
 import { tankHud } from "./Vehicles.tsx";
 
-// Giao diện chế độ Đồng đội và xe tăng: bảng đội (máu, vai trò, ai đang lái tăng), ra lệnh cho máy (F tới chỗ đang
+// Giao diện chế độ Đồng đội và xe tăng: bảng đội (máu, vai trò, ai đang lái tăng), ra lệnh cho máy (Y tới chỗ đang
 // nhìn, G giữ chỗ, H theo sau), gục rồi thì chọn máy trong đội để nhập vào, và bảng điều khiển khi lái xe tăng.
 
 const ROLE_ICON: Record<string, string> = { leader: "★", rifle: "▲", sniper: "◎", support: "■", tanker: "⛟", antitank: "✹" };
@@ -76,7 +76,8 @@ export function SquadHud({ room }: { room: IslandRoom }) {
       const p = room.state.players.get(me);
       if (!p) return;
       if (p.alive && p.team === me) {
-        if (e.code === "KeyF") {
+        // Y (không phải F: F là nhặt đồ, lên xuống xe; Q/E là nghiêng người).
+        if (e.code === "KeyY") {
           const at = groundAhead(room.state.worldSeed, room.state.battleMode);
           if (!at) return;
           room.send(Messages.squadOrder, { kind: "move", x: at.x, z: at.z });
@@ -100,7 +101,7 @@ export function SquadHud({ room }: { room: IslandRoom }) {
         const alive = [...room.state.players.entries()].filter(([id, q]) => q.team === p.team && id !== me && q.alive && q.bot);
         const n = e.code.startsWith("Digit") ? Number(e.code.slice(5)) : NaN;
         if (n >= 1 && n <= alive.length) room.send(Messages.possess, { id: alive[n - 1]![0] });
-        else if (e.code === "KeyE") {
+        else if (e.code === "KeyF") {
           const watched = getBattleHud().spectating;
           const target = alive.find(([id]) => id === watched) ?? alive[0];
           if (target) room.send(Messages.possess, { id: target[0] });
@@ -131,7 +132,7 @@ export function SquadHud({ room }: { room: IslandRoom }) {
         ))}
         {s.alive && s.leader && (
           <p className="b-squad-keys">
-            <kbd>F</kbd> tới chỗ đang nhìn · <kbd>G</kbd> giữ chỗ · <kbd>H</kbd> theo sau
+            <kbd>Y</kbd> tới chỗ đang nhìn · <kbd>G</kbd> giữ chỗ · <kbd>H</kbd> theo sau
           </p>
         )}
       </div>
@@ -146,7 +147,7 @@ export function SquadHud({ room }: { room: IslandRoom }) {
             ))}
           </div>
           <p className="muted">
-            <kbd>E</kbd> nhập vào người đang xem · bấm chuột để xem người khác
+            <kbd>F</kbd> nhập vào người đang xem · bấm chuột để xem người khác
           </p>
         </div>
       )}
@@ -160,7 +161,7 @@ export function TankPrompt() {
   if (!hud.nearTank || tankHud.active) return null;
   return (
     <div className="b-pickup">
-      ⛟ <kbd>E</kbd> Lên xe tăng
+      ⛟ <kbd>F</kbd> Lên xe tăng
     </div>
   );
 }
@@ -216,7 +217,7 @@ export function TankHud() {
           <span ref={speed} />
         </div>
         <p>
-          <kbd>W</kbd>/<kbd>S</kbd> tiến lùi · <kbd>A</kbd>/<kbd>D</kbd> bẻ lái · chuột xoay tháp pháo · chuột trái bắn · chuột phải (hay <kbd>Q</kbd>) kính ngắm · <kbd>E</kbd> xuống xe
+          <kbd>W</kbd>/<kbd>S</kbd> tiến lùi · <kbd>A</kbd>/<kbd>D</kbd> bẻ lái · chuột xoay tháp pháo · chuột trái bắn · chuột phải (hay <kbd>Q</kbd>) kính ngắm · <kbd>F</kbd> xuống xe
         </p>
       </div>
     </div>

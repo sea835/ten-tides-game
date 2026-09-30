@@ -17,6 +17,8 @@ export const localMotion = {
   prone: false,
   aiming: false,
   aimPitch: 0,
+  /** Nghiêng người (Q/E): −1 trái … 1 phải. */
+  lean: 0,
   firing: 0,
   /** Súng dí sát vật cản (0–1): dựng nòng lên. */
   wall: 0,

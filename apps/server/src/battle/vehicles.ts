@@ -9,6 +9,7 @@ import {
   rayTank,
   raycastBoxes,
   raycastTerrain,
+  raycastTrunks,
   tankFits,
   tankStep,
 } from "@tentides/content";
@@ -242,7 +243,7 @@ export class Vehicles {
       const b = bulletAt(o, d, velocity, steps[i]!);
       const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
       const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
-      let t = Math.min(raycastBoxes(this.room.map.index, a, cd, len, true), raycastTerrain(this.room.map.world, a, cd, len));
+      let t = Math.min(raycastBoxes(this.room.map.index, a, cd, len, true), raycastTerrain(this.room.map.world, a, cd, len), raycastTrunks(this.room.map.world, a, cd, len));
       let hitTank = "";
       for (const [oid, other] of s.vehicles) {
         if (oid === skip) continue;
@@ -254,7 +255,7 @@ export class Vehicles {
       }
       for (const q of s.players.values()) {
         if (!q.alive || q === shooter || q.vehicle) continue;
-        const h = rayBody(a, cd, { x: q.x, y: q.y, z: q.z, rotY: q.rotY, crouch: q.crouching, prone: q.prone });
+        const h = rayBody(a, cd, { x: q.x, y: q.y, z: q.z, rotY: q.rotY, crouch: q.crouching, prone: q.prone, lean: q.lean });
         if (h && h.t < t) {
           t = h.t;
           hitTank = "";

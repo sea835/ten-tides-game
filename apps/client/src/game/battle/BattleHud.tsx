@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { Crosshair as CrossIcon, LogOut, Settings as Gear, ShoppingCart, Skull, Trophy, Users, X } from "lucide-react";
 import {
   AMMO,
@@ -32,13 +32,15 @@ import { localPosition } from "../shared.ts";
 import { DEFAULT_SETTINGS, getSettings, setSettings, useSettings } from "../settings.ts";
 import { DEFAULT_GRAPHICS, QUALITY_LABEL, setGraphics, toggleStats, useGraphics, useStatsOpen, type Quality } from "../graphics.ts";
 import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/guns.ts";
+import { DEFAULT_VOLUME, audio, type VolumeKey } from "../sound/engine.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
-import { getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
+import { closeBuyMenu, getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
 import { ItemIcon } from "./ItemIcons.tsx";
 import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.tsx";
 import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
+import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -115,7 +117,8 @@ function ScopeView() {
   const vh = (angle: number) => (50 * Math.tan(angle)) / halfTan;
   const lift = bulletDrop(def.velocity, stance.zero) / stance.zero;
   const ticks: { d: number; y: number }[] = [];
-  if (sight.reticle !== "cross")
+  // Vạch bù đạn rơi chỉ có ở ống từ 4x trở lên (2x bắn gần, chỉ cần chữ V).
+  if (sight.zoom >= 4)
     for (let d = Math.ceil((stance.zero + 1) / 100) * 100; d <= 800; d += 100) {
       const y = vh(bulletDrop(def.velocity, d) / d - lift);
       if (y > 30) break;
@@ -125,7 +128,8 @@ function ScopeView() {
     }
   const red = sight.reticle === "chevron";
   return (
-    <div className="b-scope">
+    // Ống bội thấp có ô nhìn (eye box) rộng hơn: 2x gần như cả màn hình, 8x hẹp nhất.
+    <div className="b-scope" style={{ "--eye": `${sight.zoom <= 2 ? 44 : sight.zoom <= 4 ? 36 : 32}vmin` } as CSSProperties}>
       <div className="b-scope-ring" />
       {sight.reticle === "cross" && (
         <>
@@ -338,9 +342,15 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
   const war = mode === "war";
   const me = room.state.players.get(myId(room));
   const phase = room.state.phase;
+  // Bản đồ nhỏ: cửa sổ ~380 m quanh mình (cả đảo co vào 240px thì mũi tên, đồng đội chỉ còn 2–3 điểm ảnh);
+  // bản đồ lớn (M): cả đảo. `u`: số mét ứng với một điểm ảnh, để vẽ biểu tượng theo kích thước màn hình.
+  const span = big ? H * 2 : Math.min(H * 2, 380);
+  const cx = big ? 0 : localPosition.x;
+  const cz = big ? 0 : localPosition.z;
+  const u = span / (big ? Math.min(window.innerHeight, window.innerWidth) * 0.8 : 240);
   return (
-    <svg className={big ? "b-map big" : "b-map"} viewBox={`${-H} ${-H} ${H * 2} ${H * 2}`}>
-      <rect x={-H} y={-H} width={H * 2} height={H * 2} className="bm-sea" />
+    <svg className={big ? "b-map big" : "b-map"} viewBox={`${cx - span / 2} ${cz - span / 2} ${span} ${span}`}>
+      <rect x={-H * 2} y={-H * 2} width={H * 4} height={H * 4} className="bm-sea" />
       <polygon points={shore} className="bm-land" />
       {map.sites.map((s) => (
         <g key={s.id} transform={`translate(${s.x} ${s.z}) rotate(${(-s.rot * 180) / Math.PI})`}>
@@ -368,25 +378,27 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
           {z.nr > 0 && <circle cx={z.nx} cy={z.nz} r={z.nr} className="bm-next" />}
         </>
       )}
+      {/* Thùng thính: ô đỏ (nhấp nháy khi còn đang rơi). */}
+      {phase === "battle" && <AirdropMarks room={room} big={big} />}
       {/* Xe tăng của đội mình và xe bỏ trống (xe địch thì không lộ trên bản đồ). */}
       {[...room.state.vehicles.values()]
         .filter((v) => v.hp > 0 && (!v.driver || (me?.team && v.team === me.team) || v.driver === myId(room)))
         .map((v, i) => (
-          <rect key={`v${i}`} x={v.x - 4} y={v.z - 4} width={8} height={8} className="bm-tank" style={{ fill: v.driver ? teamColor(v.team) : "#bbb" }} />
+          <rect key={`v${i}`} x={v.x - 6 * u} y={v.z - 6 * u} width={12 * u} height={12 * u} className="bm-tank" style={{ fill: v.driver ? teamColor(v.team) : "#bbb" }} />
         ))}
       {/* Đồng đội. */}
       {me?.team &&
         [...room.state.players.entries()]
           .filter(([id, p]) => id !== myId(room) && p.alive && p.team === me.team)
-          .map(([id, p]) => <circle key={id} cx={p.x} cy={p.z} r={big ? 3.5 : 4.5} className="bm-mate" />)}
+          .map(([id, p]) => <circle key={id} cx={p.x} cy={p.z} r={6 * u} className="bm-mate" />)}
       {me?.team === myId(room) && lastOrder.kind !== "follow" && lastOrder.at > 0 && (
-        <g transform={`translate(${lastOrder.x} ${lastOrder.z})`}>
+        <g transform={`translate(${lastOrder.x} ${lastOrder.z}) scale(${u})`}>
           <path d="M-6,-6 L6,6 M6,-6 L-6,6" className="bm-order" />
         </g>
       )}
       {me && (
-        <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180})`}>
-          <path d="M0,-9 L6,6 L0,3 L-6,6 Z" className="bm-me" />
+        <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180}) scale(${u})`}>
+          <path d="M0,-10 L7,7 L0,3.5 L-7,7 Z" className="bm-me" />
         </g>
       )}
     </svg>
@@ -583,7 +595,7 @@ function Pickup() {
   return (
     <div className="b-pickup">
       <ItemIcon id={hud.nearItem.itemId} />
-      <kbd>E</kbd> Nhặt {lootLabel(hud.nearItem.itemId)}
+      <kbd>F</kbd> Nhặt {lootLabel(hud.nearItem.itemId)}
     </div>
   );
 }
@@ -623,7 +635,7 @@ function BuyMenu({ room }: { room: IslandRoom }) {
     <div className="b-buy" onMouseDown={(e) => e.stopPropagation()}>
       <header>
         <ShoppingCart size={18} /> Cửa hàng <strong>{kit.money.toLocaleString("vi-VN")}$</strong>
-        <button className="x" onClick={() => setBattleHud({ buyOpen: false })} aria-label="Đóng">
+        <button className="x" onClick={closeBuyMenu} aria-label="Đóng">
           <X size={18} />
         </button>
       </header>
@@ -755,7 +767,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         {war
           ? "Bản đồ riêng rộng gần 700 m, hai căn cứ hai đầu, 7 cứ điểm A–G có công sự. Đứng trong vùng cứ điểm để chiếm; phe giữ ít cứ điểm hơn bị trừ vé dần, mỗi lần gục mất một vé; hết vé là thua. Gục thì chọn lớp lính và chỗ hồi sinh. Mỗi phe 3 xe tăng ở căn cứ."
           : s.mode === "squad"
-          ? "Mỗi đội xuất phát cùng một chỗ, có xe tăng riêng · F/G/H ra lệnh cho đội · gục thì nhập vào máy còn sống · Z nằm bắn · E lên xe tăng."
+          ? "Mỗi đội xuất phát cùng một chỗ, có xe tăng riêng · Y/G/H ra lệnh cho đội · gục thì nhập vào máy còn sống · Z nằm bắn · F lên xe tăng."
           : "Xuất phát ngẫu nhiên khắp đảo · bấm B mua vũ khí · vùng an toàn thu hẹp dần · người cuối cùng còn sống thắng."}
       </p>
       {war && (
@@ -829,7 +841,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <LogOut size={16} /> Rời phòng
       </button>
       <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · E nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: F tới điểm, G giữ chỗ, H theo sau
+        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: Y tới điểm, G giữ chỗ, H theo sau
       </p>
     </div>
   );
@@ -1006,6 +1018,30 @@ function GraphicsSettings() {
   );
 }
 
+/** Âm lượng tổng và từng nhóm (tiếng súng / hiệu ứng, nền và thời tiết, nhạc). */
+function SoundSettings() {
+  const snd = useSyncExternalStore(audio.subscribe, () => audio.settings);
+  const row = (label: string, key: VolumeKey) => (
+    <label className="b-set-row">
+      <span>{label}</span>
+      <input type="range" min={0} max={1} step={0.05} value={snd.volume[key]} onChange={(e) => audio.setVolume(key, Number(e.target.value))} />
+      <em>{snd.volume[key] === 0 ? "Tắt" : `${Math.round(snd.volume[key] * 100)}%`}</em>
+    </label>
+  );
+  return (
+    <>
+      <div className="b-set-title">Âm thanh</div>
+      {row("Âm lượng tổng", "master")}
+      {row("Súng, bước chân, hiệu ứng", "sfx")}
+      {row("Môi trường, mưa gió", "ambience")}
+      {row("Nhạc nền", "music")}
+      <label className="b-set-check">
+        <input type="checkbox" checked={snd.muted} onChange={(e) => audio.setMuted(e.target.checked)} /> Tắt hết âm thanh (M)
+      </label>
+    </>
+  );
+}
+
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useSettings();
   if (!open) return null;
@@ -1036,12 +1072,14 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
       <label className="b-set-check">
         <input type="checkbox" checked={s.toggleAim} onChange={(e) => setSettings({ toggleAim: e.target.checked })} /> Bấm chuột phải một lần để ngắm (không cần giữ)
       </label>
+      <SoundSettings />
       <GraphicsSettings />
       <button
         className="ghost"
         onClick={() => {
           setSettings(DEFAULT_SETTINGS);
           setGraphics({ fpsCap: DEFAULT_GRAPHICS.fpsCap, maxDpr: DEFAULT_GRAPHICS.maxDpr, adaptive: DEFAULT_GRAPHICS.adaptive });
+          for (const [k, v] of Object.entries(DEFAULT_VOLUME) as [VolumeKey, number][]) audio.setVolume(k, v);
         }}
       >
         Về mặc định
@@ -1108,6 +1146,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       )}
       {fighting && <Vitals room={room} />}
       {fighting && <OutsideZone room={room} />}
+      {fighting && <AirdropNotice room={room} />}
       {fighting && <SquadHud room={room} />}
       {fighting && <TankHud />}
       <Toast />

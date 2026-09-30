@@ -184,15 +184,15 @@
 .b-scope {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, transparent 0, transparent 34vmin, rgba(0, 0, 0, 0.94) 34.4vmin);
+  background: radial-gradient(circle at center, transparent 0, transparent var(--eye, 34vmin), rgba(0, 0, 0, 0.94) calc(var(--eye, 34vmin) + 0.4vmin));
 }
 .b-scope-ring {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 68vmin;
-  height: 68vmin;
-  margin: -34vmin 0 0 -34vmin;
+  width: calc(var(--eye, 34vmin) * 2);
+  height: calc(var(--eye, 34vmin) * 2);
+  margin: calc(var(--eye, 34vmin) * -1) 0 0 calc(var(--eye, 34vmin) * -1);
   border-radius: 50%;
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.85);
 }
@@ -201,14 +201,14 @@
   background: rgba(0, 0, 0, 0.85);
 }
 .b-scope-line.h {
-  left: calc(50% - 34vmin);
-  width: 68vmin;
+  left: calc(50% - var(--eye, 34vmin));
+  width: calc(var(--eye, 34vmin) * 2);
   top: 50%;
   height: 1px;
 }
 .b-scope-line.v {
-  top: calc(50% - 34vmin);
-  height: 68vmin;
+  top: calc(50% - var(--eye, 34vmin));
+  height: calc(var(--eye, 34vmin) * 2);
   left: 50%;
   width: 1px;
 }
@@ -375,8 +375,8 @@
   gap: 8px;
 }
 .b-map {
-  width: 210px;
-  height: 210px;
+  width: 240px;
+  height: 240px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: #173a4d;
@@ -426,6 +426,13 @@
   stroke: #fff;
   stroke-width: 2;
   stroke-dasharray: 6 5;
+}
+/* Biểu tượng vẽ theo điểm ảnh màn hình (xem `u` trong BattleMinimap): nét viền không phóng theo bản đồ. */
+.bm-me,
+.bm-mate,
+.bm-tank,
+.bm-order {
+  vector-effect: non-scaling-stroke;
 }
 .bm-me {
   fill: #ffd23a;
@@ -1715,5 +1722,64 @@
 @media (max-height: 620px) {
   .b-feed div:nth-last-child(n + 4) {
     display: none;
+  }
+}
+
+/* Thùng thính: thông báo lúc thả, nhãn khoảng cách nổi trên thùng, dấu trên bản đồ. */
+.b-airdrop {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 90, 70, 0.7);
+  background: rgba(40, 6, 4, 0.72);
+  text-align: center;
+  pointer-events: none;
+  animation: b-airdrop-in 0.35s ease-out;
+}
+.b-airdrop b {
+  font-size: 22px;
+  color: #ff6a50;
+  text-shadow: 0 1px 3px #000;
+}
+.b-airdrop span {
+  font-size: 13px;
+  opacity: 0.85;
+}
+@keyframes b-airdrop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+.b-drop-tag {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(120, 16, 10, 0.7);
+  color: #fff;
+  font: 700 12px var(--font-ui, system-ui, sans-serif);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.bm-drop rect {
+  fill: #e0332b;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+.bm-drop path {
+  stroke: #fff;
+  stroke-width: 1.2;
+}
+.bm-drop:not(.landed) {
+  animation: bm-drop-blink 0.8s steps(2) infinite;
+}
+@keyframes bm-drop-blink {
+  50% {
+    opacity: 0.35;
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BATTLE_SITES, battleMap, battleSpawn, boxAt, insideBox, raycastBoxes, raycastTerrain } from "./battle.ts";
+import { BATTLE_SITES, battleMap, battleSpawn, boxAt, insideBox, raycastBoxes, raycastTerrain, raycastTrunks, trunkRadius } from "./battle.ts";
 import { WEAPON, WEAPONS, bulletAt, bulletDrop, falloff, hitPart, hitboxHeight, HITBOX } from "./battleItems.ts";
 
 describe("bản đồ Battleground", () => {
@@ -62,6 +62,19 @@ describe("hàng rào lưới", () => {
     const plain = raycastBoxes(map.index, o, dir, 1.6);
     expect(plain).toBeLessThan(1.6);
     expect(raycastBoxes(map.index, o, dir, 1.6, true)).toBe(Infinity);
+  });
+});
+
+describe("thân cây", () => {
+  it("chặn tia bắn ngang qua thân, bỏ qua tia đi trên ngọn", () => {
+    const map = battleMap(12345);
+    const t = map.world.trees[0]!;
+    const y = map.world.heightAt(t.x, t.z) + 1.2;
+    const r = trunkRadius(t);
+    const hit = raycastTrunks(map.world, [t.x - 10, y, t.z], [1, 0, 0], 20);
+    expect(hit).toBeGreaterThan(10 - r - 0.01);
+    expect(hit).toBeLessThan(10 - r + 0.01);
+    expect(raycastTrunks(map.world, [t.x - 10, y + t.height + 2, t.z], [1, 0, 0], 20)).toBe(Infinity);
   });
 });
 

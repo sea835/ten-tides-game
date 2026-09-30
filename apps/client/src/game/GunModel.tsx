@@ -851,19 +851,28 @@ function sightParts(id: string): Part[] {
         box("metal", 0.004, 0.036, 0.03, [-0.021, h, 0.02]),
         box("metal", 0.046, 0.005, 0.03, [0, h + 0.02, 0.02]),
         box("reflex", 0.038, 0.032, 0.002, [0, h, 0.03]),
-        box("poly", 0.032, 0.014, 0.03, [0, 0.022, -0.022]),
+        // Hộp pin thấp hẳn dưới đường ngắm (trước đây nhô cao hơn tâm kính nên che mất vòng holo).
+        box("poly", 0.032, 0.008, 0.03, [0, 0.013, -0.022]),
       ];
     case "x2":
-      return [...mount(0.07), cyl("metal", 0.018, 0.1, [0, h, 0], { segs: 16 }), cyl("metal", 0.022, 0.02, [0, h, 0.05], { segs: 16 }), cyl("lens", 0.018, 0.003, [0, h, 0.061], { segs: 16 })];
-    case "x4":
-      // ACOG: thân tam giác gọn, vỏ tối, ống kính trước to, sợi quang đỏ trên nóc.
+      // 2x: thân hộp gọn kiểu ACOG ngắn, ống kính trước to, sợi quang đỏ trên nóc (nhìn là biết ống thấp bội).
       return [
-        ...mount(0.08),
-        box("metal", 0.034, 0.03, 0.1, [0, h - 0.004, 0]),
-        cyl("metal", 0.022, 0.035, [0, h, 0.062], { segs: 16 }),
-        cyl("metal", 0.017, 0.03, [0, h, -0.062], { segs: 16 }),
-        cyl("lens", 0.02, 0.003, [0, h, 0.081], { segs: 16 }),
-        box("red", 0.006, 0.004, 0.06, [0, h + 0.012, 0]),
+        ...mount(0.07),
+        box("metal", 0.034, 0.03, 0.075, [0, h - 0.004, 0]),
+        cyl("metal", 0.022, 0.03, [0, h, 0.05], { segs: 16 }),
+        cyl("metal", 0.018, 0.025, [0, h, -0.048], { segs: 16 }),
+        cyl("lens", 0.02, 0.003, [0, h, 0.066], { segs: 16 }),
+        box("red", 0.006, 0.004, 0.045, [0, h + 0.012, 0]),
+      ];
+    case "x4":
+      // 4x: ống trụ dài hơn, loe hai đầu, núm chỉnh trên nóc.
+      return [
+        ...mount(0.09),
+        cyl("metal", 0.018, 0.14, [0, h, 0], { segs: 16 }),
+        cyl("metal", 0.024, 0.04, [0, h, 0.085], { segs: 16, r2: 0.018 }),
+        cyl("metal", 0.018, 0.035, [0, h, -0.08], { segs: 16, r2: 0.021 }),
+        cyl("lens", 0.023, 0.003, [0, h, 0.106], { segs: 16 }),
+        cyl("metal", 0.01, 0.016, [0, h + 0.022, 0.005], { axis: "y", segs: 10 }),
       ];
     default:
       // 8x: ống dài, hai đầu loe, núm chỉnh trên nóc và hông.

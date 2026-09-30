@@ -14,7 +14,7 @@ import { effects, getBattleHud, menuOpen, seat, setBattleHud } from "./runtime.t
 
 // Xe tăng: vẽ thân, xích, tháp pháo quay độc lập, nòng pháo ngẩng hạ; hộp va chạm để người, đạn không xuyên qua.
 // Xe mình lái: W/S tiến lùi, A/D bẻ lái (quay tại chỗ được), chuột xoay tháp pháo theo hướng nhìn, chuột trái bắn
-// pháo (nạp đạn vài giây), chuột phải nhìn qua kính ngắm pháo thủ, E xuống xe. Máy mình tự lái (khớp va chạm với
+// pháo (nạp đạn vài giây), chuột phải nhìn qua kính ngắm pháo thủ, F xuống xe. Máy mình tự lái (khớp va chạm với
 // server), gửi vị trí 15 lần mỗi giây; xe người khác (và xe máy lái) nội suy mượt theo server.
 
 const SEND_INTERVAL = 1 / 15;
