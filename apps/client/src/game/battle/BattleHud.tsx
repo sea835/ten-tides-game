@@ -9,6 +9,9 @@ import {
   HELMETS,
   MAP_HALF_SIZE,
   OUTFITS,
+  ATTACHMENTS,
+  ATTACHMENT_IDS,
+  attachmentFits,
   SIGHTS,
   SIGHT_IDS,
   THROWABLES,
@@ -61,10 +64,16 @@ function nameOf(room: IslandRoom, id: string): string {
 }
 
 /** Tên súng kèm ống ngắm đang lắp (vd. "Kar98k · 8x"). */
-function withSight(name: string | undefined, sight: string): string {
+/** Ký hiệu ngắn của phụ kiện trên ô súng. */
+const ATT_SHORT: Record<string, string> = { comp: "Bù giật", suppressor: "Giảm thanh", flashhider: "Che lửa", choke: "Choke", vgrip: "TC dọc", agrip: "TC nghiêng", halfgrip: "TC nửa", extmag: "Băng+", quickmag: "Băng nhanh", extquick: "Băng+ nhanh", tacstock: "Báng", cheekpad: "Đệm má" };
+
+function withSight(name: string | undefined, sight: string, atts = ""): string {
   if (!name) return "";
   const s = SIGHTS[sight as SightId];
-  return s ? `${name} · ${s.id === "reddot" ? "Red Dot" : s.id === "holo" ? "Holo" : s.id.slice(1) + "x"}` : name;
+  const parts = [name];
+  if (s) parts.push(s.id === "reddot" ? "Red Dot" : s.id === "holo" ? "Holo" : s.id.slice(1) + "x");
+  for (const id of atts.split(",")) if (ATT_SHORT[id]) parts.push(ATT_SHORT[id]!);
+  return parts.join(" · ");
 }
 
 /**
@@ -273,9 +282,9 @@ function Vitals({ room }: { room: IslandRoom }) {
   const reloading = k.reloading || gun.reloadUntil > now;
   const healing = k.healing || gun.healUntil > now;
   const slots: { key: string; slot: string; label: string; mag: number }[] = [
-    { key: "1", slot: "primary1", label: withSight(WEAPON.get(k.primary1)?.name, k.sight1), mag: k.mag1 },
-    { key: "2", slot: "primary2", label: withSight(WEAPON.get(k.primary2)?.name, k.sight2), mag: k.mag2 },
-    { key: "3", slot: "pistol", label: withSight(WEAPON.get(k.pistol)?.name, k.sightP), mag: k.magP },
+    { key: "1", slot: "primary1", label: withSight(WEAPON.get(k.primary1)?.name, k.sight1, k.att1), mag: k.mag1 },
+    { key: "2", slot: "primary2", label: withSight(WEAPON.get(k.primary2)?.name, k.sight2, k.att2), mag: k.mag2 },
+    { key: "3", slot: "pistol", label: withSight(WEAPON.get(k.pistol)?.name, k.sightP, k.attP), mag: k.magP },
   ];
   const active = WEAPON.get((k as unknown as Record<string, string>)[k.active] ?? "");
   const mag = active ? (gun.weapon === active.id ? gun.mag : slots.find((s) => s.slot === k.active)?.mag ?? 0) : 0;
@@ -445,7 +454,7 @@ function Pickup() {
 
 // ---------------------------------------------------------------------------- cửa hàng
 
-type Tab = "guns" | "sights" | "gear" | "ammo" | "outfit";
+type Tab = "guns" | "sights" | "atts" | "gear" | "ammo" | "outfit";
 
 function BuyMenu({ room }: { room: IslandRoom }) {
   const hud = useBattleHud();
@@ -487,6 +496,7 @@ function BuyMenu({ room }: { room: IslandRoom }) {
           [
             ["guns", "Súng"],
             ["sights", "Ống ngắm"],
+            ["atts", "Phụ kiện"],
             ["ammo", "Đạn"],
             ["gear", "Giáp · ném · hồi máu"],
             ["outfit", "Trang phục"],
@@ -506,6 +516,17 @@ function BuyMenu({ room }: { room: IslandRoom }) {
             </section>
           ))}
         {tab === "guns" && <p className="b-buy-note">M249, AWM và giáp, mũ cấp 3 chỉ có trong Kho vũ khí, trên tàu và ở bãi mìn. Mua súng được tặng 2 băng đạn.</p>}
+        {tab === "atts" &&
+          (["muzzle", "grip", "mag", "stock"] as const).map((slotKind) => (
+            <section key={slotKind}>
+              <h4>{{ muzzle: "Đầu nòng", grip: "Tay cầm", mag: "Băng đạn", stock: "Báng" }[slotKind]}</h4>
+              {ATTACHMENT_IDS.filter((id) => ATTACHMENTS[id].slot === slotKind && ATTACHMENTS[id].price > 0).map((id) => {
+                const fits = WEAPONS.filter((w) => w.price > 0 && attachmentFits(id, w)).map((w) => w.name);
+                return item(`att:${id}`, ATTACHMENTS[id].name, ATTACHMENTS[id].price, `${ATTACHMENTS[id].desc} · lắp cho ${fits.length > 5 ? `${fits.length} khẩu` : fits.join(", ")}`);
+              })}
+            </section>
+          ))}
+        {tab === "atts" && <p className="b-buy-note">Mua hay nhặt phụ kiện thì tự lắp lên khẩu đang cầm (hoặc khẩu hợp còn trống chỗ), món cũ cùng chỗ rơi xuống đất. Băng mở rộng thay nhanh chỉ nhặt được ở kho vũ khí.</p>}
         {tab === "sights" && (
           <section>
             {SIGHT_IDS.filter((id) => SIGHTS[id].price > 0).map((id) => {

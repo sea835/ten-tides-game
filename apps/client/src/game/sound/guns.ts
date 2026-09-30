@@ -733,14 +733,15 @@ function hash(s: string): number {
 let lastLocalShot = 0;
 
 /** Một phát súng. `local` là do chính mình bắn (to hơn, không lọc khoảng cách, rộng). `at` là đầu nòng. */
-export const playGunshot = safe((weaponId: string, at: Place, local: boolean) => {
+export const playGunshot = safe((weaponId: string, at: Place, local: boolean, suppressed = false) => {
   const ctx = live();
   if (!ctx) return;
   const def = WEAPON.get(weaponId);
   const cls: WeaponClass = def?.class ?? "ar";
   const P = PROFILES[cls];
   const damage = def?.damage ?? 40;
-  const sp = local ? null : spatial(at, P.range);
+  // Giảm thanh: nghe xa chừng một phần tư, tiếng đục "phụt", tiếng dội rất nhỏ.
+  const sp = local ? null : spatial(at, P.range * (suppressed ? 0.25 : 1));
   if (!local && !sp) return;
   const d = sp?.d ?? 0;
   const bank = bankFor(ctx, weaponId, blastFor(cls, def?.ammo, damage));
@@ -753,14 +754,19 @@ export const playGunshot = safe((weaponId: string, at: Place, local: boolean) =>
   if (local) lastLocalShot = now;
   // Gần: phần thẳng áp đảo; xa: phần thẳng mờ nhanh, còn lại chủ yếu tiếng dội (như tiếng súng xa thật).
   const direct = local ? 1 : 1 / (1 + Math.pow(d / 110, 1.6));
-  const dryLevel = loud * (local ? 1 : 0.95 * sp!.gain * direct);
-  const tailLevel = loud * P.tailVol * (local ? (burst ? 0.6 : 1) : Math.pow(sp!.gain, 0.55) * (1 + 0.8 * Math.min(1, d / 160)));
+  const dryLevel = loud * (local ? 1 : 0.95 * sp!.gain * direct) * (suppressed ? 0.45 : 1);
+  const tailLevel = loud * P.tailVol * (local ? (burst ? 0.6 : 1) : Math.pow(sp!.gain, 0.55) * (1 + 0.8 * Math.min(1, d / 160))) * (suppressed ? 0.18 : 1);
   const reverb = P.rev * (local ? 0.45 : 0.6 + 1.2 * Math.min(1, d / 180));
   const v = voice("gun", Math.max(dryLevel, tailLevel * 0.6), { sp, reverb, wide: local ? 0.35 : 0, gain: 1 });
   if (!v) return;
 
   // 1–4. Phần khô dựng sẵn: tiếng nứt siêu thanh + tách dải rộng (bão hòa), khối hơi, thân trầm, bark.
-  v.buffer(0, pick(bank.dry), rate, dryLevel);
+  if (suppressed) {
+    // Phần khô đi qua lọc thấp (mất tiếng nổ chói), thêm tiếng "phụt" khí.
+    const muffled = v.branch(local ? 2600 : 1600, sp?.pan ?? 0);
+    v.buffer(0, pick(bank.dry), rate * 1.05, dryLevel, muffled);
+    v.noise(0, { type: "bandpass", freq: rand(900, 1300), q: 1.2, attack: 0.002, decay: 0.05, peak: 0.5 * dryLevel });
+  } else v.buffer(0, pick(bank.dry), rate, dryLevel);
   // 5. Tiếng cơ khí của chính mình: kim hỏa đập, khối khóa nòng va vào hộp khóa, lò xo rung kim loại.
   if (local) {
     const m = cls === "sniper" || cls === "dmr" ? 0.8 : cls === "pistol" ? 1.1 : 1;

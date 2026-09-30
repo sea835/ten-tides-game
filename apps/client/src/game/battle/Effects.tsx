@@ -667,8 +667,9 @@ function useShots(room: IslandRoom) {
     return room.onMessage(Messages.shot, (m: ShotMessage) => {
       const now = performance.now() / 1000;
       const [ox, oy, oz] = m.o;
-      effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
-      playGunshot(m.w, { x: ox, y: oy, z: oz }, false);
+      // Giảm thanh: không loé lửa, tiếng đục nhỏ (ở xa không nghe thấy).
+      if (!m.s) effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
+      playGunshot(m.w, { x: ox, y: oy, z: oz }, false, !!m.s);
       const def = WEAPON.get(m.w);
       if (def?.class === "sniper") setTimeout(() => playBolt(), 450);
       // Vỏ đạn của người bắn gần mình: văng ra bên phải người bắn, sau đầu nòng chừng nửa mét.

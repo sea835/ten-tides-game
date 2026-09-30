@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, MELEE, SIGHTS, WEAPON, bulletAt, bulletDrop, bulletSteps, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
+import { HEALS, MELEE, SIGHTS, WEAPON, withAttachments, bulletAt, bulletDrop, bulletSteps, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
@@ -29,6 +29,11 @@ function magOf(kit: KitState, slot: string): number {
   return slot === "primary1" ? kit.mag1 : slot === "primary2" ? kit.mag2 : slot === "pistol" ? kit.magP : 0;
 }
 
+/** Phụ kiện khác (đầu nòng, tay cầm, băng, báng) trên khẩu ở ô này. */
+export function attsOf(kit: KitState, slot: string): string {
+  return slot === "primary1" ? kit.att1 : slot === "primary2" ? kit.att2 : slot === "pistol" ? kit.attP : "";
+}
+
 export function sightOf(kit: KitState, slot: string): string {
   return slot === "primary1" ? kit.sight1 : slot === "primary2" ? kit.sight2 : slot === "pistol" ? kit.sightP : "";
 }
@@ -42,7 +47,7 @@ export function zeroRange(def: WeaponDef, sight: string): { base: number; max: n
 }
 
 /** Súng đang cầm và băng đạn dự đoán trên máy (server trả số thật sau). */
-export const gun = { slot: "" as Slot, weapon: "", mag: 0, lastShot: 0, readyAt: 0, lastMelee: 0, reloadUntil: 0, cancelReload: null as null | (() => void), healUntil: 0, cancelHeal: null as null | (() => void) };
+export const gun = { slot: "" as Slot, weapon: "", mag: 0, lastShot: 0, readyAt: 0, lastMelee: 0, reloadDur: 2, atts: "", flashless: false, reloadUntil: 0, cancelReload: null as null | (() => void), healUntil: 0, cancelHeal: null as null | (() => void) };
 
 /** Số giả ngẫu nhiên cố định theo tên súng: mỗi khẩu một kiểu lượn ngang riêng (học được, ghì được). */
 function weaponSeed(id: string): number {
@@ -342,10 +347,12 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (!k || !alive()) return;
     const def = WEAPON.get((k as unknown as Record<string, string>)[k.active] ?? "");
     if (!def || gun.reloadUntil > performance.now()) return;
-    if (magOf(k, k.active) >= def.mag || (k.ammo.get(def.ammo) ?? 0) <= 0) return;
+    const eff = withAttachments(def, attsOf(k, k.active));
+    if (magOf(k, k.active) >= eff.mag || (k.ammo.get(def.ammo) ?? 0) <= 0) return;
     room.send(Messages.reload);
-    gun.reloadUntil = performance.now() + def.reload * 1000;
-    gun.cancelReload = playReload(def.id, def.reload);
+    gun.reloadDur = eff.reload;
+    gun.reloadUntil = performance.now() + eff.reload * 1000;
+    gun.cancelReload = playReload(def.id, eff.reload);
   };
 
   const heal = (kind: "bandage" | "medkit") => {
@@ -395,6 +402,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Ngắm.
     const wantAim = (getSettings().toggleAim ? inp.aimToggle : inp.aimHeld) && !!def && !reloading && !stance.sprinting && now >= gun.readyAt;
     stance.aiming = wantAim;
+    gun.atts = def ? attsOf(k, slot) : "";
     stance.zoom = def ? zoomOf(def, sight) : 1;
     stance.scoped = !!sight && SIGHTS[sight as SightId]?.scope === true;
     stance.holdFire = inp.fire;
@@ -406,6 +414,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (stance.moving) spread *= stance.aiming ? 1.6 : 1.5;
       if (stance.airborne) spread *= 3;
       if (stance.crouching) spread *= 0.75;
+      // Phụ kiện: tay cầm nghiêng chụm hơn khi bắn hông, choke làm chùm đạn shotgun chụm lại.
+      spread *= withAttachments(def, gun.atts).spread;
       stance.spread = spread + bloom.current;
     }
 
@@ -531,7 +541,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Góc thứ ba: lấy đúng đầu nòng khẩu súng trên tay nhân vật.
     const held = first ? null : localAvatar.current?.getObjectByName("weapon");
     if (held?.visible) {
-      const at = held.localToWorld(new Vector3(...muzzleOffset(def.id)));
+      const at = held.localToWorld(new Vector3(...muzzleOffset(def.id, gun.atts)));
       if (at.distanceTo(localPosition) < 3) muzzle = at;
     }
     // Đầu nòng thò qua tường (đứng sát vật cản): đạn xuất phát ngay mặt tường phía mình, không bắn xuyên qua được.
@@ -621,8 +631,11 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const from = first && muzzleView.valid ? new Vector3(muzzleView.x, muzzleView.y, muzzleView.z) : muzzle;
     for (const e of ends) effects.tracers.push({ ox: from.x, oy: from.y, oz: from.z, ex: e.at.x, ey: e.at.y, ez: e.at.z, born: seconds, mine: true, speed: def.velocity });
     // Lửa đầu nòng: góc nhất thì ViewModel tự vẽ trên súng; góc ba vẽ ở đầu nòng thật.
-    if (!first) effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
-    playGunshot(def.id, muzzle, true);
+    const eff = withAttachments(def, gun.atts);
+    // Giảm thanh, che lửa: không loé lửa (không lộ vị trí), giảm thanh thì tiếng đục nhỏ.
+    if (!first && !eff.flashless) effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
+    gun.flashless = eff.flashless;
+    playGunshot(def.id, muzzle, true, eff.suppressed);
     if (def.class !== "sniper" && def.class !== "shotgun") playShotMechanics(def.id);
     // Vỏ đạn văng ra cửa thoát bên phải (súng khoá nòng: văng khi kéo khoá, sau phát bắn một chút; shotgun hai nòng
     // bẻ ra lúc nạp đạn).
@@ -653,7 +666,10 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (def.class === "sniper") setTimeout(() => playBolt(), 450);
     room.send(Messages.fire, { weapon: def.id, o: [muzzle.x, muzzle.y, muzzle.z], rays, hits } satisfies FireMessage);
     // Giật: dồn vào góc nhìn trong vài khung hình tới (updateRecoil), hất màn hình một cái, súng trên tay lùi lại.
-    const { up, side } = recoilFor(def, recoil.shot, stance);
+    const raw = recoilFor(def, recoil.shot, stance);
+    // Phụ kiện đỡ giật: bù giật, tay cầm, báng.
+    const up = raw.up * eff.recoilV;
+    const side = raw.side * eff.recoilH;
     recoil.shot++;
     recoil.pendPitch += up;
     recoil.pendYaw += side;

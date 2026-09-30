@@ -9,7 +9,7 @@ import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { WEAPON } from "@tentides/content";
+import { WEAPON, withAttachments } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
 import { physicsProbe } from "./battle/surface.ts";
 import { muzzleOffset } from "./GunModel.tsx";
@@ -131,7 +131,8 @@ function BattleRemote({ room, player, root, avatar, alive }: { room: IslandRoom;
       const def = WEAPON.get(look.weapon);
       if (k.reloading && !an.reloading) an.reloadAt = now;
       an.reloading = k.reloading;
-      m.reload = k.reloading && def ? Math.min(0.99, (now - an.reloadAt) / (def.reload * 1000)) : undefined;
+      const reloadDur = def ? withAttachments(def, k.active === "primary1" ? k.att1 : k.active === "primary2" ? k.att2 : k.attP).reload : 1;
+      m.reload = k.reloading && def ? Math.min(0.99, (now - an.reloadAt) / (reloadDur * 1000)) : undefined;
       const current = `${k.active}|${look.weapon}`;
       if (current !== an.weapon) {
         if (an.weapon) an.swapAt = now;

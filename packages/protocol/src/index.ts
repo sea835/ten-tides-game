@@ -58,6 +58,10 @@ export const KitState = schema(
     sight1: t.string().default(""),
     sight2: t.string().default(""),
     sightP: t.string().default(""),
+    /** Phụ kiện khác lắp trên từng khẩu (id trong ATTACHMENTS, cách nhau dấu phẩy): đầu nòng, tay cầm, băng đạn, báng. */
+    att1: t.string().default(""),
+    att2: t.string().default(""),
+    attP: t.string().default(""),
     /** Ô đang cầm: primary1, primary2, pistol, frag, smoke, mine hoặc rỗng (tay không). */
     active: t.string().default(""),
     ammo: t.map("uint16"),
@@ -138,6 +142,8 @@ export const PlayerState = schema(
     shots: t.uint16().default(0),
     /** Là máy (bot) do server điều khiển. */
     bot: t.boolean().default(false),
+    /** Skin súng đang lắp (id súng → id skin trong SKINS), server nạp từ tài khoản khi vào phòng. Khách thì rỗng. */
+    skins: t.map("string"),
   },
   "PlayerState",
 );
@@ -538,6 +544,8 @@ export const JoinOptions = z.object({
   name: z.string().trim().min(1).max(20),
   /** Token bí mật của người chơi, lưu ở trình duyệt, để vào lại đúng nhân vật sau khi rớt mạng hay tải lại trang. */
   token: z.string().min(16).max(64),
+  /** Phiên đăng nhập tài khoản (nếu có). Hợp lệ thì server gắn nhân vật vào tài khoản; sai hay hết hạn thì chơi như khách. */
+  session: z.string().max(128).optional(),
 });
 export type JoinOptions = z.infer<typeof JoinOptions>;
 
@@ -723,6 +731,8 @@ export interface ShotMessage {
   w: string;
   o: [number, number, number];
   e: [number, number, number][];
+  /** Súng lắp giảm thanh: tiếng nhỏ, nghe gần mới thấy, không loé lửa. */
+  s?: 1;
 }
 /** Server báo riêng người bắn: trúng thân, trúng đầu, hạ gục, trúng giáp. */
 export interface HitMessage {

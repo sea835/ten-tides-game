@@ -906,7 +906,7 @@ function readLocalMotion(room: IslandRoom): Motion {
   if (room.state.mode === "battle") {
     const now = performance.now();
     const def = WEAPON.get(gun.weapon);
-    merged.reload = def && gun.reloadUntil > now ? 1 - (gun.reloadUntil - now) / (def.reload * 1000) : undefined;
+    merged.reload = def && gun.reloadUntil > now ? 1 - (gun.reloadUntil - now) / (gun.reloadDur * 1000) : undefined;
     const k = Math.min(1, (now - stance.swapAt) / (stance.swapDur * 1000));
     merged.swap = 1 - k * k * (3 - 2 * k);
     merged.cook = stance.cookAt > 0;

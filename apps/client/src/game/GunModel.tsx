@@ -617,9 +617,21 @@ export function magCenter(id: string): [number, number, number] {
   return listCenter(gunParts(id, "mag")) ?? [0, -0.1, 0.1];
 }
 
-/** Đầu nòng (nơi loé lửa) trong toạ độ súng, ở tỉ lệ 1. */
-export function muzzleOffset(weaponId: string): [number, number, number] {
-  return [...(GUNS[weaponId] ?? DEFAULT_GUN).muzzle];
+/** Đầu nòng (nơi loé lửa) trong toạ độ súng, ở tỉ lệ 1; lắp đầu nòng (giảm thanh, bù giật...) thì dài ra. */
+export function muzzleOffset(weaponId: string, atts = ""): [number, number, number] {
+  const m = [...(GUNS[weaponId] ?? DEFAULT_GUN).muzzle] as [number, number, number];
+  m[2] += muzzleExtra(weaponId, atts);
+  return m;
+}
+
+/** Đầu nòng lắp thêm dài bao nhiêu. */
+function muzzleExtra(weaponId: string, atts: string): number {
+  const list = atts.split(",");
+  const pistol = (GUNS[weaponId] ?? DEFAULT_GUN).stock === 0;
+  if (list.includes("suppressor")) return pistol ? 0.12 : 0.17;
+  if (list.includes("comp") || list.includes("flashhider")) return 0.055;
+  if (list.includes("choke")) return 0.03;
+  return 0;
 }
 
 /** Độ cao đường ngắm (điểm ruồi / tâm ống ngắm) so với tay cầm. */
@@ -628,8 +640,120 @@ export function sightHeight(weaponId: string): number {
 }
 
 /** Chỗ tay trái đỡ súng (dưới ốp lót tay; súng lục thì ôm lấy tay phải). */
-export function supportOffset(weaponId: string): [number, number, number] {
-  return [...(GUNS[weaponId] ?? DEFAULT_GUN).support];
+export function supportOffset(weaponId: string, atts = ""): [number, number, number] {
+  const p = [...(GUNS[weaponId] ?? DEFAULT_GUN).support] as [number, number, number];
+  // Có tay cầm dưới ốp lót tay thì tay trái nắm tay cầm (thấp xuống).
+  const list = atts.split(",");
+  if (list.includes("vgrip")) p[1] -= 0.075;
+  else if (list.includes("agrip")) {
+    p[1] -= 0.035;
+    p[2] -= 0.02;
+  } else if (list.includes("halfgrip")) p[1] -= 0.03;
+  return p;
+}
+
+// ---------------------------------------------------------------------------- phụ kiện
+
+/** Hình của một phụ kiện, đặt đúng chỗ trên khẩu súng này (toạ độ súng). */
+function attachmentParts(weaponId: string, att: string): Part[] {
+  const g = GUNS[weaponId] ?? DEFAULT_GUN;
+  const [, my, mz] = g.muzzle;
+  const pistol = g.stock === 0;
+  const [, sy, sz] = g.support;
+  switch (att) {
+    case "suppressor": {
+      // Ống giảm thanh: trụ dài đen mờ, hai vành.
+      const len = pistol ? 0.12 : 0.17;
+      const r = pistol ? 0.014 : 0.019;
+      return [
+        cyl("poly", r, len, [0, my, mz + len / 2 - 0.005], { segs: 16 }),
+        cyl("metal", r * 1.08, 0.012, [0, my, mz + 0.004], { segs: 16 }),
+        cyl("metal", r * 1.05, 0.01, [0, my, mz + len - 0.01], { segs: 16 }),
+      ];
+    }
+    case "comp":
+      // Bù giật: khối trụ có rãnh xả khí phía trên.
+      return [
+        cyl("metal", 0.014, 0.055, [0, my, mz + 0.027], { segs: 12 }),
+        box("poly", 0.006, 0.006, 0.012, [0, my + 0.013, mz + 0.018]),
+        box("poly", 0.006, 0.006, 0.012, [0, my + 0.013, mz + 0.036]),
+      ];
+    case "flashhider": {
+      // Che lửa: ống có các khe dọc (bốn nan).
+      const out: Part[] = [cyl("metal", 0.012, 0.02, [0, my, mz + 0.01], { segs: 10 })];
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+        out.push(box("metal", 0.004, 0.004, 0.035, [Math.cos(a) * 0.011, my + Math.sin(a) * 0.011, mz + 0.037]));
+      }
+      return out;
+    }
+    case "choke":
+      return [cyl("metal", 0.016, 0.03, [0, my, mz + 0.015], { segs: 12, r2: 0.013 })];
+    case "vgrip":
+      // Tay cầm dọc dưới ốp lót tay.
+      return [cyl("poly", 0.013, 0.085, [0, sy - 0.06, sz + 0.005], { axis: "y", segs: 10 }), box("poly", 0.022, 0.012, 0.03, [0, sy - 0.02, sz + 0.005])];
+    case "agrip":
+      // Tay cầm nghiêng: nêm dẹt chéo về trước.
+      return [box("poly", 0.024, 0.03, 0.08, [0, sy - 0.035, sz + 0.02], [0.45, 0, 0])];
+    case "halfgrip":
+      return [box("poly", 0.022, 0.025, 0.055, [0, sy - 0.03, sz + 0.01], [-0.2, 0, 0])];
+    case "tacstock":
+      // Báng chiến thuật: đế tì vai cao su, gờ trên.
+      return pistol ? [] : [box("poly", 0.04, 0.12, 0.03, [0, -0.02, -g.stock + 0.01]), box("poly", 0.03, 0.02, 0.1, [0, 0.045, -g.stock + 0.06])];
+    case "cheekpad":
+      return pistol ? [] : [box("tan", 0.032, 0.028, 0.12, [0, 0.055, -g.stock * 0.55])];
+    case "quickmag": {
+      // Băng thay nhanh: quai kéo đỏ ở đáy băng.
+      const c = magCenter(weaponId);
+      return [box("red", 0.02, 0.012, 0.03, [c[0], c[1] - (pistol ? 0.06 : 0.1), c[2]])];
+    }
+    case "extquick": {
+      const c = magCenter(weaponId);
+      return [box("red", 0.02, 0.012, 0.03, [c[0], c[1] - (pistol ? 0.08 : 0.14), c[2]])];
+    }
+    default:
+      return [];
+  }
+}
+
+/** Các phụ kiện lắp trên súng (chuỗi "comp,vgrip"), gộp theo vật liệu, cache theo súng + bộ phụ kiện. */
+function AttachmentParts({ weaponId, atts, opacity, view }: { weaponId: string; atts: string; opacity: number; view: boolean }) {
+  const ids = atts.split(",").filter((id) => id && id !== "extmag");
+  if (!ids.length) return null;
+  const key = `att:${weaponId}:${[...ids].sort().join(",")}`;
+  return <Parts list={gearParts(key, () => ids.flatMap((id) => attachmentParts(weaponId, id)))} opacity={opacity} view={view} />;
+}
+
+/** Phụ kiện nằm dưới đất (để nhặt, để làm hình trong cửa hàng): lắp tạm trên một khẩu mẫu rồi dời về gốc. */
+function LooseAttachment({ id }: { id: string }) {
+  const host = id === "choke" ? "s686" : id === "cheekpad" ? "kar98k" : "m416";
+  const parts = attachmentParts(host, id === "extmag" ? "quickmag" : id);
+  const g = GUNS[host]!;
+  const center: [number, number, number] =
+    id === "suppressor" || id === "comp" || id === "flashhider" || id === "choke"
+      ? [0, g.muzzle[1], g.muzzle[2] + 0.05]
+      : id === "vgrip" || id === "agrip" || id === "halfgrip"
+        ? [0, g.support[1] - 0.04, g.support[2]]
+        : id === "tacstock"
+          ? [0, 0, -g.stock + 0.04]
+          : id === "cheekpad"
+            ? [0, 0.055, -g.stock * 0.55]
+            : magCenter(host);
+  if (id === "extmag" || id === "quickmag" || id === "extquick") {
+    // Băng đạn rời: băng M416, dài hơn nếu là băng mở rộng.
+    return (
+      <group rotation-z={Math.PI / 2} position-y={0.03} scale={[1, id === "quickmag" ? 1 : 1.35, 1]}>
+        <MagModel weaponId="m416" />
+      </group>
+    );
+  }
+  return (
+    <group rotation-y={Math.PI / 2} position={[0, 0.03, 0]}>
+      <group position={[-center[0], -center[1], -center[2]]}>
+        <Parts list={gearParts(`loose:${id}`, () => parts)} />
+      </group>
+    </group>
+  );
 }
 
 /** Chiều dài báng tính từ tay cầm ra sau (0: súng lục). */
@@ -721,14 +845,19 @@ function Parts({ list, opacity = 1, view = false }: { list: { key: string; geo: 
 }
 
 /** Khẩu súng theo id (WEAPONS). Gốc ở tay cầm, nòng theo +z. `view`: súng trước mặt ở góc thứ nhất (vẽ đè lên cảnh). */
-export function GunModel({ weaponId, sight = "", scale = 1, opacity = 1, view = false }: { weaponId: string; sight?: string; scale?: number; opacity?: number; view?: boolean }) {
+export function GunModel({ weaponId, sight = "", atts = "", scale = 1, opacity = 1, view = false }: { weaponId: string; sight?: string; atts?: string; scale?: number; opacity?: number; view?: boolean }) {
+  // Băng mở rộng: băng dài thêm về phía dưới.
+  const ext = atts.split(",").some((id) => id === "extmag" || id === "extquick");
   return (
     <group scale={scale}>
       <Parts list={gunParts(weaponId, "body")} opacity={opacity} view={view} />
       {/* Băng đạn và phần lùi khi lên đạn tách riêng để hoạt ảnh thay đạn / bắn tìm theo tên mà dời hoặc ẩn. */}
       <group name="mag">
-        <Parts list={gunParts(weaponId, "mag")} opacity={opacity} view={view} />
+        <group scale={[1, ext ? 1.35 : 1, 1]}>
+          <Parts list={gunParts(weaponId, "mag")} opacity={opacity} view={view} />
+        </group>
       </group>
+      {atts && <AttachmentParts weaponId={weaponId} atts={atts} opacity={opacity} view={view} />}
       <group name="action">
         <Parts list={gunParts(weaponId, "action")} opacity={opacity} view={view} />
       </group>
@@ -965,6 +1094,7 @@ export function LootModel({ id }: { id: string }) {
   }
   const [kind, arg = ""] = id.split(":");
   if (kind === "sight") return <SightModel id={arg} />;
+  if (kind === "att") return <LooseAttachment id={arg} />;
   if (kind === "ammo") return <Parts list={gearParts(id, () => ammoParts(arg))} />;
   if (kind === "armor") {
     // Áo giáp nằm sấp gập dẹt trên đất (mặt trước có tấm chắn, túi đạn quay lên).
