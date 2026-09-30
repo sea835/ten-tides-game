@@ -157,9 +157,11 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     const w = slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "";
     const sg = slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "";
     const at = slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "";
-    return `${slot}|${w}|${sg}|${k.outfit}|${at}`;
+    // Skin súng đang lắp cho khẩu này (tài khoản), để súng trước mặt cũng mang skin.
+    const sk = w ? (p.skins.get(w) ?? "") : "";
+    return `${slot}|${w}|${sg}|${k.outfit}|${at}|${sk}`;
   });
-  const [slot = "", weapon = "", sightId = "", outfit = "woodland", atts = ""] = held.split("|");
+  const [slot = "", weapon = "", sightId = "", outfit = "woodland", atts = "", skin = ""] = held.split("|");
   const def = WEAPON.get(weapon);
   const sight = def ? aimLineHeight(weapon, sightId) : 0;
   const thrown = THROWN_SLOTS.includes(slot) ? slot : "";
@@ -393,7 +395,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
       <group ref={gunG}>
         {def && (
           <>
-            <GunModel weaponId={weapon} sight={sightId} atts={atts} scale={1} view />
+            <GunModel weaponId={weapon} sight={sightId} atts={atts} skin={skin} scale={1} view />
             {(sightId || weapon === "scar") && <Reticle weapon={weapon} sight={sightId || "builtin"} />}
             <RightHand />
             <group ref={leftG} position={support}>

@@ -15,6 +15,7 @@ import {
   Vector3,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { skinMaterial, skinViewMaterial } from "./skinMaterials.ts";
 
 // Mô hình 3D dựng bằng khối cho chế độ Battleground: súng (cầm trên tay và nằm dưới đất), đạn, giáp, mũ, lựu đạn,
 // bom khói, mìn, băng gạc, hộp cứu thương, tiền. Mỗi mô hình gộp các khối cùng vật liệu thành một hình (ít lệnh vẽ),
@@ -884,32 +885,34 @@ export function SightModel({ id, opacity = 1, view = false }: { id: string; opac
 }
 
 /** Vẽ các hình đã gộp với vật liệu dùng chung. */
-function Parts({ list, opacity = 1, view = false }: { list: { key: string; geo: BufferGeometry }[]; opacity?: number; view?: boolean }) {
+function Parts({ list, opacity = 1, view = false, skin = "" }: { list: { key: string; geo: BufferGeometry }[]; opacity?: number; view?: boolean; skin?: string }) {
   return (
     <>
-      {list.map(({ key, geo }) => (
-        <mesh key={key} geometry={geo} material={view ? viewMaterial(key) : gearMaterial(key, opacity)} castShadow={!view} receiveShadow />
-      ))}
+      {list.map(({ key, geo }) => {
+        // Skin súng (gacha): thay vật liệu thân súng (kim loại, nhựa, gỗ); kính, ống ngắm giữ nguyên.
+        const skinned = skin ? (view ? skinViewMaterial(key, skin) : skinMaterial(key, skin, opacity)) : null;
+        return <mesh key={key} geometry={geo} material={skinned ?? (view ? viewMaterial(key) : gearMaterial(key, opacity))} castShadow={!view} receiveShadow />;
+      })}
     </>
   );
 }
 
 /** Khẩu súng theo id (WEAPONS). Gốc ở tay cầm, nòng theo +z. `view`: súng trước mặt ở góc thứ nhất (vẽ đè lên cảnh). */
-export function GunModel({ weaponId, sight = "", atts = "", scale = 1, opacity = 1, view = false }: { weaponId: string; sight?: string; atts?: string; scale?: number; opacity?: number; view?: boolean }) {
+export function GunModel({ weaponId, sight = "", atts = "", skin = "", scale = 1, opacity = 1, view = false }: { weaponId: string; sight?: string; atts?: string; skin?: string; scale?: number; opacity?: number; view?: boolean }) {
   // Băng mở rộng: băng dài thêm về phía dưới.
   const ext = atts.split(",").some((id) => id === "extmag" || id === "extquick");
   return (
     <group scale={scale}>
-      <Parts list={gunParts(weaponId, "body")} opacity={opacity} view={view} />
+      <Parts list={gunParts(weaponId, "body")} opacity={opacity} view={view} skin={skin} />
       {/* Băng đạn và phần lùi khi lên đạn tách riêng để hoạt ảnh thay đạn / bắn tìm theo tên mà dời hoặc ẩn. */}
       <group name="mag">
         <group scale={[1, ext ? 1.35 : 1, 1]}>
-          <Parts list={gunParts(weaponId, "mag")} opacity={opacity} view={view} />
+          <Parts list={gunParts(weaponId, "mag")} opacity={opacity} view={view} skin={skin} />
         </group>
       </group>
       {atts && <AttachmentParts weaponId={weaponId} atts={atts} opacity={opacity} view={view} />}
       <group name="action">
-        <Parts list={gunParts(weaponId, "action")} opacity={opacity} view={view} />
+        <Parts list={gunParts(weaponId, "action")} opacity={opacity} view={view} skin={skin} />
       </group>
       {sight && (
         <group position={railMount(weaponId)}>

@@ -30,6 +30,7 @@ import { WEAPON } from "@tentides/content";
 import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
 import { Casings } from "./Casings.tsx";
+import { pulseNeon } from "../skinMaterials.ts";
 import { physicsProbe } from "./surface.ts";
 
 // Hiệu ứng của trận đấu: tường vùng an toàn (màn xanh cao vút, vân chạy), vòng kế tiếp vẽ trên mặt đất,
@@ -1056,6 +1057,12 @@ function MyMines({ room }: { room: IslandRoom }) {
   );
 }
 
+/** Skin súng neon (gacha huyền thoại): cho vân phát sáng nhịp nhàng. */
+function NeonPulse() {
+  useFrame(({ clock }) => pulseNeon(clock.elapsedTime));
+  return null;
+}
+
 export function BattleEffects({ room, world }: { room: IslandRoom; world: World }) {
   useBooms(room);
   useShots(room);
@@ -1071,6 +1078,7 @@ export function BattleEffects({ room, world }: { room: IslandRoom; world: World 
       <Tracers />
       <BulletHoles world={world} />
       <Casings world={world} />
+      <NeonPulse />
       <Grenades room={room} />
       <MyMines room={room} />
     </>
