@@ -1,27 +1,14 @@
 import { useMemo, useRef, type Ref } from "react";
 import { useFrame } from "@react-three/fiber";
-import {
-  BufferAttribute,
-  BufferGeometry,
-  Color,
-  CylinderGeometry,
-  DoubleSide,
-  LatheGeometry,
-  Matrix4,
-  MeshStandardMaterial,
-  Quaternion,
-  SphereGeometry,
-  BoxGeometry,
-  Vector2,
-  Vector3,
-  Euler,
-  type Group,
-} from "three";
+import { BufferAttribute, BufferGeometry, Color, DoubleSide, Euler, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type Group } from "three";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
 import { GunModel, HelmetModel, KnifeModel, ThrowableModel, VestModel, aimLineHeight, stockLength, supportOffset } from "./GunModel.tsx";
-import { camoTexture } from "./camo.ts";
+import { camoTexture, fabricTexture, type FabricKind } from "./camo.ts";
 import { mulberry32 } from "./nature.ts";
-import type { DetailKind } from "./textures.ts";
+import { detailed, type DetailKind } from "./textures.ts";
+import { armband, bedroll, belt, body as bodyShapes, chestRig, pack, rucksack, top } from "./character/shapes.ts";
+import { beardGeometry, face, hairGeometry } from "./character/head.ts";
+import { looks } from "./character/looks.ts";
 
 export interface Motion {
   moving: boolean;
@@ -73,7 +60,7 @@ const SHIN = 0.41;
 /** Eo: gốc xoay của nửa thân trên. Vai, dài cánh tay trên, cẳng tay (tính từ eo). */
 const WAIST_Y = 1.0;
 const SHOULDER_Y = 0.44;
-const SHOULDER_X = 0.19;
+const SHOULDER_X = 0.195;
 const UPPER = 0.29;
 const FORE = 0.26;
 /** Gốc đầu (đỉnh cổ) tính từ eo. */
@@ -89,32 +76,37 @@ const PRONE_TILT = 1.42;
 const PRONE_BACK = 0.93;
 const PRONE_LIFT = 0.12;
 
-const SKIN = ["#f1c9a0", "#e0ac7e", "#c68a5e", "#9c6a44"];
-const HAIR = ["#2b1d14", "#4a3020", "#7a4a26", "#1c1c1c", "#b07a3a"];
-
-/** Chọn tông da và tóc cố định theo màu áo, để mỗi người trông khác nhau mà máy nào cũng giống. */
-function looks(color: string) {
-  const n = [...color].reduce((sum, ch) => sum * 31 + ch.charCodeAt(0), 7) >>> 0;
-  return { skin: SKIN[n % SKIN.length]!, hair: HAIR[(n >>> 3) % HAIR.length]!, pants: new Color(color).multiplyScalar(0.35).getStyle() };
-}
-
 // ---------------------------------------------------------------------------- vật liệu dùng chung
 
 const mats = new Map<string, MeshStandardMaterial>();
 
-/** Vật liệu theo màu, loại vân, độ trong (tạo một lần, mọi nhân vật dùng chung). */
-function mat(color: string, detail: DetailKind | "none", opacity: number, rough = 0.85): MeshStandardMaterial {
-  const key = `${color}|${detail}|${opacity}|${rough}`;
+/**
+ * Vật liệu theo màu, loại vân, độ trong (tạo một lần, mọi nhân vật dùng chung). `tweak` chỉnh thêm lúc tạo (ánh ấm
+ * của da, độ kim loại...), phải kèm `tag` để khoá cache khác đi.
+ */
+function mat(color: string, detail: DetailKind | "none", opacity: number, rough = 0.85, tag = "", tweak?: (m: MeshStandardMaterial) => void): MeshStandardMaterial {
+  const key = `${color}|${detail}|${opacity}|${rough}|${tag}`;
   let m = mats.get(key);
   if (!m) {
     m = new MeshStandardMaterial({ color, roughness: rough, transparent: opacity < 1, opacity });
-    m.userData.detail = detail;
-    m.userData.detailSpace = "object";
     // Da mặt nhỏ: vân da nhẹ thôi kẻo loang lổ như râu.
-    if (detail === "skin") m.userData.detailStrength = 0.25;
+    if (detail === "none") m.userData.detail = "none";
+    else detailed(m, detail, detail === "skin" ? 0.25 : undefined);
+    m.userData.detailSpace = "object";
+    tweak?.(m);
     mats.set(key, m);
   }
   return m;
+}
+
+/**
+ * Da người: nhám vừa (không bóng nhựa), thêm chút ánh đỏ ấm tự phát rất nhẹ như ánh sáng thấm dưới da (vùng tối
+ * không xám xịt). Giữ ánh này thật yếu để trình phủ vân không coi là vật phát sáng.
+ */
+function skinMat(tone: string, opacity: number): MeshStandardMaterial {
+  return mat(tone, "skin", opacity, 0.6, "skin", (m) => {
+    m.emissive.set(tone).multiply(new Color(0.16, 0.05, 0.035)).multiplyScalar(0.55);
+  });
 }
 
 /** Vải rằn ri (có ảnh vân nên trình phủ vân bỏ qua). `tint` làm quần tối hơn áo một chút. */
@@ -123,6 +115,17 @@ function camoMat(outfit: string, tint: string, opacity: number): MeshStandardMat
   let m = mats.get(key);
   if (!m) {
     m = new MeshStandardMaterial({ color: tint, map: camoTexture(outfit), roughness: 0.92, transparent: opacity < 1, opacity });
+    mats.set(key, m);
+  }
+  return m;
+}
+
+/** Vải trơn / da thuộc có thớ (ảnh sợi dệt gần trắng nhân với màu). */
+function fabricMat(kind: FabricKind, color: string, opacity: number, rough = 0.9): MeshStandardMaterial {
+  const key = `fabric|${kind}|${color}|${opacity}|${rough}`;
+  let m = mats.get(key);
+  if (!m) {
+    m = new MeshStandardMaterial({ color, map: fabricTexture(kind), roughness: rough, transparent: opacity < 1, opacity });
     mats.set(key, m);
   }
   return m;
@@ -140,140 +143,15 @@ function strandMat(opacity: number): MeshStandardMaterial {
   return m;
 }
 
-// ---------------------------------------------------------------------------- hình khối dùng chung
-
-/** Ô vân rằn ri phủ chừng này mét vải. */
-const CAMO_TILE = 0.45;
-
-/**
- * Khối tiện tròn (thân, tay, chân) từ biên dạng [bán kính, y] theo y tăng dần. UV được nhân theo kích thước thật
- * để vân rằn ri to đều trên mọi bộ phận.
- */
-function lathe(profile: [number, number][], segs: number): LatheGeometry {
-  const g = new LatheGeometry(
-    profile.map(([r, y]) => new Vector2(r, y)),
-    segs,
-  );
-  const rMax = Math.max(...profile.map(([r]) => r));
-  const len = profile[profile.length - 1]![1] - profile[0]![1];
-  const su = Math.max(1, Math.round((Math.PI * 2 * rMax) / CAMO_TILE));
-  const sv = len / CAMO_TILE;
-  const uv = g.attributes.uv as BufferAttribute;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
-  return g;
-}
-
-const sphere = (w: number, h: number) => new SphereGeometry(1, w, h);
-
-/** Mọi hình của nhân vật, dựng một lần khi cần. */
-function makeGeometry() {
-  return {
-    // Thân trên từ eo lên vai (toạ độ eo): eo thon, ngực nở, vai xuôi vào cổ.
-    torso: lathe(
-      [
-        [0.0, -0.07],
-        [0.148, -0.06],
-        [0.147, 0.02],
-        [0.151, 0.1],
-        [0.164, 0.19],
-        [0.177, 0.28],
-        [0.18, 0.35],
-        [0.172, 0.41],
-        [0.152, 0.46],
-        [0.112, 0.5],
-        [0.062, 0.53],
-        [0.0, 0.545],
-      ],
-      20,
-    ),
-    // Hông và mông (toạ độ thân, y tuyệt đối).
-    pelvis: lathe(
-      [
-        [0.0, 0.8],
-        [0.08, 0.805],
-        [0.135, 0.84],
-        [0.163, 0.88],
-        [0.17, 0.94],
-        [0.162, 1.0],
-        [0.15, 1.05],
-        [0.0, 1.06],
-      ],
-      20,
-    ),
-    // Đùi (gốc ở khớp hông, chĩa xuống): to ở trên, thon về gối.
-    thigh: lathe(
-      [
-        [0.0, -0.46],
-        [0.05, -0.455],
-        [0.06, -0.43],
-        [0.066, -0.36],
-        [0.078, -0.22],
-        [0.086, -0.1],
-        [0.09, -0.02],
-        [0.084, 0.04],
-        [0.0, 0.07],
-      ],
-      14,
-    ),
-    // Cẳng chân: bắp chân phồng, thon về mắt cá.
-    shin: lathe(
-      [
-        [0.0, -0.43],
-        [0.04, -0.42],
-        [0.043, -0.38],
-        [0.05, -0.28],
-        [0.061, -0.14],
-        [0.059, -0.06],
-        [0.054, 0.0],
-        [0.044, 0.035],
-        [0.0, 0.045],
-      ],
-      14,
-    ),
-    upperArm: lathe(
-      [
-        [0.0, -0.31],
-        [0.036, -0.3],
-        [0.041, -0.27],
-        [0.047, -0.16],
-        [0.053, -0.06],
-        [0.055, 0.0],
-        [0.044, 0.04],
-        [0.0, 0.055],
-      ],
-      12,
-    ),
-    foreArm: lathe(
-      [
-        [0.0, -0.268],
-        [0.027, -0.262],
-        [0.03, -0.24],
-        [0.039, -0.14],
-        [0.045, -0.06],
-        [0.042, 0.0],
-        [0.034, 0.03],
-        [0.0, 0.04],
-      ],
-      12,
-    ),
-    ball: sphere(12, 8),
-    small: sphere(10, 7),
-    tiny: sphere(7, 5),
-    skull: sphere(22, 16),
-    jaw: sphere(16, 10),
-    hair: new SphereGeometry(1, 22, 10, 0, Math.PI * 2, 0, Math.PI * 0.53),
-    neck: new CylinderGeometry(0.047, 0.055, 0.14, 14),
-    collar: new CylinderGeometry(0.064, 0.074, 0.045, 16, 1, true),
-    cuff: new CylinderGeometry(1, 1, 1, 12, 1, true),
-    belt: new CylinderGeometry(1, 1, 1, 20, 1, true),
-    box: new BoxGeometry(1, 1, 1),
-    shaft: new CylinderGeometry(0.052, 0.056, 0.15, 12),
-    bedroll: new CylinderGeometry(0.11, 0.11, 0.4, 10),
-  };
-}
-
-let geoCache: ReturnType<typeof makeGeometry> | null = null;
-const geo = () => (geoCache ??= makeGeometry());
+/** Màu đồ đeo (thắt lưng, đai ngực, balo) hợp với từng bộ rằn ri. */
+const GEAR: Record<string, string> = {
+  woodland: "#4b4d36",
+  desert: "#8a7658",
+  urban: "#2e3032",
+  digital: "#5b5c42",
+  snow: "#c9cdcc",
+  ghillie: "#3f4430",
+};
 
 // ---------------------------------------------------------------------------- ghillie
 
@@ -414,15 +292,17 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
 type V3 = [number, number, number];
 
-/** Một khối của nhân vật: hình và vật liệu dùng chung, đổ bóng và nhận bóng. */
-function P({ g, m, p, s, r }: { g: BufferGeometry; m: MeshStandardMaterial; p?: V3; s?: V3 | number; r?: V3 }) {
-  // Chi tiết nhỏ (mắt, lông mày, môi, mũi, tai): không đổ bóng (bóng vài mm không thấy mà tốn thêm một lệnh vẽ), và
-  // được đánh dấu để ẩn khi người ở xa.
+/**
+ * Một khối của nhân vật: hình và vật liệu dùng chung, đổ bóng và nhận bóng. Chi tiết nhỏ (mắt, lông mày, môi) không
+ * đổ bóng (bóng vài mm không thấy mà tốn thêm một lệnh vẽ) và được đánh dấu để ẩn khi người ở xa; `t` ép đánh dấu.
+ */
+function P({ g, m, p, s, r, t }: { g: BufferGeometry; m: MeshStandardMaterial; p?: V3; s?: V3 | number; r?: V3; t?: boolean }) {
   const size = s === undefined ? 1 : typeof s === "number" ? s : Math.max(s[0], s[1], s[2]);
   if (!g.boundingSphere) g.computeBoundingSphere();
-  const tiny = (g.boundingSphere?.radius ?? 1) * size < 0.035;
+  const tiny = t || (g.boundingSphere?.radius ?? 1) * size < 0.035;
   return <mesh geometry={g} material={m} position={p} scale={s} rotation={r} castShadow={!tiny} receiveShadow={!tiny} userData={tiny ? TINY : undefined} />;
 }
+
 const TINY = { tiny: true };
 
 /**
@@ -441,6 +321,8 @@ export function Character({
   helmet = 0,
   weapon,
   sight = "",
+  atts = "",
+  gunSkin = "",
   throwable = "",
   knife = false,
   ref,
@@ -462,6 +344,9 @@ export function Character({
   weapon?: string;
   /** Ống ngắm lắp trên súng đang cầm (id trong SIGHTS). */
   sight?: string;
+  /** Phụ kiện lắp trên súng (đầu nòng, tay cầm, băng, báng) và skin súng từ tài khoản. */
+  atts?: string;
+  gunSkin?: string;
   /** Lựu đạn, bom khói, bom choáng, mìn đang cầm trên tay phải. */
   throwable?: string;
   /** Tay không (đã cất súng): cầm dao. */
@@ -469,7 +354,6 @@ export function Character({
   ref?: Ref<Group>;
 }) {
   const look = useMemo(() => looks(color), [color]);
-  const G = geo();
   const legL = useRef<Group>(null);
   const legR = useRef<Group>(null);
   const shinL = useRef<Group>(null);
@@ -787,7 +671,7 @@ export function Character({
       // Tay phải nắm tay cầm, tay trái đỡ ốp lót tay (súng lục thì ôm tay phải). Đổi sang toạ độ thân trên.
       _inv.copy(torso.current.matrix).invert();
       _grip.copy(_gunPos).applyMatrix4(_inv);
-      _support.set(...supportOffset(gunId)).applyQuaternion(_gunQ).add(_gunPos).applyMatrix4(_inv);
+      _support.set(...supportOffset(gunId, atts)).applyQuaternion(_gunQ).add(_gunPos).applyMatrix4(_inv);
       // Thay đạn: tay trái rời ốp lót tay xuống hông lấy băng mới rồi đẩy vào; băng cũ biến mất một lúc.
       const r = m.reload;
       const magG = gun.current.getObjectByName("mag");
@@ -837,43 +721,68 @@ export function Character({
       swirl.current.rotation.y = -t * 7;
     }
   });
-
   // ------------------------------------------------ vật liệu của người này (dùng chung theo màu)
   const o = opacity;
   const soldier = !!outfit;
-  const shirt = outfit ? camoMat(outfit, "#ffffff", o) : mat(color, "fabric", o);
-  const pants = outfit ? camoMat(outfit, "#d6d6d6", o) : mat(look.pants, "fabric", o);
-  const skin = mat(look.skin, "skin", o, 0.62);
-  const hair = mat(look.hair, "fur", o, 0.9);
-  const glove = soldier ? mat("#2a2a26", "fabric", o) : skin;
-  const boot = mat(soldier ? "#302a22" : "#3b2a1c", "skin", o, 0.7);
-  const sole = mat("#18161a", "none", o, 0.95);
-  const beltMat = mat(soldier ? "#2c2a22" : "#3a2616", "skin", o, 0.7);
-  const eyeWhite = mat("#f1ede6", "none", o, 0.3);
-  const iris = mat("#231812", "none", o, 0.25);
-  const lip = mat(new Color(look.skin).multiplyScalar(0.78).getStyle(), "skin", o, 0.5);
-  const cuffMat = soldier ? shirt : mat(new Color(color).multiplyScalar(0.8).getStyle(), "fabric", o);
+  const B = bodyShapes();
+  const F = face();
+  const shirt = outfit ? camoMat(outfit, "#ffffff", o) : fabricMat("linen", color, o, 0.88);
+  const pants = outfit ? camoMat(outfit, "#d6d6d6", o) : fabricMat("canvas", look.pants, o, 0.92);
+  const skin = skinMat(look.skin, o);
+  const hair = mat(look.hair, "fur", o, 0.8);
+  // Râu lún phún, đầu cạo: màu da pha màu tóc.
+  const stubble = mat(new Color(look.skin).lerp(new Color(look.hair), 0.55).getStyle(), "skin", o, 0.85);
+  const glove = mat("#2a2926", "fabric", o, 0.78);
+  const boot = soldier ? fabricMat("leather", "#3b3329", o, 0.62) : fabricMat("leather", "#6a4527", o, 0.55);
+  const sole = mat("#1b1917", "none", o, 0.95);
+  const gear = soldier ? mat(GEAR[outfit] ?? GEAR.woodland!, "fabric", o, 0.9) : fabricMat("leather", "#4f321b", o, 0.6);
+  const metal = mat(soldier ? "#3a3a38" : "#a08a55", "metal", o, 0.45, "metal", (m) => (m.metalness = 0.55));
+  // Viền áo: khoá kéo sẫm (lính), khuy xương màu ngà (sơ mi).
+  const trim = soldier ? mat("#262620", "none", o, 0.6) : mat("#e6dcc4", "none", o, 0.4);
+  const eyeWhite = mat("#d8d0c4", "none", o, 0.3);
+  const iris = mat(look.eyes, "none", o, 0.15);
+  const lip = mat(new Color(look.skin).multiply(new Color(0.9, 0.72, 0.7)).getStyle(), "skin", o, 0.5);
+  const band = mat(color, "fabric", o);
+  const pad = mat("#262622", "none", o, 0.55);
+  const shirtShape = top(soldier ? look.top : "shirt");
+  const beltShape = belt(soldier);
+  const beard = beardGeometry(look.beard);
   const ghil = outfit === "ghillie" ? ghillie() : null;
   const strandM = strandMat(o);
 
-  /** Cánh tay: tay trên (cơ vai, bắp), khuỷu, cẳng tay, cổ tay áo, bàn tay (lòng, bốn ngón gộp, ngón cái). */
+  /**
+   * Cánh tay: tay trên liền cơ vai, khuỷu, cẳng tay, bàn tay (lòng, bốn ngón hai đốt, ngón cái). Lính: áo chiến đấu xắn
+   * tay dưới khuỷu hoặc áo khoác dài tay, găng tay; dân thường: sơ mi xắn tay trên khuỷu, tay trần.
+   */
   const arm = (side: 1 | -1) => {
     const right = side === -1;
-    const inward = -side;
+    const sleeveLong = soldier && look.top === "jacket";
     return (
       <group ref={right ? armR : armL} position={[side * SHOULDER_X, SHOULDER_Y, 0]}>
-        <P g={G.ball} m={shirt} p={[side * 0.004, -0.03, 0]} s={[0.052, 0.058, 0.054]} />
-        <P g={G.upperArm} m={shirt} />
-        {soldier && side === 1 && <P g={G.cuff} m={mat(color, "fabric", o)} p={[0, -0.1, 0]} s={[0.0525, 0.035, 0.0525]} />}
+        {soldier ? (
+          <P g={B.upperSleeve} m={shirt} />
+        ) : (
+          <>
+            <P g={B.upperRolled} m={shirt} />
+            <P g={B.upperSkin} m={skin} />
+          </>
+        )}
+        {soldier && side === 1 && <P g={armband()} m={band} />}
         {ghil && <mesh geometry={ghil.arm} material={strandM} castShadow />}
         <group ref={right ? foreR : foreL} position={[0, -UPPER, 0]}>
-          <P g={G.small} m={shirt} s={0.043} />
-          <P g={G.foreArm} m={shirt} />
-          <P g={G.cuff} m={cuffMat} p={[0, -0.225, 0]} s={[0.034, 0.03, 0.034]} />
+          <P g={soldier ? B.elbowSleeve : B.elbowSkin} m={soldier ? shirt : skin} />
+          {sleeveLong ? (
+            <P g={B.foreSleeve} m={shirt} />
+          ) : soldier ? (
+            <>
+              <P g={B.foreRolled} m={shirt} />
+              <P g={B.foreSkinLow} m={skin} />
+            </>
+          ) : (
+            <P g={B.foreSkin} m={skin} />
+          )}
           <group ref={right ? handR : handL} position={[0, -FORE, 0]}>
-            <P g={G.small} m={glove} p={[0, -0.05, 0.004]} s={[0.016, 0.046, 0.037]} />
-            <P g={G.small} m={glove} p={[0, -0.098, 0.016]} s={[0.014, 0.038, 0.032]} r={[0.55, 0, 0]} />
-            <P g={G.tiny} m={glove} p={[inward * 0.01, -0.045, 0.036]} s={[0.0095, 0.028, 0.0105]} r={[0.5, 0, inward * 0.3]} />
+            <P g={soldier ? (right ? B.gloveR : B.gloveL) : right ? B.handR : B.handL} m={soldier ? glove : skin} />
             {right && (
               <group ref={knifeR} visible={false} position={[0, -0.075, 0.012]} rotation={[Math.PI / 2 + 0.55, 0, 0]}>
                 <KnifeModel opacity={o} />
@@ -896,81 +805,95 @@ export function Character({
     );
   };
 
-  /** Chân: đùi, gối, cẳng chân, ống quần, giày (cổ giày, mũi, đế). */
+  /**
+   * Chân: đùi (lính có túi hộp bên hông), gối, cẳng chân, giày. Lính: quần nhét trong giày cổ cao buộc dây, đệm gối;
+   * dân thường: quần xắn gấu giữa bắp chân, giày da cổ thấp.
+   */
   const leg = (side: 1 | -1) => (
     <group ref={side === 1 ? legL : legR} position={[side * HIP_X, HIP_Y, 0]}>
-      <P g={G.thigh} m={pants} />
+      <P g={soldier ? (side === 1 ? B.thighCargoL : B.thighCargoR) : B.thigh} m={pants} />
       {ghil && <mesh geometry={ghil.thigh} material={strandM} castShadow />}
       <group ref={side === 1 ? shinL : shinR} position={[0, -THIGH, 0]}>
-        <P g={G.ball} m={pants} p={[0, 0, 0.008]} s={0.06} />
-        <P g={G.shin} m={pants} />
-        {!soldier && <P g={G.cuff} m={pants} p={[0, -0.36, 0]} s={[0.058, 0.05, 0.058]} />}
+        {soldier ? (
+          <>
+            <P g={B.shinFull} m={pants} />
+            <P g={B.kneePad} m={pad} />
+          </>
+        ) : (
+          <>
+            <P g={B.shinRolled} m={pants} />
+            <P g={B.shinSkin} m={skin} />
+          </>
+        )}
         <group ref={side === 1 ? footL : footR} position={[0, -SHIN, 0]}>
-          <P g={G.shaft} m={boot} p={[0, soldier ? 0.04 : 0.02, 0]} s={[1, soldier ? 1.4 : 1, 1]} />
-          <P g={G.ball} m={boot} p={[0, -0.03, 0.052]} s={[0.05, 0.05, 0.122]} />
-          <P g={G.box} m={sole} p={[0, -0.079, 0.05]} s={[0.09, 0.022, 0.25]} />
+          <P g={soldier ? B.bootTall : B.bootLow} m={boot} />
+          <P g={soldier ? B.soleTall : B.soleLow} m={sole} />
         </group>
       </group>
     </group>
   );
+
+  const packShape = soldier && look.pack > 0 ? pack(look.pack as 1 | 2 | 3) : null;
+  const ruck = !soldier && armor === 0 ? rucksack() : null;
 
   return (
     <group ref={ref}>
       <group ref={body}>
         {leg(1)}
         {leg(-1)}
-        {/* Hông, mông (bình thường nằm trong quần, leo cây thì chổng ra), thắt lưng. */}
-        <P g={G.pelvis} m={pants} s={[1, 1, 0.72]} />
+        {/* Hông, mông (bình thường nằm trong quần, leo cây thì chổng ra), thắt lưng và túi đeo hông. */}
+        <P g={B.pelvis} m={pants} />
         <group ref={butt} position={[0, 0.89, -0.03]}>
-          {[-0.07, 0.07].map((x) => (
-            <P key={x} g={G.ball} m={pants} p={[x, 0, -0.02]} s={0.1} />
-          ))}
+          <P g={B.butt} m={pants} />
         </group>
-        <P g={G.belt} m={beltMat} p={[0, 1.0, 0]} s={[0.158, 0.045, 0.118]} />
-        <P g={G.box} m={mat("#9a8a5a", "metal", o, 0.4)} p={[0, 1.0, 0.118]} s={[0.045, 0.034, 0.012]} />
+        <P g={beltShape.gear} m={gear} />
+        <P g={beltShape.metal} m={metal} />
         {/* Nửa thân trên: xoay quanh eo. */}
         <group ref={torso} position={[0, WAIST_Y, 0]}>
-          <P g={G.torso} m={shirt} s={[1, 1, 0.66]} />
-          <mesh geometry={G.collar} material={cuffMat} position={[0, 0.515, 0.004]} castShadow />
+          <P g={shirtShape.cloth} m={shirt} />
+          <P g={shirtShape.trim} m={trim} t />
+          {soldier && armor === 0 && <P g={chestRig()} m={gear} />}
           {armor > 0 && <VestModel level={armor} opacity={o} />}
+          {packShape && (
+            <>
+              <P g={packShape.gear} m={gear} />
+              <P g={packShape.metal} m={sole} />
+            </>
+          )}
+          {/* Balo (chế độ đảo hoang): túi vải bạt, quai da, cuộn chăn trên đỉnh. */}
+          {ruck && (
+            <>
+              <P g={ruck.bag} m={fabricMat("canvas", "#6e5634", o)} />
+              <P g={ruck.strap} m={gear} />
+              <P g={bedroll()} m={fabricMat("canvas", "#4f6a3a", o)} />
+            </>
+          )}
           {ghil && <mesh geometry={ghil.torso} material={strandM} castShadow />}
           {arm(1)}
           {arm(-1)}
-          {/* Cổ và đầu: hộp sọ, hàm, cằm, mũi, tai, mắt, lông mày, môi, tóc. */}
-          <P g={G.neck} m={skin} p={[0, 0.5, 0.005]} />
+          {/* Cổ và đầu: sọ, hàm, mũi, tai, mí mắt (một khối da), mắt, lông mày, môi, tóc, râu. */}
+          <P g={B.neck} m={skin} />
           <group ref={head} position={[0, NECK_Y, 0]}>
-            <P g={G.skull} m={skin} p={[0, 0.1, -0.005]} s={[0.091, 0.112, 0.104]} />
-            <P g={G.jaw} m={skin} p={[0, 0.045, 0.022]} s={[0.071, 0.058, 0.078]} />
-            <P g={G.small} m={skin} p={[0, 0.022, 0.07]} s={[0.03, 0.024, 0.026]} />
-            <P g={G.small} m={skin} p={[0, 0.084, 0.098]} s={[0.014, 0.03, 0.02]} r={[-0.35, 0, 0]} />
-            <P g={G.tiny} m={skin} p={[0, 0.066, 0.11]} s={[0.017, 0.013, 0.014]} />
-            {[-1, 1].map((sx) => (
-              <group key={sx}>
-                <P g={G.small} m={skin} p={[sx * 0.09, 0.092, -0.006]} s={[0.013, 0.03, 0.02]} r={[0, sx * 0.3, 0]} />
-                <P g={G.tiny} m={eyeWhite} p={[sx * 0.033, 0.107, 0.088]} s={[0.0135, 0.0095, 0.009]} />
-                <P g={G.tiny} m={iris} p={[sx * 0.033, 0.107, 0.0955]} s={[0.0068, 0.0068, 0.003]} />
-                <P g={G.box} m={hair} p={[sx * 0.034, 0.126, 0.095]} s={[0.034, 0.008, 0.012]} r={[0.15, 0, sx * -0.12]} />
+            <P g={F.skin} m={skin} />
+            <P g={F.eyes} m={eyeWhite} t />
+            <P g={F.irises} m={iris} t />
+            <P g={F.lips} m={lip} t />
+            <P g={F.brows[look.brow] ?? F.brows[0]!} m={hair} t />
+            <P g={hairGeometry(look.hairStyle, helmet > 0)} m={look.hairStyle === "shaved" && helmet === 0 ? stubble : hair} />
+            {beard && <P g={beard} m={look.beard === "stubble" ? stubble : hair} />}
+            {/* Mũ cấp 1 (mũ mềm) nới một chút cho vừa hộp sọ mới. */}
+            {helmet > 0 && (
+              <group position={helmet === 1 ? [0, 0.008, 0] : undefined} scale={helmet === 1 ? 1.03 : 1}>
+                <HelmetModel level={helmet} opacity={o} />
               </group>
-            ))}
-            <P g={G.tiny} m={lip} p={[0, 0.048, 0.094]} s={[0.023, 0.0065, 0.01]} />
-            {helmet < 2 && <P g={G.hair} m={hair} p={[0, 0.104, -0.012]} s={[0.097, 0.12, 0.112]} r={[-0.32, 0, 0]} />}
-            <P g={G.ball} m={hair} p={[0, 0.085, -0.045]} s={[0.087, 0.085, 0.075]} />
-            {helmet > 0 && <HelmetModel level={helmet} opacity={o} />}
+            )}
             {ghil && <mesh geometry={ghil.head} material={strandM} castShadow />}
           </group>
-          {/* Balo (chế độ đảo hoang). */}
-          {!soldier && (
-            <>
-              <P g={G.box} m={mat("#6b4f2a", "fabric", o)} p={[0, 0.17, -0.22]} s={[0.36, 0.46, 0.2]} />
-              <P g={G.box} m={mat("#5a4122", "fabric", o)} p={[0, 0.08, -0.33]} s={[0.26, 0.18, 0.05]} />
-              <P g={G.bedroll} m={mat("#4f7a3a", "fabric", o)} p={[0, 0.45, -0.22]} r={[0, 0, Math.PI / 2]} />
-            </>
-          )}
         </group>
         {/* Súng: cầm hai tay (vị trí và hướng đặt mỗi khung hình). */}
         {gunId && (
           <group ref={gun} name="weapon" visible={false}>
-            <GunModel weaponId={gunId} sight={sight} opacity={o} />
+            <GunModel weaponId={gunId} sight={sight} atts={atts} skin={gunSkin} opacity={o} />
           </group>
         )}
         {/* Choáng: sao vàng bay vòng quanh đầu. Chóng mặt: vòng xoáy. */}
@@ -1008,4 +931,3 @@ export function Character({
     </group>
   );
 }
-

@@ -969,7 +969,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       <CapsuleCollider ref={collider} args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
       <group position-y={-FEET_OFFSET}>
         {room.state.mode === "battle" ? (
-          <BattleLook room={room}>{(look) => <Character ref={avatar} color={me.color} {...look} motion={() => readLocalMotion(room)} />}</BattleLook>
+          <BattleLook room={room}>{({ skin, ...look }) => <Character ref={avatar} color={me.color} {...look} gunSkin={skin} motion={() => readLocalMotion(room)} />}</BattleLook>
         ) : (
           <Carrier room={room}>{(carrying, held) => <Character ref={avatar} color={me.color} carrying={carrying} held={held} motion={() => readLocalMotion(room)} />}</Carrier>
         )}
@@ -1131,13 +1131,25 @@ function atDigSite(room: IslandRoom, x: number, z: number): boolean {
 
 /** Vẽ lại nhân vật khi mình bắt đầu hay thôi vác rương, hay đổi món cầm trên tay. */
 /** Battleground: súng đang cầm, áo ngụy trang, giáp, mũ của mình. */
-function BattleLook({ room, children }: { room: IslandRoom; children: (look: { weapon: string; sight: string; throwable: string; knife: boolean; outfit: string; armor: number; helmet: number }) => ReactNode }) {
+function BattleLook({ room, children }: { room: IslandRoom; children: (look: { weapon: string; sight: string; atts: string; skin: string; throwable: string; knife: boolean; outfit: string; armor: number; helmet: number }) => ReactNode }) {
   const look = useRoomSnapshot(room, (s) => {
     const k = s.players.get(myId(room))?.kit;
-    if (!k) return { weapon: "", sight: "", throwable: "", knife: false, outfit: "woodland", armor: 0, helmet: 0 };
+    if (!k) return { weapon: "", sight: "", atts: "", skin: "", throwable: "", knife: false, outfit: "woodland", armor: 0, helmet: 0 };
     const slot = k.active;
     const gunSlot = slot === "primary1" || slot === "primary2" || slot === "pistol";
-    return { weapon: gunSlot ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+    const weapon = gunSlot ? k[slot] : "";
+    const me = s.players.get(myId(room));
+    return {
+      weapon,
+      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "",
+      atts: slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "",
+      skin: weapon ? (me?.skins.get(weapon) ?? "") : "",
+      throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "",
+      knife: slot === "",
+      outfit: k.outfit,
+      armor: k.armor,
+      helmet: k.helmet,
+    };
   });
   return <>{children(look)}</>;
 }
