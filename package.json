@@ -6,6 +6,7 @@
     "node": ">=22.12"
   },
   "scripts": {
+    "build": "pnpm --filter @tentides/client build",
     "dev": "pnpm --parallel --filter @tentides/server --filter @tentides/client dev",
     "play": "pnpm --filter @tentides/client build && pnpm --parallel --filter @tentides/server --filter @tentides/client serve",
     "test": "vitest run",

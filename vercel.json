@@ -1,0 +1,4 @@
+{
+  "buildCommand": "pnpm --filter @tentides/client build",
+  "outputDirectory": "apps/client/dist"
+}
