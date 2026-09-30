@@ -485,7 +485,7 @@ function fxSound(fx: FxMessage) {
 export function Soundscape({ room, world }: { room: IslandRoom; world: World }) {
   const loops = useRef<Record<string, Loop>>({});
   const music = useRef(new Music());
-  const timers = useRef({ step: 0, cricket: 1, bird: 2, crackle: 0, drip: 1, bubble: 0.5 });
+  const timers = useRef({ step: 0, cricket: 1, bird: 2, crackle: 0, drip: 1, bubble: 0.5, lastStep: 1 });
   const seen = useRef({ log: -1, phase: "", bag: -1 });
 
   // Bật âm thanh ở lần bấm đầu tiên; dựng các vòng tiếng nền khi bộ máy sẵn sàng.
@@ -622,7 +622,11 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     // --- bước chân, bơi, leo
     // Đi bộ: phát đúng theo bộ đếm nhịp chân mà LocalPlayer cộng dồn cùng phase với camera bob.
     // Trước đây chạy timer riêng (0.42s/0.28s) trong khi bob chạy ~7.9 nhịp/s ⇒ lệch và trôi dần.
-    if (localMotion.stepHit && localMotion.moving) {
+    // Chặn thêm một lớp: hai tiếng chân mặt đất không bao giờ sát nhau quá 0.15s (nhanh nhất lúc sprint
+    // ~0.2s/bước), nên dù phase có dao động quanh π cũng không thành tiếng rè.
+    tm.lastStep += dt;
+    if (localMotion.stepHit && localMotion.moving && (localMotion.speed ?? 0) > 0.8 && tm.lastStep > 0.15) {
+      tm.lastStep = 0;
       if (localMotion.climbing) {
         play("climb", { volume: 0.6 });
       } else if (localMotion.swimming) {

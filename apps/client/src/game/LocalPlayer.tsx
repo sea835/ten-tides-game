@@ -861,6 +861,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (stepAmt < 0.05) {
       const near = Math.round(s.stepPhase / Math.PI) * Math.PI;
       s.stepPhase += (near - s.stepPhase) * Math.min(1, dt * 10);
+      // Đứng yên hẳn thì chốt phase ngay SAU mốc π (không nằm sát dưới mốc): nhích nhẹ hay gõ WASD
+      // liên tục không còn cắt qua π mỗi lần, phải đi đủ nửa nhịp mới tính một bước chân mới.
+      if (Math.abs(near - s.stepPhase) < 0.02) s.stepPhase = near + 0.001;
     }
     const bobY = (Math.abs(Math.sin(s.stepPhase)) - 0.5) * 0.045 * stepAmt * bobK;
     const bobX = Math.cos(s.stepPhase) * 0.025 * stepAmt * bobK;
@@ -938,7 +941,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     // rơi về hằng số 12.5–17 rad/s trong khi đang đi 8–16 m/s ⇒ trượt chân 65–76%.
     localMotion.speed = hSpeed;
     // Tiếng bước chân bám theo bộ đếm nhịp (xem localMotion.steps) thay vì timer riêng.
-    const stepping = s.grounded && !s.swimming && hSpeed > 0.5;
+    // Chỉ kêu khi đi thật (> 0.8 m/s); nhịp cắt qua π lúc đang nhích chậm vẫn được "tiêu" im lặng
+    // (localMotion.steps vẫn cập nhật) để khỏi dồn lại kêu một phát khi bắt đầu đi.
+    const stepping = s.grounded && !s.swimming && hSpeed > 0.8;
     localMotion.stepHit = stepping && s.steps !== localMotion.steps;
     localMotion.groundStep = stepping;
     localMotion.steps = s.steps;

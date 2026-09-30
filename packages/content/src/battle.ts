@@ -670,8 +670,16 @@ export function buildIndex(boxes: readonly BattleBox[], cell = 16): BoxIndex {
   return { cell, grid, boxes, axes, seen: new Uint32Array(boxes.length), stamp: 0 };
 }
 
-/** Tia (gốc o, hướng chuẩn hoá d) chạm khối nào gần nhất trong `max` mét: trả khoảng cách hoặc Infinity. */
-export function raycastBoxes(index: BoxIndex, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
+/** Đạn xuyên qua được khối này không: hàng rào lưới thép chỉ chặn người đi, không chặn đạn. */
+export function bulletPasses(b: BattleBox): boolean {
+  return b.mat === "fence";
+}
+
+/**
+ * Tia (gốc o, hướng chuẩn hoá d) chạm khối nào gần nhất trong `max` mét: trả khoảng cách hoặc Infinity.
+ * `bullet`: tia đạn / tầm nhìn bắn, bỏ qua các khối đạn xuyên được (hàng rào lưới).
+ */
+export function raycastBoxes(index: BoxIndex, o: readonly [number, number, number], d: readonly [number, number, number], max: number, bullet = false): number {
   let best = max;
   // Đánh dấu mới cho lần dò này; tràn số thì xoá sạch dấu cũ.
   if (++index.stamp >= 0xffffffff) {
@@ -689,6 +697,7 @@ export function raycastBoxes(index: BoxIndex, o: readonly [number, number, numbe
     for (const i of list) {
       if (seen[i] === stamp) continue;
       seen[i] = stamp;
+      if (bullet && bulletPasses(index.boxes[i]!)) continue;
       const hit = rayBoxAt(index, i, o, d, best);
       if (hit < best) best = hit;
     }
