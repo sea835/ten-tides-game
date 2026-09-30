@@ -215,6 +215,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       p.prone = (move.prone ?? false) && !p.crouching;
       p.aiming = move.aiming ?? false;
       p.aimPitch = move.aimPitch ?? 0;
+      // Nghiêng người: lượng tử 1/8 cho khỏi đồng bộ từng chút; nằm sấp, đang bơi thì không nghiêng.
+      p.lean = p.prone || p.swimming ? 0 : Math.round((move.lean ?? 0) * 8) / 8;
     });
 
     this.onMessage(Messages.start, (client) => {
@@ -523,6 +525,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       p.maxHp = MAX_HP;
       p.kills = 0;
       p.crouching = p.aiming = p.prone = false;
+      p.lean = 0;
       const outfit = p.kit.outfit;
       resetKit(p.kit, START_MONEY);
       p.kit.outfit = outfit;
@@ -816,6 +819,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       else p.team = p.role = p.vehicle = "";
       void id;
       p.prone = p.crouching = false;
+      p.lean = 0;
       const outfit = p.kit.outfit;
       resetKit(p.kit, START_MONEY);
       p.kit.outfit = outfit;
@@ -855,6 +859,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // máu → mới kiểm tra gốc nòng, nên một phát bắn bị từ chối vì gốc sai vẫn mất một viên và vẫn
     // chiếm slot tần số, đồng thời không phát `shot` cho ai: người chơi nghe tiếng và thấy hiệu ứng
     // của một phát bắn không hề tồn tại.
+    // Lề 4 m quanh chân đã đủ cho đầu nòng khi nghiêng người (Q/E, đầu lệch LEAN.side ≈ 0,4 m sang bên): phát bắn
+    // vòng qua góc tường từ chỗ đã nghiêng vẫn hợp lệ.
     if (Math.hypot(o[0] - p.x, o[2] - p.z) > 4 || o[1] < p.y - 1 || o[1] > p.y + 3) return;
     this.lastShotAt.set(id, now);
     setMag(kit, slot, mag - 1);
@@ -911,7 +917,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (p.team && target.team === p.team) continue;
       if (h.d > walls[h.ray]! + HITBOX.wallSlack || h.d > maxRange) continue;
       const pt = bulletAt(o, d, def.velocity, h.d);
-      const check = checkBodyPoint(pt, { x: target.x, y: target.y, z: target.z, rotY: target.rotY, crouch: target.crouching, prone: target.prone }, h.part === "head");
+      const check = checkBodyPoint(pt, { x: target.x, y: target.y, z: target.z, rotY: target.rotY, crouch: target.crouching, prone: target.prone, lean: target.lean }, h.part === "head");
       if (!check) continue;
       const head = check.head;
       hitRay.set(h.ray, h.d);
@@ -1049,6 +1055,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     p.hp = 0;
     p.moving = false;
     p.prone = p.crouching = false;
+    p.lean = 0;
     this.timers.delete(id);
     // Đồ rơi quanh chỗ gục.
     // Chiến trường: hàng trăm lần gục mỗi trận, không rải đồ (chỉ chút đạn), hồi sinh lại có đồ mới.

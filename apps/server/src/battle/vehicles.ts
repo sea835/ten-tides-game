@@ -254,7 +254,7 @@ export class Vehicles {
       }
       for (const q of s.players.values()) {
         if (!q.alive || q === shooter || q.vehicle) continue;
-        const h = rayBody(a, cd, { x: q.x, y: q.y, z: q.z, rotY: q.rotY, crouch: q.crouching, prone: q.prone });
+        const h = rayBody(a, cd, { x: q.x, y: q.y, z: q.z, rotY: q.rotY, crouch: q.crouching, prone: q.prone, lean: q.lean });
         if (h && h.t < t) {
           t = h.t;
           hitTank = "";

@@ -140,6 +140,8 @@ export const PlayerState = schema(
     aiming: t.boolean().default(false),
     /** Góc ngắm lên xuống (radian, dương là ngẩng lên), để máy khác thấy nòng súng chĩa đúng hướng. */
     aimPitch: t.float32().default(0),
+    /** Nghiêng người (Q/E): −1 trái … 1 phải, lượng tử hoá theo 1/8 (thân trên, đầu lệch sang bên; dò đạn trúng theo đó). */
+    lean: t.float32().default(0),
     /** Bộ đếm phát bắn, để máy khác diễn giật súng, chớp lửa đầu nòng. */
     shots: t.uint16().default(0),
     /** Là máy (bot) do server điều khiển. */
@@ -624,6 +626,8 @@ export const MoveMessage = z.object({
   prone: z.boolean().optional(),
   aiming: z.boolean().optional(),
   aimPitch: z.number().min(-2).max(2).optional(),
+  /** Nghiêng người (Q trái / E phải), −1..1. */
+  lean: z.number().min(-1).max(1).optional(),
 });
 export type MoveMessage = z.infer<typeof MoveMessage>;
 

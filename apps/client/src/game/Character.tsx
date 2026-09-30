@@ -46,7 +46,17 @@ export interface Motion {
   cook?: boolean;
   /** Tốc độ ngang thật (m/s): có thì nhịp bước khớp tốc độ (không lướt), không thì theo cờ đi / chạy. */
   speed?: number;
+  /** Nghiêng người (Q/E, Battleground): −1 trái … 1 phải; hông đứng yên, thân trên ngả sang bên. */
+  lean?: number;
 }
+
+/**
+ * Nghiêng người: hông dịch ngang chừng này (m), thân trên ngả quanh eo chừng này (radian), đầu nghiêng ngược lại một
+ * phần cho mắt đỡ lệch. Cộng lại đầu lệch ≈ LEAN.side (0,4 m) như hộp trúng đạn chung với server.
+ */
+const LEAN_HIP = 0.08;
+const LEAN_TORSO = 0.5;
+const LEAN_HEAD = 0.25;
 
 /** Mỗi động tác kéo dài bao lâu (giây). */
 const ACT_SECONDS: Record<string, number> = { swing: 0.32, chop: 0.42, throw: 0.4, shoot: 0.35, stab: 0.3, eat: 0.9 };
@@ -375,7 +385,7 @@ export function Character({
   const butt = useRef<Group>(null);
   const stars = useRef<Group>(null);
   const swirl = useRef<Group>(null);
-  const anim = useRef({ phase: 0, amount: 0, sit: 0, slide: 0, swim: 0, lie: 0, climb: 0, crouch: 0, prone: 0, aim: 0, run: 0, pitch: 0, kick: 0, wall: 0, fireN: -1, actN: -1, act: "", actT: 99, climbPhase: 0 });
+  const anim = useRef({ phase: 0, amount: 0, sit: 0, slide: 0, swim: 0, lie: 0, climb: 0, crouch: 0, prone: 0, aim: 0, run: 0, pitch: 0, kick: 0, wall: 0, lean: 0, fireN: -1, actN: -1, act: "", actT: 99, climbPhase: 0 });
 
   const gunId = weapon || "";
   const pistol = gunId === "p92" || gunId === "deagle";
@@ -444,6 +454,7 @@ export function Character({
     a.run += ((m.running && m.moving && !m.aiming && !crouching ? 1 : 0) - a.run) * ease(8);
     a.pitch += ((m.aimPitch ?? 0) - a.pitch) * ease(20);
     a.wall += ((m.wall ?? 0) - a.wall) * ease(10);
+    a.lean += ((proning || m.swimming || m.climbing || m.sitting || m.sliding ? 0 : (m.lean ?? 0)) - a.lean) * ease(10);
     // Bơi tới thì nằm sấp gần ngang mặt nước; đứng yên thì đạp nước, người thẳng đứng.
     a.lie += ((m.swimming ? (m.moving ? 1.3 : 0.12) : 0) - a.lie) * ease(4);
     const crouch = a.crouch;
@@ -604,6 +615,8 @@ export function Character({
       body.current.rotation.x = (0.1 * a.amount * (m.running ? 1.5 : 1) * (1 - slide) * (1 - crouch) - 0.4 * slide) * (1 - swim) * (1 - climb) * (1 - prone) + a.lie + 0.32 * climb + lunge * 0.4 + PRONE_TILT * prone;
       body.current.position.z = lunge * 0.5 - 0.2 * climb - PRONE_BACK * prone;
       body.current.rotation.y = twist;
+      // Nghiêng người: hông dịch nhẹ sang bên (bên phải nhân vật là −x).
+      body.current.position.x = -a.lean * LEAN_HIP;
       // Chóng mặt thì loạng choạng.
       body.current.rotation.z = (m.dizzy ?? 0) > 0 ? Math.sin(now / 260) * 0.12 : 0;
     }
@@ -615,7 +628,8 @@ export function Character({
       // Ngồi xổm thì lưng khom về trước; ngắm súng trường thì vai trái đưa lên trước; ngắm cao thấp thì lưng cong theo.
       torso.current.rotation.x = 0.28 * crouch * (1 - aimW * 0.5) - 0.12 * sit - look * 0.25 * aimW - 0.3 * prone;
       torso.current.rotation.y = (withGun && !pistol ? -0.22 * aimW - 0.1 * (1 - aimW) : 0) + twist * 0.3;
-      torso.current.rotation.z = Math.sin(a.phase) * 0.03 * amount;
+      // Nghiêng người: thân trên ngả quanh eo sang bên (z dương là đỉnh ngả về −x, tức bên phải).
+      torso.current.rotation.z = Math.sin(a.phase) * 0.03 * amount + a.lean * LEAN_TORSO;
       torso.current.position.set(0, WAIST_Y, 0);
     }
     if (head.current) {
@@ -623,7 +637,7 @@ export function Character({
       const lean = torso.current ? torso.current.rotation.x : 0;
       head.current.rotation.x = -look * (0.55 + 0.25 * aimW) - lean * 0.85 + (pistol ? 0.02 : 0.3) * aimW - (PRONE_TILT - 0.4) * prone;
       head.current.rotation.y = torso.current ? -torso.current.rotation.y * 0.8 : 0;
-      head.current.rotation.z = withGun && !pistol ? 0.14 * aimW : 0;
+      head.current.rotation.z = (withGun && !pistol ? 0.14 * aimW : 0) - a.lean * LEAN_HEAD;
       head.current.position.z = 0.012 + (pistol ? 0.01 : 0.045) * aimW;
       head.current.position.y = NECK_Y - (pistol ? 0 : 0.045) * aimW;
     }
@@ -680,6 +694,8 @@ export function Character({
         const cant = Math.sin(Math.min(1, m.reload / 0.9) * Math.PI);
         _gunQ.multiply(_qA.setFromAxisAngle(Z_AXIS, -0.45 * cant));
       }
+      // Nghiêng người: súng nghiêng theo vai.
+      if (Math.abs(a.lean) > 0.001) _gunQ.premultiply(_qA.setFromAxisAngle(Z_AXIS, a.lean * LEAN_TORSO * 0.6));
       gun.current.position.copy(_gunPos);
       gun.current.quaternion.copy(_gunQ);
       // Tay phải nắm tay cầm, tay trái đỡ ốp lót tay (súng lục thì ôm tay phải). Đổi sang toạ độ thân trên.

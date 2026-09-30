@@ -13,6 +13,8 @@ export interface Body {
   /** Nằm sấp: thân nằm dọc theo hướng mặt `rotY`. */
   prone: boolean;
   rotY: number;
+  /** Nghiêng người (−1 trái … 1 phải): đầu, thân trên lệch sang bên. */
+  lean: number;
   alive: boolean;
   /** Đội (chế độ Đồng đội): cùng đội với mình thì đạn đi xuyên, không tính trúng. */
   team: string;
@@ -40,7 +42,9 @@ export const stance = {
   swapAt: 0,
   /** Rút súng mất chừng này giây (súng to lâu hơn súng lục, lựu đạn). */
   swapDur: 0.5,
-  firstPerson: false, aiming: false, scoped: false, sight: "", zero: 100, crouching: false, prone: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
+  firstPerson: false, aiming: false, scoped: false, sight: "", zero: 100, crouching: false, prone: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0,
+  /** Nghiêng người thật đang dùng (−1 trái … 1 phải, đã co lại nếu sát tường): mắt, đầu nòng lệch theo. */
+  lean: 0 };
 
 /**
  * Giật súng.

@@ -27,7 +27,7 @@ import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { PRONE_SPEED, PRONE_TIME, WEAPON } from "@tentides/content";
+import { LEAN, PRONE_SPEED, PRONE_TIME, WEAPON } from "@tentides/content";
 import { bodies, getBattleHud, hitStopScale, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { gun, gun as shooterGun } from "./battle/Shooter.tsx";
@@ -130,6 +130,10 @@ const EYE_HEIGHT_CROUCH = 1.2;
 const CAM_HEIGHT_PRONE = 0.62;
 const EYE_HEIGHT_PRONE = 0.38;
 const EYE_FORWARD_PRONE = 0.72;
+/** Nghiêng người: mắt (camera) cách mặt tường bên cạnh ít nhất chừng này (m), khỏi thấy xuyên tường. */
+const LEAN_CLEARANCE = 0.22;
+const _leanO = new Vector3();
+const _leanD = new Vector3();
 /**
  * Quán tính khi đi (1/giây, càng lớn càng bám): trên đất tăng tốc, hãm lại; trên không chỉ bẻ lái được chút ít,
  * không bấm gì thì giữ nguyên đà. Số nhỏ hơn = nặng hơn, nên Battleground (mang súng, giáp) quán tính
@@ -256,6 +260,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     /** Số nhịp chân đã đi qua, để tiếng bước chân (Soundscape) khớp đúng với camera bob. */
     steps: 0,
     roll: 0,
+    /** Battleground: nghiêng người (Q/E) đang đuổi theo phím (−1 trái … 1 phải), phần được nghiêng (co lại khi sát tường). */
+    lean: 0,
+    leanRoom: 1,
     /** Súng dí sát vật cản (0–1). */
     wall: 0,
     /** Đang vượt vật cản: đường cong từ chỗ đứng, qua đỉnh vật cản, xuống phía bên kia (toạ độ tâm thân). */
@@ -312,9 +319,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         sim.current.pronePressed = true;
         return;
       }
-      // Battleground: E là nhặt đồ gần nhất (đứng cạnh xe tăng thì lên xe, đang lái thì xuống xe).
+      // Battleground: F là nhặt đồ gần nhất (đứng cạnh xe tăng thì lên xe, đang lái thì xuống xe); Q/E để nghiêng người.
       if (room.state.mode === "battle") {
-        if (e.code !== "KeyE") return;
+        if (e.code !== "KeyF") return;
         const near = getBattleHud().nearItem;
         if (seat.id || getBattleHud().nearTank) room.send(Messages.vehicleEnter);
         else if (near) room.send(Messages.pickup, { id: near.key });
@@ -429,6 +436,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       s.vx = s.vz = s.vy = 0;
       stance.aiming = stance.firstPerson = stance.prone = stance.crouching = false;
       stance.moving = stance.sprinting = false;
+      s.lean = stance.lean = localMotion.lean = 0;
       localMotion.moving = false;
       return;
     }
@@ -792,8 +800,33 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (Math.abs(knock.vx) + Math.abs(knock.vz) < 0.05) knock.vx = knock.vz = 0;
     rb.setNextKinematicTranslation(next);
 
+    // Nghiêng người (Battleground, giữ Q sang trái, E sang phải): đứng hay ngồi xổm; chạy nước rút, nằm, bơi, leo, trượt,
+    // vượt vật cản hay gục thì thôi. Dò ngang từ mắt sang bên nghiêng: sát tường thì chỉ nghiêng tới chừng mặt tường,
+    // camera không chui vào tường.
+    const leanOk = battle && !dead && !frozen && !s.swimming && !s.climb && !s.prone && !s.sitting && !sliding && !s.vault && !(running && moving);
+    const leanWant = leanOk ? (keys.has("KeyE") ? 1 : 0) - (keys.has("KeyQ") ? 1 : 0) : 0;
+    s.lean += (leanWant - s.lean) * Math.min(1, dt * 9);
+    if (Math.abs(s.lean) < 0.002 && leanWant === 0) s.lean = 0;
+    let leanRoom = 1;
+    if (s.lean !== 0) {
+      const sign = Math.sign(s.lean);
+      _leanO.set(next.x, next.y - FEET_OFFSET + (s.crouching ? EYE_HEIGHT_CROUCH : EYE_HEIGHT), next.z);
+      _leanD.set(Math.cos(view.yaw) * sign, 0, -Math.sin(view.yaw) * sign);
+      const reach = LEAN.side + LEAN_CLEARANCE;
+      const hit = physics.castRay(new rapier.Ray(_leanO, _leanD), reach, true, undefined, undefined, col);
+      if (hit) leanRoom = Math.max(0, (hit.timeOfImpact - LEAN_CLEARANCE) / LEAN.side);
+    }
+    // Co lại ngay khi vướng, nới ra từ từ.
+    s.leanRoom = leanRoom < s.leanRoom ? leanRoom : s.leanRoom + (leanRoom - s.leanRoom) * Math.min(1, dt * 6);
+    // Dạng nhanh-chậm (smoothstep) cho cảm giác đổ người rồi dừng êm.
+    const leanAbs = Math.min(Math.abs(s.lean), s.leanRoom);
+    const leanNow = Math.sign(s.lean) * leanAbs * leanAbs * (3 - 2 * leanAbs);
+    stance.lean = leanNow;
+    localMotion.lean = leanNow;
+
     // Vừa đánh hay ném: quay mặt theo hướng camera cho đòn đi đúng chỗ mình nhắm. Góc thứ nhất thì luôn nhìn theo camera.
-    if (!s.climb && (getCameraView() === "first" || (battle && stance.aiming) || performance.now() - localAim.at < AIM_FACE_MS * (battle ? 2 : 1)))
+    // Đang nghiêng cũng quay theo camera (thân nghiêng đúng về bên mình đang nhìn, khớp hộp trúng đạn ở server).
+    if (!s.climb && (getCameraView() === "first" || (battle && stance.aiming) || leanNow !== 0 || performance.now() - localAim.at < AIM_FACE_MS * (battle ? 2 : 1)))
       s.facing = (getCameraView() === "first" || battle ? view.yaw : localAim.yaw) + Math.PI;
 
     if (avatar.current) {
@@ -877,12 +910,15 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       const eyeWant = s.sitting || sliding ? EYE_HEIGHT_SIT : s.swimming ? EYE_HEIGHT_SWIM : s.prone ? EYE_HEIGHT_PRONE : s.crouching ? EYE_HEIGHT_CROUCH : EYE_HEIGHT;
       s.eye += (eyeWant - s.eye) * Math.min(1, dt * (s.prone || eyeWant > s.eye ? 5 : 9));
       s.eyeFwd += ((s.prone ? EYE_FORWARD_PRONE : 0) - s.eyeFwd) * Math.min(1, dt * 5);
-      const eyeY = feetY + s.eye;
-      state.camera.position.set(next.x + Math.cos(view.yaw) * bobX - Math.sin(view.yaw) * s.eyeFwd, eyeY + s.dip + bobY, next.z - Math.sin(view.yaw) * bobX - Math.cos(view.yaw) * s.eyeFwd);
+      // Nghiêng người: mắt lệch ngang theo bên phải của camera và thấp xuống chút, như đầu trong hộp trúng đạn.
+      const leanX = bobX + leanNow * LEAN.side;
+      const eyeY = feetY + s.eye - Math.abs(leanNow) * LEAN.drop;
+      state.camera.position.set(next.x + Math.cos(view.yaw) * leanX - Math.sin(view.yaw) * s.eyeFwd, eyeY + s.dip + bobY, next.z - Math.sin(view.yaw) * leanX - Math.cos(view.yaw) * s.eyeFwd);
       camDir.set(-Math.sin(view.yaw) * Math.cos(view.pitch), -Math.sin(view.pitch), -Math.cos(view.yaw) * Math.cos(view.pitch));
       camTarget.copy(state.camera.position).add(camDir);
       state.camera.lookAt(camTarget);
-      state.camera.rotateZ(s.roll);
+      // Nghiêng phải thì camera nghiêng theo chiều kim đồng hồ (rotateZ âm); súng trước mặt đi theo camera nên nghiêng cùng.
+      state.camera.rotateZ(s.roll - leanNow * LEAN.roll);
     } else {
       camTarget.y += s.dip * 0.6 + bobY * 0.35;
       const horizontal = Math.cos(view.pitch) * camDistance;
@@ -905,7 +941,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       if (headUnder && camPos.y > WATER_LEVEL - 0.3) camPos.y = WATER_LEVEL - 0.3;
       state.camera.position.copy(camPos);
       state.camera.lookAt(camTarget);
-      state.camera.rotateZ(s.roll * 0.4);
+      state.camera.rotateZ(s.roll * 0.4 - leanNow * LEAN.roll * 0.5);
     }
     // Cú hất màn hình khi bắn (lò xo, Shooter đẩy): ngẩng lên, lệch ngang, nghiêng chút rồi về.
     if (battle && !dead) {
@@ -1046,8 +1082,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         msg.prone = s.prone;
         msg.aiming = stance.aiming;
         msg.aimPitch = localMotion.aimPitch;
+        msg.lean = Math.round(leanNow * 8) / 8;
       }
-      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming},${s.crouching},${s.prone},${msg.aiming},${(msg.aimPitch ?? 0).toFixed(2)}`;
+      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming},${s.crouching},${s.prone},${msg.aiming},${(msg.aimPitch ?? 0).toFixed(2)},${msg.lean ?? 0}`;
       if (key !== s.lastSent) {
         s.lastSent = key;
         room.send(Messages.move, msg);

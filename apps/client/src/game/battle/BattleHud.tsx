@@ -583,7 +583,7 @@ function Pickup() {
   return (
     <div className="b-pickup">
       <ItemIcon id={hud.nearItem.itemId} />
-      <kbd>E</kbd> Nhặt {lootLabel(hud.nearItem.itemId)}
+      <kbd>F</kbd> Nhặt {lootLabel(hud.nearItem.itemId)}
     </div>
   );
 }
@@ -755,7 +755,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         {war
           ? "Bản đồ riêng rộng gần 700 m, hai căn cứ hai đầu, 7 cứ điểm A–G có công sự. Đứng trong vùng cứ điểm để chiếm; phe giữ ít cứ điểm hơn bị trừ vé dần, mỗi lần gục mất một vé; hết vé là thua. Gục thì chọn lớp lính và chỗ hồi sinh. Mỗi phe 3 xe tăng ở căn cứ."
           : s.mode === "squad"
-          ? "Mỗi đội xuất phát cùng một chỗ, có xe tăng riêng · F/G/H ra lệnh cho đội · gục thì nhập vào máy còn sống · Z nằm bắn · E lên xe tăng."
+          ? "Mỗi đội xuất phát cùng một chỗ, có xe tăng riêng · Y/G/H ra lệnh cho đội · gục thì nhập vào máy còn sống · Z nằm bắn · F lên xe tăng."
           : "Xuất phát ngẫu nhiên khắp đảo · bấm B mua vũ khí · vùng an toàn thu hẹp dần · người cuối cùng còn sống thắng."}
       </p>
       {war && (
@@ -829,7 +829,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <LogOut size={16} /> Rời phòng
       </button>
       <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · E nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: F tới điểm, G giữ chỗ, H theo sau
+        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: Y tới điểm, G giữ chỗ, H theo sau
       </p>
     </div>
   );

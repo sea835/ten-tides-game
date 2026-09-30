@@ -13,6 +13,43 @@ export interface BodyPose {
   rotY: number;
   crouch: boolean;
   prone: boolean;
+  /** Nghiêng người (Q/E): −1 hết cỡ sang trái, 1 hết cỡ sang phải, 0 hay bỏ trống là đứng thẳng. */
+  lean?: number;
+}
+
+/**
+ * Nghiêng người (Q trái / E phải): hông đứng yên, thân trên ngả sang bên, đầu lệch ngang `side` mét (theo vector
+ * phải của người) và thấp xuống `drop` mét khi nghiêng hết cỡ. Camera góc thứ nhất lệch đúng bằng chừng ấy, nên chỗ
+ * mắt người bắn thấy và chỗ server dò đầu trúng là một. Nằm sấp thì không nghiêng.
+ */
+export const LEAN = {
+  side: 0.4,
+  drop: 0.06,
+  /** Góc nghiêng camera (radian, ~12°) khi nghiêng hết cỡ. */
+  roll: 0.21,
+  /** Hông: gốc ngả của thân trên (đứng / ngồi xổm). */
+  hipY: { stand: 0.95, crouch: 0.6 },
+  /** Bán kính thân trên khi ngả (hơi gầy hơn trụ đứng vì đã nghiêng). */
+  bodyR: 0.28,
+} as const;
+
+/** Vector phải (x, z) của người đang nhìn theo rotY (mặt quay về (sin rotY, cos rotY)). */
+export function rightOf(rotY: number): [number, number] {
+  return [-Math.cos(rotY), Math.sin(rotY)];
+}
+
+/**
+ * Độ lệch (x, y, z) của một điểm trên thân ở độ cao `h` (m, tính từ chân) khi nghiêng `lean`: dưới hông không lệch,
+ * từ hông lên tới đầu lệch ngang dần theo tỉ lệ độ cao, đầu (và mắt) lệch đủ `LEAN.side`.
+ */
+export function leanShift(rotY: number, lean: number, crouch: boolean, h: number): [number, number, number] {
+  const l = Math.max(-1, Math.min(1, lean));
+  if (Math.abs(l) < 1e-3) return [0, 0, 0];
+  const hip = crouch ? LEAN.hipY.crouch : LEAN.hipY.stand;
+  const head = crouch ? 1.12 : 1.62;
+  const k = Math.max(0, Math.min(1.1, (h - hip) / (head - hip)));
+  const [rx, rz] = rightOf(rotY);
+  return [rx * LEAN.side * l * k, -LEAN.drop * Math.abs(l) * k, rz * LEAN.side * l * k];
 }
 
 /** Nằm sấp: thân là một khối trụ nằm dọc từ gót (sau hông) tới vai, đầu ở trước vai; tất cả sát đất. */
@@ -108,6 +145,7 @@ export function rayBody(o: V3, d: V3, b: BodyPose): { t: number; part: "head" | 
     return best;
   }
   const headY = b.y + (b.crouch ? 1.12 : 1.62);
+  if (b.lean && Math.abs(b.lean) >= 1e-3) return rayLeaning(o, d, b, headY);
   let best: { t: number; part: "head" | "body" } | null = null;
   const th = raySphere(o, d, [b.x, headY, b.z], 0.15);
   if (th !== null) best = { t: th, part: "head" };
@@ -130,6 +168,42 @@ export function rayBody(o: V3, d: V3, b: BodyPose): { t: number; part: "head" | 
 }
 
 /**
+ * Người đang nghiêng: đầu lệch theo `leanShift`, thân chia hai khúc — chân và hông là trụ đứng từ đất tới hông (không
+ * lệch), thân trên là khối trụ bo tròn từ hông ngả sang bên tới vai.
+ */
+function rayLeaning(o: V3, d: V3, b: BodyPose, headY: number): { t: number; part: "head" | "body" } | null {
+  const lean = b.lean ?? 0;
+  const hs = leanShift(b.rotY, lean, b.crouch, headY - b.y);
+  let best: { t: number; part: "head" | "body" } | null = null;
+  const th = raySphere(o, d, [b.x + hs[0], headY + hs[1], b.z + hs[2]], 0.15);
+  if (th !== null) best = { t: th, part: "head" };
+  const hip = b.y + (b.crouch ? LEAN.hipY.crouch : LEAN.hipY.stand);
+  // Thân trên: từ hông (không lệch) tới dưới vai một chút (đầu khối bo tròn thì vừa chạm vai).
+  const topH = (b.crouch ? 0.98 : 1.46) - LEAN.bodyR * 0.5;
+  const ts = leanShift(b.rotY, lean, b.crouch, topH);
+  const seg = raySegment(o, d, [b.x, hip, b.z], [b.x + ts[0], b.y + topH + ts[1], b.z + ts[2]]);
+  if (seg.dist < LEAN.bodyR) {
+    const t = Math.max(0, seg.t - Math.sqrt(LEAN.bodyR * LEAN.bodyR - seg.dist * seg.dist));
+    if (t > 0 && (!best || t < best.t)) best = { t, part: "body" };
+  }
+  // Chân và hông: trụ đứng bán kính 0,3 từ chân tới hông.
+  const ox = o[0] - b.x;
+  const oz = o[2] - b.z;
+  const aa = d[0] * d[0] + d[2] * d[2];
+  if (aa > 1e-8) {
+    const bq = ox * d[0] + oz * d[2];
+    const cc = ox * ox + oz * oz - 0.3 * 0.3;
+    const disc = bq * bq - aa * cc;
+    if (disc >= 0) {
+      const t = (-bq - Math.sqrt(disc)) / aa;
+      const y = o[1] + d[1] * t;
+      if (t > 0 && y > b.y + 0.05 && y < hip && (!best || t < best.t)) best = { t, part: "body" };
+    }
+  }
+  return best;
+}
+
+/**
  * Server kiểm tra lại một điểm trúng (điểm đạn ở khoảng cách người bắn báo): có nằm sát thân người này không (nới
  * rộng một chút cho độ trễ mạng), và có phải trúng đầu không. Trả null nếu điểm quá xa thân.
  */
@@ -143,7 +217,9 @@ export function checkBodyPoint(p: V3, b: BodyPose, claimedHead: boolean): { head
     return { head: claimedHead && toHead < 0.45 };
   }
   const height = b.crouch ? 1.25 : 1.8;
-  if (Math.hypot(p[0] - b.x, p[2] - b.z) > 1.6 || p[1] < b.y - 0.5 || p[1] > b.y + height + 0.5) return null;
+  // Đang nghiêng: thân trên, đầu lệch sang bên, nên đo khoảng cách ngang từ trục thân đã lệch ở đúng độ cao điểm trúng.
+  const sh = leanShift(b.rotY, b.lean ?? 0, b.crouch, p[1] - b.y);
+  if (Math.hypot(p[0] - b.x - sh[0], p[2] - b.z - sh[2]) > 1.6 || p[1] < b.y - 0.5 || p[1] > b.y + height + 0.5) return null;
   return { head: claimedHead && p[1] > b.y + height - 0.55 };
 }
 
