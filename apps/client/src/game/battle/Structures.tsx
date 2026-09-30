@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { CuboidCollider, RigidBody } from "@react-three/rapier";
+import { useRapier } from "@react-three/rapier";
 import {
   BoxGeometry,
   CanvasTexture,
@@ -14,12 +14,17 @@ import {
   Vector3,
   type InstancedMesh,
 } from "three";
-import { battleMap, type BattleBox, type BoxMat } from "@tentides/content";
+import { mapOf, type BattleBox, type BoxMat, type World } from "@tentides/content";
 import { detailed, type DetailKind } from "../textures.ts";
 
-// Công trình của bản đồ Battleground: hàng nghìn khối hộp gom theo chất liệu, mỗi chất liệu một InstancedMesh
-// (vài lệnh vẽ cho cả thành phố), màu riêng từng khối. Va chạm dựng thẳng bằng API của Rapier (nhanh hơn nhiều
-// so với hàng nghìn component va chạm của React).
+// Công trình của bản đồ Battleground: hàng nghìn khối hộp gom theo chất liệu và theo ô đất TILE mét, mỗi nhóm một
+// InstancedMesh (vài chục lệnh vẽ cho cả thành phố), màu riêng từng khối. Chia ô để three.js bỏ qua được phần
+// thành phố sau lưng hay ngoài vùng bóng đổ (gom cả bản đồ vào một khối thì khung bao phủ hết, lúc nào cũng vẽ
+// hết, kể cả vào bản đồ bóng). Va chạm dựng thẳng bằng API của Rapier (nhanh hơn nhiều so với hàng nghìn
+// component va chạm của React).
+
+/** Cạnh ô đất gom khối (mét). */
+const TILE = 64;
 
 const MAT: Record<BoxMat, { color: string; kind: DetailKind | "none"; roughness: number; metalness?: number; strength?: number }> = {
   concrete: { color: "#a19d95", kind: "rock", roughness: 0.95, strength: 0.18 },
@@ -202,24 +207,8 @@ export function boxQuaternion(b: BattleBox, out = new Quaternion()) {
   return out.setFromEuler(euler);
 }
 
-function BoxGroup({ mat, boxes }: { mat: BoxMat; boxes: BattleBox[] }) {
+function BoxGroup({ mat, boxes, material, geometry }: { mat: BoxMat; boxes: BattleBox[]; material: MeshStandardMaterial; geometry: BoxGeometry }) {
   const mesh = useRef<InstancedMesh>(null);
-  const material = useMemo(() => makeMaterial(mat), [mat]);
-  const geometry = useMemo(() => {
-    const g = new BoxGeometry(1, 1, 1);
-    // Ảnh lặp theo kích thước thật của khối (gạch, tôn không bị kéo giãn): UV nhân theo scale trong shader thì
-    // phức tạp; ở đây dựa vào vân chi tiết theo toạ độ thế giới, riêng gạch/tôn chấp nhận giãn theo khối.
-    g.userData.smooth = true;
-    return g;
-  }, []);
-  useEffect(
-    () => () => {
-      material.map?.dispose();
-      material.dispose();
-      geometry.dispose();
-    },
-    [material, geometry],
-  );
   useLayoutEffect(() => {
     const m = mesh.current;
     if (!m) return;
@@ -243,40 +232,68 @@ function BoxGroup({ mat, boxes }: { mat: BoxMat; boxes: BattleBox[] }) {
 
 /** Va chạm cho mọi khối đặc (một thân cố định, mỗi khối một hộp va chạm), dựng một lần cho mỗi bản đồ. */
 function Colliders({ boxes }: { boxes: readonly BattleBox[] }) {
-  const list = useMemo(
-    () =>
-      boxes
-        .filter((b) => b.solid)
-        .map((b) => {
-          const q = boxQuaternion(b, new Quaternion());
-          return { args: [b.w / 2, b.h / 2, b.d / 2] as [number, number, number], position: [b.x, b.y, b.z] as [number, number, number], quaternion: [q.x, q.y, q.z, q.w] as [number, number, number, number] };
-        }),
-    [boxes],
-  );
-  return (
-    <RigidBody type="fixed" colliders={false}>
-      {list.map((c, i) => (
-        <CuboidCollider key={i} args={c.args} position={c.position} quaternion={c.quaternion} />
-      ))}
-    </RigidBody>
-  );
+  const { world, rapier } = useRapier();
+  useEffect(() => {
+    const body = world.createRigidBody(rapier.RigidBodyDesc.fixed());
+    const q = new Quaternion();
+    for (const b of boxes) {
+      if (!b.solid) continue;
+      boxQuaternion(b, q);
+      world.createCollider(rapier.ColliderDesc.cuboid(b.w / 2, b.h / 2, b.d / 2).setTranslation(b.x, b.y, b.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }), body);
+    }
+    return () => {
+      // Đổi bản đồ thì cả thế giới vật lý bị huỷ trước; chỉ gỡ khi thân vẫn còn trong thế giới.
+      if (world.getRigidBody(body.handle)) world.removeRigidBody(body);
+    };
+  }, [world, rapier, boxes]);
+  return null;
 }
 
-export function BattleStructures({ seed }: { seed: number }) {
-  const map = battleMap(seed);
+export function BattleStructures({ world }: { world: World }) {
+  const map = mapOf(world);
+  // Mỗi chất liệu một vật liệu và một hình hộp dùng chung cho mọi ô.
+  const materials = useMemo(() => new Map<BoxMat, MeshStandardMaterial>(), []);
+  const geometry = useMemo(() => {
+    const g = new BoxGeometry(1, 1, 1);
+    // Ảnh lặp theo kích thước thật của khối (gạch, tôn không bị kéo giãn): UV nhân theo scale trong shader thì
+    // phức tạp; ở đây dựa vào vân chi tiết theo toạ độ thế giới, riêng gạch/tôn chấp nhận giãn theo khối.
+    g.userData.smooth = true;
+    return g;
+  }, []);
+  useEffect(
+    () => () => {
+      // Không xoá khỏi danh sách: StrictMode chạy lại effect mà không dựng lại, vật liệu vẫn được dùng tiếp
+      // (three.js tự nạp lại lên GPU khi vẽ).
+      for (const m of materials.values()) {
+        m.map?.dispose();
+        m.dispose();
+      }
+      geometry.dispose();
+    },
+    [materials, geometry],
+  );
   const groups = useMemo(() => {
-    const byMat = new Map<BoxMat, BattleBox[]>();
+    const byKey = new Map<string, { mat: BoxMat; boxes: BattleBox[] }>();
     for (const b of map.boxes) {
-      const list = byMat.get(b.mat);
-      if (list) list.push(b);
-      else byMat.set(b.mat, [b]);
+      const key = `${b.mat}:${Math.floor(b.x / TILE)}:${Math.floor(b.z / TILE)}`;
+      const group = byKey.get(key);
+      if (group) group.boxes.push(b);
+      else byKey.set(key, { mat: b.mat, boxes: [b] });
     }
-    return [...byMat.entries()];
+    return [...byKey.entries()];
   }, [map]);
+  const materialOf = (mat: BoxMat) => {
+    let m = materials.get(mat);
+    if (!m) {
+      m = makeMaterial(mat);
+      materials.set(mat, m);
+    }
+    return m;
+  };
   return (
     <>
-      {groups.map(([mat, boxes]) => (
-        <BoxGroup key={mat} mat={mat} boxes={boxes} />
+      {groups.map(([key, g]) => (
+        <BoxGroup key={key} mat={g.mat} boxes={g.boxes} material={materialOf(g.mat)} geometry={geometry} />
       ))}
       <Colliders boxes={map.boxes} />
     </>

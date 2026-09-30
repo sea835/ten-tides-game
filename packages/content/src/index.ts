@@ -7,3 +7,5 @@ export * from "./worldgen.ts";
 export * from "./combat.ts";
 export * from "./battleItems.ts";
 export * from "./battle.ts";
+export * from "./squad.ts";
+export * from "./war.ts";

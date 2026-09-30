@@ -1,4 +1,4 @@
-import { battleMap, worldFor, type World } from "@tentides/content";
+import { mapForMode, worldFor, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 
@@ -7,16 +7,18 @@ import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 // Phòng Battleground dùng bản đồ riêng (battle.ts): đảo lớn, thành phố, cảng, pháo đài...
 
-export function worldOf(mode: string, seed: number): World {
-  return mode === "battle" ? battleMap(seed || 1).world : worldFor(seed || 1);
+/** `battleMode`: chiến trường 50 vs 50 dùng bản đồ riêng (rộng hơn, có cứ điểm). */
+export function worldOf(mode: string, seed: number, battleMode = "solo"): World {
+  return mode === "battle" ? mapForMode(battleMode, seed || 1).world : worldFor(seed || 1);
 }
 
 export function currentWorld(room: IslandRoom): World {
-  return worldOf(room.state.mode, room.state.worldSeed);
+  return worldOf(room.state.mode, room.state.worldSeed, room.state.battleMode);
 }
 
 export function useWorld(room: IslandRoom): World {
   const seed = useRoomSnapshot(room, (s) => s.worldSeed);
   const mode = useRoomSnapshot(room, (s) => s.mode);
-  return worldOf(mode, seed);
+  const battleMode = useRoomSnapshot(room, (s) => (s.battleMode === "war" ? "war" : "solo"));
+  return worldOf(mode, seed, battleMode);
 }

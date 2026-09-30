@@ -75,13 +75,13 @@ const fragmentShader = /* glsl */ `
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), u.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), u.x), u.y);
   }
-  float fbm(vec2 p) {
+  // Ba lớp nhiễu đầu (dáng mây lớn); p và a đi tiếp để cộng thêm lớp mịn.
+  const mat2 ROT = mat2(0.8, -0.6, 0.6, 0.8);
+  float fbm3(inout vec2 p, inout float a) {
     float s = 0.0;
-    float a = 0.5;
-    mat2 r = mat2(0.8, -0.6, 0.6, 0.8);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 3; i++) {
       s += noise(p) * a;
-      p = r * p * 2.03 + 11.7;
+      p = ROT * p * 2.03 + 11.7;
       a *= 0.5;
     }
     return s;
@@ -124,12 +124,19 @@ const fragmentShader = /* glsl */ `
     vec3 cloudCol = vec3(0.0);
     if (h > 0.0) {
       vec2 uv = d.xz / (h + 0.12) * 1.3 + vec2(uDrift, uDrift * 0.35);
-      float n = fbm(uv);
+      // Dáng mây 5 lớp nhiễu; sáng tối theo nắng chỉ cần dáng lớn (3 lớp đầu, dùng lại) so với điểm lệch về phía mặt trời.
+      vec2 q = uv;
+      float a = 0.5;
+      float nLow = fbm3(q, a);
+      float n = nLow + noise(q) * a;
+      q = ROT * q * 2.03 + 11.7;
+      n += noise(q) * a * 0.5;
       float cover = mix(0.66, 0.28, uCloud);
       density = smoothstep(cover, cover + 0.28 - 0.1 * uCloud, n);
-      vec2 toSun = normalize(uSunDir.xz + 1e-4) * 0.18;
-      float nSun = fbm(uv + toSun);
-      float lit = clamp(0.55 + (n - nSun) * 4.0, 0.0, 1.0);
+      vec2 qs = uv + normalize(uSunDir.xz + 1e-4) * 0.18;
+      float aSun = 0.5;
+      float nSun = fbm3(qs, aSun);
+      float lit = clamp(0.55 + (nLow - nSun) * 4.0, 0.0, 1.0);
       vec3 shadowCol = mix(vec3(0.52, 0.58, 0.66), vec3(0.3, 0.33, 0.37), uStorm);
       vec3 litCol = mix(vec3(1.0), uSunColor, 0.35) * (1.0 - 0.45 * uStorm);
       cloudCol = mix(shadowCol, litCol, lit * (1.0 - 0.35 * density));
@@ -171,7 +178,9 @@ export function SkyDome() {
     skyUniforms.uDrift.value += Math.min(dt, 0.1) * (0.012 + weatherFx.storm * 0.05);
   });
   return (
-    <mesh ref={mesh} renderOrder={-1} frustumCulled={false} material={material}>
+    // Vẽ sau mọi vật đặc (vòm trời nằm đúng mặt phẳng xa nhất): chỗ bị núi, cây, nhà che thì GPU bỏ qua ngay nhờ
+    // phép thử độ sâu, không phải tính mây cho điểm ảnh không ai thấy. Vẫn trước mặt nước và vật trong suốt.
+    <mesh ref={mesh} renderOrder={1000} frustumCulled={false} material={material}>
       <sphereGeometry args={[300, 48, 24]} />
     </mesh>
   );

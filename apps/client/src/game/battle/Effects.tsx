@@ -19,14 +19,15 @@ import {
   type Mesh,
   type PointLight,
 } from "three";
-import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, battleMap, type World } from "@tentides/content";
+import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, type World } from "@tentides/content";
 import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
-import type { IslandRoom } from "../../net.ts";
+import { myId, type IslandRoom } from "../../net.ts";
 import { localPosition, shake } from "../shared.ts";
-import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt } from "../sound/guns.ts";
+import { audio } from "../sound/engine.ts";
+import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt, playCannon } from "../sound/guns.ts";
 import { WEAPON } from "@tentides/content";
-import { bodies, effects, getBattleHud, setBattleHud } from "./runtime.ts";
+import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
 import { Casings } from "./Casings.tsx";
 import { physicsProbe } from "./surface.ts";
@@ -303,11 +304,101 @@ function SmokeEmitters({ room }: { room: IslandRoom }) {
 
 // ---------------------------------------------------------------------------- nổ
 
+/** Tia lửa, mảnh vụn nóng đỏ văng ra từ vụ nổ (rơi theo trọng lực, tắt dần). */
+interface Ember {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  age: number;
+  life: number;
+  size: number;
+}
+const embers: Ember[] = [];
+const MAX_EMBERS = 360;
+/** Mỗi vụ nổ vẽ chừng này cầu lửa con (lệch nhau, nở trễ nhau) cho cầu lửa cuồn cuộn, không tròn trịa. */
+const FIREBALLS = 7;
+const MAX_FIRE = 16 * FIREBALLS;
+
+/** Số giả ngẫu nhiên cố định theo hạt giống vụ nổ và thứ tự quả cầu (hình dạng mỗi vụ một khác, không nhảy mỗi khung). */
+function rnd(seed: number, i: number): number {
+  const x = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/**
+ * Vụ nổ: chớp trắng lúc đầu, cụm cầu lửa cuồn cuộn (vân lửa sinh bằng nhiễu, lõi trắng vàng, rìa cam đỏ rồi tối
+ * thành khói), vòng sóng xung kích lan trên mặt đất, tia lửa văng theo đường cong, đèn chớp soi sáng xung quanh.
+ * Khói đen, bụi do useBooms thả vào hệ khói chung.
+ */
 function Blasts() {
   const light = useRef<PointLight>(null);
   const fire = useRef<InstancedMesh>(null);
+  const ring = useRef<InstancedMesh>(null);
+  const sparks = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
   const fireMat = useMemo(
+    () =>
+      new ShaderMaterial({
+        vertexShader: /* glsl */ `
+          varying vec2 vUv;
+          varying float vK;
+          varying float vSeed;
+          attribute float aK;
+          attribute float aSeed;
+          void main() {
+            vUv = uv;
+            vK = aK;
+            vSeed = aSeed;
+            vec3 center = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+            float size = length(instanceMatrix[0].xyz);
+            vec4 mv = viewMatrix * vec4(center, 1.0);
+            mv.xy += position.xy * size;
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: /* glsl */ `
+          varying vec2 vUv;
+          varying float vK;
+          varying float vSeed;
+          float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          float n(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
+          }
+          float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            for (int k = 0; k < 4; k++) { v += a * n(p); p *= 2.03; a *= 0.5; }
+            return v;
+          }
+          void main() {
+            vec2 p = vUv - 0.5;
+            float d = length(p) * 2.0;
+            // Vân lửa cuộn: nhiễu trôi lên theo tuổi, mép quả cầu lởm chởm.
+            float turb = fbm(p * 3.5 + vec2(vSeed * 7.0, -vK * 2.5 + vSeed));
+            float edge = 0.62 + 0.38 * turb;
+            float body = 1.0 - smoothstep(edge * 0.55, edge, d);
+            if (body <= 0.001) discard;
+            float heat = clamp((1.0 - vK * 1.25) * (1.15 - d * 0.7) + (turb - 0.5) * 0.5, 0.0, 1.0);
+            vec3 col = mix(vec3(0.12, 0.05, 0.02), vec3(1.0, 0.32, 0.04), smoothstep(0.05, 0.4, heat));
+            col = mix(col, vec3(1.0, 0.78, 0.3), smoothstep(0.45, 0.75, heat));
+            col = mix(col, vec3(1.0, 0.98, 0.85), smoothstep(0.8, 1.0, heat));
+            float glow = 1.5 + 5.0 * heat * heat;
+            float alpha = body * (1.0 - smoothstep(0.55, 1.0, vK));
+            gl_FragColor = vec4(col * glow * alpha, alpha);
+          }`,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        toneMapped: false,
+      }),
+    [],
+  );
+  const ringMat = useMemo(
     () =>
       new ShaderMaterial({
         uniforms: {},
@@ -318,6 +409,32 @@ function Blasts() {
           void main() {
             vUv = uv;
             vK = aK;
+            gl_Position = projectionMatrix * viewMatrix * instanceMatrix * vec4(position, 1.0);
+          }`,
+        fragmentShader: /* glsl */ `
+          varying vec2 vUv;
+          varying float vK;
+          void main() {
+            float r = length(vUv - 0.5) * 2.0;
+            float band = smoothstep(0.7, 0.93, r) * (1.0 - smoothstep(0.93, 1.0, r));
+            float a = band * (1.0 - vK) * 0.55;
+            gl_FragColor = vec4(vec3(1.0, 0.85, 0.65) * a * 1.6, a);
+          }`,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+        toneMapped: false,
+      }),
+    [],
+  );
+  const sparkMat = useMemo(
+    () =>
+      new ShaderMaterial({
+        vertexShader: /* glsl */ `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
             vec3 center = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
             float size = length(instanceMatrix[0].xyz);
             vec4 mv = viewMatrix * vec4(center, 1.0);
@@ -326,12 +443,10 @@ function Blasts() {
           }`,
         fragmentShader: /* glsl */ `
           varying vec2 vUv;
-          varying float vK;
           void main() {
             float d = length(vUv - 0.5) * 2.0;
-            float core = 1.0 - smoothstep(0.0, 1.0, d);
-            vec3 col = mix(vec3(1.0, 0.95, 0.7), vec3(1.0, 0.35, 0.05), smoothstep(0.0, 0.6, vK + d * 0.4));
-            gl_FragColor = vec4(col * 4.0 * core * (1.0 - vK), core * (1.0 - vK));
+            float a = 1.0 - smoothstep(0.0, 1.0, d);
+            gl_FragColor = vec4(vec3(1.0, 0.6, 0.2) * 5.0 * a, a);
           }`,
         transparent: true,
         depthWrite: false,
@@ -340,54 +455,149 @@ function Blasts() {
       }),
     [],
   );
-  const kAttr = useMemo(() => new InstancedBufferAttribute(new Float32Array(32), 1), []);
+  const kAttr = useMemo(() => new InstancedBufferAttribute(new Float32Array(MAX_FIRE), 1), []);
+  const seedAttr = useMemo(() => new InstancedBufferAttribute(new Float32Array(MAX_FIRE), 1), []);
+  const ringK = useMemo(() => new InstancedBufferAttribute(new Float32Array(16), 1), []);
   const geometry = useMemo(() => {
     const g = new PlaneGeometry(1, 1);
     g.setAttribute("aK", kAttr);
+    g.setAttribute("aSeed", seedAttr);
     return g;
-  }, [kAttr]);
-  useFrame(() => {
+  }, [kAttr, seedAttr]);
+  const ringGeo = useMemo(() => {
+    const g = new PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
+    g.setAttribute("aK", ringK);
+    return g;
+  }, [ringK]);
+  const sparkGeo = useMemo(() => new PlaneGeometry(1, 1), []);
+  const seen = useRef(new WeakSet<object>());
+  useFrame((_, rawDt) => {
+    const dt = Math.min(rawDt, 0.05);
     const now = performance.now() / 1000;
     let brightest = 0;
     let n = 0;
+    let rn = 0;
     const m = fire.current;
+    const rm = ring.current;
     for (let i = effects.blasts.length - 1; i >= 0; i--) {
       const b = effects.blasts[i]!;
       const age = now - b.born;
-      if (age > 1.2) {
+      if (age > 2.2) {
         effects.blasts.splice(i, 1);
         continue;
       }
       if (b.kind === "smoke") continue;
       const flash = b.kind === "flash";
-      // Bom choáng: chớp trắng rất ngắn, không có cầu lửa.
-      if (flash && age > 0.25) continue;
-      const k = Math.min(1, age / (flash ? 0.25 : 0.55));
-      if (m && n < 32) {
-        dummy.position.set(b.x, b.y + (flash ? 0.3 : 0.8 + age * 2), b.z);
-        dummy.scale.setScalar(flash ? 3 + k * 2 : 2 + k * (b.kind === "mine" ? 7 : 6));
-        dummy.updateMatrix();
-        m.setMatrixAt(n, dummy.matrix);
-        kAttr.setX(n, k);
-        n++;
+      const big = !!b.big || b.kind === "mine";
+      const seed = b.seed ?? 0.5;
+      const scale = big ? 1.35 : 1;
+      // Vụ nổ mới: tia lửa văng ra.
+      if (!seen.current.has(b)) {
+        seen.current.add(b);
+        const count = flash ? 10 : big ? 46 : 30;
+        for (let k = 0; k < count && embers.length < MAX_EMBERS; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const up = 0.3 + Math.random() * 0.9;
+          const sp = (flash ? 5 : 9 + Math.random() * 14) * scale;
+          embers.push({ x: b.x, y: b.y + 0.4, z: b.z, vx: Math.cos(a) * sp * (1 - up * 0.5), vy: sp * up, vz: Math.sin(a) * sp * (1 - up * 0.5), age: 0, life: 0.5 + Math.random() * 0.9, size: 0.08 + Math.random() * 0.1 });
+        }
       }
-      const glow = Math.max(0, 1 - age / (flash ? 0.18 : 0.35)) * (flash ? 2.5 : 1);
+      // Bom choáng: chớp trắng rất ngắn, không có cầu lửa.
+      if (flash) {
+        if (age < 0.25 && m && n < MAX_FIRE) {
+          dummy.position.set(b.x, b.y + 0.3, b.z);
+          dummy.scale.setScalar(3 + (age / 0.25) * 3);
+          dummy.updateMatrix();
+          m.setMatrixAt(n, dummy.matrix);
+          kAttr.setX(n, Math.min(1, age / 0.25) * 0.4);
+          seedAttr.setX(n, seed);
+          n++;
+        }
+      } else if (m) {
+        // Cầu lửa: vài quả con lệch nhau quanh tâm, nở trễ nhau, bốc lên và nguội dần thành khói.
+        for (let j = 0; j < FIREBALLS && n < MAX_FIRE; j++) {
+          const delay = j === 0 ? 0 : 0.02 + rnd(seed, j) * 0.12;
+          const life = (big ? 1.25 : 0.95) * (0.75 + rnd(seed, j + 11) * 0.5);
+          const t = age - delay;
+          if (t < 0 || t > life) continue;
+          const k = t / life;
+          const a = rnd(seed, j + 23) * Math.PI * 2;
+          const spread = j === 0 ? 0 : (0.6 + rnd(seed, j + 31) * 1.4) * scale;
+          const grow = 1 - Math.pow(1 - Math.min(1, k * 2.2), 3);
+          dummy.position.set(b.x + Math.cos(a) * spread * grow, b.y + 0.6 + (0.4 + rnd(seed, j + 41)) * 2.2 * k * scale + spread * 0.3, b.z + Math.sin(a) * spread * grow);
+          dummy.scale.setScalar((j === 0 ? 3.2 : 2 + rnd(seed, j + 51) * 1.8) * scale * (0.35 + grow * 0.9));
+          dummy.updateMatrix();
+          m.setMatrixAt(n, dummy.matrix);
+          kAttr.setX(n, k);
+          seedAttr.setX(n, seed + j * 0.37);
+          n++;
+        }
+        // Sóng xung kích: vòng sáng loang trên mặt đất trong 0,4 giây đầu.
+        if (rm && age < 0.4 && rn < 16) {
+          const k = age / 0.4;
+          dummy.position.set(b.x, b.y + 0.15, b.z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.setScalar((2 + k * (big ? 13 : 9)) * 1);
+          dummy.updateMatrix();
+          rm.setMatrixAt(rn, dummy.matrix);
+          ringK.setX(rn, k);
+          rn++;
+        }
+      }
+      const glow = Math.max(0, 1 - age / (flash ? 0.18 : 0.45)) * (flash ? 2.5 : big ? 1.6 : 1);
       if (glow > brightest && light.current) {
         brightest = glow;
-        light.current.position.set(b.x, b.y + 1.5, b.z);
+        light.current.position.set(b.x, b.y + 2, b.z);
       }
     }
     if (m) {
       m.count = n;
       m.instanceMatrix.needsUpdate = true;
       kAttr.needsUpdate = true;
+      seedAttr.needsUpdate = true;
     }
-    if (light.current) light.current.intensity = brightest * 400;
+    if (rm) {
+      rm.count = rn;
+      rm.instanceMatrix.needsUpdate = true;
+      ringK.needsUpdate = true;
+    }
+    // Tia lửa: bay theo trọng lực, chạm đất thì nảy nhẹ, tắt dần.
+    const sm = sparks.current;
+    let sn = 0;
+    for (let i = embers.length - 1; i >= 0; i--) {
+      const e = embers[i]!;
+      e.age += dt;
+      if (e.age >= e.life) {
+        embers.splice(i, 1);
+        continue;
+      }
+      e.vy -= 9.8 * dt;
+      const drag = Math.exp(-dt * 1.2);
+      e.vx *= drag;
+      e.vz *= drag;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      e.z += e.vz * dt;
+      if (sm && sn < MAX_EMBERS) {
+        dummy.position.set(e.x, e.y, e.z);
+        dummy.scale.setScalar(e.size * (1 - e.age / e.life) * 2.2);
+        dummy.updateMatrix();
+        sm.setMatrixAt(sn, dummy.matrix);
+        sn++;
+      }
+    }
+    if (sm) {
+      sm.count = sn;
+      sm.instanceMatrix.needsUpdate = true;
+    }
+    if (light.current) light.current.intensity = brightest * 520;
   });
   return (
     <>
-      <pointLight ref={light} color="#ffb060" distance={40} decay={1.6} intensity={0} />
-      <instancedMesh ref={fire} args={[geometry, fireMat, 32]} frustumCulled={false} renderOrder={7} />
+      <pointLight ref={light} color="#ffa24a" distance={55} decay={1.5} intensity={0} />
+      <instancedMesh ref={fire} args={[geometry, fireMat, MAX_FIRE]} frustumCulled={false} renderOrder={7} />
+      <instancedMesh ref={ring} args={[ringGeo, ringMat, 16]} frustumCulled={false} renderOrder={6} />
+      <instancedMesh ref={sparks} args={[sparkGeo, sparkMat, MAX_EMBERS]} frustumCulled={false} renderOrder={8} />
     </>
   );
 }
@@ -395,9 +605,12 @@ function Blasts() {
 /** Nhận tin nổ, khói từ server: thêm hiệu ứng, tiếng, rung màn hình. */
 function useBooms(room: IslandRoom) {
   useEffect(() => {
-    const offBoom = room.onMessage(Messages.boom, (b: BoomMessage) => {
+    const offBoom = room.onMessage(Messages.boom, (raw: BoomMessage) => {
       const now = performance.now() / 1000;
-      effects.blasts.push({ kind: b.kind, x: b.x, y: b.y, z: b.z, born: now });
+      // Đạn pháo xe tăng nổ (hay xe nổ tung): vẽ và phát tiếng như mìn (to hơn lựu đạn).
+      const big = raw.kind === "shell" || raw.kind === "mine";
+      const b = { ...raw, kind: raw.kind === "shell" ? ("mine" as const) : raw.kind };
+      effects.blasts.push({ kind: b.kind, x: b.x, y: b.y, z: b.z, born: now, big, seed: Math.random() * 10 });
       const d = Math.hypot(b.x - localPosition.x, b.y - localPosition.y, b.z - localPosition.z);
       if (b.kind === "smoke") {
         playSmoke(b);
@@ -423,26 +636,29 @@ function useBooms(room: IslandRoom) {
         p.vy += push * 0.3;
       }
       shake.amount = Math.min(1.4, shake.amount + Math.max(0, 1.3 - d / 30));
-      // Khói đen bốc lên, bụi toả ra quanh chân.
-      for (let k = 0; k < 26; k++) {
+      // Cột khói đen cuồn cuộn bốc cao (nở to dần), vòng bụi đất toả sát mặt đất, đất đá tung lên.
+      const scale = big ? 1.4 : 1;
+      for (let k = 0; k < (big ? 44 : 32); k++) {
         const a = Math.random() * Math.PI * 2;
-        const up = k < 12;
-        const dark = 0.12 + Math.random() * 0.12;
+        const kind = k < 18 ? "column" : k < 34 ? "dust" : "dirt";
+        const dark = 0.07 + Math.random() * 0.1;
+        const lift = kind === "column" ? (2.5 + Math.random() * 3.5) * scale : kind === "dust" ? 0.25 : 5 + Math.random() * 5;
+        const out = kind === "column" ? 0.8 + Math.random() * 1.2 : kind === "dust" ? (7 + Math.random() * 6) * scale : 2 + Math.random() * 3;
         puffs.push({
-          x: b.x,
-          y: b.y + (up ? 0.8 : 0.3),
-          z: b.z,
-          vx: Math.cos(a) * (up ? 1.5 : 6 + Math.random() * 4),
-          vy: up ? 2.5 + Math.random() * 2 : 0.3,
-          vz: Math.sin(a) * (up ? 1.5 : 6 + Math.random() * 4),
-          size: up ? 2 : 1.5,
-          grow: up ? 1.8 : 2.4,
-          life: 3 + Math.random() * 2,
+          x: b.x + Math.cos(a) * 0.4,
+          y: b.y + (kind === "column" ? 0.8 + Math.random() * 1.5 : 0.3),
+          z: b.z + Math.sin(a) * 0.4,
+          vx: Math.cos(a) * out,
+          vy: lift,
+          vz: Math.sin(a) * out,
+          size: (kind === "column" ? 1.8 + Math.random() : kind === "dust" ? 1.4 : 0.6) * scale,
+          grow: kind === "column" ? 1.6 + Math.random() : kind === "dust" ? 2.6 : 0.6,
+          life: kind === "column" ? 4.5 + Math.random() * 3 : kind === "dust" ? 3 + Math.random() * 1.5 : 1.4,
           age: 0,
-          r: up ? dark : 0.55,
-          g: up ? dark : 0.5,
-          b: up ? dark : 0.42,
-          alpha: up ? 0.7 : 0.45,
+          r: kind === "column" ? dark : kind === "dust" ? 0.55 : 0.32,
+          g: kind === "column" ? dark : kind === "dust" ? 0.49 : 0.26,
+          b: kind === "column" ? dark * 0.95 : kind === "dust" ? 0.4 : 0.2,
+          alpha: kind === "column" ? 0.75 : kind === "dust" ? 0.5 : 0.8,
           dense: false,
         });
       }
@@ -557,6 +773,18 @@ function Tracers() {
       };
       at(age, headV);
       at(age - lag, tailV);
+      // Đạn nổ nhả khói dọc đường bay (RPG dày, pháo mỏng).
+      if (t.trail && age < flight) {
+        const flown = Math.min(len, age * speed);
+        const gap = t.trail === "rocket" ? 0.9 : 3;
+        let sd = t.smoked ?? 0;
+        for (; sd < flown && puffs.length < 880; sd += gap) {
+          at(sd / speed, sideV);
+          const grey = t.trail === "rocket" ? 0.72 + Math.random() * 0.1 : 0.8;
+          puffs.push({ x: sideV.x, y: sideV.y, z: sideV.z, vx: (Math.random() - 0.5) * 0.4, vy: 0.2 + Math.random() * 0.3, vz: (Math.random() - 0.5) * 0.4, size: t.trail === "rocket" ? 0.45 : 0.3, grow: t.trail === "rocket" ? 0.9 : 0.5, life: t.trail === "rocket" ? 2.5 + Math.random() : 1.2, age: 0, r: grey, g: grey, b: grey, alpha: t.trail === "rocket" ? 0.55 : 0.25, dense: false });
+        }
+        t.smoked = sd;
+      }
       axisV.subVectors(headV, tailV);
       const segLen = axisV.length();
       if (segLen < 1e-3) continue;
@@ -567,7 +795,7 @@ function Tracers() {
       const dist = toCam.length();
       sideV.crossVectors(axisV, toCam).normalize();
       // Xa thì vệt to ra một chút cho còn thấy được (như mắt thấy vệt sáng chói).
-      const w = (t.mine ? 0.03 : 0.045) * Math.max(1, dist / 45);
+      const w = (t.trail === "rocket" ? 0.22 : t.trail === "shell" ? 0.12 : t.mine ? 0.03 : 0.045) * Math.max(1, dist / 45);
       const e = dummy.matrix.elements;
       // Cột 0: bề ngang (vuông góc với vệt và hướng nhìn), cột 1: dọc vệt, cột 2: pháp tuyến.
       e[0] = sideV.x * w;
@@ -631,10 +859,10 @@ function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number
   // Đạn tới nơi sau chừng này giây (bụi, lỗ đạn hiện đúng lúc vệt đạn cắm tới).
   const flight = len / speed;
   const at = now + flight;
-  for (const b of [...bodies.values(), { x: localPosition.x, y: localPosition.y, z: localPosition.z, crouch: false, alive: true }]) {
+  for (const b of [...bodies.values(), { x: localPosition.x, y: localPosition.y, z: localPosition.z, crouch: stance.crouching, prone: stance.prone, alive: true }]) {
     if (!b.alive) continue;
-    const top = b.y + (b.crouch ? 1.3 : 1.8);
-    if (Math.hypot(ex - b.x, ez - b.z) < 0.45 && ey > b.y - 0.1 && ey < top) {
+    const top = b.y + (b.prone ? 0.6 : b.crouch ? 1.3 : 1.8);
+    if (Math.hypot(ex - b.x, ez - b.z) < (b.prone ? 1.1 : 0.45) && ey > b.y - 0.1 && ey < top) {
       effects.impacts.push({ x: ex, y: ey, z: ez, nx: (ox - ex) * 0.02, ny: 0.2, nz: (oz - ez) * 0.02, born: now, blood: true, at });
       return;
     }
@@ -667,6 +895,26 @@ function useShots(room: IslandRoom) {
     return room.onMessage(Messages.shot, (m: ShotMessage) => {
       const now = performance.now() / 1000;
       const [ox, oy, oz] = m.o;
+      const alive = room.state.players.get(myId(room))?.alive ?? false;
+      if (m.w === "tank") {
+        // Pháo xe tăng: vệt đạn to bay chậm (nổ do tin "boom" lo), lửa đầu nòng do xe tăng tự vẽ.
+        const [ex, ey, ez] = m.e[0] ?? m.o;
+        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: TANK.velocity, trail: "shell" });
+        if (m.id !== myId(room)) playCannon({ x: ox, y: oy, z: oz }, false);
+        return;
+      }
+      const launcher = WEAPON.get(m.w);
+      if (launcher?.explosive) {
+        // RPG: quả đạn có lửa đuôi và vệt khói dài; khói phụt ngược ra sau ống phóng.
+        const [ex, ey, ez] = m.e[0] ?? m.o;
+        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: launcher.velocity, trail: "rocket" });
+        effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
+        const l = Math.hypot(ex - ox, ez - oz) || 1;
+        for (let k = 0; k < 10; k++)
+          puffs.push({ x: ox - ((ex - ox) / l) * 1.2, y: oy, z: oz - ((ez - oz) / l) * 1.2, vx: (-(ex - ox) / l) * (3 + Math.random() * 4) + (Math.random() - 0.5), vy: Math.random() * 0.8, vz: (-(ez - oz) / l) * (3 + Math.random() * 4) + (Math.random() - 0.5), size: 0.6, grow: 1.4, life: 2 + Math.random(), age: 0, r: 0.8, g: 0.8, b: 0.78, alpha: 0.5, dense: false });
+        if (m.id !== myId(room)) playGunshot(m.w, { x: ox, y: oy, z: oz }, false);
+        return;
+      }
       // Giảm thanh: không loé lửa, tiếng đục nhỏ (ở xa không nghe thấy).
       if (!m.s) effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
       playGunshot(m.w, { x: ox, y: oy, z: oz }, false, !!m.s);
@@ -691,26 +939,38 @@ function useShots(room: IslandRoom) {
           size: def.class === "pistol" || def.class === "smg" ? 0.75 : def.class === "sniper" || def.class === "dmr" ? 1.3 : 1,
         });
       }
+      // Đạn sượt qua đầu mình: tìm điểm gần tai nhất trên đường đạn (người đang xem, nếu mình đã gục).
+      const ear = audio.listener;
+      const eyeX = localPosition.x;
+      const eyeY = localPosition.y + (stance.prone ? 0.35 : stance.crouching ? 1.1 : 1.6);
+      const eyeZ = localPosition.z;
+      const lx = alive ? eyeX : ear.x;
+      const ly = alive ? eyeY : ear.y;
+      const lz = alive ? eyeZ : ear.z;
       let whizzed = false;
+      // Bắn nhau ở rất xa (ngoài tầm sương mù): chỉ còn tiếng, khỏi vẽ vệt đạn, dò lỗ đạn.
+      const farFrom = (x: number, z: number) => Math.hypot(x - localPosition.x, z - localPosition.z) > 260;
+      if (farFrom(ox, oz) && m.e.every(([ex, , ez]) => farFrom(ex, ez))) return;
       for (const [ex, ey, ez] of m.e) {
         effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false, speed: def?.velocity });
         remoteImpact(ox, oy, oz, ex, ey, ez, now, def?.velocity ?? 900);
-        if (whizzed) continue;
-        // Điểm gần mình nhất trên đường đạn.
+        if (whizzed || m.id === myId(room)) continue;
         const dx = ex - ox;
         const dy = ey - oy;
         const dz = ez - oz;
         const len = Math.hypot(dx, dy, dz) || 1;
-        const px = localPosition.x - ox;
-        const py = localPosition.y + 1.6 - oy;
-        const pz = localPosition.z - oz;
-        const t = Math.max(0, Math.min(len, (px * dx + py * dy + pz * dz) / len));
+        const t = Math.max(0, Math.min(len, ((lx - ox) * dx + (ly - oy) * dy + (lz - oz) * dz) / len));
         const cx = ox + (dx / len) * t;
         const cy = oy + (dy / len) * t;
         const cz = oz + (dz / len) * t;
-        if (t > 3 && Math.hypot(cx - localPosition.x, cy - localPosition.y - 1.6, cz - localPosition.z) < 4) {
-          playBulletWhiz({ x: cx, y: cy, z: cz });
+        const miss = Math.hypot(cx - lx, cy - ly, cz - lz);
+        // Đạn găm vào chính mình (điểm cuối sát người) thì đã có tiếng trúng đạn.
+        const intoMe = Math.hypot(ex - lx, ey - ly, ez - lz) < 0.9;
+        if (t > 4 && miss < 7 && !intoMe) {
+          playBulletWhiz({ x: cx, y: cy, z: cz }, miss, t / (def?.velocity ?? 900), def?.velocity ?? 900);
           whizzed = true;
+          // Đạn sượt sát đầu: giật mình (rung nhẹ màn hình).
+          if (miss < 1.5 && alive) shake.amount = Math.min(0.4, shake.amount + 0.08);
         }
       }
     });

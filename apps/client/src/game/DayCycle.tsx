@@ -1,6 +1,6 @@
 import { useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Color, Fog, type DirectionalLight, type HemisphereLight } from "three";
+import { Color, Fog, Vector3, type DirectionalLight, type HemisphereLight } from "three";
 import type { IslandRoom } from "../net.ts";
 import { localEnv, localPosition, sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
@@ -27,6 +27,33 @@ const OVERCAST = new Color("#8f9aa3");
 const STORM_SKY = new Color("#4b5560");
 const MIST = new Color("#c9d3d8");
 const grey = new Color();
+
+const UP = new Vector3(0, 1, 0);
+const MOON_DIR = new Vector3(-30, 45, 20).normalize();
+const axisX = new Vector3();
+const axisY = new Vector3();
+const center = new Vector3();
+
+/**
+ * Đặt đèn mặt trời (hoặc mặt trăng) chiếu từ hướng `dir` vào người chơi, tâm vùng bóng khớp theo lưới điểm ảnh của
+ * bản đồ bóng: đi lại thì bóng không lăn tăn ở mép, và bản đồ bóng vẽ thưa hơn khung hình vẫn khớp chỗ.
+ */
+function aimLight(light: DirectionalLight, dir: Vector3) {
+  const cam = light.shadow.camera;
+  const texel = (cam.right - cam.left) / light.shadow.mapSize.x;
+  // Trục ngang, dọc của camera bóng (giống cách lookAt dựng khi nhìn từ đèn về tâm).
+  axisX.crossVectors(UP, dir);
+  if (axisX.lengthSq() < 1e-6) axisX.set(1, 0, 0);
+  axisX.normalize();
+  axisY.crossVectors(dir, axisX);
+  center.copy(localPosition);
+  const a = center.dot(axisX);
+  const b = center.dot(axisY);
+  center.addScaledVector(axisX, Math.round(a / texel) * texel - a).addScaledVector(axisY, Math.round(b / texel) * texel - b);
+  light.position.copy(center).addScaledVector(dir, 80);
+  light.target.position.copy(center);
+  light.target.updateMatrixWorld();
+}
 
 /** Mặt trời lặn vào lúc này trong ngày (0–1); phần sau là đêm. */
 const SUNSET = 0.82;
@@ -129,22 +156,20 @@ export function DayCycle({
 
     const azimuth = Math.PI * u;
     const sunDir = skyUniforms.uSunDir.value.set(Math.cos(azimuth) * 70, 8 + elevation * 60, -25).normalize();
-    skyUniforms.uMoonDir.value.set(-30, 45, 20).normalize();
+    skyUniforms.uMoonDir.value.copy(MOON_DIR);
 
     const light = sun.current;
     if (light) {
       if (t < SUNSET) {
         light.intensity = (0.6 + 2.1 * Math.pow(elevation, 0.6)) * sunScale * shade * (1 - 0.6 * overcast - 0.2 * w.storm) + w.flash * 3;
         light.color.copy(SUN_WARM).lerp(SUN_NOON, day);
-        light.position.copy(localPosition).addScaledVector(sunDir, 80);
+        aimLight(light, sunDir);
       } else {
         // Đêm Battleground: trăng sáng hơn cho vẫn đánh nhau được (bóng người vẫn thấy, xa thì chìm vào tối).
         light.intensity = (battle ? 0.8 : 0.45) * shade * (1 - 0.5 * overcast) + w.flash * 3;
         light.color.copy(MOON);
-        light.position.set(localPosition.x - 30, localPosition.y + 45, localPosition.z + 20);
+        aimLight(light, MOON_DIR);
       }
-      light.target.position.copy(localPosition);
-      light.target.updateMatrixWorld();
     }
     const h = hemi.current;
     if (h) {

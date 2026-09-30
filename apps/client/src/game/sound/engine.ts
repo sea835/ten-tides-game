@@ -68,7 +68,7 @@ class AudioEngine {
     limiter.attack.value = 0.001;
     limiter.release.value = 0.09;
     this.muffle.connect(this.master).connect(comp).connect(limiter).connect(ctx.destination);
-    const levels: Record<Bus, number> = { sfx: 0.9, ambience: 0.55, music: this.settings.music ? 0.32 : 0, ui: 0.5 };
+    const levels: Record<Bus, number> = { sfx: 1, ambience: 0.4, music: this.settings.music ? 0.32 : 0, ui: 0.5 };
     for (const [bus, level] of Object.entries(levels) as [Bus, number][]) {
       const g = ctx.createGain();
       g.gain.value = level;
@@ -82,7 +82,8 @@ class AudioEngine {
   }
 
   private makeNoise(ctx: AudioContext, brown: boolean): AudioBuffer {
-    const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    // Dài 5 giây: vòng lặp ngắn quá thì tai nhận ra mẫu lặp lại (tiếng "rè rè" đều đều).
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * 5, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     let last = 0;
     for (let i = 0; i < data.length; i++) {
@@ -222,7 +223,7 @@ export function noiseBurst(
   envelope(g.gain, t, opts.attack ?? 0.005, opts.peak ?? 1, opts.decay);
   src.connect(filter).connect(g).connect(out);
   const dur = (opts.attack ?? 0.005) + opts.decay + 0.05;
-  src.start(t, Math.random() * 1.5);
+  src.start(t, Math.random() * 4);
   src.stop(t + dur);
   return filter;
 }

@@ -14,6 +14,7 @@ import {
   Vector3,
   type Group,
   type Mesh,
+  type PerspectiveCamera,
 } from "three";
 import { SIGHTS, WEAPON, type SightId } from "@tentides/content";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -22,6 +23,7 @@ import { DRAW_ON_TOP_GLSL, GunModel, KnifeModel, MagModel, ThrowableModel, actio
 import { view } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun } from "./Shooter.tsx";
+import { getSettings } from "../settings.ts";
 import { effects, eject, muzzle, recoil, stance } from "./runtime.ts";
 
 // Súng trước mặt khi nhìn bằng mắt (góc thứ nhất): cầm thấp bên phải, lắc theo bước chân, trễ theo cú xoay chuột,
@@ -62,10 +64,23 @@ export function ViewPass({ post }: { post: boolean }) {
     gl.shadowMap.autoUpdate = false;
     if (post) gl.toneMapping = AgXToneMapping;
     scene.background = null;
+    // Súng trước mặt vẽ với góc nhìn gốc: ngắm thì cảnh phóng to còn súng giữ nguyên cỡ (như mắt thật), trước đây
+    // súng bị phóng to theo, khối súng sát mắt che mất giữa màn hình.
+    const cam = camera as PerspectiveCamera;
+    const zoomedFov = cam.fov;
+    const baseFov = getSettings().fov;
+    if (Math.abs(zoomedFov - baseFov) > 0.01) {
+      cam.fov = baseFov;
+      cam.updateProjectionMatrix();
+    }
     camera.layers.set(VIEW_LAYER);
     gl.clearDepth();
     gl.render(scene, camera);
     camera.layers.set(0);
+    if (cam.fov !== zoomedFov) {
+      cam.fov = zoomedFov;
+      cam.updateProjectionMatrix();
+    }
     scene.background = background;
     gl.toneMapping = toneMapping;
     gl.shadowMap.autoUpdate = shadows;
@@ -232,7 +247,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
         gg.position.set(
           HIP.x * hip + bobX + st.side.x * 0.025 - st.wall * 0.06 - st.sprint * 0.06 - tiltK * 0.06 + lower * 0.05,
           HIP.y * hip - sight * st.aim + bobY - st.wall * 0.06 - st.sprint * 0.03 + tiltK * 0.03 - lower * 0.32,
-          HIP.z * hip - 0.3 * st.aim + st.back.x * 0.07 + st.wall * 0.24 + st.sprint * 0.06 + tiltK * 0.05,
+          HIP.z * hip - (def.class === "pistol" ? 0.3 : 0.4) * st.aim + st.back.x * 0.07 + st.wall * 0.24 + st.sprint * 0.06 + tiltK * 0.05,
         );
         // Nòng hất lên khi giật, chúc xuống khi rút súng; sát tường dựng lên; thay đạn thì nghiêng súng (lật cửa
         // băng đạn về phía mình) và ngóc nòng.
@@ -253,7 +268,9 @@ export function ViewModel({ room }: { room: IslandRoom }) {
           const out = reloading && withMag ? ramp(r, 0.12, 0.3) : 0;
           const back = reloading && withMag ? ramp(r, 0.62, 0.76) : 1;
           const gone = reloading && withMag && r > 0.3 && r < 0.62;
-          magG.visible = !gone;
+          // Ống phóng: quả đạn đã bay đi thì miệng ống trống tới khi nạp quả mới.
+          const fired = def.class === "launcher" && gun.mag <= 0 && !(reloading && r >= 0.62);
+          magG.visible = !gone && !fired;
           const drop = r < 0.5 ? out : 1 - back;
           magG.position.set(0, -0.22 * drop, -0.03 * drop);
           magG.rotation.set(0.35 * drop, 0, 0);
@@ -377,7 +394,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
         {def && (
           <>
             <GunModel weaponId={weapon} sight={sightId} atts={atts} scale={1} view />
-            {sightId && <Reticle weapon={weapon} sight={sightId} />}
+            {(sightId || weapon === "scar") && <Reticle weapon={weapon} sight={sightId || "builtin"} />}
             <RightHand />
             <group ref={leftG} position={support}>
               <LeftHand outfit={outfit} pistol={def.class === "pistol"} />
@@ -508,6 +525,14 @@ function Reticle({ weapon, sight }: { weapon: string; sight: string }) {
     },
     [res],
   );
+  // Kính toàn ký gắn liền trên SCAR-L (không lắp ống rời): chấm đỏ nổi trên mặt kính của nó.
+  if (sight === "builtin")
+    return (
+      <group position={[0, 0.178, 0.015]} rotation-y={Math.PI}>
+        <mesh geometry={res.dot} material={res.m} renderOrder={21} />
+        <mesh geometry={res.ring} material={res.m} renderOrder={21} />
+      </group>
+    );
   if (!def || def.scope) return null;
   const [x, y, z] = railMount(weapon);
   const lensZ = z + (sight === "holo" ? 0.03 : 0.018) + 0.002;

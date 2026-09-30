@@ -429,13 +429,13 @@ function renderDry(ctx: BaseAudioContext, B: Blast): AudioBuffer {
     for (let i = 0; i < nw && i < n; i++) x[i] = x[i]! + B.crack * 2.4 * (1 - (2 * i) / nw);
   }
   // 2. Tiếng tách dải rộng: tiếng ồn trắng (nhấn cao tần) tắt trong vài ms.
-  const clickTau = 0.0009 * j();
+  const clickTau = 0.0007 * j();
   let prev = 0;
   for (let i = 0; i < n; i++) {
     const t = i / sr;
     if (t > clickTau * 9) break;
     const w = white();
-    x[i] = x[i]! + B.click * 1.8 * (w - prev * 0.7) * Math.exp(-t / clickTau);
+    x[i] = x[i]! + B.click * 1.9 * (w - prev * 0.85) * Math.exp(-t / clickTau);
     prev = w;
   }
   // Đường bao tính dồn (nhân dần) thay vì gọi Math.exp mỗi mẫu cho nhanh.
@@ -648,7 +648,8 @@ function bankFor(ctx: AudioContext, key: string, B: Blast): Bank {
     const b: Bank = { dry: [renderDry(ctx, B)], tail: [renderTail(ctx, B)] };
     map.set(key, b);
     // Dựng thêm biến thể rải rác cho khỏi giật khung hình.
-    const more = [() => b.dry.push(renderDry(ctx, B)), () => b.tail.push(renderTail(ctx, B)), () => b.dry.push(renderDry(ctx, B)), () => b.dry.push(renderDry(ctx, B))];
+    // Ba biến thể phần khô, một đuôi (đuôi dài, tốn bộ nhớ nhất; các phát khác nhau đã nhờ phần khô và tốc độ phát).
+    const more = [() => b.dry.push(renderDry(ctx, B)), () => b.dry.push(renderDry(ctx, B))];
     more.forEach((f, i) => setTimeout(safe(f), 40 + i * 70));
     bank = b;
   }
@@ -702,6 +703,11 @@ const PROFILES: Record<WeaponClass, GunProfile> = {
     vol: 1.25, range: 500, rev: 0.65, tailVol: 0.62,
     blast: { crack: 1.5, nwave: 0.55, click: 1, drive: 5.5, body: [88, 36, 0.085, 1.25], blast: [450, 0.075, 1.3], bark: [1250, 0.9, 0.038, 0.85], bark2: [580, 0.8, 0.06, 0.85], dry: 1.05, tail: [4.4, 950, 1, 8] },
   },
+  // RPG: tiếng phụt đẩy trầm và khối khí phụt sau (không có sóng nứt siêu thanh), đuôi vang dài.
+  launcher: {
+    vol: 1.2, range: 420, rev: 0.55, tailVol: 0.5,
+    blast: { crack: 0.1, nwave: 0.6, click: 0.7, drive: 4.4, body: [70, 30, 0.09, 1.35], blast: [380, 0.09, 1.5], bark: [700, 0.6, 0.05, 0.9], bark2: [320, 0.6, 0.08, 0.9], dry: 0.9, tail: [3, 900, 0.6, 6] },
+  },
   // Shotgun: bùm rộng, dày, trầm, ít tiếng nứt.
   shotgun: {
     vol: 1.2, range: 320, rev: 0.5, tailVol: 0.5,
@@ -714,12 +720,31 @@ const AR_762: Partial<Blast> = { drive: 4.6, body: [128, 56, 0.04, 1.05], blast:
 /** Súng lục cỡ lớn (Deagle): thân dày, bark thấp, vang hơn. */
 const PISTOL_BIG: Partial<Blast> = { crack: 0.6, drive: 3.8, body: [150, 66, 0.032, 1], blast: [850, 0.03, 1], bark: [1700, 1.2, 0.017, 1], dry: 0.5, tail: [1.9, 1500, 0.25, 5] };
 
+/**
+ * Làm tiếng nổ "đanh" hơn: sóng N siêu thanh và tiếng tách to hơn, ngắn hơn; bark lên cao, tắt nhanh; thân trầm và
+ * khối hơi gọn lại cho khỏi ùng ục. Kết quả: cú "chát" khô, sắc ở đầu, vẫn còn lực nhờ bão hòa.
+ */
+function sharpen(B: Blast, cls: WeaponClass): Blast {
+  const snap = cls === "shotgun" ? 0.6 : 1;
+  return {
+    ...B,
+    crack: B.crack * (1 + 0.5 * snap),
+    nwave: B.nwave * 0.8,
+    click: B.click * (1 + 0.7 * snap),
+    drive: B.drive * 1.18,
+    body: [B.body[0], B.body[1], B.body[2] * 0.8, B.body[3] * 0.85],
+    blast: [B.blast[0] * 1.15, B.blast[1] * 0.8, B.blast[2]],
+    bark: [B.bark[0] * 1.15, B.bark[1] * 1.15, B.bark[2] * 0.8, B.bark[3] * 1.1],
+    bark2: [B.bark2[0] * 1.1, B.bark2[1], B.bark2[2] * 0.85, B.bark2[3]],
+  };
+}
+
 /** Công thức riêng của từng khẩu: theo nhóm, chỉnh thêm theo cỡ đạn, sát thương. */
 function blastFor(cls: WeaponClass, ammo: string | undefined, damage: number): Blast {
   const base = PROFILES[cls].blast;
-  if (cls === "ar" && ammo === "762") return { ...base, ...AR_762 };
-  if (cls === "pistol" && damage >= 50) return { ...base, ...PISTOL_BIG };
-  return base;
+  if (cls === "ar" && ammo === "762") return sharpen({ ...base, ...AR_762 }, cls);
+  if (cls === "pistol" && damage >= 50) return sharpen({ ...base, ...PISTOL_BIG }, cls);
+  return sharpen(base, cls);
 }
 
 /** Băm tên súng ra số 0–1: mỗi khẩu có âm sắc hơi khác dù cùng nhóm. */
@@ -728,6 +753,9 @@ function hash(s: string): number {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return ((h >>> 0) % 10000) / 10000;
 }
+
+/** Nhân độ to chung của tiếng súng. */
+const GUN_LOUDNESS = 1.35;
 
 /** Lúc phát súng gần nhất của chính mình: bắn liên thanh thì đuôi mỗi phát nhỏ lại (các đuôi chồng lên nhau). */
 let lastLocalShot = 0;
@@ -740,15 +768,17 @@ export const playGunshot = safe((weaponId: string, at: Place, local: boolean, su
   const cls: WeaponClass = def?.class ?? "ar";
   const P = PROFILES[cls];
   const damage = def?.damage ?? 40;
+  // Tầm "to rõ" 32 m (trước là 20 m): súng người khác ở vài chục mét vẫn nghe đanh, to.
   // Giảm thanh: nghe xa chừng một phần tư, tiếng đục "phụt", tiếng dội rất nhỏ.
-  const sp = local ? null : spatial(at, P.range * (suppressed ? 0.25 : 1));
+  const sp = local ? null : spatial(at, P.range * 1.15 * (suppressed ? 0.25 : 1), 32);
   if (!local && !sp) return;
   const d = sp?.d ?? 0;
   const bank = bankFor(ctx, weaponId, blastFor(cls, def?.ammo, damage));
   // Cao độ riêng từng khẩu (theo tên), khẩu sát thương cao hơi trầm hơn; mỗi phát lệch nhẹ để liên thanh không như máy lặp.
   const heavy = clamp((damage - 30) / 70, 0, 1);
   const rate = (0.95 + hash(weaponId) * 0.1) * (1 - heavy * 0.05) * rand(0.97, 1.03);
-  const loud = P.vol * rand(0.92, 1.04);
+  // To hơn trước khoảng 35% (bộ nén và chặn đỉnh ở engine giữ cho không vỡ tiếng).
+  const loud = P.vol * GUN_LOUDNESS * rand(0.92, 1.04);
   const now = ctx.currentTime;
   const burst = local && now - lastLocalShot < 0.2;
   if (local) lastLocalShot = now;
@@ -770,9 +800,16 @@ export const playGunshot = safe((weaponId: string, at: Place, local: boolean, su
   // 5. Tiếng cơ khí của chính mình: kim hỏa đập, khối khóa nòng va vào hộp khóa, lò xo rung kim loại.
   if (local) {
     const m = cls === "sniper" || cls === "dmr" ? 0.8 : cls === "pistol" ? 1.1 : 1;
+    // Tiếng "chát" ở ngay đầu: dải cao rất ngắn, cho phát súng đanh, dứt khoát.
+    v.noise(0, { type: "highpass", freq: 4200, q: 0.7, decay: 0.009, peak: 0.28 * m, attack: 0.0003 });
     v.noise(0.002, { type: "bandpass", freq: rand(2800, 3400), q: 4, decay: 0.012, peak: 0.16 * m, attack: 0.0005 }, v.side);
     v.noise(0.012, { type: "bandpass", freq: rand(1000, 1300), q: 6, decay: 0.035, peak: 0.12 * m }, v.side);
     v.osc(0.012, { type: "triangle", freq: rand(430, 520), freqEnd: 380, decay: 0.05, peak: 0.05 * m }, v.side);
+  }
+  // RPG: động cơ tên lửa rít xa dần sau cú phụt.
+  if (cls === "launcher") {
+    v.noise(0.03, { type: "bandpass", freq: 2200, freqEnd: 900, q: 0.8, attack: 0.03, decay: 0.9, peak: 0.5 * dryLevel });
+    v.noise(0.02, { type: "lowpass", freq: 600, decay: 0.7, peak: 0.6 * dryLevel });
   }
   // 6. Đuôi vang ngoài trời: nhánh riêng, lọc nhẹ theo khoảng cách, lệch trái phải ít (tiếng dội đến từ nhiều phía).
   const tailCut = local ? 20000 : clamp(9000 * Math.exp(-d / 150), 450, 20000);
@@ -964,18 +1001,33 @@ export const playArmorHit = safe(() => {
   v.done();
 });
 
-/** Đạn bay sượt đầu: tiếng "tách" siêu thanh và tiếng rít trượt xuống. `at` là điểm đường đạn gần mình nhất. */
-export const playBulletWhiz = safe((at: Place) => {
-  const sp = spatial(at, 25, 3);
+/**
+ * Đạn bay sượt qua người: `at` là điểm đường đạn gần mình nhất, `miss` là khoảng cách tới đầu (m), `delay` là lúc
+ * viên đạn tới điểm đó (giây, theo sơ tốc). Đạn siêu thanh (nhanh hơn 343 m/s) kêu "chát!" như roi quất (sóng xung
+ * kích), sát tai thì rất to và gắt; đạn chậm (UMP45, súng lục) chỉ rít "víu" trượt cao độ. Cả hai lệch đúng bên đạn bay.
+ */
+export const playBulletWhiz = safe((at: Place, miss: number, delay: number, velocity: number) => {
+  const sp = spatial(at, 30, 3);
   if (!sp) return;
-  // Không trễ: đây là lúc viên đạn đi qua.
-  sp.delay = 0;
+  sp.delay = Math.min(0.6, Math.max(0, delay));
   sp.cutoff = 17000;
-  const v = voice("fx", 0.55 * sp.gain, { sp });
+  // Gần tai thì lệch hẳn sang một bên (đạn bay bên trái hay bên phải đầu).
+  sp.pan = clamp(sp.pan * 1.3, -0.95, 0.95);
+  const near = clamp(1 - miss / 7, 0, 1);
+  const level = (0.35 + 0.75 * near * near) * clamp(sp.gain * 1.6, 0.3, 1);
+  const v = voice("fx", level, { sp, gain: level });
   if (!v) return;
-  v.noise(0, { type: "highpass", freq: 2800, decay: 0.022, peak: 1, attack: 0.0005 });
-  const f = rand(2800, 3800);
-  v.noise(0.005, { type: "bandpass", freq: f, freqEnd: f * 0.3, q: 3, attack: 0.03, decay: 0.2, peak: 0.55 });
+  if (velocity > 360) {
+    // Sóng xung kích: cú "chát" cực ngắn dải rộng, rồi tiếng tách cộng hưởng cao.
+    v.noise(0, { type: "highpass", freq: 1800, q: 0.6, decay: 0.006 + 0.004 * near, peak: 1.3, attack: 0.0002 });
+    v.noise(0.0008, { type: "bandpass", freq: rand(2600, 3400), q: 2.2, decay: 0.018, peak: 0.8, attack: 0.0003 });
+    v.osc(0, { type: "square", freq: rand(900, 1300), freqEnd: 400, decay: 0.012, peak: 0.12 * near, attack: 0.0002 });
+  }
+  // Tiếng rít: tiếng ồn qua bộ lọc dải trượt từ cao xuống thấp (hiệu ứng Doppler khi đạn lao qua).
+  const f = rand(2600, 3600) * (velocity > 360 ? 1 : 0.8);
+  const whizz = velocity > 360 ? 0.35 : 0.9;
+  v.noise(0.002, { type: "bandpass", freq: f, freqEnd: f * 0.35, q: 4, attack: 0.02, decay: 0.16 + 0.1 * near, peak: whizz });
+  v.noise(0.004, { type: "bandpass", freq: f * 1.6, freqEnd: f * 0.5, q: 6, attack: 0.015, decay: 0.1, peak: whizz * 0.5 });
   v.done();
 });
 
@@ -1583,3 +1635,130 @@ export const playShotMechanics = safe((weaponId: string) => {
   }
   v.done();
 });
+
+// ---------------------------------------------------------------------------- xe tăng
+
+/** Pháo xe tăng: cú nổ đầu nòng rất lớn, trầm, sóng xung kích dài, đuôi lăn như sấm (dựng sẵn như tiếng súng). */
+const CANNON: Blast = { crack: 1.6, nwave: 0.9, click: 1.3, drive: 6.2, body: [62, 26, 0.16, 1.5], blast: [300, 0.12, 1.6], bark: [800, 0.8, 0.05, 0.9], bark2: [360, 0.7, 0.09, 0.9], dry: 1.5, tail: [5, 800, 1, 8] };
+
+/** Một phát pháo xe tăng ở đầu nòng `at`. `local`: xe mình bắn (to, không lọc khoảng cách). */
+export const playCannon = safe((at: Place, local: boolean) => {
+  const ctx = live();
+  if (!ctx) return;
+  const sp = local ? null : spatial(at, 600, 30);
+  if (!local && !sp) return;
+  const d = sp?.d ?? 0;
+  const bank = bankFor(ctx, "cannon", CANNON);
+  const direct = local ? 1 : 1 / (1 + Math.pow(d / 180, 1.5));
+  const dryLevel = 1.35 * (local ? 1 : sp!.gain * direct);
+  const tailLevel = 0.9 * (local ? 1 : Math.pow(sp!.gain, 0.5) * (1 + 0.6 * Math.min(1, d / 200)));
+  const v = voice("gun", Math.max(dryLevel, tailLevel) * 1.5, { sp, reverb: local ? 0.4 : 0.6 + Math.min(1, d / 150), gain: 1, wide: local ? 0.4 : 0 });
+  if (!v) return;
+  const rate = rand(0.95, 1.03);
+  v.buffer(0, pick(bank.dry), rate, dryLevel);
+  v.osc(0, { freq: 48, freqEnd: 20, decay: 1, peak: 0.6 * dryLevel, attack: 0.003 });
+  const tail = v.branch(local ? 20000 : clamp(8000 * Math.exp(-d / 180), 400, 20000), (sp?.pan ?? 0) * 0.35);
+  v.buffer(0.01, pick(bank.tail), rate, tailLevel, tail);
+  // Của mình: tiếng khoá nòng pháo đóng lại, vỏ đạn rơi keng trong tháp pháo.
+  if (local) {
+    v.noise(0.6, { type: "bandpass", freq: 1400, q: 5, decay: 0.08, peak: 0.25 });
+    v.osc(0.62, { type: "triangle", freq: 620, freqEnd: 480, decay: 0.25, peak: 0.12 });
+  }
+  v.done();
+});
+
+/** Nạp đạn pháo xong: tiếng khoá nòng đóng "cạch". */
+export const playCannonReady = safe(() => {
+  const v = voice("local", 0.4);
+  if (!v) return;
+  v.noise(0, { type: "bandpass", freq: 2200, q: 6, decay: 0.03, peak: 0.6, attack: 0.001 });
+  v.osc(0.01, { type: "triangle", freq: 340, freqEnd: 260, decay: 0.12, peak: 0.3 });
+  v.done();
+});
+
+/**
+ * Tiếng máy xe tăng: tiếng ồn nâu lọc thấp (máy nổ) cộng răng cưa trầm (động cơ diesel), cao độ và độ to theo tốc
+ * độ xe, lạch cạch xích; mỗi xe một vòng tiếng, nhỏ dần theo khoảng cách. Trả về hàm cập nhật và hàm tắt.
+ */
+export function tankEngine(): { update: (at: Place, speed: number, local: boolean) => void; stop: () => void } {
+  const ctx = live();
+  if (!ctx) return { update: noop, stop: noop };
+  const out = ctx.createGain();
+  out.gain.value = 0;
+  const pan = ctx.createStereoPanner();
+  out.connect(pan).connect(audio.bus("sfx"));
+  const src = ctx.createBufferSource();
+  src.buffer = audio.brown;
+  src.loop = true;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 220;
+  lp.Q.value = 2;
+  src.connect(lp).connect(out);
+  const osc = ctx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.value = 32;
+  const og = ctx.createGain();
+  og.gain.value = 0.18;
+  const olp = ctx.createBiquadFilter();
+  olp.type = "lowpass";
+  olp.frequency.value = 180;
+  osc.connect(olp).connect(og).connect(out);
+  // Xích: tiếng ồn dải cao đập theo nhịp (điều biên bằng sóng vuông).
+  const tr = ctx.createBufferSource();
+  tr.buffer = audio.white;
+  tr.loop = true;
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 900;
+  bp.Q.value = 1.5;
+  const tg = ctx.createGain();
+  tg.gain.value = 0;
+  const lfo = ctx.createOscillator();
+  lfo.type = "square";
+  lfo.frequency.value = 6;
+  const lg = ctx.createGain();
+  lg.gain.value = 0;
+  lfo.connect(lg).connect(tg.gain);
+  tr.connect(bp).connect(tg).connect(out);
+  src.start(0, Math.random() * 3);
+  tr.start(0, Math.random() * 3);
+  osc.start();
+  lfo.start();
+  let stopped = false;
+  return {
+    update(at, speed, local) {
+      if (stopped || !audio.ctx) return;
+      const t = ctx.currentTime;
+      const k = Math.min(1, Math.abs(speed) / 8);
+      let gain = 0.22 + 0.25 * k;
+      let p = 0;
+      if (!local) {
+        const L = audio.listener;
+        const dx = at.x - L.x;
+        const dz = at.z - L.z;
+        const d = Math.hypot(dx, dz);
+        gain *= Math.max(0, Math.pow(1 - Math.min(1, d / 110), 1.8));
+        if (d > 0.5) p = clamp(((dx * Math.cos(L.yaw) - dz * Math.sin(L.yaw)) / d) * 0.8, -0.8, 0.8);
+      } else gain *= 0.7;
+      out.gain.setTargetAtTime(gain, t, 0.15);
+      pan.pan.setTargetAtTime(p, t, 0.1);
+      osc.frequency.setTargetAtTime(30 + 26 * k, t, 0.3);
+      lp.frequency.setTargetAtTime(180 + 220 * k, t, 0.3);
+      lg.gain.setTargetAtTime(0.12 * k, t, 0.2);
+      lfo.frequency.setTargetAtTime(3 + 9 * k, t, 0.3);
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      try {
+        const t = ctx.currentTime;
+        out.gain.setTargetAtTime(0, t, 0.1);
+        for (const n of [src, tr, osc, lfo]) n.stop(t + 0.5);
+        setTimeout(() => out.disconnect(), 800);
+      } catch {
+        // Đã tắt.
+      }
+    },
+  };
+}

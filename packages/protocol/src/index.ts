@@ -135,6 +135,8 @@ export const PlayerState = schema(
     kit: t.ref(KitState).default(() => new KitState()),
     kills: t.uint16().default(0),
     crouching: t.boolean().default(false),
+    /** Đang nằm sấp (bắn nằm): thấp nhất, khó thấy, khó trúng, đi bò rất chậm. */
+    prone: t.boolean().default(false),
     aiming: t.boolean().default(false),
     /** Góc ngắm lên xuống (radian, dương là ngẩng lên), để máy khác thấy nòng súng chĩa đúng hướng. */
     aimPitch: t.float32().default(0),
@@ -144,6 +146,15 @@ export const PlayerState = schema(
     bot: t.boolean().default(false),
     /** Skin súng đang lắp (id súng → id skin trong SKINS), server nạp từ tài khoản khi vào phòng. Khách thì rỗng. */
     skins: t.map("string"),
+    /**
+     * Chế độ Đồng đội: đội (id người dẫn đội, hay "ai1", "ai2"... với đội toàn máy), vai trò (leader, rifle, sniper,
+     * tanker, support), đang ngồi xe nào (id trong `vehicles`, rỗng là đi bộ). Chế độ solo thì đội rỗng.
+     */
+    team: t.string().default(""),
+    role: t.string().default(""),
+    vehicle: t.string().default(""),
+    /** Chiến trường: còn bao nhiêu giây nữa được hồi sinh (0 là chọn chỗ được rồi). */
+    respawn: t.float32().default(0),
   },
   "PlayerState",
 );
@@ -453,6 +464,45 @@ export const SmokeState = schema(
 );
 export type SmokeState = SchemaType<typeof SmokeState>;
 
+/** Một chiếc xe tăng: vị trí, hướng thân, hướng tháp pháo (theo thế giới), góc nòng, máu, đội, người lái. */
+export const VehicleState = schema(
+  {
+    kind: t.string().default("tank"),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    rotY: t.float32().default(0),
+    turret: t.float32().default(0),
+    pitch: t.float32().default(0),
+    hp: t.int16().default(0),
+    team: t.string().default(""),
+    /** Người đang lái (và bắn); rỗng là xe bỏ trống. */
+    driver: t.string().default(""),
+    /** Bộ đếm phát pháo, để máy khác diễn giật nòng, lửa đầu nòng. */
+    shots: t.uint16().default(0),
+    moving: t.boolean().default(false),
+  },
+  "VehicleState",
+);
+export type VehicleState = SchemaType<typeof VehicleState>;
+
+/** Một cứ điểm (chiến trường 50 vs 50): phe đang giữ, tiến độ chiếm (−1 đỏ … 1 xanh), số người mỗi phe trong vùng. */
+export const FlagState = schema(
+  {
+    name: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    r: t.float32().default(15),
+    owner: t.string().default(""),
+    progress: t.float32().default(0),
+    blue: t.uint8().default(0),
+    red: t.uint8().default(0),
+  },
+  "FlagState",
+);
+export type FlagState = SchemaType<typeof FlagState>;
+
 export const IslandState = schema(
   {
     /**
@@ -477,6 +527,13 @@ export const IslandState = schema(
     aliveCount: t.uint8().default(0),
     bots: t.uint8().default(0),
     hostId: t.string().default(""),
+    /** Battleground: "solo" (sinh tồn một mình) hay "squad" (mỗi người dẫn 5 máy, đội cuối cùng còn người thắng). */
+    battleMode: t.string().default("solo"),
+    vehicles: t.map(VehicleState),
+    /** Chiến trường: cứ điểm (key là chữ cái A–G), vé quân còn lại của hai phe. */
+    flags: t.map(FlagState),
+    ticketsBlue: t.uint16().default(0),
+    ticketsRed: t.uint16().default(0),
     difficulty: t.string().default("normal"),
     nightSeconds: t.uint16().default(PHASE_SECONDS.night),
     /** Thời lượng hoàng hôn của phòng, để client tính còn bao lâu tới lúc tối. */
@@ -564,6 +621,7 @@ export const MoveMessage = z.object({
   swimming: z.boolean().optional(),
   /** Battleground: ngồi xổm, đang ngắm, góc ngắm lên xuống. */
   crouching: z.boolean().optional(),
+  prone: z.boolean().optional(),
   aiming: z.boolean().optional(),
   aimPitch: z.number().min(-2).max(2).optional(),
 });
@@ -721,9 +779,33 @@ export const HealMessage = z.object({ kind: z.enum(["bandage", "medkit"]) });
 export const BATTLE_WEATHERS = ["sunny", "cloudy", "rain", "fog", "storm", "snow"] as const;
 export const BATTLE_TIMES = ["dawn", "day", "dusk", "night"] as const;
 /** Chủ phòng chỉnh: số máy, thời tiết và giờ trong ngày của trận ("random" là để máy bốc thăm). */
+/** Số máy (bot) tối đa trong một phòng Battleground. */
+export const MAX_BATTLE_BOTS = 50;
 export const BattleSettingsMessage = z
-  .object({ bots: z.int().min(0).max(12), weather: z.enum(["random", ...BATTLE_WEATHERS]), time: z.enum(["random", ...BATTLE_TIMES]) })
+  .object({
+    bots: z.int().min(0).max(MAX_BATTLE_BOTS),
+    weather: z.enum(["random", ...BATTLE_WEATHERS]),
+    time: z.enum(["random", ...BATTLE_TIMES]),
+    mode: z.enum(["solo", "squad", "war"]),
+  })
   .partial();
+/** Lái xe tăng: vị trí, hướng thân, hướng tháp pháo, góc nòng (máy người lái tự tính, server kiểm tra tốc độ). */
+export const VehicleMoveMessage = z.object({ x: finite, y: finite, z: finite, rotY: finite, turret: finite, pitch: z.number().min(-1).max(1), moving: z.boolean() });
+export type VehicleMoveMessage = z.infer<typeof VehicleMoveMessage>;
+/** Bắn pháo xe tăng theo hướng tháp pháo, góc nòng hiện tại. */
+export const TankFireMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1) });
+export type TankFireMessage = z.infer<typeof TankFireMessage>;
+/** Ra lệnh cho máy trong đội: đi theo mình, giữ chỗ, tới điểm (x, z). */
+export const SquadOrderMessage = z.object({ kind: z.enum(["follow", "hold", "move"]), x: finite.optional(), z: finite.optional() });
+export type SquadOrderMessage = z.infer<typeof SquadOrderMessage>;
+/** Chiến trường: hồi sinh ở căn cứ ("hq") hay ở cứ điểm phe mình đang giữ (chữ cái), với lớp lính đã chọn. */
+export const RespawnMessage = z.object({ at: z.string().max(8), role: z.enum(["rifle", "sniper", "support", "antitank", "tanker"]) });
+export type RespawnMessage = z.infer<typeof RespawnMessage>;
+/** Chiến trường (ở sảnh): chọn phe. */
+export const PickSideMessage = z.object({ side: z.enum(["blue", "red"]) });
+/** Đã gục: nhập vào một máy còn sống trong đội mình. */
+export const PossessMessage = z.object({ id: id });
+export type PossessMessage = z.infer<typeof PossessMessage>;
 
 /** Server báo mọi người: một phát bắn (để vẽ vệt đạn, chớp lửa, phát tiếng). `e` là điểm cuối từng tia. */
 export interface ShotMessage {
@@ -749,7 +831,7 @@ export interface HurtMessage {
 }
 /** Nổ: lựu đạn, mìn. Khói: bom khói bung ra. */
 export interface BoomMessage {
-  kind: "frag" | "mine" | "smoke" | "flash";
+  kind: "frag" | "mine" | "smoke" | "flash" | "shell";
   x: number;
   y: number;
   z: number;
@@ -819,6 +901,17 @@ export const Messages = {
   myMines: "myMines",
   /** Server báo mọi người: mìn kêu tích (sắp nổ). */
   mineClick: "mineClick",
+  // Chế độ Đồng đội, xe tăng.
+  vehicleEnter: "vehicleEnter",
+  vehicleExit: "vehicleExit",
+  vehicleMove: "vehicleMove",
+  tankFire: "tankFire",
+  squadOrder: "squadOrder",
+  possess: "possess",
+  respawn: "respawn",
+  pickSide: "pickSide",
+  /** Server báo mọi người: một phe vừa chiếm được cứ điểm. */
+  flag: "flag",
 } as const;
 
 /** Mã đóng kết nối khi bị chủ phòng mời ra. */

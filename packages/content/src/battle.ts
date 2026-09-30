@@ -58,6 +58,16 @@ export interface BattleSite {
   ground: NonNullable<Surface["ground"]>;
 }
 
+/** Cứ điểm (chiến trường): chữ cái, tên, tâm cột cờ, bán kính vùng chiếm. */
+export interface FlagSpot {
+  id: string;
+  name: string;
+  x: number;
+  z: number;
+  y: number;
+  r: number;
+}
+
 /** Chỗ rơi đồ: cấp 1 thường, 2 khá, 3 hiếm (kho vũ khí). */
 export interface LootSpot {
   x: number;
@@ -67,6 +77,12 @@ export interface LootSpot {
 }
 
 export interface BattleMap {
+  /** Đảo sinh tồn (mặc định) hay chiến trường 50 vs 50 (war.ts). */
+  layout?: "island" | "war";
+  /** Nửa cạnh vùng bản đồ (m); mặc định MAP_HALF_SIZE. */
+  half?: number;
+  /** Cứ điểm để chiếm (chiến trường). */
+  flags?: readonly FlagSpot[];
   world: World;
   sites: readonly BattleSite[];
   boxes: readonly BattleBox[];
@@ -107,7 +123,7 @@ const MOUNTAIN = { x: -25, z: -40, r: 64, h: 24 };
 const FORT_HILL = { x: -110, z: -95, r: 48, h: 12 };
 
 /** Toạ độ riêng (u, v) của khu → thế giới. */
-function toWorld(site: Pick<BattleSite, "x" | "z" | "rot">, u: number, v: number): { x: number; z: number } {
+export function toWorld(site: Pick<BattleSite, "x" | "z" | "rot">, u: number, v: number): { x: number; z: number } {
   const c = Math.cos(site.rot);
   const s = Math.sin(site.rot);
   return { x: site.x + u * c + v * s, z: site.z - u * s + v * c };
@@ -120,7 +136,7 @@ function toLocal(site: Pick<BattleSite, "x" | "z" | "rot">, x: number, z: number
   return { u: dx * c - dz * s, v: dx * s + dz * c };
 }
 /** Khoảng cách ra ngoài hình chữ nhật của khu (0 là ở trong). */
-function outside(site: BattleSite, x: number, z: number, grow = 0): number {
+export function outside(site: BattleSite, x: number, z: number, grow = 0): number {
   const { u, v } = toLocal(site, x, z);
   const du = Math.max(0, Math.abs(u) - site.rx - grow);
   const dv = Math.max(0, Math.abs(v) - site.rz - grow);
@@ -167,7 +183,8 @@ function siteHeight(x: number, z: number): number {
 
 type Rand = ReturnType<typeof makeRand>;
 
-class Builder {
+/** Bộ dựng công trình theo toạ độ riêng của một khu (dùng chung cho đảo sinh tồn và chiến trường). */
+export class Builder {
   boxes: BattleBox[] = [];
   loot: LootSpot[] = [];
   constructor(
@@ -208,7 +225,7 @@ const SLAB_T = 0.25;
 const RUN = 5.2;
 const PLASTER = ["#d8d2c4", "#c9b79c", "#b8c4c9", "#d9c3a5", "#a9b3a0", "#cfc7bb", "#bfa89a", "#9fb0bf"];
 
-interface TowerOpts {
+export interface TowerOpts {
   floors: number;
   w: number;
   d: number;
@@ -223,7 +240,7 @@ interface TowerOpts {
  * Toà nhà nhiều tầng: sàn bê tông, tường có ô cửa sổ trống (bắn qua được), cửa ra vào ở tầng trệt, cầu thang
  * gấp khúc hai vế dọc tường trái lên tới sân thượng, vài vách ngăn và thùng gỗ làm chỗ nấp.
  */
-function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
+export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
   const add = b.local(u0, v0, rot);
   const { floors, w: W, d: D } = o;
   const mat = o.mat ?? "plaster";
@@ -324,7 +341,7 @@ function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
   }
 }
 
-function buildCity(b: Builder) {
+export function buildCity(b: Builder) {
   const s = b.site;
   // Đường nhựa kẻ vạch: hai trục chính.
   for (const v of [-14, 14]) b.add(0, 0.03, v, s.rx * 2, 0.04, 0.3, "road", { solid: false, tint: "#e8e0c0" });
@@ -354,7 +371,7 @@ function buildCity(b: Builder) {
   }
 }
 
-function container(add: ReturnType<Builder["local"]>, u: number, y: number, v: number, rand: Rand) {
+export function container(add: ReturnType<Builder["local"]>, u: number, y: number, v: number, rand: Rand) {
   const tints = ["#b5372c", "#2f5f8f", "#d98e1e", "#3f7a3a", "#7b7b7b", "#8a3f7a", "#1f6f6f"];
   add(u, y + 1.3, v, 6.1, 2.6, 2.44, "container", { tint: tints[Math.floor(rand() * tints.length)] });
 }
@@ -436,7 +453,7 @@ function buildPort(b: Builder) {
   tower(b, 10, 5, 0, { floors: 3, w: 12, d: 10, tier: 1 });
 }
 
-function buildFortress(b: Builder) {
+export function buildFortress(b: Builder) {
   const S = 22;
   const T = 2.6;
   const H = 7;
@@ -535,14 +552,14 @@ function buildMinefield(b: Builder) {
   b.lootAt(-16, 0.05, 6, 2);
 }
 
-function buildArmory(b: Builder) {
+export function buildArmory(b: Builder, fence = true) {
   const s = b.site;
-  // Hàng rào lưới quanh khu, cổng trước.
-  for (let u = -s.rx; u < s.rx; u += 5) {
+  // Hàng rào lưới quanh khu, cổng trước (cứ điểm chiến trường thì bỏ rào cho hai phe vào chiếm được từ mọi phía).
+  for (let u = -s.rx; u < s.rx && fence; u += 5) {
     if (Math.abs(u + 2.5) > 4) b.add(u + 2.5, 1.2, -s.rz, 5, 2.4, 0.08, "fence", { solid: true });
     b.add(u + 2.5, 1.2, s.rz, 5, 2.4, 0.08, "fence", { solid: true });
   }
-  for (let v = -s.rz; v < s.rz; v += 5) {
+  for (let v = -s.rz; v < s.rz && fence; v += 5) {
     b.add(-s.rx, 1.2, v + 2.5, 0.08, 2.4, 5, "fence", { solid: true });
     b.add(s.rx, 1.2, v + 2.5, 0.08, 2.4, 5, "fence", { solid: true });
   }
@@ -586,7 +603,7 @@ function buildArmory(b: Builder) {
   for (let k = 0; k < 4; k++) b.lootAt(-12 + k * 8, 0.05, -9, 2);
 }
 
-function buildVillage(b: Builder) {
+export function buildVillage(b: Builder) {
   const s = b.site;
   const houses = 2 + Math.floor(b.rand() * 2);
   for (let k = 0; k < houses; k++) {
@@ -601,8 +618,14 @@ function buildVillage(b: Builder) {
 
 export interface BoxIndex {
   cell: number;
-  grid: Map<string, number[]>;
+  /** Ô lưới (khoá số, xem `cellKey`) → các khối đặc chạm ô đó. */
+  grid: Map<number, number[]>;
   boxes: readonly BattleBox[];
+  /** Trục u, trục đứng, trục v của từng khối trong thế giới (9 số mỗi khối), tính sẵn cho khỏi sin/cos mỗi tia. */
+  axes: Float64Array;
+  /** Đánh dấu khối đã thử trong lần dò hiện tại (so với `stamp`), thay cho tạo Set mới mỗi tia. */
+  seen: Uint32Array;
+  stamp: number;
 }
 
 /** Ma trận quay (YXZ) của khối, dùng để đổi điểm và hướng về toạ độ riêng của khối. */
@@ -623,63 +646,80 @@ function boxRadius(b: BattleBox): number {
   return Math.hypot(b.w, b.h, b.d) / 2;
 }
 
+/** Khoá số của ô lưới (gx, gz): nhanh hơn chuỗi "gx,gz" và không tạo rác. Bản đồ chỉ vài chục ô mỗi chiều. */
+function cellKey(gx: number, gz: number): number {
+  return (gx + 32768) * 65536 + (gz + 32768);
+}
+
 export function buildIndex(boxes: readonly BattleBox[], cell = 16): BoxIndex {
-  const grid = new Map<string, number[]>();
+  const grid = new Map<number, number[]>();
+  const axes = new Float64Array(boxes.length * 9);
   boxes.forEach((b, i) => {
+    const { ux, uy, uz } = basis(b);
+    axes.set([...ux, ...uy, ...uz], i * 9);
     if (!b.solid) return;
     const r = boxRadius(b);
     for (let gx = Math.floor((b.x - r) / cell); gx <= Math.floor((b.x + r) / cell); gx++)
       for (let gz = Math.floor((b.z - r) / cell); gz <= Math.floor((b.z + r) / cell); gz++) {
-        const key = `${gx},${gz}`;
+        const key = cellKey(gx, gz);
         const list = grid.get(key);
         if (list) list.push(i);
         else grid.set(key, [i]);
       }
   });
-  return { cell, grid, boxes };
+  return { cell, grid, boxes, axes, seen: new Uint32Array(boxes.length), stamp: 0 };
 }
 
 /** Tia (gốc o, hướng chuẩn hoá d) chạm khối nào gần nhất trong `max` mét: trả khoảng cách hoặc Infinity. */
 export function raycastBoxes(index: BoxIndex, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
   let best = max;
-  const seen = new Set<number>();
+  // Đánh dấu mới cho lần dò này; tràn số thì xoá sạch dấu cũ.
+  if (++index.stamp >= 0xffffffff) {
+    index.seen.fill(0);
+    index.stamp = 1;
+  }
+  const stamp = index.stamp;
+  const seen = index.seen;
   const step = index.cell * 0.5;
   for (let t = 0; t <= best + step; t += step) {
     const px = o[0] + d[0] * Math.min(t, best);
     const pz = o[2] + d[2] * Math.min(t, best);
-    const list = index.grid.get(`${Math.floor(px / index.cell)},${Math.floor(pz / index.cell)}`);
+    const list = index.grid.get(cellKey(Math.floor(px / index.cell), Math.floor(pz / index.cell)));
     if (!list) continue;
     for (const i of list) {
-      if (seen.has(i)) continue;
-      seen.add(i);
-      const hit = rayBox(index.boxes[i]!, o, d, best);
+      if (seen[i] === stamp) continue;
+      seen[i] = stamp;
+      const hit = rayBoxAt(index, i, o, d, best);
       if (hit < best) best = hit;
     }
   }
   return best < max ? best : Infinity;
 }
 
-/** Tia cắt một khối (slab test trong toạ độ riêng của khối). */
-export function rayBox(b: BattleBox, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
-  const { ux, uy, uz } = basis(b);
+/** Tia cắt khối thứ `i` của chỉ mục (slab test trong toạ độ riêng của khối, trục tính sẵn). */
+function rayBoxAt(index: BoxIndex, i: number, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
+  const b = index.boxes[i]!;
+  const a = index.axes;
+  const k = i * 9;
   const rx = o[0] - b.x;
   const ry = o[1] - b.y;
   const rz = o[2] - b.z;
-  const lo = [rx * ux[0] + ry * ux[1] + rz * ux[2], rx * uy[0] + ry * uy[1] + rz * uy[2], rx * uz[0] + ry * uz[1] + rz * uz[2]];
-  const ld = [d[0] * ux[0] + d[1] * ux[1] + d[2] * ux[2], d[0] * uy[0] + d[1] * uy[1] + d[2] * uy[2], d[0] * uz[0] + d[1] * uz[1] + d[2] * uz[2]];
-  const half = [b.w / 2, b.h / 2, b.d / 2];
   let tmin = 0;
   let tmax = max;
-  for (let a = 0; a < 3; a++) {
-    if (Math.abs(ld[a]!) < 1e-9) {
-      if (Math.abs(lo[a]!) > half[a]!) return Infinity;
+  for (let axis = 0; axis < 3; axis++) {
+    const j = k + axis * 3;
+    const lo = rx * a[j]! + ry * a[j + 1]! + rz * a[j + 2]!;
+    const ld = d[0] * a[j]! + d[1] * a[j + 1]! + d[2] * a[j + 2]!;
+    const half = (axis === 0 ? b.w : axis === 1 ? b.h : b.d) / 2;
+    if (Math.abs(ld) < 1e-9) {
+      if (Math.abs(lo) > half) return Infinity;
       continue;
     }
-    let t1 = (-half[a]! - lo[a]!) / ld[a]!;
-    let t2 = (half[a]! - lo[a]!) / ld[a]!;
+    let t1 = (-half - lo) / ld;
+    let t2 = (half - lo) / ld;
     if (t1 > t2) [t1, t2] = [t2, t1];
-    tmin = Math.max(tmin, t1);
-    tmax = Math.min(tmax, t2);
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
     if (tmin > tmax) return Infinity;
   }
   return tmin;
@@ -687,18 +727,19 @@ export function rayBox(b: BattleBox, o: readonly [number, number, number], d: re
 
 /** Khối đặc chứa điểm (x, y, z) (nới thêm `pad`), hoặc null. */
 export function boxAt(index: BoxIndex, x: number, y: number, z: number, pad = 0): BattleBox | null {
-  const list = index.grid.get(`${Math.floor(x / index.cell)},${Math.floor(z / index.cell)}`);
+  const list = index.grid.get(cellKey(Math.floor(x / index.cell), Math.floor(z / index.cell)));
   if (!list) return null;
+  const a = index.axes;
   for (const i of list) {
     const b = index.boxes[i]!;
-    const { ux, uy, uz } = basis(b);
+    const k = i * 9;
     const rx = x - b.x;
     const ry = y - b.y;
     const rz = z - b.z;
     if (
-      Math.abs(rx * ux[0] + ry * ux[1] + rz * ux[2]) < b.w / 2 + pad &&
-      Math.abs(rx * uy[0] + ry * uy[1] + rz * uy[2]) < b.h / 2 + pad &&
-      Math.abs(rx * uz[0] + ry * uz[1] + rz * uz[2]) < b.d / 2 + pad
+      Math.abs(rx * a[k]! + ry * a[k + 1]! + rz * a[k + 2]!) < b.w / 2 + pad &&
+      Math.abs(rx * a[k + 3]! + ry * a[k + 4]! + rz * a[k + 5]!) < b.h / 2 + pad &&
+      Math.abs(rx * a[k + 6]! + ry * a[k + 7]! + rz * a[k + 8]!) < b.d / 2 + pad
     )
       return b;
   }
@@ -790,6 +831,15 @@ function battleGrass(rand: Rand, world: World): GrassPatch[] {
 
 const cache = new Map<number, BattleMap>();
 
+/** Bản đồ Battleground của một thế giới (đảo sinh tồn hay chiến trường), để phần nào chỉ có `world` cũng tra được. */
+const byWorld = new WeakMap<World, BattleMap>();
+export function registerMap(map: BattleMap) {
+  byWorld.set(map.world, map);
+}
+export function mapOf(world: World): BattleMap {
+  return byWorld.get(world) ?? battleMap(world.seed || 1);
+}
+
 export function battleMap(seed: number): BattleMap {
   const hit = cache.get(seed);
   if (hit) return hit;
@@ -863,14 +913,15 @@ export function battleMap(seed: number): BattleMap {
     mines.push(p);
   }
 
-  const map: BattleMap = { world, sites: BATTLE_SITES, boxes, loot, mines, index: buildIndex(boxes) };
+  const map: BattleMap = { layout: "island", half: 240, flags: [], world, sites: BATTLE_SITES, boxes, loot, mines, index: buildIndex(boxes) };
   cache.set(seed, map);
+  registerMap(map);
   return map;
 }
 
 /** Chỗ xuất phát ngẫu nhiên trên đất liền (không trong nước, không kẹt trong nhà, không trong bãi mìn). */
 export function battleSpawn(map: BattleMap, rand: () => number, avoid: readonly { x: number; z: number }[] = []): { x: number; y: number; z: number } {
-  const mf = map.sites.find((s) => s.kind === "minefield")!;
+  const mf = map.sites.find((s) => s.kind === "minefield");
   let fallback = { x: 0, y: map.world.heightAt(0, 0) + 1, z: 0 };
   for (let tries = 0; tries < 200; tries++) {
     const a = rand() * Math.PI * 2;
@@ -878,7 +929,7 @@ export function battleSpawn(map: BattleMap, rand: () => number, avoid: readonly 
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
     const h = map.world.heightAt(x, z);
-    if (h < 1 || outside(mf, x, z, 4) === 0) continue;
+    if (h < 1 || (mf && outside(mf, x, z, 4) === 0)) continue;
     if (insideBox(map.index, x, h + 1, z, 0.6)) continue;
     fallback = { x, y: h, z };
     if (avoid.every((p) => Math.hypot(p.x - x, p.z - z) > 45)) return { x, y: h, z };

@@ -18,6 +18,7 @@ import {
   type Mesh,
 } from "three";
 import { MAP_HALF_SIZE, WATER_LEVEL, type World } from "@tentides/content";
+import { useProfile } from "./graphics.ts";
 import { sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
 import { fbm } from "./textures.ts";
@@ -40,11 +41,12 @@ export const waterUniforms = {
 
 function bakeDepth(world: World): DataTexture {
   const data = new Uint8Array(DEPTH_TEXELS * DEPTH_TEXELS);
-  const size = MAP_HALF_SIZE * 2;
+  const half = world.half ?? MAP_HALF_SIZE;
+  const size = half * 2;
   for (let j = 0; j < DEPTH_TEXELS; j++) {
     for (let i = 0; i < DEPTH_TEXELS; i++) {
-      const x = -MAP_HALF_SIZE + ((i + 0.5) / DEPTH_TEXELS) * size;
-      const z = -MAP_HALF_SIZE + ((j + 0.5) / DEPTH_TEXELS) * size;
+      const x = -half + ((i + 0.5) / DEPTH_TEXELS) * size;
+      const z = -half + ((j + 0.5) / DEPTH_TEXELS) * size;
       const depth = WATER_LEVEL - world.heightAt(x, z);
       data[j * DEPTH_TEXELS + i] = Math.round(Math.min(1, Math.max(0, depth / DEPTH_RANGE)) * 255);
     }
@@ -313,7 +315,9 @@ const SIZE = 1400;
 export function Water({ world }: { world: World }) {
   const depthMap = useMemo(() => bakeDepth(world), [world]);
   useEffect(() => () => depthMap.dispose(), [depthMap]);
-  const geometry = useMemo(() => radialGrid(SIZE, 360, 2.2), []);
+  // Số ô lưới theo mức chất lượng: đỉnh dồn về gần camera nên bớt ô chủ yếu làm thưa phần xa (sương mù che).
+  const segments = useProfile().water;
+  const geometry = useMemo(() => radialGrid(SIZE, segments, 2.2), [segments]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const mesh = useRef<Mesh>(null);
   const material = useMemo(() => {
@@ -332,7 +336,7 @@ export function Water({ world }: { world: World }) {
           uCloud: { value: 0 },
           uDepth: { value: null },
           uRipple: { value: null },
-          uHalf: { value: MAP_HALF_SIZE },
+          uHalf: { value: world.half ?? MAP_HALF_SIZE },
         },
       ]),
       vertexShader,
@@ -347,6 +351,10 @@ export function Water({ world }: { world: World }) {
     m.uniforms.uRipple!.value = waterNormals();
     return m;
   }, []);
+  // Bản đồ rộng hẹp khác nhau (chiến trường rộng hơn đảo): tấm độ sâu phủ đúng cả bản đồ.
+  useEffect(() => {
+    material.uniforms.uHalf!.value = world.half ?? MAP_HALF_SIZE;
+  }, [material, world]);
   material.uniforms.uDepth!.value = depthMap;
 
   useFrame(({ clock, camera }) => {

@@ -13,6 +13,7 @@ import {
   MeshStandardMaterial,
   Scene,
   ShaderMaterial,
+  Sphere,
   Vector3,
   WebGLRenderTarget,
   type BufferGeometry,
@@ -34,7 +35,7 @@ const CLEARINGS = 32;
  * Chụp địa hình từ trên xuống: ảnh màu (RGB màu đất, A mật độ cỏ) và ảnh độ cao. `run` vẽ vào hai ảnh, gọi trong
  * vòng lặp khung hình (vẽ ngay lúc React dựng cây thì renderer chưa sẵn sàng, ảnh ra trống).
  */
-function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[]) {
+function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[], half: number) {
   const vertex = /* glsl */ `
     attribute vec4 splat;
     varying vec3 vColor;
@@ -45,7 +46,7 @@ function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[]) {
       // Cỏ mọc ở chỗ trọng số cỏ cao, trên mặt nước một đoạn.
       vGrass = splat.y / max(splat.x + splat.y + splat.z + splat.w, 1e-3) * smoothstep(0.5, 1.0, position.y);
       vHeight = position.y;
-      gl_Position = vec4(position.x / ${MAP_HALF_SIZE.toFixed(1)}, position.z / ${MAP_HALF_SIZE.toFixed(1)}, 0.5, 1.0);
+      gl_Position = vec4(position.x / ${half.toFixed(1)}, position.z / ${half.toFixed(1)}, 0.5, 1.0);
     }
   `;
   const colorMat = new ShaderMaterial({
@@ -110,26 +111,57 @@ function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[]) {
   };
 }
 
-/** Một lá cỏ: dải 3 đoạn thon dần tới ngọn (x −0.5..0.5 ngang lá, y 0..1 dọc lá). */
-function bladeGeometry(count: number, seed: number): InstancedBufferGeometry {
-  const g = new InstancedBufferGeometry();
+/** Số ô mỗi cạnh của thảm cỏ: mỗi ô một lệnh vẽ, ô sau lưng camera hay ngoài bán kính thì bỏ qua. */
+const CHUNKS = 8;
+
+/**
+ * Lá cỏ chia thành CHUNKS × CHUNKS ô, mỗi ô một hình (dùng chung dải lá, riêng số ngẫu nhiên): số ngẫu nhiên xy của
+ * lá trong ô (i, j) nằm trong [i/CHUNKS, (i+1)/CHUNKS) × [j/CHUNKS, (j+1)/CHUNKS), nên cả ô luôn đứng liền một
+ * khoảng trên thế giới và có thể bỏ qua cả ô khi không nhìn thấy.
+ */
+function bladeGeometries(count: number, seed: number): InstancedBufferGeometry[] {
+  // Một lá cỏ: dải 3 đoạn thon dần tới ngọn (x −0.5..0.5 ngang lá, y 0..1 dọc lá).
   const pos = [-0.5, 0, 0, 0.5, 0, 0, -0.5, 0.35, 0, 0.5, 0.35, 0, -0.5, 0.7, 0, 0.5, 0.7, 0, 0, 1, 0];
-  g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
-  g.setAttribute("normal", new BufferAttribute(new Float32Array(pos.length).fill(0), 3));
-  g.setIndex([0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4, 4, 5, 6]);
+  const position = new BufferAttribute(new Float32Array(pos), 3);
+  const normal = new BufferAttribute(new Float32Array(pos.length).fill(0), 3);
+  const index = new BufferAttribute(new Uint16Array([0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4, 4, 5, 6]), 1);
   const rand = mulberry32(seed);
-  const seeds = new Float32Array(count * 4);
-  for (let i = 0; i < seeds.length; i++) seeds[i] = rand();
-  g.setAttribute("aSeed", new InstancedBufferAttribute(seeds, 4));
-  g.instanceCount = count;
-  g.userData.smooth = true;
-  return g;
+  const per = Math.max(1, Math.floor(count / (CHUNKS * CHUNKS)));
+  const out: InstancedBufferGeometry[] = [];
+  for (let j = 0; j < CHUNKS; j++) {
+    for (let i = 0; i < CHUNKS; i++) {
+      const g = new InstancedBufferGeometry();
+      g.setAttribute("position", position);
+      g.setAttribute("normal", normal);
+      g.setIndex(index);
+      const seeds = new Float32Array(per * 4);
+      for (let k = 0; k < per; k++) {
+        seeds[k * 4] = (i + rand()) / CHUNKS;
+        seeds[k * 4 + 1] = (j + rand()) / CHUNKS;
+        seeds[k * 4 + 2] = rand();
+        seeds[k * 4 + 3] = rand();
+      }
+      g.setAttribute("aSeed", new InstancedBufferAttribute(seeds, 4));
+      g.instanceCount = per;
+      g.boundingSphere = new Sphere(new Vector3(), 1);
+      g.userData.smooth = true;
+      out.push(g);
+    }
+  }
+  return out;
+}
+
+/** Vị trí của một điểm cố định trong ô lặp (toạ độ ô `u` trong 0..1) khi camera ở `cam`: bản sao gần camera nhất. */
+function wrapped(u: number, cam: number, tile: number): number {
+  const t = (u * tile - cam) / tile + 0.5;
+  return cam + (t - Math.floor(t) - 0.5) * tile;
 }
 
 const VERTEX_HEAD = /* glsl */ `
   uniform sampler2D uGroundColor;
   uniform sampler2D uGroundHeight;
   uniform vec3 uCam;
+  uniform float uHalf;
   uniform float uTile;
   uniform float uRadius;
   uniform float uWind;
@@ -145,7 +177,7 @@ const VERTEX_PLACE = /* glsl */ `
   // Chỗ đứng cố định trên thế giới, lặp theo ô quanh camera.
   vec2 gRel = (fract((aSeed.xy * uTile - uCam.xz) / uTile + 0.5) - 0.5) * uTile;
   vec2 gXZ = uCam.xz + gRel;
-  vec2 gUV = gXZ / ${(MAP_HALF_SIZE * 2).toFixed(1)} + 0.5;
+  vec2 gUV = gXZ / (uHalf * 2.0) + 0.5;
   vec4 gGround = texture2D(uGroundColor, gUV);
   float gY = texture2D(uGroundHeight, gUV).r;
   float gDist = length(gRel);
@@ -184,34 +216,38 @@ const VERTEX_PLACE = /* glsl */ `
  * `clearings(out)` ghi các khoảng trống [x, z, bán kính] vào mảng (gọi mỗi khung hình, trại dời được);
  * chỗ thừa để bán kính 0.
  */
-export function GrassField({ geometries, count, clearings }: { geometries: BufferGeometry[]; count: number; clearings: (out: Vector3[]) => void }) {
+export function GrassField({ geometries, count, clearings, heightAt, half = MAP_HALF_SIZE }: { geometries: BufferGeometry[]; count: number; clearings: (out: Vector3[]) => void; heightAt: (x: number, z: number) => number; half?: number }) {
   const gl = useThree((s) => s.gl);
   // Tạo và huỷ ảnh nướng trong cùng một effect (StrictMode, sửa nóng khi dev chạy effect hai lần).
   const [baked, setBaked] = useState<ReturnType<typeof bakeGround> | null>(null);
   useEffect(() => {
-    const b = bakeGround(gl, geometries);
+    const b = bakeGround(gl, geometries, half);
     setBaked(b);
     return () => {
       b.color.dispose();
       b.height.dispose();
     };
-  }, [gl, geometries]);
-  const geometry = useMemo(() => bladeGeometry(count, 77), [count]);
+  }, [gl, geometries, half]);
+  const chunks = useMemo(() => bladeGeometries(count, 77), [count]);
+  const meshes = useRef<(Mesh | null)[]>([]);
+  // Độ cao thấp nhất, cao nhất của mặt đất trong từng ô thế giới (ô cố định trên lưới lặp), tính một lần.
+  const relief = useMemo(() => new Map<number, [number, number]>(), [heightAt]);
   const done = useRef<unknown>(null);
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(() => () => chunks.forEach((g) => g.dispose()), [chunks]);
 
   const uniforms = useMemo(
     () => ({
       uGroundColor: { value: baked?.color.texture ?? null },
       uGroundHeight: { value: baked?.height.texture ?? null },
       uCam: { value: new Vector3() },
+      uHalf: { value: half },
       uTile: { value: 68 },
       uRadius: { value: 34 },
       uWind: wind,
       uWindStrength: windStrength,
       uClear: { value: Array.from({ length: CLEARINGS }, () => new Vector3()) },
     }),
-    [baked],
+    [baked, half],
   );
 
   const material = useMemo(() => {
@@ -249,8 +285,61 @@ export function GrassField({ geometries, count, clearings }: { geometries: Buffe
     uniforms.uCam.value.copy(camera.position);
     for (const v of uniforms.uClear.value) v.set(0, 0, 0);
     clearings(uniforms.uClear.value);
+
+    // Đặt khung bao từng ô theo chỗ ô đang đứng quanh camera; three.js tự bỏ ô ngoài khung hình.
+    const tile = uniforms.uTile.value;
+    const radius = uniforms.uRadius.value;
+    const cell = tile / CHUNKS;
+    const cx = camera.position.x;
+    const cz = camera.position.z;
+    for (let j = 0; j < CHUNKS; j++) {
+      const z = wrapped((j + 0.5) / CHUNKS, cz, tile);
+      for (let i = 0; i < CHUNKS; i++) {
+        const k = j * CHUNKS + i;
+        const mesh = meshes.current[k];
+        if (!mesh) continue;
+        const x = wrapped((i + 0.5) / CHUNKS, cx, tile);
+        // Ô nằm hẳn ngoài vòng cỏ (góc của ô lặp) thì lá đã thu về không, khỏi vẽ.
+        const far = Math.hypot(x - cx, z - cz) - cell * 0.71;
+        mesh.visible = far < radius;
+        if (!mesh.visible) continue;
+        const key = Math.round(x / cell) * 100003 + Math.round(z / cell);
+        let r = relief.get(key);
+        if (!r) {
+          let lo = Infinity;
+          let hi = -Infinity;
+          for (let a = -1; a <= 1; a++) {
+            for (let b = -1; b <= 1; b++) {
+              const h = heightAt(x + a * cell * 0.5, z + b * cell * 0.5);
+              lo = Math.min(lo, h);
+              hi = Math.max(hi, h);
+            }
+          }
+          r = [lo, hi + 1];
+          relief.set(key, r);
+        }
+        const sphere = mesh.geometry.boundingSphere!;
+        sphere.center.set(x, (r[0] + r[1]) / 2, z);
+        // Cộng lề cho lá nghiêng, gió lay và chỗ dốc giữa các điểm lấy mẫu.
+        sphere.radius = Math.hypot(cell * 0.71, (r[1] - r[0]) / 2) + 1.5;
+      }
+    }
   });
 
   if (!baked) return null;
-  return <mesh geometry={geometry} material={material} frustumCulled={false} receiveShadow />;
+  return (
+    <>
+      {chunks.map((g, k) => (
+        <mesh
+          key={k}
+          ref={(m) => {
+            meshes.current[k] = m;
+          }}
+          geometry={g}
+          material={material}
+          receiveShadow
+        />
+      ))}
+    </>
+  );
 }

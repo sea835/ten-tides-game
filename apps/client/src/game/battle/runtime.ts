@@ -5,7 +5,25 @@ import { useSyncExternalStore } from "react";
 // Những gì HUD cần hiện (dấu trúng, hướng bị bắn, bảng mua đồ) đi qua một kho nhỏ có đăng ký lắng nghe.
 
 /** Thân người khác đang vẽ ở đâu (nội suy), để dò đạn trúng người ngay trên máy mình. */
-export const bodies = new Map<string, { x: number; y: number; z: number; crouch: boolean; alive: boolean }>();
+export interface Body {
+  x: number;
+  y: number;
+  z: number;
+  crouch: boolean;
+  /** Nằm sấp: thân nằm dọc theo hướng mặt `rotY`. */
+  prone: boolean;
+  rotY: number;
+  alive: boolean;
+  /** Đội (chế độ Đồng đội): cùng đội với mình thì đạn đi xuyên, không tính trúng. */
+  team: string;
+}
+export const bodies = new Map<string, Body>();
+
+/**
+ * Xe tăng mình đang lái (Vehicles ghi mỗi khung hình): LocalPlayer thôi điều khiển nhân vật, camera đi theo xe.
+ * `id` rỗng là đang đi bộ.
+ */
+export const seat = { id: "", x: 0, y: 0, z: 0 };
 
 /**
  * Tư thế của mình: ngắm, ngồi xổm, phóng đại đang dùng, độ toả đạn hiện tại (radian).
@@ -22,7 +40,7 @@ export const stance = {
   swapAt: 0,
   /** Rút súng mất chừng này giây (súng to lâu hơn súng lục, lựu đạn). */
   swapDur: 0.5,
-  firstPerson: false, aiming: false, scoped: false, sight: "", zero: 100, crouching: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
+  firstPerson: false, aiming: false, scoped: false, sight: "", zero: 100, crouching: false, prone: false, zoom: 1, spread: 0.02, moving: false, sprinting: false, airborne: false, holdFire: false, wall: 0, speed: 0, land: 0 };
 
 /**
  * Giật súng.
@@ -55,6 +73,10 @@ export interface Tracer {
   mine: boolean;
   /** Sơ tốc (m/s): vệt bay tới đích mất chừng ấy thời gian, võng xuống theo đường đạn rơi. */
   speed?: number;
+  /** Đạn nổ: RPG (lửa đuôi to, vệt khói dài), pháo xe tăng (vệt sáng to, khói mỏng). */
+  trail?: "rocket" | "shell";
+  /** Khói đuôi đã nhả tới quãng nào (m). */
+  smoked?: number;
 }
 export interface Impact {
   x: number;
@@ -88,6 +110,10 @@ export interface Blast {
   y: number;
   z: number;
   born: number;
+  /** Nổ to (đạn pháo, RPG, xe nổ tung): cầu lửa, sóng xung kích lớn hơn. */
+  big?: boolean;
+  /** Số ngẫu nhiên riêng của vụ nổ (hình dạng cầu lửa mỗi vụ một khác). */
+  seed?: number;
 }
 
 /** Vết máu bắn lên tường, sàn phía sau người trúng đạn. */
@@ -140,9 +166,11 @@ export interface HudState {
   myMines: { x: number; y: number; z: number }[];
   /** Thông báo ngắn (hết tiền, không mang thêm được...). */
   toast: { at: number; text: string } | null;
+  /** Đứng cạnh xe tăng lên được (id xe). */
+  nearTank: string;
 }
 
-let hud: HudState = { buyOpen: false, scoreboard: false, settingsOpen: false, hit: null, hurts: [], nearItem: null, spectating: "", myMines: [], toast: null };
+let hud: HudState = { buyOpen: false, scoreboard: false, settingsOpen: false, hit: null, hurts: [], nearItem: null, spectating: "", myMines: [], toast: null, nearTank: "" };
 const listeners = new Set<() => void>();
 
 export function getBattleHud(): HudState {
@@ -150,6 +178,8 @@ export function getBattleHud(): HudState {
 }
 
 export function setBattleHud(patch: Partial<HudState>) {
+  // Không đổi gì thì khỏi báo cho các khung HUD dựng lại.
+  if ((Object.keys(patch) as (keyof HudState)[]).every((k) => Object.is(hud[k], patch[k]))) return;
   hud = { ...hud, ...patch };
   listeners.forEach((l) => l());
 }
