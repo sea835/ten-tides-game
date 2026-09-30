@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TANK, battleMap, checkBodyPoint, rayBody, rayTank, tankFits, tankStep } from "./index.ts";
+import { LEAN, TANK, battleMap, checkBodyPoint, leanShift, rayBody, rayTank, rightOf, tankFits, tankStep } from "./index.ts";
 
 const pose = { x: 0, y: 0, z: 0, rotY: 0, crouch: false, prone: false };
 
@@ -18,6 +18,48 @@ describe("thân người khi dò đạn", () => {
     // Server kiểm tra lại: điểm ngang ngực người đứng thì không tính trúng người nằm.
     expect(checkBodyPoint([0, 1.9, 0], prone, false)).toBeNull();
     expect(checkBodyPoint([0, 0.3, 0.78], prone, true)?.head).toBe(true);
+  });
+});
+
+describe("nghiêng người (Q/E)", () => {
+  it("vector phải: mặt quay về +z thì bên phải là −x", () => {
+    const [rx, rz] = rightOf(0);
+    expect(rx).toBeCloseTo(-1, 6);
+    expect(rz).toBeCloseTo(0, 6);
+  });
+
+  it("đầu lệch đủ LEAN.side theo vector phải, dưới hông không lệch", () => {
+    const head = leanShift(0, 1, false, 1.62);
+    expect(head[0]).toBeCloseTo(-LEAN.side, 6);
+    expect(head[1]).toBeCloseTo(-LEAN.drop, 6);
+    expect(head[2]).toBeCloseTo(0, 6);
+    expect(leanShift(0, -1, false, 1.62)[0]).toBeCloseTo(LEAN.side, 6);
+    expect(Math.hypot(...leanShift(0, 1, false, 0.5))).toBe(0);
+    // Mặt quay về +x thì bên phải là +z; ngồi xổm, nghiêng nửa chừng.
+    expect(leanShift(Math.PI / 2, 0.5, true, 1.12)[2]).toBeCloseTo(LEAN.side * 0.5, 6);
+  });
+
+  it("đạn vào chỗ đầu cũ trượt, vào chỗ đầu đã lệch thì trúng đầu; chân vẫn ở chỗ cũ", () => {
+    const right = { ...pose, lean: 1 };
+    const y = 1.62 - LEAN.drop;
+    // Bắn từ phía trước (+z) vào mặt, dọc trục z.
+    expect(rayBody([0, 1.7, 10], [0, 0, -1], right)).toBeNull();
+    expect(rayBody([-LEAN.side, y, 10], [0, 0, -1], right)?.part).toBe("head");
+    expect(rayBody([LEAN.side, y, 10], [0, 0, -1], { ...pose, lean: -1 })?.part).toBe("head");
+    expect(rayBody([0, 0.5, 10], [0, 0, -1], right)?.part).toBe("body");
+    // Thân trên ngả sang phải: ngang ngực lệch sang phải vẫn trúng thân.
+    expect(rayBody([-0.35, 1.25, 10], [0, 0, -1], right)?.part).toBe("body");
+    expect(rayBody([0.4, 1.25, 10], [0, 0, -1], right)).toBeNull();
+    // Không nghiêng thì như cũ.
+    expect(rayBody([0, 1.62, -10], [0, 0, 1], { ...pose, lean: 0 })?.part).toBe("head");
+  });
+
+  it("server nhận điểm trúng ở đầu đã lệch", () => {
+    const right = { ...pose, lean: 1 };
+    expect(checkBodyPoint([-LEAN.side, 1.62 - LEAN.drop, 0.15], right, true)?.head).toBe(true);
+    // Điểm ngoài xa bên trái (phía ngược với chiều nghiêng) thì từ chối.
+    expect(checkBodyPoint([1.35, 1.7, 0], right, true)).toBeNull();
+    expect(checkBodyPoint([1.35, 1.7, 0], pose, true)).not.toBeNull();
   });
 });
 

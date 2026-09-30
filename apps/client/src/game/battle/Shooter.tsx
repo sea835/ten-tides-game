@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, MELEE, SIGHTS, WEAPON, withAttachments, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
+import { HEALS, LEAN, MELEE, SIGHTS, WEAPON, withAttachments, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
@@ -118,7 +118,7 @@ function rayPerson(o: Vector3, d: Vector3, b: Body): { t: number; part: "head" |
   _rd[0] = d.x;
   _rd[1] = d.y;
   _rd[2] = d.z;
-  return rayBody(_ro, _rd, { x: b.x, y: b.y, z: b.z, rotY: b.rotY, crouch: b.crouch, prone: b.prone });
+  return rayBody(_ro, _rd, { x: b.x, y: b.y, z: b.z, rotY: b.rotY, crouch: b.crouch, prone: b.prone, lean: b.lean });
 }
 
 /** Người này có đánh được không (còn sống, không cùng đội với mình). */
@@ -628,10 +628,12 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (h && h.t < aimT) aimT = h.t;
     }
     p.copy(o).addScaledVector(fwd, aimT);
+    // Nghiêng người (góc thứ ba): ngực lệch sang bên khoảng 0,7 phần độ lệch của đầu (góc nhất thì camera đã lệch sẵn).
+    const leanChest = stance.lean * LEAN.side * 0.7;
     // Đầu nòng: trước ngực lệch phải (góc thứ ba), hay ngay dưới mắt (góc nhất / ống ngắm).
     let muzzle = first
       ? camPos.clone().addScaledVector(fwd, 0.4).addScaledVector(right, 0.08).add(new Vector3(0, -0.07, 0))
-      : new Vector3(localPosition.x, localPosition.y + (stance.prone ? 0.36 : stance.crouching ? 1.05 : 1.42), localPosition.z).addScaledVector(right, stance.prone ? 0.12 : 0.28).addScaledVector(fwd, stance.prone ? 1.35 : 0.75);
+      : new Vector3(localPosition.x, localPosition.y + (stance.prone ? 0.36 : stance.crouching ? 1.05 : 1.42), localPosition.z).addScaledVector(right, (stance.prone ? 0.12 : 0.28) + leanChest).addScaledVector(fwd, stance.prone ? 1.35 : 0.75);
     // Góc thứ ba: lấy đúng đầu nòng khẩu súng trên tay nhân vật.
     const held = first ? null : localAvatar.current?.getObjectByName("weapon");
     if (held?.visible) {
@@ -640,7 +642,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     }
     // Đầu nòng thò qua tường (đứng sát vật cản): đạn xuất phát ngay mặt tường phía mình, không bắn xuyên qua được.
     {
-      const from = first ? camPos.clone() : new Vector3(localPosition.x, localPosition.y + (stance.prone ? 0.36 : stance.crouching ? 1.05 : 1.42), localPosition.z).addScaledVector(fwd, stance.prone ? 0.6 : 0);
+      const from = first ? camPos.clone() : new Vector3(localPosition.x, localPosition.y + (stance.prone ? 0.36 : stance.crouching ? 1.05 : 1.42), localPosition.z).addScaledVector(fwd, stance.prone ? 0.6 : 0).addScaledVector(right, leanChest);
       const to = muzzle.clone().sub(from);
       const len = to.length();
       if (len > 1e-3) {
