@@ -120,6 +120,47 @@ export function bulletSteps(velocity: number, max: number): number[] {
   return out;
 }
 
+/**
+ * Thân người, dùng CHUNG cho client và server.
+ *
+ * Trước đây mỗi bên có một mô hình riêng và chúng lệch nhau ~18 cm ở chiều cao đứng: client
+ * dùng cầu đầu bán kính 0,15 tâm ở 1,62 m (biên 1,47–1,77) còn server dùng dải `y > y + h − 0,55`
+ * với `h = 1,8` (biên 1,25–1,80). Phát bắn vào khoảng 1,5 m thì client gọi là thân, server gọi là
+ * đầu — và server thắng trong im lặng (client không được báo là phát bắn bị từ chối). Nay cả hai
+ * bên cùng gọi hàm này nên không thể lệch nữa.
+ */
+export const HITBOX = {
+  /** Bán kính cầu đầu (m). */
+  headR: 0.15,
+  headY: { stand: 1.62, crouch: 1.12 },
+  /** Bán kính trụ thân, và đỉnh trụ. */
+  bodyR: 0.3,
+  bodyTop: { stand: 1.46, crouch: 0.98 },
+  /** Lề mà server chấp nhận cho điểm báo trúng (hộp bao, để tránh từ chối hợp lệ khi lệch mô hình). */
+  slackXZ: 1.6,
+  slackDown: 0.5,
+  slackUp: 0.5,
+  /** Lề cho phép điểm trúng vượt qua chỗ tường đã găm (m). */
+  wallSlack: 0.6,
+} as const;
+
+/** Chiều cao thân người (m) khi đứng / ngồi xổm; dùng cho hộp bao phía server. */
+export function hitboxHeight(crouch: boolean): number {
+  return crouch ? 1.12 + HITBOX.headR : 1.62 + HITBOX.headR;
+}
+
+/**
+ * Phân loại điểm trúng (toạ độ đã tính trên đường đạn) theo mô hình chung.
+ * Ngưỡng là đáy cầu đầu (`headY − headR`), đúng bằng cái ranh giới dưới của cầu mà client dùng
+ * để dò — nên client khai "head" thì server xác nhận, và ngược lại server không tự nâng lên đầu
+ * khi client nói thân. `claim` vẫn được kiểm lại thay vì tin thẳng.
+ */
+export function hitPart(claim: "head" | "body", py: number, targetY: number, crouch: boolean): "head" | "body" {
+  if (claim !== "head") return "body";
+  const headBottom = targetY + (crouch ? HITBOX.headY.crouch : HITBOX.headY.stand) - HITBOX.headR;
+  return py >= headBottom ? "head" : "body";
+}
+
 // ---------------------------------------------------------------------------- ống ngắm
 
 export type SightId = "reddot" | "holo" | "x2" | "x4" | "x8";

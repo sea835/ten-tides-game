@@ -186,8 +186,12 @@ export function SkyDome() {
   );
 }
 
-/** Mỗi chừng này giây chụp lại bầu trời làm ánh sáng môi trường (đủ theo kịp mặt trời, mây và thời tiết). */
-const ENV_INTERVAL = 1.5;
+/**
+ * Mỗi chừng này giây chụp lại bầu trời làm ánh sáng môi trường. Vòng lặp này tốn 6 lượt vẽ
+ * cộng chuỗi blur PMREM, nên chạy 1,5 giây một lần tạo ra một nhịp tụt khung hình đều đặn;
+ * 4 giây vẫn kịp theo mặt trời (một ngày trong game ~8 phút thật) mà ít hẳn nhịp giật.
+ */
+const ENV_INTERVAL = 4;
 
 /**
  * Ánh sáng môi trường lấy từ chính bầu trời (image-based lighting): chụp vòm trời vào một cubemap nhỏ,

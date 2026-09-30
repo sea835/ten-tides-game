@@ -5,7 +5,7 @@ import { myId, type IslandRoom } from "../net.ts";
 import { aimPitchFrom, clampPitch, toggleCameraView } from "./camera.ts";
 import { getHands, setHands } from "./handsStore.ts";
 import { getHud, setHud } from "./hudStore.ts";
-import { isTyping, look } from "./input.ts";
+import { isTyping, look as rawLook, view as lookView } from "./input.ts";
 import { usePrivate } from "./privateStore.ts";
 import { buildGhost, localAim, localPosition } from "./shared.ts";
 import { play } from "./sound/sfx.ts";
@@ -25,7 +25,7 @@ const BUILD_CYCLE = ["", ...worldCatalog.buildings.keys()];
 
 /** Góc ngắm lên xuống suy ra từ góc camera (xem camera.ts). */
 function aimPitch(): number {
-  return aimPitchFrom(look.pitch);
+  return aimPitchFrom(lookView.pitch);
 }
 
 export function Controls({ room }: { room: IslandRoom }) {
@@ -55,16 +55,18 @@ export function Controls({ room }: { room: IslandRoom }) {
       }
       const held = (view?.bag ?? []).find((b) => b.uid === getHands());
       const def = held && content.items.get(held.itemId);
-      // Quay mặt về hướng camera để đòn đánh đúng hướng mình nhìn.
-      localAim.yaw = look.yaw;
+      // Quay mặt về hướng camera để đòn đánh đúng hướng mình nhìn. Dùng góc camera đã mượt
+      // (`view.yaw`) chứ không phải chuột thô: camera đi sau chuột ~21ms nên khi flick nhanh,
+      // đòn đánh theo chuột thử có thể trượt khỏi chỗ mình đang nhìn.
+      localAim.yaw = lookView.yaw;
       localAim.at = performance.now();
       if (def && (def.eat || def.plant || def.camp)) {
-        const x = localPosition.x - Math.sin(look.yaw) * 1.8;
-        const z = localPosition.z - Math.cos(look.yaw) * 1.8;
+        const x = localPosition.x - Math.sin(lookView.yaw) * 1.8;
+        const z = localPosition.z - Math.cos(lookView.yaw) * 1.8;
         room.send(Messages.use, { x, z });
         return;
       }
-      room.send(Messages.attack, { yaw: look.yaw, pitch: aimPitch() });
+      room.send(Messages.attack, { yaw: lookView.yaw, pitch: aimPitch() });
     };
 
     // Điều khiển cảm ứng (không khoá chuột được) gửi lệnh qua sự kiện riêng.
@@ -72,9 +74,9 @@ export function Controls({ room }: { room: IslandRoom }) {
     const onTouchThrow = (e: Event) => {
       if (!getHands()) return;
       const power = Math.min(1, Math.max(0, (e as CustomEvent<number>).detail ?? 0.5));
-      localAim.yaw = look.yaw;
+      localAim.yaw = lookView.yaw;
       localAim.at = performance.now();
-      room.send(Messages.throw, { yaw: look.yaw, pitch: aimPitch(), power: 0.35 + power * 0.65 });
+      room.send(Messages.throw, { yaw: lookView.yaw, pitch: aimPitch(), power: 0.35 + power * 0.65 });
       play("throw", { volume: 0.5 + power * 0.5 });
     };
     const onTouchCycle = () => cycle(1);
@@ -89,9 +91,9 @@ export function Controls({ room }: { room: IslandRoom }) {
       const power = Math.min(1, (performance.now() - throwStart) / 700);
       throwStart = 0;
       if (!getHands()) return;
-      localAim.yaw = look.yaw;
+      localAim.yaw = lookView.yaw;
       localAim.at = performance.now();
-      room.send(Messages.throw, { yaw: look.yaw, pitch: aimPitch(), power: 0.35 + power * 0.65 });
+      room.send(Messages.throw, { yaw: lookView.yaw, pitch: aimPitch(), power: 0.35 + power * 0.65 });
       play("throw", { volume: 0.5 + power * 0.5 });
     };
     const onWheel = (e: WheelEvent) => {
@@ -126,7 +128,7 @@ export function Controls({ room }: { room: IslandRoom }) {
         }
         case "KeyT":
           toggleCameraView();
-          look.pitch = clampPitch(look.pitch);
+          rawLook.pitch = clampPitch(rawLook.pitch);
           break;
         case "KeyK":
           room.send(Messages.star);

@@ -187,11 +187,17 @@ function Reticle({ room }: { room: IslandRoom }) {
   const now = performance.now();
   const scoped = stance.aiming && stance.scoped;
   const hit = hud.hit && now - hud.hit.at < 260 ? hud.hit : null;
+  // Số sát thương và quầng đỏ sống lâu hơn dấu trúng nên cần cửa sổ riêng.
+  const dmg = hud.hit && now - hud.hit.at < 800 && hud.hit.kind !== "kill" ? hud.hit : null;
+  const flash = newestHurt(hud, now);
   const hurts = hud.hurts.filter((h) => now - h.at < 1400);
   useLive(
     () => {
-      // Khoảng hở tâm ngắm theo độ toả (radian → điểm ảnh ở FOV hiện tại xấp xỉ).
-      const gap = Math.max(3, Math.min(60, (stance.spread * 900) / (stance.aiming ? stance.zoom : 1)));
+      // Khoảng hở tâm ngắm theo độ toả. Ánh xạ radian → điểm ảnh bằng tan() theo chiều cao màn hình và
+      // FOV đang dùng: trước đây dùng hằng số 900 nên ở FOV 100 khoảng hở báo thiếu ~30% so với
+      // góc tán thật, tức tâm ngắm nói dối về độ chính xác.
+      const pxPerRad = window.innerHeight / 2 / Math.tan((getSettings().fov * Math.PI) / 360 / (stance.aiming ? stance.zoom : 1));
+      const gap = Math.max(3, Math.min(60, Math.tan(stance.spread) * pxPerRad));
       cross.current?.style.setProperty("--gap", `${gap.toFixed(1)}px`);
       // Hướng bị bắn so với hướng mình đang nhìn (look.yaw là hướng camera nhìn về −sin, −cos): xoay theo chuột.
       const box = hurtBox.current;
@@ -206,8 +212,10 @@ function Reticle({ room }: { room: IslandRoom }) {
       const t = performance.now();
       const p = room.state.players.get(myId(room));
       const hitAt = h.hit && t - h.hit.at < 260 ? h.hit.at : 0;
+      const dmgAt = h.hit && t - h.hit.at < 800 && h.hit.kind !== "kill" ? h.hit.at : 0;
+      const flashAt = newestHurt(h, t) ?? 0;
       const hurtAts = h.hurts.filter((x) => t - x.at < 1400).map((x) => x.at).join(",");
-      return `${p?.alive}|${p?.vehicle}|${(p?.hp ?? 100) < 30}|${stance.aiming}|${stance.scoped}|${stance.firstPerson}|${stance.sight}|${stance.zero}|${gun.weapon}|${hitAt}|${hurtAts}`;
+      return `${p?.alive}|${p?.vehicle}|${(p?.hp ?? 100) < 30}|${stance.aiming}|${stance.scoped}|${stance.firstPerson}|${stance.sight}|${stance.zero}|${gun.weapon}|${hitAt}|${dmgAt}|${flashAt}|${hurtAts}`;
     },
   );
   if (!me?.alive || me.vehicle) return null;
@@ -225,7 +233,13 @@ function Reticle({ room }: { room: IslandRoom }) {
         </div>
       )}
       {/* Mờ dần bằng CSS animation (key đổi thì chạy lại từ đầu). */}
-      {hit && <div key={hit.at} className={`b-hitmark ${hit.kind}`} style={{ animationDelay: `${-(now - hit.at)}ms` }} />}
+      {hit && <div key={hit.at} className={`b-hitmark ${hit.kind}${hit.armor ? " armor" : ""}`} style={{ animationDelay: `${-(now - hit.at)}ms` }} />}
+      {dmg && (
+        <div key={dmg.at} className={`b-dmg ${dmg.kind}${dmg.armor ? " armor" : ""}`} style={{ animationDelay: `${-(now - dmg.at)}ms` }}>
+          {dmg.amount}
+        </div>
+      )}
+      {flash !== null && <div key={flash} className="b-flash" style={{ animationDelay: `${-(now - flash)}ms` }} />}
       <div ref={hurtBox}>
         {hurts.map((h) => (
           <div key={h.at} className="b-hurt" data-angle={h.angle} style={{ animationDelay: `${-(now - h.at)}ms` }} />
@@ -234,6 +248,15 @@ function Reticle({ room }: { room: IslandRoom }) {
       {me.hp < 30 && <div className="b-lowhp" />}
     </>
   );
+}
+
+/** Mốc thời gian của cú trúng đòn mới nhất, hoặc null nếu đã quá 160ms (để quầng đỏ tắt). */
+function newestHurt(hud: ReturnType<typeof getBattleHud>, now: number): number | null {
+  let best: number | null = null;
+  for (const h of hud.hurts) {
+    if (now - h.at < 160 && (best === null || h.at > best)) best = h.at;
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------- la bàn

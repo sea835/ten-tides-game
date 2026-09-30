@@ -157,8 +157,14 @@ export interface ClimbTree {
 
 /** Cây của bản đồ (tính một lần cho mỗi thế giới và mỗi lần có cây bị đốn, vì độ cao địa hình tính khá tốn). */
 let standingCache: { world: World | null; key: string; trees: ClimbTree[] } = { world: null, key: "", trees: [] };
+/** Bản đầy đủ (đã cộng cây trồng) cho các vòng lặp khung hình; dựng lại khi kho thực vật đổi. */
+let allCache: { key: string; trees: ClimbTree[] } = { key: "", trees: [] };
 
-export function climbTrees(room: IslandRoom, world: World): ClimbTree[] {
+/**
+ * Cây đủ lớn để leo. Mặc định trả về bản sao (dùng ở nơi sẽ giữ lại danh sách);
+ * `withPlants` trả thẳng danh sách đã dựng để dùng trong vòng lặp khung hình mà không cấp phát lại.
+ */
+export function climbTrees(room: IslandRoom, world: World, withPlants = false): ClimbTree[] {
   const key = room.state.stumps.join(",");
   if (standingCache.world !== world || standingCache.key !== key) {
     const felled = new Set(room.state.stumps);
@@ -170,13 +176,21 @@ export function climbTrees(room: IslandRoom, world: World): ClimbTree[] {
     }
     standingCache = { world, key, trees };
   }
-  const out = [...standingCache.trees];
-  for (const [id, p] of room.state.plants) {
+  // Cây đã trồng thay đổi rất hiếm (chỉ khi có người trồng/chặt), nên danh sách đầy đủ được
+  // dựng lại khi kho thực vật đổi chứ không copy mỗi khung hình. `withPlants` cho phép người gọi
+  // dùng luôn danh sách đã dựng mà không cấp phát bản sao.
+  const plants = room.state.plants;
+  const pkey = `${plants.size}:${key}`;
+  if (withPlants && plants.size === 0) return standingCache.trees;
+  if (withPlants && plants.size > 0 && allCache.key === pkey) return allCache.trees;
+  const out = standingCache.trees.slice();
+  for (const [id, p] of plants) {
     if (p.growth < CLIMBABLE_GROWTH) continue;
     const palmy = p.kind === "palm";
     const yaw = pose({ id, kind: p.kind, x: p.x, z: p.z }).yaw;
     out.push({ id, kind: p.kind, x: p.x, y: p.y, z: p.z, height: (palmy ? 7 : 5.5) * p.growth, sway: palmy ? (1 + 0.35 * 0.3) * p.growth : 0, yaw });
   }
+  if (withPlants) allCache = { key: pkey, trees: out };
   return out;
 }
 

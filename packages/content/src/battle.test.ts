@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BATTLE_SITES, battleMap, battleSpawn, boxAt, insideBox, raycastBoxes, raycastTerrain } from "./battle.ts";
-import { WEAPON, WEAPONS, bulletAt, bulletDrop, falloff } from "./battleItems.ts";
+import { WEAPON, WEAPONS, bulletAt, bulletDrop, falloff, hitPart, hitboxHeight, HITBOX } from "./battleItems.ts";
 
 describe("bản đồ Battleground", () => {
   const map = battleMap(12345);
@@ -69,6 +69,29 @@ describe("đường đạn", () => {
     expect(p[1]).toBeCloseTo(10 - bulletDrop(kar.velocity, 200), 6);
     // Đạn chậm (tiểu liên .45) rơi nhiều hơn đạn nhanh ở cùng tầm.
     expect(bulletDrop(WEAPON.get("ump45")!.velocity, 100)).toBeGreaterThan(bulletDrop(WEAPON.get("m416")!.velocity, 100) * 5);
+  });
+});
+
+describe("mô hình trúng (dùng chung client và server)", () => {
+  it("ngưỡng đầu là đáy cầu đầu, nên bắn vào giữa thân không bị nâng thành đầu", () => {
+    // Đứng: cầu đầu tâm 1,62 bán kính 0,15 ⇒ đáy ở 1,47.
+    const standBottom = HITBOX.headY.stand - HITBOX.headR;
+    const crouchBottom = HITBOX.headY.crouch - HITBOX.headR;
+    expect(standBottom).toBeCloseTo(1.47, 6);
+    expect(hitPart("head", 1.6, 0, false)).toBe("head");
+    expect(hitPart("head", standBottom + 0.01, 0, false)).toBe("head");
+    expect(hitPart("head", standBottom - 0.01, 0, false)).toBe("body");
+    // Ngồi xổm: tâm 1,12 ⇒ đáy 0,97.
+    expect(hitPart("head", 1.05, 0, true)).toBe("head");
+    expect(hitPart("head", crouchBottom + 0.01, 0, true)).toBe("head");
+    expect(hitPart("head", crouchBottom - 0.01, 0, true)).toBe("body");
+    // Client khai thân thì server không tự nâng lên đầu.
+    expect(hitPart("body", 1.7, 0, false)).toBe("body");
+  });
+
+  it("chiều cao thân bao trọn cả cầu đầu", () => {
+    expect(hitboxHeight(false)).toBeCloseTo(HITBOX.headY.stand + HITBOX.headR, 6);
+    expect(hitboxHeight(true)).toBeCloseTo(HITBOX.headY.crouch + HITBOX.headR, 6);
   });
 });
 

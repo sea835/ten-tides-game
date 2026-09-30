@@ -46,6 +46,13 @@ const CHUNK = 48;
 /** Độ mịn: ô có đất liền hay đáy nông thì 2 m một đỉnh; ô toàn biển sâu thì 6 m (6 chia hết cho 2 nên mép khớp nhau). */
 const FINE = 2;
 const COARSE = 6;
+/**
+ * Cạnh (theo số ô CHUNK) của mỗi khối va chạm. Ô vẽ vẫn giữ nguyên 48 m để cắt bớt phần ngoài
+ * tầm nhìn, nhưng ô va chạm gộp lại: 100 `TrimeshCollider` riêng lẻ nghĩa là 100 cây BVH cùng
+ * bước trong `world.step()` mỗi khung hình. Gộp theo khối 3×3 ô (144 m) còn 16 collider mà
+ * hình học va chạm giống hệt.
+ */
+const COLLIDER_BLOCK = 3;
 
 const C = {
   deepBed: new Color("#1d4f5a"),
@@ -170,6 +177,15 @@ interface TerrainChunk {
   geometry: BufferGeometry;
   colliderVertices: Float32Array;
   colliderIndices: Uint32Array;
+  /** Toạ độ ô (theo lưới CHUNK) để gom về khối va chạm. */
+  cx: number;
+  cz: number;
+}
+
+/** Một khối va chạm gồm nhiều ô: đỉnh và tam giác đã nối lại thành một lưới. */
+interface TerrainCollider {
+  vertices: Float32Array;
+  indices: Uint32Array;
 }
 
 /**
@@ -272,10 +288,34 @@ function buildTerrain(world: World): TerrainChunk[] {
       grid.setAttribute("splat", new BufferAttribute(splat, 4));
       grid.userData.smooth = true;
       grid.computeBoundingSphere();
-      chunks.push({ geometry: grid, colliderVertices: verts, colliderIndices: indices });
+      chunks.push({ geometry: grid, colliderVertices: verts, colliderIndices: indices, cx, cz });
     }
   }
   return chunks;
+}
+
+/**
+ * Gộp đỉnh/tam giác của các ô cạnh nhau thành vài khối lớn hơn để va chạm.
+ * Mỗi `TrimeshCollider` là một cây BVH riêng được duyệt mỗi bước vật lý; 100 cây (một cây mỗi
+ * ô 48 m) tốn nhiều hơn 16 cây (mỗi khối 3×3 ô) trong khi hình học va chạm hoàn toàn giống nhau.
+ */
+function buildTerrainColliders(chunks: TerrainChunk[], count: number): TerrainCollider[] {
+  const blocks = Math.ceil(count / COLLIDER_BLOCK);
+  const out: (TerrainCollider & { v: number[]; i: number[]; base: number })[] = [];
+  for (let bx = 0; bx < blocks; bx++) {
+    for (let bz = 0; bz < blocks; bz++) out.push({ vertices: new Float32Array(0), indices: new Uint32Array(0), v: [], i: [], base: 0 });
+  }
+  for (const c of chunks) {
+    const b = out[Math.floor(c.cx / COLLIDER_BLOCK) * blocks + Math.floor(c.cz / COLLIDER_BLOCK)]!;
+    b.base = b.v.length / 3;
+    for (let n = 0; n < c.colliderVertices.length; n++) b.v.push(c.colliderVertices[n]!);
+    for (let n = 0; n < c.colliderIndices.length; n++) b.i.push(c.colliderIndices[n]! + b.base);
+  }
+  for (const b of out) {
+    b.vertices = Float32Array.from(b.v);
+    b.indices = Uint32Array.from(b.i);
+  }
+  return out;
 }
 
 /**
@@ -359,6 +399,10 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   const clearings = useMemo(() => grassClearings(room, world), [room, world]);
   const chunks = useMemo(() => buildTerrain(world), [world]);
   const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
+  // 100 ô vẽ (mỗi ô một draw call, cắt bớt phần ngoài tầm nhìn) nhưng chỉ ~16 collider.
+  const colliders = useMemo(() => buildTerrainColliders(chunks, (MAP_HALF_SIZE * 2) / CHUNK), [chunks]);
+  // Số lá cỏ do mức chất lượng quyết định (0 ở "low"): mỗi bụi là một vòng lặp 32 phép tính trên
+  // vertex, 100 000 bụi là khoảng 22 triệu phép tính mỗi khung hình.
   const grass = useProfile().grass;
   const material = useMemo(() => {
     const m = detailed(new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), "grass");
@@ -371,11 +415,11 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   useEffect(() => () => chunks.forEach((c) => c.geometry.dispose()), [chunks]);
   return (
     <RigidBody type="fixed" colliders={false}>
+      {colliders.map((c, i) => (
+        <TrimeshCollider key={`col${i}`} args={[c.vertices, c.indices]} />
+      ))}
       {chunks.map((c, i) => (
-        <group key={i}>
-          <TrimeshCollider args={[c.colliderVertices, c.colliderIndices]} />
-          <mesh geometry={c.geometry} material={material} receiveShadow />
-        </group>
+        <mesh key={i} geometry={c.geometry} material={material} receiveShadow />
       ))}
       {grass > 0 && <GrassField geometries={geometries} count={grass} clearings={clearings} heightAt={world.heightAt} half={world.half ?? MAP_HALF_SIZE} />}
     </RigidBody>

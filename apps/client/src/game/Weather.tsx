@@ -62,6 +62,9 @@ const RAIN_HEIGHT = 22;
 
 function Rain({ count }: { count: number }) {
   const mesh = useRef<InstancedMesh>(null);
+  // Số hạt đã vẽ ở khung hình trước. Khai báo ở thân component, không gọi `useRef` bên trong
+  // `useFrame` — React sẽ báo "Invalid hook call".
+  const shown = useRef(0);
   const drops = useMemo(() => {
     const rand = mulberry32(5);
     return Array.from({ length: count }, () => ({ x: (rand() - 0.5) * 2 * RAIN_AREA, y: rand() * RAIN_HEIGHT, z: (rand() - 0.5) * 2 * RAIN_AREA, speed: 24 + rand() * 10 }));
@@ -81,35 +84,41 @@ function Rain({ count }: { count: number }) {
     const cx = camera.position.x;
     const cy = camera.position.y;
     const cz = camera.position.z;
-    for (let i = 0; i < count; i++) {
+    // Chỉ vẽ tới `visible` thay vì toàn bộ `count`: trước đây vòng lặp chạy hết 1600 hạt rồi mới
+    // scale 0 phần bị ẩn, tức vẫn tốn 1600 lần updateMatrix mỗi khung hình dù mưa rất nhẹ.
+    // Đuôi bị ẩn mới tẩy đúng một lần khi lượng mưa giảm (xem `shown`).
+    for (let i = 0; i < visible; i++) {
       const d = drops[i]!;
-      if (i >= visible) {
-        dummy.scale.setScalar(0);
-      } else {
-        d.y -= d.speed * dt;
-        d.x += d.speed * slant * dt;
-        if (d.y < -4) {
-          d.y += RAIN_HEIGHT;
-          d.x = (Math.random() - 0.5) * 2 * RAIN_AREA;
-          d.z = (Math.random() - 0.5) * 2 * RAIN_AREA;
-        }
-        // Hạt mưa đi theo camera, gói vòng trong một hộp quanh người nhìn; không rơi sát ống kính (trông như que).
-        let wx = cx + ((((d.x % (2 * RAIN_AREA)) + 3 * RAIN_AREA) % (2 * RAIN_AREA)) - RAIN_AREA);
-        let wz = cz + d.z;
-        const near = Math.hypot(wx - cx, wz - cz);
-        if (near < 2.5) {
-          const k = 2.5 / Math.max(near, 0.01);
-          wx = cx + (wx - cx) * k;
-          wz = cz + (wz - cz) * k;
-        }
-        const wy = cy - 6 + d.y;
-        dummy.position.set(wx, Math.max(wy, WATER_LEVEL - 50), wz);
-        dummy.rotation.set(0, 0, slant * 0.9);
-        dummy.scale.set(1, 1 + weatherFx.storm * 0.4, 1);
+      d.y -= d.speed * dt;
+      d.x += d.speed * slant * dt;
+      if (d.y < -4) {
+        d.y += RAIN_HEIGHT;
+        d.x = (Math.random() - 0.5) * 2 * RAIN_AREA;
+        d.z = (Math.random() - 0.5) * 2 * RAIN_AREA;
       }
+      // Hạt mưa đi theo camera, gói vòng trong một hộp quanh người nhìn; không rơi sát ống kính (trông như que).
+      let wx = cx + ((((d.x % (2 * RAIN_AREA)) + 3 * RAIN_AREA) % (2 * RAIN_AREA)) - RAIN_AREA);
+      let wz = cz + d.z;
+      const near = Math.hypot(wx - cx, wz - cz);
+      if (near < 2.5) {
+        const k = 2.5 / Math.max(near, 0.01);
+        wx = cx + (wx - cx) * k;
+        wz = cz + (wz - cz) * k;
+      }
+      const wy = cy - 6 + d.y;
+      dummy.position.set(wx, Math.max(wy, WATER_LEVEL - 50), wz);
+      dummy.rotation.set(0, 0, slant * 0.9);
+      dummy.scale.set(1, 1 + weatherFx.storm * 0.4, 1);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
+    // Tẩy phần vừa bị ẩn đi, thay vì tẩy lại toàn bộ mỗi khung hình.
+    for (let i = visible; i < shown.current; i++) {
+      dummy.scale.setScalar(0);
+      dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix);
+    }
+    shown.current = visible;
     m.instanceMatrix.needsUpdate = true;
   });
   return (
@@ -128,6 +137,8 @@ const SNOW_HEIGHT = 16;
 /** Bông tuyết: rơi chậm, lượn ngang theo gió, bay theo camera trong một hộp quanh người nhìn. */
 function Snow({ count }: { count: number }) {
   const mesh = useRef<InstancedMesh>(null);
+  // Xem giải thích ở `Rain`.
+  const shown = useRef(0);
   const flakes = useMemo(() => {
     const rand = mulberry32(11);
     return Array.from({ length: count }, () => ({
@@ -151,22 +162,25 @@ function Snow({ count }: { count: number }) {
     const t = clock.elapsedTime;
     const wind = 0.6 + weatherFx.storm;
     const wrap = (v: number, c: number, half: number) => c + ((((v - c) % (2 * half)) + 3 * half) % (2 * half)) - half;
-    for (let i = 0; i < count; i++) {
+    // Chỉ vẽ tới `visible`, tẩy đuôi khi giảm — xem giải thích ở Rain.
+    for (let i = 0; i < visible; i++) {
       const f = flakes[i]!;
-      if (i >= visible) {
-        dummy.scale.setScalar(0);
-      } else {
-        f.y -= f.speed * dt;
-        f.x += (wind + Math.sin(t * 0.9 + f.phase) * 0.6) * dt;
-        f.z += Math.cos(t * 0.7 + f.phase * 1.3) * 0.5 * dt;
-        if (f.y < -3) f.y += SNOW_HEIGHT;
-        // Bông tuyết neo theo thế giới (đi qua thì lướt qua người), gói vòng quanh camera.
-        dummy.position.set(wrap(f.x, camera.position.x, SNOW_AREA), camera.position.y - 5 + f.y, wrap(f.z, camera.position.z, SNOW_AREA));
-        dummy.scale.setScalar(f.size);
-      }
+      f.y -= f.speed * dt;
+      f.x += (wind + Math.sin(t * 0.9 + f.phase) * 0.6) * dt;
+      f.z += Math.cos(t * 0.7 + f.phase * 1.3) * 0.5 * dt;
+      if (f.y < -3) f.y += SNOW_HEIGHT;
+      // Bông tuyết neo theo thế giới (đi qua thì lướt qua người), gói vòng quanh camera.
+      dummy.position.set(wrap(f.x, camera.position.x, SNOW_AREA), camera.position.y - 5 + f.y, wrap(f.z, camera.position.z, SNOW_AREA));
+      dummy.scale.setScalar(f.size);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
+    for (let i = visible; i < shown.current; i++) {
+      dummy.scale.setScalar(0);
+      dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix);
+    }
+    shown.current = visible;
     m.instanceMatrix.needsUpdate = true;
   });
   return (

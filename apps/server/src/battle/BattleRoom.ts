@@ -27,6 +27,7 @@ import {
   SQUAD_BOTS,
   TANK,
   floorBelow,
+  HITBOX,
   insideBox,
   makeRand,
   raycastBoxes,
@@ -850,12 +851,15 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (now - (this.lastShotAt.get(id) ?? 0) < (60000 / def.rpm) * 0.8) return;
     const mag = magOf(kit, slot);
     if (mag <= 0) return;
+    // Kiểm tra gốc tia TRƯỚC khi trừ đạn. Trước đây thứ tự là: trừ đạn → ghi lastShotAt → hủy hồi
+    // máu → mới kiểm tra gốc nòng, nên một phát bắn bị từ chối vì gốc sai vẫn mất một viên và vẫn
+    // chiếm slot tần số, đồng thời không phát `shot` cho ai: người chơi nghe tiếng và thấy hiệu ứng
+    // của một phát bắn không hề tồn tại.
+    if (Math.hypot(o[0] - p.x, o[2] - p.z) > 4 || o[1] < p.y - 1 || o[1] > p.y + 3) return;
     this.lastShotAt.set(id, now);
     setMag(kit, slot, mag - 1);
     p.shots = (p.shots + 1) % 65536;
     this.cancelHeal(id);
-    // Gốc tia phải ở sát người bắn.
-    if (Math.hypot(o[0] - p.x, o[2] - p.z) > 4 || o[1] < p.y - 1 || o[1] > p.y + 3) return;
     const maxRange = Math.min(600, def.range * 3);
     const dirs = rays.slice(0, def.pellets).map((r) => {
       const l = Math.hypot(r[0], r[1], r[2]) || 1;
@@ -905,7 +909,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (!d || !target || !target.alive || target.vehicle || h.target === id || hitRay.has(h.ray)) continue;
       // Không bắn trúng đồng đội.
       if (p.team && target.team === p.team) continue;
-      if (h.d > walls[h.ray]! + 0.6 || h.d > maxRange) continue;
+      if (h.d > walls[h.ray]! + HITBOX.wallSlack || h.d > maxRange) continue;
       const pt = bulletAt(o, d, def.velocity, h.d);
       const check = checkBodyPoint(pt, { x: target.x, y: target.y, z: target.z, rotY: target.rotY, crouch: target.crouching, prone: target.prone }, h.part === "head");
       if (!check) continue;

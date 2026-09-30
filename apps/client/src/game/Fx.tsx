@@ -84,6 +84,9 @@ export function Fx() {
   const [words, setWords] = useState<Word[]>([]);
   const mesh = useRef<InstancedMesh>(null);
   const bits = useRef<Bit[]>([]);
+  // Số ô đã vẽ ở khung hình trước, để tẩy đúng phần dư. Phải khai báo ở đây chứ không gọi `useRef`
+  // bên trong `useFrame`: hook chạy mỗi khung hình, React báo "Invalid hook call".
+  const shown = useRef(0);
   const dummy = useMemo(() => new Object3D(), []);
 
   useFx((fx) => {
@@ -142,20 +145,25 @@ export function Fx() {
       b.y += b.vy * dt;
       b.z += b.vz * dt;
     }
-    for (let i = 0; i < MAX_BITS; i++) {
-      const b = list[i];
-      if (!b) {
-        dummy.scale.setScalar(0);
-      } else {
-        const k = 1 - b.life / b.max;
-        dummy.position.set(b.x, b.y, b.z);
-        dummy.rotation.set(b.life * 9, b.life * 7, 0);
-        dummy.scale.setScalar(b.size * (b.float ? 1 + (1 - k) * 1.5 : k));
-        m.setColorAt(i, b.color);
-      }
+    // Chỉ vẽ tới `list.length` và tẩy đúng phần vừa rút khỏi danh sách. Trước đây vòng lặp chạy
+    // hết 260 ô mỗi khung hình (kể cả lúc không còn mảnh nào) và tải lại toàn bộ instanceMatrix.
+    const n = list.length;
+    for (let i = 0; i < n; i++) {
+      const b = list[i]!;
+      const k = 1 - b.life / b.max;
+      dummy.position.set(b.x, b.y, b.z);
+      dummy.rotation.set(b.life * 9, b.life * 7, 0);
+      dummy.scale.setScalar(b.size * (b.float ? 1 + (1 - k) * 1.5 : k));
+      m.setColorAt(i, b.color);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
+    for (let i = n; i < shown.current; i++) {
+      dummy.scale.setScalar(0);
+      dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix);
+    }
+    shown.current = n;
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   });

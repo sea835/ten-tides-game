@@ -22,6 +22,15 @@ export const localMotion = {
   wall: 0,
   /** Tốc độ ngang thật (m/s), để nhịp bước khớp tốc độ; không có thì theo cờ đi / chạy. */
   speed: undefined as number | undefined,
+  /**
+   * Bộ đếm nhịp chân (mỗi lần chạm đất là 1). LocalPlayer cộng dồn cùng phase với camera bob,
+   * Soundscape phát tiếng khi số này tăng — trước đây tiếng chân chạy timer riêng nên lệch ~3×.
+   */
+  steps: 0,
+  /** Nhịp bước vừa phát trong khung này, để không phát tiếng hai lần cho một nhịp. */
+  stepHit: false,
+  /** Nhịp bước này là do bước trên mặt đất (để biết có nên dùng bộ đếm hay timer riêng). */
+  groundStep: false,
 };
 
 /**

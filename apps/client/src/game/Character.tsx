@@ -1,6 +1,7 @@
 import { useMemo, useRef, type Ref } from "react";
 import { useFrame } from "@react-three/fiber";
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Euler, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type Group } from "three";
+import { hitStopScale } from "./battle/runtime.ts";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
 import { GunModel, HelmetModel, KnifeModel, ThrowableModel, VestModel, aimLineHeight, stockLength, supportOffset } from "./GunModel.tsx";
 import { camoTexture, fabricTexture, type FabricKind } from "./camo.ts";
@@ -385,8 +386,10 @@ export function Character({
   // Tiết kiệm: người ở sau lưng camera thì thôi tính dáng (đứng yên tư thế cũ), ở xa thì tính cách một khung hình;
   // thời gian bỏ qua cộng dồn vào lần tính sau nên chuyển động vẫn đúng nhịp.
   const skip = useRef({ acc: 0, odd: false });
-  useFrame(({ camera }, rawDt) => {
-    let dt = rawDt;
+  useFrame(({ camera }, raw) => {
+    // Chặn dt như LocalPlayer: dt thô khiến `a.actT` nhảy quá thời lượng trong một bước,
+    // nên hành động một lần (swing/chop/throw/shoot) bị bỏ qua hoàn toàn, không phát ra gì.
+    let dt = Math.min(raw, 0.05);
     const bm = body.current?.matrixWorld.elements;
     if (bm) {
       const dx = bm[12]! - camera.position.x;
@@ -398,12 +401,14 @@ export function Character({
       const sk = skip.current;
       sk.odd = !sk.odd;
       if ((d2 > 16 && ahead < -3) || (d2 > 30 * 30 && sk.odd)) {
-        sk.acc = Math.min(0.2, sk.acc + rawDt);
+        sk.acc = Math.min(0.2, sk.acc + raw);
         return;
       }
       dt += sk.acc;
       sk.acc = 0;
     }
+    // Nhân hitstop thêm: nhân vật đứng lại một nhịp ngắn khi trúng đạn.
+    dt *= hitStopScale();
     const m = motion?.() ?? { moving: false };
     const a = anim.current;
     const now = performance.now();
@@ -445,8 +450,17 @@ export function Character({
     // Đi khom thì bước ngắn, chậm hơn.
     // Nhịp bước: biết tốc độ thật thì mỗi bước đi đúng một sải (đi khom sải ngắn, chạy sải dài), chân không trượt trên đất.
     const stride = proning ? 0.35 : crouching ? 0.5 : m.running ? 1.05 : 0.7;
-    const rate = m.swimming ? 7 : m.speed !== undefined ? Math.min(24, (Math.PI * m.speed) / stride) : m.running && !crouching ? 17 : 12.5 - 3 * crouch;
-    a.phase += dt * rate * (a.amount > 0.05 || m.swimming ? 1 : 0);
+    const moving = a.amount > 0.05 || m.swimming;
+    // Trần cao hơn trước (24) để bước ở tốc độ chạy 16 m/s còn khớp sải chân, không còn trượt nhẹ.
+    const rate = m.swimming ? 7 : m.speed !== undefined ? Math.min(40, (Math.PI * m.speed) / stride) : m.running && !crouching ? 17 : 12.5 - 3 * crouch;
+    if (moving) {
+      a.phase += dt * rate;
+    } else {
+      // Dừng lại thì nội suy về bội số gần nhất của π cho bằng 0. Trước đây phase đứng yên giữa
+      // chừng nên chân dừng ở góc ngẫu nhiên, khác nhau mỗi lần chạy.
+      const near = Math.round(a.phase / Math.PI) * Math.PI;
+      a.phase += (near - a.phase) * Math.min(1, dt * 10);
+    }
     const swim = a.swim;
     const climb = a.climb;
     const sit = a.sit * (1 - swim);
