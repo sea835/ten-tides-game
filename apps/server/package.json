@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "serve": "tsx src/index.ts",
     "typecheck": "tsc -p .",
     "sim": "tsx src/tools/simulate.ts",
     "replay": "tsx src/tools/replay.ts"

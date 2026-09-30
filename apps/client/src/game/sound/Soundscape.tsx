@@ -36,7 +36,7 @@ function makeLoop(brown: boolean, type: BiquadFilterType, freq: number, q = 0.7)
   const gain = ctx.createGain();
   gain.gain.value = 0;
   src.connect(filter).connect(gain).connect(audio.bus("ambience"));
-  src.start(0, Math.random() * 1.5);
+  src.start(0, Math.random() * 4);
   return { gain, filter };
 }
 
@@ -494,10 +494,12 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     () =>
       audio.onStart(() => {
         loops.current = {
-          ocean: makeLoop(true, "lowpass", 500),
-          surf: makeLoop(false, "bandpass", 1100, 0.6),
-          wind: makeLoop(false, "bandpass", 600, 0.9),
-          rain: makeLoop(false, "highpass", 1100, 0.5),
+          // Nền dùng tiếng ồn nâu (trầm, êm) thay cho tiếng ồn trắng: trước đây sóng vỗ, gió, mưa nghe "rè rè" như
+          // radio mất sóng, lại đè lên tiếng bước chân, tiếng súng.
+          ocean: makeLoop(true, "lowpass", 380),
+          surf: makeLoop(true, "bandpass", 650, 0.5),
+          wind: makeLoop(true, "lowpass", 420, 0.6),
+          rain: makeLoop(false, "bandpass", 1700, 0.35),
           lava: makeLoop(true, "lowpass", 160),
           fire: makeLoop(false, "bandpass", 3200, 0.8),
         };
@@ -556,16 +558,17 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     const outdoors = 1 - localEnv.indoor;
     const nearSea = Math.max(0, Math.min(1, 1 - surface.inland / 70));
     const waves = 0.65 + 0.35 * Math.sin(t * 0.55) * Math.sin(t * 0.23 + 1);
-    setLevel(loops.current.ocean, (0.25 + 0.55 * nearSea) * outdoors * (localEnv.underwater ? 1.4 : 1));
+    // Bản đồ Battleground không có núi lửa, không có lửa trại; nền nhỏ hơn hẳn để nghe rõ bước chân, tiếng súng.
+    const battle = state.mode === "battle";
+    const bed = battle ? 0.55 : 1;
+    setLevel(loops.current.ocean, (0.12 + 0.45 * nearSea) * outdoors * bed * (localEnv.underwater ? 1.4 : 1));
     // Sóng vỗ bờ: to nhất khi đứng sát mép nước.
     const shore = Math.max(0, 1 - Math.abs(surface.inland) / 25);
-    setLevel(loops.current.surf, 0.35 * shore * waves * outdoors * (1 + weatherFx.storm), 0.25);
+    setLevel(loops.current.surf, 0.3 * shore * waves * outdoors * bed * (1 + weatherFx.storm), 0.25);
     const height = Math.max(0, Math.min(1, p.y / 30));
-    setLevel(loops.current.wind, (0.05 + 0.12 * height + 0.09 * (windStrength.value - 1)) * outdoors);
-    loops.current.wind?.filter.frequency.setTargetAtTime(450 + 350 * Math.sin(t * 0.3) + 200 * weatherFx.storm, audio.ctx!.currentTime, 0.5);
-    setLevel(loops.current.rain, 0.5 * weatherFx.rain * (0.4 + 0.6 * outdoors));
-    // Bản đồ Battleground không có núi lửa, không có lửa trại.
-    const battle = state.mode === "battle";
+    setLevel(loops.current.wind, (0.04 + 0.1 * height + 0.08 * (windStrength.value - 1)) * outdoors * bed);
+    loops.current.wind?.filter.frequency.setTargetAtTime(300 + 150 * Math.sin(t * 0.3) + 250 * weatherFx.storm, audio.ctx!.currentTime, 0.5);
+    setLevel(loops.current.rain, 0.3 * weatherFx.rain * (0.3 + 0.7 * outdoors) * (battle ? 0.7 : 1));
     const lavaDist = battle ? 999 : Math.hypot(p.x - LAVA.x, p.z - LAVA.z);
     setLevel(loops.current.lava, 0.7 * Math.pow(Math.max(0, 1 - lavaDist / 70), 2) * (0.6 + state.volcano / 200));
     const campDist = state.campPacked || battle ? 99 : Math.hypot(p.x - state.campX, p.z - state.campZ);

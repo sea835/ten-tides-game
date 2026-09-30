@@ -13,7 +13,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { ANCHORS, CAMP, CAVE, LAKE, TREASURE_SITES, type GrassPatch, type World } from "@tentides/content";
-import { useQuality } from "./graphics.ts";
+import { useProfile } from "./graphics.ts";
 import { grain, mulberry32, patch, rockGeometry, swayMaterial } from "./nature.ts";
 import { detailed } from "./textures.ts";
 import { broadLeafTexture, frondStrip, frondTexture, leafCluster, leafClusterTexture, leafMaterial } from "./foliage.ts";
@@ -349,8 +349,10 @@ function Instances({ spots, geometry, material, tint, heightScale = false, cast 
 }
 
 export function Vegetation({ world }: { world: World }) {
-  const quality = useQuality();
-  const density = quality === "high" ? 1 : 0.35;
+  const profile = useProfile();
+  const density = profile.vegetation;
+  // Tầm vẽ theo mức chất lượng: ô ở xa hơn thì ẩn hẳn (sương mù đã che gần hết, vẽ ra chỉ tốn GPU).
+  const far = (m: number) => m * profile.drawDistance;
   const place = useMemo(() => placer(world), [world]);
 
   const spots = useMemo(() => {
@@ -479,24 +481,21 @@ export function Vegetation({ world }: { world: World }) {
 
   return (
     <>
-      {/* Mọi nhóm đều có `farthest`: thiếu nó thì `Instances` bỏ qua kiểm tra khoảng cách và
-          chỉ dựa vào frustum culling của three, tức cả ô 72 m nào chạm mặt phẳng xa 500 m cũng
-          được vẽ. Ô thực vật to (tall/bush/rock/lá chuối…) để xa hơn ô cỏ nhỏ. */}
-      <Instances spots={spots.short} geometry={geo.short} material={mats.grass} tint={tints.short} heightScale farthest={80} />
-      <Instances spots={spots.medium} geometry={geo.medium} material={mats.grass} tint={tints.medium} heightScale farthest={110} />
-      <Instances spots={spots.tall} geometry={geo.tall} material={mats.tall} tint={tints.tall} heightScale farthest={190} />
-      <Instances spots={spots.ferns} geometry={geo.fern} material={mats.fern} tint={tints.fern} farthest={140} />
-      <Instances spots={spots.bushes} geometry={geo.bush.leaves} material={mats.bush} tint={tints.bush} cast farthest={180} />
-      <Instances spots={spots.bushes} geometry={geo.bush.core} material={mats.bushCore} tint={tints.bushCore} farthest={180} />
-      <Instances spots={spots.flowers} geometry={geo.flower} material={mats.flower} tint={tints.flower} farthest={90} />
-      <Instances spots={spots.rocks} geometry={geo.rock} material={mats.stone} tint={tints.rock} cast farthest={170} />
-      <Instances spots={spots.shells} geometry={geo.shell} material={mats.stone} tint={tints.shell} farthest={70} />
-      <Instances spots={spots.driftwood} geometry={geo.driftwood} material={mats.stone} tint={tints.driftwood} cast farthest={150} />
-      <Instances spots={spots.bananas} geometry={geo.bananaStem} material={mats.trunk} tint={tints.bananaStem} farthest={200} />
-      <Instances spots={spots.bananas} geometry={geo.bananaLeaves} material={mats.banana} tint={tints.banana} cast farthest={200} />
-      <Instances spots={spots.pandans} geometry={geo.pandan} material={mats.tall} tint={tints.pandan} farthest={200} />
-      <Instances spots={spots.beachGrass} geometry={geo.beachGrass} material={mats.grass} tint={tints.beachGrass} heightScale farthest={90} />
-      <Instances spots={spots.creepers} geometry={geo.creeper} material={mats.creeper} tint={tints.creeper} farthest={90} />
+      <Instances spots={spots.short} geometry={geo.short} material={mats.grass} tint={tints.short} heightScale farthest={far(80)} />
+      <Instances spots={spots.medium} geometry={geo.medium} material={mats.grass} tint={tints.medium} heightScale farthest={far(110)} />
+      <Instances spots={spots.tall} geometry={geo.tall} material={mats.tall} tint={tints.tall} heightScale farthest={far(220)} />
+      <Instances spots={spots.ferns} geometry={geo.fern} material={mats.fern} tint={tints.fern} farthest={far(140)} />
+      <Instances spots={spots.bushes} geometry={geo.bush.leaves} material={mats.bush} tint={tints.bush} cast farthest={far(240)} />
+      <Instances spots={spots.bushes} geometry={geo.bush.core} material={mats.bushCore} tint={tints.bushCore} farthest={far(240)} />
+      <Instances spots={spots.flowers} geometry={geo.flower} material={mats.flower} tint={tints.flower} farthest={far(90)} />
+      <Instances spots={spots.rocks} geometry={geo.rock} material={mats.stone} tint={tints.rock} cast farthest={far(190)} />
+      <Instances spots={spots.shells} geometry={geo.shell} material={mats.stone} tint={tints.shell} farthest={far(70)} />
+      <Instances spots={spots.driftwood} geometry={geo.driftwood} material={mats.stone} tint={tints.driftwood} cast farthest={far(170)} />
+      <Instances spots={spots.bananas} geometry={geo.bananaStem} material={mats.trunk} tint={tints.bananaStem} farthest={far(230)} />
+      <Instances spots={spots.bananas} geometry={geo.bananaLeaves} material={mats.banana} tint={tints.banana} cast farthest={far(230)} />
+      <Instances spots={spots.pandans} geometry={geo.pandan} material={mats.tall} tint={tints.pandan} farthest={far(210)} />
+      <Instances spots={spots.beachGrass} geometry={geo.beachGrass} material={mats.grass} tint={tints.beachGrass} heightScale farthest={far(90)} />
+      <Instances spots={spots.creepers} geometry={geo.creeper} material={mats.creeper} tint={tints.creeper} farthest={far(90)} />
     </>
   );
 }

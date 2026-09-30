@@ -35,7 +35,7 @@ import { Landmarks } from "./Landmarks.tsx";
 import { detailed } from "./textures.ts";
 import { GrassField } from "./Grass.tsx";
 import { Flame } from "./Flame.tsx";
-import { useQuality } from "./graphics.ts";
+import { useProfile } from "./graphics.ts";
 
 // ---------------------------------------------------------------------------
 // Địa hình
@@ -400,8 +400,9 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
   // 100 ô vẽ (mỗi ô một draw call, cắt bớt phần ngoài tầm nhìn) nhưng chỉ ~16 collider.
   const colliders = useMemo(() => buildTerrainColliders(chunks, (MAP_HALF_SIZE * 2) / CHUNK), [chunks]);
-  const quality = useQuality();
-  const high = quality === "high";
+  // Số lá cỏ do mức chất lượng quyết định (0 ở "low"): mỗi bụi là một vòng lặp 32 phép tính trên
+  // vertex, 100 000 bụi là khoảng 22 triệu phép tính mỗi khung hình.
+  const grass = useProfile().grass;
   const material = useMemo(() => {
     const m = detailed(new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), "grass");
     seabedLight(m);
@@ -419,9 +420,7 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
       {chunks.map((c, i) => (
         <mesh key={i} geometry={c.geometry} material={material} receiveShadow />
       ))}
-      {/* Cỏ chỉ ở "high"/"medium": mỗi bụi là một vòng lặp 32 phép tính trên vertex, 120 000
-          bụi là khoảng 27 triệu phép tính mỗi khung hình. Ở "low" bỏ hẳn. */}
-      {quality !== "low" && <GrassField geometries={geometries} count={quality === "high" ? 120000 : 60000} clearings={clearings} />}
+      {grass > 0 && <GrassField geometries={geometries} count={grass} clearings={clearings} heightAt={world.heightAt} />}
     </RigidBody>
   );
 }

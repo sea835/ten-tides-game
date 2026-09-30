@@ -601,8 +601,14 @@ function buildVillage(b: Builder) {
 
 export interface BoxIndex {
   cell: number;
-  grid: Map<string, number[]>;
+  /** Ô lưới (khoá số, xem `cellKey`) → các khối đặc chạm ô đó. */
+  grid: Map<number, number[]>;
   boxes: readonly BattleBox[];
+  /** Trục u, trục đứng, trục v của từng khối trong thế giới (9 số mỗi khối), tính sẵn cho khỏi sin/cos mỗi tia. */
+  axes: Float64Array;
+  /** Đánh dấu khối đã thử trong lần dò hiện tại (so với `stamp`), thay cho tạo Set mới mỗi tia. */
+  seen: Uint32Array;
+  stamp: number;
 }
 
 /** Ma trận quay (YXZ) của khối, dùng để đổi điểm và hướng về toạ độ riêng của khối. */
@@ -623,63 +629,80 @@ function boxRadius(b: BattleBox): number {
   return Math.hypot(b.w, b.h, b.d) / 2;
 }
 
+/** Khoá số của ô lưới (gx, gz): nhanh hơn chuỗi "gx,gz" và không tạo rác. Bản đồ chỉ vài chục ô mỗi chiều. */
+function cellKey(gx: number, gz: number): number {
+  return (gx + 32768) * 65536 + (gz + 32768);
+}
+
 export function buildIndex(boxes: readonly BattleBox[], cell = 16): BoxIndex {
-  const grid = new Map<string, number[]>();
+  const grid = new Map<number, number[]>();
+  const axes = new Float64Array(boxes.length * 9);
   boxes.forEach((b, i) => {
+    const { ux, uy, uz } = basis(b);
+    axes.set([...ux, ...uy, ...uz], i * 9);
     if (!b.solid) return;
     const r = boxRadius(b);
     for (let gx = Math.floor((b.x - r) / cell); gx <= Math.floor((b.x + r) / cell); gx++)
       for (let gz = Math.floor((b.z - r) / cell); gz <= Math.floor((b.z + r) / cell); gz++) {
-        const key = `${gx},${gz}`;
+        const key = cellKey(gx, gz);
         const list = grid.get(key);
         if (list) list.push(i);
         else grid.set(key, [i]);
       }
   });
-  return { cell, grid, boxes };
+  return { cell, grid, boxes, axes, seen: new Uint32Array(boxes.length), stamp: 0 };
 }
 
 /** Tia (gốc o, hướng chuẩn hoá d) chạm khối nào gần nhất trong `max` mét: trả khoảng cách hoặc Infinity. */
 export function raycastBoxes(index: BoxIndex, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
   let best = max;
-  const seen = new Set<number>();
+  // Đánh dấu mới cho lần dò này; tràn số thì xoá sạch dấu cũ.
+  if (++index.stamp >= 0xffffffff) {
+    index.seen.fill(0);
+    index.stamp = 1;
+  }
+  const stamp = index.stamp;
+  const seen = index.seen;
   const step = index.cell * 0.5;
   for (let t = 0; t <= best + step; t += step) {
     const px = o[0] + d[0] * Math.min(t, best);
     const pz = o[2] + d[2] * Math.min(t, best);
-    const list = index.grid.get(`${Math.floor(px / index.cell)},${Math.floor(pz / index.cell)}`);
+    const list = index.grid.get(cellKey(Math.floor(px / index.cell), Math.floor(pz / index.cell)));
     if (!list) continue;
     for (const i of list) {
-      if (seen.has(i)) continue;
-      seen.add(i);
-      const hit = rayBox(index.boxes[i]!, o, d, best);
+      if (seen[i] === stamp) continue;
+      seen[i] = stamp;
+      const hit = rayBoxAt(index, i, o, d, best);
       if (hit < best) best = hit;
     }
   }
   return best < max ? best : Infinity;
 }
 
-/** Tia cắt một khối (slab test trong toạ độ riêng của khối). */
-export function rayBox(b: BattleBox, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
-  const { ux, uy, uz } = basis(b);
+/** Tia cắt khối thứ `i` của chỉ mục (slab test trong toạ độ riêng của khối, trục tính sẵn). */
+function rayBoxAt(index: BoxIndex, i: number, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
+  const b = index.boxes[i]!;
+  const a = index.axes;
+  const k = i * 9;
   const rx = o[0] - b.x;
   const ry = o[1] - b.y;
   const rz = o[2] - b.z;
-  const lo = [rx * ux[0] + ry * ux[1] + rz * ux[2], rx * uy[0] + ry * uy[1] + rz * uy[2], rx * uz[0] + ry * uz[1] + rz * uz[2]];
-  const ld = [d[0] * ux[0] + d[1] * ux[1] + d[2] * ux[2], d[0] * uy[0] + d[1] * uy[1] + d[2] * uy[2], d[0] * uz[0] + d[1] * uz[1] + d[2] * uz[2]];
-  const half = [b.w / 2, b.h / 2, b.d / 2];
   let tmin = 0;
   let tmax = max;
-  for (let a = 0; a < 3; a++) {
-    if (Math.abs(ld[a]!) < 1e-9) {
-      if (Math.abs(lo[a]!) > half[a]!) return Infinity;
+  for (let axis = 0; axis < 3; axis++) {
+    const j = k + axis * 3;
+    const lo = rx * a[j]! + ry * a[j + 1]! + rz * a[j + 2]!;
+    const ld = d[0] * a[j]! + d[1] * a[j + 1]! + d[2] * a[j + 2]!;
+    const half = (axis === 0 ? b.w : axis === 1 ? b.h : b.d) / 2;
+    if (Math.abs(ld) < 1e-9) {
+      if (Math.abs(lo) > half) return Infinity;
       continue;
     }
-    let t1 = (-half[a]! - lo[a]!) / ld[a]!;
-    let t2 = (half[a]! - lo[a]!) / ld[a]!;
+    let t1 = (-half - lo) / ld;
+    let t2 = (half - lo) / ld;
     if (t1 > t2) [t1, t2] = [t2, t1];
-    tmin = Math.max(tmin, t1);
-    tmax = Math.min(tmax, t2);
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
     if (tmin > tmax) return Infinity;
   }
   return tmin;
@@ -687,18 +710,19 @@ export function rayBox(b: BattleBox, o: readonly [number, number, number], d: re
 
 /** Khối đặc chứa điểm (x, y, z) (nới thêm `pad`), hoặc null. */
 export function boxAt(index: BoxIndex, x: number, y: number, z: number, pad = 0): BattleBox | null {
-  const list = index.grid.get(`${Math.floor(x / index.cell)},${Math.floor(z / index.cell)}`);
+  const list = index.grid.get(cellKey(Math.floor(x / index.cell), Math.floor(z / index.cell)));
   if (!list) return null;
+  const a = index.axes;
   for (const i of list) {
     const b = index.boxes[i]!;
-    const { ux, uy, uz } = basis(b);
+    const k = i * 9;
     const rx = x - b.x;
     const ry = y - b.y;
     const rz = z - b.z;
     if (
-      Math.abs(rx * ux[0] + ry * ux[1] + rz * ux[2]) < b.w / 2 + pad &&
-      Math.abs(rx * uy[0] + ry * uy[1] + rz * uy[2]) < b.h / 2 + pad &&
-      Math.abs(rx * uz[0] + ry * uz[1] + rz * uz[2]) < b.d / 2 + pad
+      Math.abs(rx * a[k]! + ry * a[k + 1]! + rz * a[k + 2]!) < b.w / 2 + pad &&
+      Math.abs(rx * a[k + 3]! + ry * a[k + 4]! + rz * a[k + 5]!) < b.h / 2 + pad &&
+      Math.abs(rx * a[k + 6]! + ry * a[k + 7]! + rz * a[k + 8]!) < b.d / 2 + pad
     )
       return b;
   }

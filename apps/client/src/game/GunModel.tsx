@@ -5,7 +5,6 @@ import {
   CylinderGeometry,
   DoubleSide,
   Euler,
-  FrontSide,
   LatheGeometry,
   Matrix4,
   MeshStandardMaterial,
@@ -92,7 +91,8 @@ export function gearMaterial(key: string, opacity = 1): MeshStandardMaterial {
   if (m) return m;
   const d = MATS[key] ?? MATS.metal!;
   const alpha = Math.min(opacity, d.opacity ?? 1);
-  m = new MeshStandardMaterial({ color: d.color, metalness: d.metal ?? 0, roughness: d.rough ?? 0.7, transparent: alpha < 1, opacity: alpha, side: d.double ? DoubleSide : FrontSide });
+  m = new MeshStandardMaterial({ color: d.color, metalness: d.metal ?? 0, roughness: d.rough ?? 0.7, transparent: alpha < 1, opacity: alpha });
+  if (d.double) m.side = DoubleSide;
   if (alpha < 1) m.depthWrite = false;
   m.userData.detail = d.detail ?? "none";
   m.userData.detailSpace = "object";
@@ -199,6 +199,22 @@ function rail(z0: number, z1: number, y: number, w = 0.028): Part[] {
 }
 
 /**
+ * Thước ngắm sau kiểu khe (hai tai hai bên, giữa trống): đáy khe đúng đường ngắm `y`, nhìn xuyên qua được. Trước đây
+ * thước ngắm sau là một khối đặc cao quá đường ngắm, ngắm bằng mắt thì nó nằm sát mắt, che mất giữa màn hình.
+ */
+function notch(y: number, z: number, w = 0.03, base = 0.02): Part[] {
+  const ear = (w - 0.012) / 2;
+  return [
+    box("metal", w, base, 0.014, [0, y - base / 2 - 0.001, z]),
+    box("metal", ear, 0.012, 0.012, [(w - ear) / 2, y + 0.005, z]),
+    box("metal", ear, 0.012, 0.012, [-(w - ear) / 2, y + 0.005, z]),
+  ];
+}
+
+/** Đầu ruồi: cột mảnh, đỉnh đúng đường ngắm `y`, chân trên nòng ở `foot`. */
+const post = (y: number, z: number, foot: number): Part => box("metal", 0.005, y - foot, 0.008, [0, (y + foot) / 2, z]);
+
+/**
  * Thước ngắm sắt của súng trường bắn tỉa (ống ngắm giờ là phụ kiện rời): đầu ruồi trên nòng gần miệng, thước ngắm
  * sau trên hộp khoá nòng, và đế ray để lắp ống.
  */
@@ -206,7 +222,7 @@ function irons(y: number, frontZ: number, rearZ: number, barrelTop: number): Par
   return [
     box("metal", 0.004, y - barrelTop + 0.004, 0.006, [0, (y + barrelTop) / 2, frontZ]),
     box("metal", 0.018, 0.014, 0.012, [0, barrelTop + 0.006, frontZ]),
-    box("metal", 0.024, 0.016, 0.02, [0, y - 0.008, rearZ]),
+    ...notch(y, rearZ, 0.024, 0.014),
     box("metal", 0.03, 0.01, 0.16, [0, y - 0.017, 0.07]),
   ];
 }
@@ -302,8 +318,8 @@ const GUNS: Record<string, GunSpec> = {
       box("poly", 0.012, 0.012, 0.22, [-0.018, 0.11, -0.19]),
       box("poly", 0.012, 0.012, 0.2, [0, 0.05, -0.18], [-0.12, 0, 0]),
       box("poly", 0.045, 0.11, 0.025, [0, 0.08, -0.305]),
-      box("metal", 0.03, 0.03, 0.015, [0, 0.155, -0.04]),
-      box("metal", 0.012, 0.035, 0.012, [0, 0.15, 0.24]),
+      ...notch(0.165, -0.04),
+      post(0.165, 0.24, 0.135),
     ],
     // Mặt khoá nòng lộ ở cửa hất vỏ.
     action: () => [box("steel", 0.003, 0.016, 0.045, [-0.0265, 0.1, 0.07])],
@@ -326,8 +342,8 @@ const GUNS: Record<string, GunSpec> = {
       cyl("metal", 0.016, 0.1, [0, 0.095, 0.3]),
       cyl("metal", 0.01, 0.02, [0, 0.095, 0.35]),
       ...rail(-0.07, 0.25, 0.138, 0.026),
-      box("metal", 0.024, 0.03, 0.012, [0, 0.155, -0.05]),
-      box("metal", 0.01, 0.03, 0.012, [0, 0.155, 0.24]),
+      ...notch(0.16, -0.05, 0.026),
+      post(0.16, 0.24, 0.138),
       box("poly", 0.03, 0.05, 0.2, [0, 0.1, -0.17]),
       box("poly", 0.04, 0.09, 0.025, [0, 0.085, -0.28]),
     ],
@@ -350,8 +366,8 @@ const GUNS: Record<string, GunSpec> = {
       box("metal", 0.066, 0.01, 0.2, [0, 0.1, 0.31]),
       cyl("metal", 0.011, 0.1, [0, 0.105, 0.47]),
       cyl("metal", 0.015, 0.045, [0, 0.105, 0.54], { segs: 8 }),
-      box("metal", 0.01, 0.035, 0.012, [0, 0.165, 0.39]),
-      box("metal", 0.03, 0.03, 0.02, [0, 0.162, -0.07]),
+      post(0.172, 0.39, 0.143),
+      ...notch(0.172, -0.07),
       cyl("poly", 0.014, 0.075, [0, 0.035, 0.33], { axis: "y" }),
       magwell(0.11),
       grip(),
@@ -375,7 +391,8 @@ const GUNS: Record<string, GunSpec> = {
     parts: () => [
       box("metal", 0.048, 0.07, 0.3, [0, 0.085, 0.03]),
       cyl("metal", 0.022, 0.28, [0, 0.112, 0.02], { segs: 10 }),
-      box("metal", 0.03, 0.028, 0.04, [0, 0.128, 0.17]),
+      box("metal", 0.03, 0.016, 0.04, [0, 0.122, 0.17]),
+      ...notch(0.145, 0.17, 0.028, 0.012),
       box("wood", 0.05, 0.05, 0.2, [0, 0.075, 0.29]),
       cyl("wood", 0.018, 0.16, [0, 0.128, 0.27], { segs: 10 }),
       cyl("metal", 0.01, 0.1, [0, 0.128, 0.4], { segs: 8 }),
@@ -417,7 +434,8 @@ const GUNS: Record<string, GunSpec> = {
       box("poly", 0.006, 0.04, 0.05, [0.017, 0.178, 0.0]),
       box("poly", 0.006, 0.04, 0.05, [-0.017, 0.178, 0.0]),
       box("poly", 0.04, 0.006, 0.05, [0, 0.2, 0.0]),
-      box("glass", 0.028, 0.034, 0.003, [0, 0.178, 0.012]),
+      // Kính phải trong: trước đây là kính đục, ngắm bằng mắt thì che kín giữa màn hình.
+      box("reflex", 0.028, 0.034, 0.003, [0, 0.178, 0.012]),
       magwell(0.11),
       grip(),
       ...trigger(0.035, 0.02),
@@ -443,11 +461,12 @@ const GUNS: Record<string, GunSpec> = {
       box("poly", 0.062, 0.062, 0.2, [0, 0.1, 0.3]),
       cyl("metal", 0.013, 0.34, [0, 0.1, 0.57]),
       cyl("metal", 0.016, 0.05, [0, 0.1, 0.765], { segs: 8 }),
-      box("metal", 0.02, 0.03, 0.14, [0, 0.175, 0.32]),
-      box("metal", 0.012, 0.04, 0.012, [0, 0.15, 0.26]),
-      box("metal", 0.012, 0.04, 0.012, [0, 0.15, 0.38]),
-      box("metal", 0.01, 0.05, 0.015, [0, 0.13, 0.72]),
-      box("metal", 0.03, 0.03, 0.03, [0, 0.168, -0.1]),
+      // Quai xách lệch sang trái, khỏi chắn đường ngắm.
+      box("metal", 0.016, 0.026, 0.14, [0.038, 0.15, 0.32]),
+      box("metal", 0.012, 0.03, 0.012, [0, 0.145, 0.26]),
+      box("metal", 0.012, 0.03, 0.012, [0, 0.145, 0.38]),
+      post(0.17, 0.72, 0.11),
+      ...notch(0.17, -0.1),
       ...bipod(0.07, 0.56, 0.3),
       grip(),
       ...trigger(0.03, 0.03),
@@ -500,7 +519,7 @@ const GUNS: Record<string, GunSpec> = {
       cyl("metal", 0.011, 0.4, [0, 0.095, 0.45]),
       cyl("wood", 0.016, 0.16, [0, 0.118, 0.22], { segs: 10 }),
       cyl("metal", 0.009, 0.2, [0, 0.122, 0.34], { segs: 8 }),
-      box("metal", 0.012, 0.035, 0.015, [0, 0.12, 0.6]),
+      box("metal", 0.012, 0.02, 0.015, [0, 0.11, 0.6]),
       box("steel", 0.008, 0.012, 0.26, [0, 0.074, 0.47]),
       ...trigger(0.0, 0.035),
       ...irons(0.13, 0.62, 0.17, 0.105),
@@ -543,7 +562,7 @@ const GUNS: Record<string, GunSpec> = {
   // AWM: khung báng xanh ô liu có lỗ ngón cái, nòng to với hãm nẩy, ống ngắm lớn, chân chống.
   awm: {
     muzzle: [0, 0.1, 0.78],
-    sight: 0.13,
+    sight: 0.16,
     support: [0.0, 0.04, 0.25],
     stock: 0.46,
     eject: [-0.021, 0.12, 0.02],
@@ -562,7 +581,8 @@ const GUNS: Record<string, GunSpec> = {
       ...trigger(0.035, 0.02),
       ...bipod(0.05, 0.42, 0.28),
       ...rail(-0.1, 0.14, 0.142, 0.026),
-      ...irons(0.13, 0.72, 0.19, 0.115),
+      // Thước ngắm cao hơn ray (ray nằm ngay trên hộp khoá nòng, trước đây che đường ngắm).
+      ...irons(0.16, 0.72, 0.19, 0.115),
     ],
     // Tay khoá và thân khoá lộ ở cửa hất vỏ.
     action: () => [...bolt(0.115, -0.08), box("steel", 0.004, 0.014, 0.07, [-0.0205, 0.115, 0.0])],

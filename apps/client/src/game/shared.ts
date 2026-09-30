@@ -13,6 +13,8 @@ export const localMotion = {
   sliding: false,
   // Battleground: ngồi xổm, ngắm, góc ngắm lên xuống, bộ đếm phát bắn (để giật súng).
   crouching: false,
+  /** Nằm sấp. */
+  prone: false,
   aiming: false,
   aimPitch: 0,
   firing: 0,

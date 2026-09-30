@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, MELEE, SIGHTS, WEAPON, bulletAt, bulletDrop, bulletSteps, zoomOf, HITBOX, type SightId, type WeaponDef } from "@tentides/content";
+import { HEALS, MELEE, SIGHTS, WEAPON, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
@@ -10,7 +10,7 @@ import { isTyping, keys, look, view } from "../input.ts";
 import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
 import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
-import { bodies, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, setBattleHud, stance, stopHit } from "./runtime.ts";
+import { bodies, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, seat, setBattleHud, stance, stopHit, type Body } from "./runtime.ts";
 import { physicsProbe } from "./surface.ts";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 
@@ -84,8 +84,8 @@ const PUNCH: Record<WeaponDef["class"], { pitch: number; roll: number; body: num
  * ngang lượn theo một đường cố định của từng khẩu (sang một bên rồi quay lại), càng về cuối loạt càng lệch, cộng chút
  * rung tay ngẫu nhiên. Ngắm, ngồi xổm thì đỡ giật; chạy, nhảy thì giật mạnh hơn.
  */
-export function recoilFor(def: WeaponDef, shot: number, st: { aiming: boolean; crouching: boolean; moving: boolean; airborne: boolean }): { up: number; side: number } {
-  const tame = (st.aiming ? 0.78 : 1) * (st.crouching ? 0.8 : 1) * (st.moving ? 1.15 : 1) * (st.airborne ? 1.6 : 1);
+export function recoilFor(def: WeaponDef, shot: number, st: { aiming: boolean; crouching: boolean; prone?: boolean; moving: boolean; airborne: boolean }): { up: number; side: number } {
+  const tame = (st.aiming ? 0.78 : 1) * (st.prone ? 0.55 : st.crouching ? 0.8 : 1) * (st.moving ? 1.15 : 1) * (st.airborne ? 1.6 : 1);
   const seed = weaponSeed(def.id) * Math.PI * 2;
   // Liên thanh: phát đầu nhẹ, nặng dần tới phát thứ tám, sau đó chững lại (nòng đã "lên" hết cỡ, chủ yếu lượn ngang).
   const ramp = def.auto ? (shot === 0 ? 0.7 : shot < 8 ? 0.9 + shot * 0.05 : Math.max(0.8, 1.25 - (shot - 8) * 0.04)) : 1;
@@ -96,43 +96,22 @@ export function recoilFor(def: WeaponDef, shot: number, st: { aiming: boolean; c
   return { up, side };
 }
 
-/**
- * Tia gặp thân người (hình trụ đứng + đầu cầu). Trả về khoảng cách và phần trúng.
- * Kích thước lấy từ `HITBOX` dùng chung với server: trước đây mỗi bên tự chế số riêng và lệch
- * ~18 cm ở chiều cao đứng, nên bắn vào khoảng 1,5 m client bảo thân còn server bảo đầu, và server
- * thắng trong im lặng (client không được báo phát bắn bị từ chối).
- */
-function rayPerson(o: Vector3, d: Vector3, b: { x: number; y: number; z: number; crouch: boolean }): { t: number; part: "head" | "body" } | null {
-  const headY = b.y + (b.crouch ? HITBOX.headY.crouch : HITBOX.headY.stand);
-  let best: { t: number; part: "head" | "body" } | null = null;
-  {
-    const ox = o.x - b.x;
-    const oy = o.y - headY;
-    const oz = o.z - b.z;
-    const bq = ox * d.x + oy * d.y + oz * d.z;
-    const c = ox * ox + oy * oy + oz * oz - HITBOX.headR * HITBOX.headR;
-    const disc = bq * bq - c;
-    if (disc >= 0) {
-      const t = -bq - Math.sqrt(disc);
-      if (t > 0) best = { t, part: "head" };
-    }
-  }
-  // Thân: trụ đứng bán kính 0,3 từ chân tới vai.
-  const top = b.y + (b.crouch ? HITBOX.bodyTop.crouch : HITBOX.bodyTop.stand);
-  const ox = o.x - b.x;
-  const oz = o.z - b.z;
-  const a = d.x * d.x + d.z * d.z;
-  if (a > 1e-8) {
-    const bq = ox * d.x + oz * d.z;
-    const c = ox * ox + oz * oz - HITBOX.bodyR * HITBOX.bodyR;
-    const disc = bq * bq - a * c;
-    if (disc >= 0) {
-      const t = (-bq - Math.sqrt(disc)) / a;
-      const y = o.y + d.y * t;
-      if (t > 0 && y > b.y + 0.05 && y < top && (!best || t < best.t)) best = { t, part: "body" };
-    }
-  }
-  return best;
+const _ro: [number, number, number] = [0, 0, 0];
+const _rd: [number, number, number] = [0, 0, 0];
+/** Tia gặp thân người (đứng, ngồi xổm, nằm sấp; dùng chung cách tính với server). Trả về khoảng cách và phần trúng. */
+function rayPerson(o: Vector3, d: Vector3, b: Body): { t: number; part: "head" | "body" } | null {
+  _ro[0] = o.x;
+  _ro[1] = o.y;
+  _ro[2] = o.z;
+  _rd[0] = d.x;
+  _rd[1] = d.y;
+  _rd[2] = d.z;
+  return rayBody(_ro, _rd, { x: b.x, y: b.y, z: b.z, rotY: b.rotY, crouch: b.crouch, prone: b.prone });
+}
+
+/** Người này có đánh được không (còn sống, không cùng đội với mình). */
+function enemy(id: string, b: Body, me: string, team: string): boolean {
+  return id !== me && b.alive && !(team && b.team === team);
 }
 
 export function Shooter({ room }: { room: IslandRoom }) {
@@ -200,6 +179,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
     };
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.repeat) return;
+      // Đang lái xe tăng: bàn phím dành cho xe (Vehicles).
+      if (seat.id && e.code !== "Tab" && e.code !== "KeyB" && e.code !== "Escape") return;
       switch (e.code) {
         case "Digit1":
           return switchTo("primary1");
@@ -341,6 +322,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
    */
   const melee = () => {
     const now = performance.now();
+    if (seat.id) return;
     if (!alive() || now - gun.lastMelee < MELEE.cooldown * 1000 || now < gun.readyAt) return;
     gun.lastMelee = now;
     stance.meleeAt = now;
@@ -354,8 +336,9 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const fz = -Math.cos(view.yaw);
     let target = "";
     let best = MELEE.range;
+    const team = room.state.players.get(myId(room))?.team ?? "";
     for (const [id, b] of bodies) {
-      if (id === myId(room) || !b.alive) continue;
+      if (!enemy(id, b, myId(room), team)) continue;
       const dx = b.x - localPosition.x;
       const dz = b.z - localPosition.z;
       const d = Math.hypot(dx, dz);
@@ -407,7 +390,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const inp = input.current;
     const now = performance.now();
     updateRecoil(dt, now);
-    if (!me || !k || !me.alive || menuOpen()) {
+    if (!me || !k || !me.alive || menuOpen() || seat.id) {
       stance.aiming = false;
       inp.fire = false;
       return;
@@ -457,7 +440,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       let spread = stance.aiming ? def.adsSpread : def.hipSpread;
       if (stance.moving) spread *= stance.aiming ? 1.6 : 1.5;
       if (stance.airborne) spread *= 3;
-      if (stance.crouching) spread *= 0.75;
+      if (stance.prone) spread *= stance.moving ? 1 : 0.5;
+      else if (stance.crouching) spread *= 0.75;
       stance.spread = spread + bloom.current;
     }
 
@@ -591,8 +575,9 @@ export function Shooter({ room }: { room: IslandRoom }) {
     let aimT = maxRange;
     const hitCam = physics.castRay(new rapier.Ray(o, fwd), maxRange, true, undefined, undefined, undefined, localBody.current ?? undefined);
     if (hitCam) aimT = hitCam.timeOfImpact;
+    const team = room.state.players.get(me)?.team ?? "";
     for (const [id, b] of bodies) {
-      if (id === me || !b.alive) continue;
+      if (!enemy(id, b, me, team)) continue;
       const h = rayPerson(o, fwd, b);
       if (h && h.t < aimT) aimT = h.t;
     }
@@ -600,7 +585,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Đầu nòng: trước ngực lệch phải (góc thứ ba), hay ngay dưới mắt (góc nhất / ống ngắm).
     let muzzle = first
       ? camPos.clone().addScaledVector(fwd, 0.4).addScaledVector(right, 0.08).add(new Vector3(0, -0.07, 0))
-      : new Vector3(localPosition.x, localPosition.y + (stance.crouching ? 1.05 : 1.42), localPosition.z).addScaledVector(right, 0.28).addScaledVector(fwd, 0.75);
+      : new Vector3(localPosition.x, localPosition.y + (stance.prone ? 0.36 : stance.crouching ? 1.05 : 1.42), localPosition.z).addScaledVector(right, stance.prone ? 0.12 : 0.28).addScaledVector(fwd, stance.prone ? 1.35 : 0.75);
     // Góc thứ ba: lấy đúng đầu nòng khẩu súng trên tay nhân vật.
     const held = first ? null : localAvatar.current?.getObjectByName("weapon");
     if (held?.visible) {
@@ -609,7 +594,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     }
     // Đầu nòng thò qua tường (đứng sát vật cản): đạn xuất phát ngay mặt tường phía mình, không bắn xuyên qua được.
     {
-      const from = first ? camPos.clone() : new Vector3(localPosition.x, localPosition.y + (stance.crouching ? 1.05 : 1.42), localPosition.z);
+      const from = first ? camPos.clone() : new Vector3(localPosition.x, localPosition.y + (stance.prone ? 0.36 : stance.crouching ? 1.05 : 1.42), localPosition.z).addScaledVector(fwd, stance.prone ? 0.6 : 0);
       const to = muzzle.clone().sub(from);
       const len = to.length();
       if (len > 1e-3) {
@@ -659,7 +644,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
           wall = true;
         }
         for (const [id, b] of bodies) {
-          if (id === me || !b.alive) continue;
+          if (!enemy(id, b, me, team)) continue;
           const h = rayPerson(a3, cd, b);
           if (h && h.t < t) {
             t = h.t;
@@ -762,7 +747,11 @@ export function Shooter({ room }: { room: IslandRoom }) {
 
 /** Gục rồi: chuyển sang xem người còn sống kế tiếp. */
 export function nextSpectate(room: IslandRoom) {
-  const alive = [...room.state.players.entries()].filter(([, p]) => p.alive).map(([id]) => id);
+  // Đồng đội: xem người trong đội mình trước (để chọn máy nhập vào).
+  const team = room.state.players.get(myId(room))?.team ?? "";
+  const all = [...room.state.players.entries()].filter(([, p]) => p.alive);
+  const mates = team ? all.filter(([, p]) => p.team === team) : [];
+  const alive = (mates.length ? mates : all).map(([id]) => id);
   if (!alive.length) return;
   const cur = getBattleHud().spectating;
   const i = alive.indexOf(cur);

@@ -22,16 +22,19 @@ import {
   type AmmoId,
   type WeaponClass,
 } from "@tentides/content";
-import { BATTLE_TIMES, BATTLE_WEATHERS, Messages } from "@tentides/protocol";
+import { BATTLE_TIMES, BATTLE_WEATHERS, MAX_BATTLE_BOTS, Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { look } from "../input.ts";
 import { localPosition } from "../shared.ts";
 import { DEFAULT_SETTINGS, getSettings, setSettings, useSettings } from "../settings.ts";
+import { DEFAULT_GRAPHICS, QUALITY_LABEL, setGraphics, toggleStats, useGraphics, useStatsOpen, type Quality } from "../graphics.ts";
 import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/guns.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
 import { getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
 import { ItemIcon } from "./ItemIcons.tsx";
+import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.tsx";
+import { teamColor } from "./Vehicles.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -143,28 +146,75 @@ function ScopeView() {
   );
 }
 
+/**
+ * Vòng lặp theo khung hình cho HUD: `live()` chỉnh thẳng DOM (khoảng hở tâm ngắm, hướng la bàn...) mỗi khung,
+ * `signature()` tóm tắt phần cấu trúc; React chỉ dựng lại khi chữ ký đổi (bật ngắm, trúng đạn, bị bắn...), thay
+ * vì dựng lại cả khối 60 lần mỗi giây.
+ */
+function useLive(live: () => void, signature: () => string) {
+  const [, set] = useState("");
+  const liveRef = useRef(live);
+  const sigRef = useRef(signature);
+  liveRef.current = live;
+  sigRef.current = signature;
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      liveRef.current();
+      set(sigRef.current());
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+}
+
 function Reticle({ room }: { room: IslandRoom }) {
-  useFrameTick(60);
+  const cross = useRef<HTMLDivElement>(null);
+  const hurtBox = useRef<HTMLDivElement>(null);
   const hud = getBattleHud();
   const me = room.state.players.get(myId(room));
-  if (!me?.alive) return null;
   const now = performance.now();
   const scoped = stance.aiming && stance.scoped;
-  // Khoảng hở tâm ngắm theo độ toả. Ánh xạ radian → điểm ảnh bằng tan() theo chiều cao màn hình và
-  // FOV đang dùng: trước đây dùng hằng số 900 nên ở FOV 100 khoảng hở báo thiếu ~30% so với
-  // góc tán thật, tức tâm ngắm nói dối về độ chính xác.
-  const pxPerRad = window.innerHeight / 2 / Math.tan((getSettings().fov * Math.PI) / 360 / (stance.aiming ? stance.zoom : 1));
-  const gap = Math.max(3, Math.min(60, Math.tan(stance.spread) * pxPerRad));
-  const hitAge = hud.hit ? now - hud.hit.at : 9999;
-  // Sát thương vừa gặp: để hiện số đòn (đã có sẵn trong `hit`) cho người chơi biết mình bắn mạnh
-  // hay yếu, và biết bắn vào giáp có ăn không.
-  const dmgAge = hud.hit ? now - hud.hit.at : 9999;
+  const hit = hud.hit && now - hud.hit.at < 260 ? hud.hit : null;
+  // Số sát thương và quầng đỏ sống lâu hơn dấu trúng nên cần cửa sổ riêng.
+  const dmg = hud.hit && now - hud.hit.at < 800 && hud.hit.kind !== "kill" ? hud.hit : null;
+  const flash = newestHurt(hud, now);
+  const hurts = hud.hurts.filter((h) => now - h.at < 1400);
+  useLive(
+    () => {
+      // Khoảng hở tâm ngắm theo độ toả. Ánh xạ radian → điểm ảnh bằng tan() theo chiều cao màn hình và
+      // FOV đang dùng: trước đây dùng hằng số 900 nên ở FOV 100 khoảng hở báo thiếu ~30% so với
+      // góc tán thật, tức tâm ngắm nói dối về độ chính xác.
+      const pxPerRad = window.innerHeight / 2 / Math.tan((getSettings().fov * Math.PI) / 360 / (stance.aiming ? stance.zoom : 1));
+      const gap = Math.max(3, Math.min(60, Math.tan(stance.spread) * pxPerRad));
+      cross.current?.style.setProperty("--gap", `${gap.toFixed(1)}px`);
+      // Hướng bị bắn so với hướng mình đang nhìn (look.yaw là hướng camera nhìn về −sin, −cos): xoay theo chuột.
+      const box = hurtBox.current;
+      if (box)
+        for (const el of box.children as HTMLCollectionOf<HTMLElement>) {
+          const rel = Number(el.dataset.angle) - (look.yaw + Math.PI);
+          el.style.transform = `rotate(${((-rel * 180) / Math.PI).toFixed(1)}deg)`;
+        }
+    },
+    () => {
+      const h = getBattleHud();
+      const t = performance.now();
+      const p = room.state.players.get(myId(room));
+      const hitAt = h.hit && t - h.hit.at < 260 ? h.hit.at : 0;
+      const dmgAt = h.hit && t - h.hit.at < 800 && h.hit.kind !== "kill" ? h.hit.at : 0;
+      const flashAt = newestHurt(h, t) ?? 0;
+      const hurtAts = h.hurts.filter((x) => t - x.at < 1400).map((x) => x.at).join(",");
+      return `${p?.alive}|${p?.vehicle}|${(p?.hp ?? 100) < 30}|${stance.aiming}|${stance.scoped}|${stance.firstPerson}|${stance.sight}|${stance.zero}|${gun.weapon}|${hitAt}|${dmgAt}|${flashAt}|${hurtAts}`;
+    },
+  );
+  if (!me?.alive || me.vehicle) return null;
   return (
     <>
       {scoped ? (
         <ScopeView />
-      ) : stance.aiming && stance.firstPerson && stance.sight ? null : (
-        <div className={`b-cross ${stance.aiming ? "ads" : ""}`} style={{ ["--gap" as string]: `${gap}px` }}>
+      ) : stance.aiming && stance.firstPerson ? null : (
+        <div ref={cross} className={`b-cross ${stance.aiming ? "ads" : ""}`}>
           <i className="t" />
           <i className="b" />
           <i className="l" />
@@ -172,25 +222,20 @@ function Reticle({ room }: { room: IslandRoom }) {
           <b />
         </div>
       )}
-      {hitAge < 260 && (
-        <div className={`b-hitmark ${hud.hit!.kind}${hud.hit!.armor ? " armor" : ""}`} style={{ opacity: 1 - hitAge / 260 }} />
-      )}
-      {dmgAge < 800 && hud.hit!.kind !== "kill" && (
-        <div className={`b-dmg ${hud.hit!.kind}${hud.hit!.armor ? " armor" : ""}`} style={{ opacity: Math.min(1, (800 - dmgAge) / 300) }}>
-          {hud.hit!.amount}
+      {/* Mờ dần bằng CSS animation (key đổi thì chạy lại từ đầu). */}
+      {hit && <div key={hit.at} className={`b-hitmark ${hit.kind}${hit.armor ? " armor" : ""}`} style={{ animationDelay: `${-(now - hit.at)}ms` }} />}
+      {dmg && (
+        <div key={dmg.at} className={`b-dmg ${dmg.kind}${dmg.armor ? " armor" : ""}`} style={{ animationDelay: `${-(now - dmg.at)}ms` }}>
+          {dmg.amount}
         </div>
       )}
-      {hud.hurts
-        .filter((h) => now - h.at < 1400)
-        .map((h) => {
-          // Hướng bị bắn so với hướng mình đang nhìn (look.yaw là hướng camera nhìn về −sin, −cos).
-          const rel = h.angle - (look.yaw + Math.PI);
-          return <div key={h.at} className="b-hurt" style={{ transform: `rotate(${(-rel * 180) / Math.PI}deg)`, opacity: 1 - (now - h.at) / 1400 }} />;
-        })}
-      {newestHurt(hud, now) !== null && (
-        <div className="b-flash" style={{ opacity: Math.max(0, 1 - (now - newestHurt(hud, now)!) / 160) }} />
-      )}
-      {me.hp < 30 && <div className="b-lowhp" style={{ opacity: 0.35 + 0.35 * Math.sin(now / 180) }} />}
+      {flash !== null && <div key={flash} className="b-flash" style={{ animationDelay: `${-(now - flash)}ms` }} />}
+      <div ref={hurtBox}>
+        {hurts.map((h) => (
+          <div key={h.at} className="b-hurt" data-angle={h.angle} style={{ animationDelay: `${-(now - h.at)}ms` }} />
+        ))}
+      </div>
+      {me.hp < 30 && <div className="b-lowhp" />}
     </>
   );
 }
@@ -206,25 +251,46 @@ function newestHurt(hud: ReturnType<typeof getBattleHud>, now: number): number |
 
 // ---------------------------------------------------------------------------- la bàn
 
+const COMPASS_MARKS = 13;
+
 function Compass() {
-  useFrameTick(30);
-  // Hướng nhìn: bắc (−z) là 0°.
-  const heading = ((((-look.yaw + Math.PI) * 180) / Math.PI) % 360 + 360) % 360;
-  const marks = [];
-  for (let d = -90; d <= 90; d += 15) {
-    const deg = Math.round((heading + d + 360) % 360 / 15) * 15 % 360;
-    const off = ((deg - heading + 540) % 360) - 180;
-    const label = { 0: "B", 90: "Đ", 180: "N", 270: "T" }[deg] ?? (deg % 45 === 0 ? String(deg) : "·");
-    marks.push(
-      <span key={d} style={{ left: `${50 + (off / 90) * 50}%` }} className={label.length === 1 && label !== "·" ? "card" : ""}>
-        {label}
-      </span>,
-    );
-  }
+  const marks = useRef<(HTMLSpanElement | null)[]>([]);
+  const readout = useRef<HTMLElement>(null);
+  const last = useRef(NaN);
+  useLive(
+    () => {
+      // Hướng nhìn: bắc (−z) là 0°. Chỉ chỉnh DOM khi hướng đổi quá một phần mười độ.
+      const heading = ((((-look.yaw + Math.PI) * 180) / Math.PI) % 360 + 360) % 360;
+      if (Math.abs(heading - last.current) < 0.1) return;
+      last.current = heading;
+      for (let n = 0; n < COMPASS_MARKS; n++) {
+        const el = marks.current[n];
+        if (!el) continue;
+        const d = -90 + n * 15;
+        const deg = ((Math.round(((heading + d + 360) % 360) / 15) * 15) % 360);
+        const off = ((deg - heading + 540) % 360) - 180;
+        const label = { 0: "B", 90: "Đ", 180: "N", 270: "T" }[deg] ?? (deg % 45 === 0 ? String(deg) : "·");
+        el.style.left = `${(50 + (off / 90) * 50).toFixed(2)}%`;
+        if (el.textContent !== label) {
+          el.textContent = label;
+          el.className = label.length === 1 && label !== "·" ? "card" : "";
+        }
+      }
+      if (readout.current) readout.current.textContent = `${Math.round(heading)}°`;
+    },
+    () => "",
+  );
   return (
     <div className="b-compass">
-      {marks}
-      <em>{Math.round(heading)}°</em>
+      {Array.from({ length: COMPASS_MARKS }, (_, n) => (
+        <span
+          key={n}
+          ref={(el) => {
+            marks.current[n] = el;
+          }}
+        />
+      ))}
+      <em ref={readout} />
     </div>
   );
 }
@@ -278,6 +344,22 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
           {z.nr > 0 && <circle cx={z.nx} cy={z.nz} r={z.nr} className="bm-next" />}
         </>
       )}
+      {/* Xe tăng của đội mình và xe bỏ trống (xe địch thì không lộ trên bản đồ). */}
+      {[...room.state.vehicles.values()]
+        .filter((v) => v.hp > 0 && (!v.driver || (me?.team && v.team === me.team) || v.driver === myId(room)))
+        .map((v, i) => (
+          <rect key={`v${i}`} x={v.x - 4} y={v.z - 4} width={8} height={8} className="bm-tank" style={{ fill: v.driver ? teamColor(v.team) : "#bbb" }} />
+        ))}
+      {/* Đồng đội. */}
+      {me?.team &&
+        [...room.state.players.entries()]
+          .filter(([id, p]) => id !== myId(room) && p.alive && p.team === me.team)
+          .map(([id, p]) => <circle key={id} cx={p.x} cy={p.z} r={big ? 3.5 : 4.5} className="bm-mate" />)}
+      {me?.team === myId(room) && lastOrder.kind !== "follow" && lastOrder.at > 0 && (
+        <g transform={`translate(${lastOrder.x} ${lastOrder.z})`}>
+          <path d="M-6,-6 L6,6 M6,-6 L-6,6" className="bm-order" />
+        </g>
+      )}
       {me && (
         <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180})`}>
           <path d="M0,-9 L6,6 L0,3 L-6,6 Z" className="bm-me" />
@@ -292,7 +374,7 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
 function Vitals({ room }: { room: IslandRoom }) {
   useFrameTick(15);
   const me = room.state.players.get(myId(room));
-  if (!me || !me.alive) return null;
+  if (!me || !me.alive || me.vehicle) return null;
   const k = me.kit;
   const now = performance.now();
   const reloading = k.reloading || gun.reloadUntil > now;
@@ -449,12 +531,26 @@ function KillFeed({ room }: { room: IslandRoom }) {
       {feed.map((k) => (
         <div key={k.n} className={k.killer === me || k.victim === me ? "me" : ""}>
           {k.killer ? <b>{nameOf(room, k.killer)}</b> : null}
-          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
+          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : k.weapon === "tank" ? "⛟ pháo" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
           <b className="v">{nameOf(room, k.victim)}</b>
         </div>
       ))}
     </div>
   );
+}
+
+/** Thông báo ngắn giữa màn hình (lệnh cho đội, hết tiền...), tự tắt sau 1,8 giây. */
+function Toast() {
+  const hud = useBattleHud();
+  const [, tick] = useState(0);
+  const age = hud.toast ? performance.now() - hud.toast.at : Infinity;
+  useEffect(() => {
+    if (age > 1800) return;
+    const t = setTimeout(() => tick((n) => n + 1), 1800 - age);
+    return () => clearTimeout(t);
+  }, [age]);
+  if (!hud.toast || age > 1800) return null;
+  return <div className="b-toast">{hud.toast.text}</div>;
 }
 
 function Pickup() {
@@ -588,6 +684,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
     phase: st.phase,
     host: st.hostId,
     bots: st.bots,
+    mode: st.battleMode,
     weather: st.weatherPick,
     time: st.timePick,
     players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color })),
@@ -602,7 +699,21 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <strong>{room.roomId}</strong>
       </div>
       <h2>Battleground</h2>
-      <p>Xuất phát ngẫu nhiên khắp đảo · bấm B mua vũ khí · vùng an toàn thu hẹp dần · người cuối cùng còn sống thắng.</p>
+      <div className="b-mode-pick">
+        <button className={s.mode === "solo" ? "on" : ""} disabled={!isHost} onClick={() => room.send(Messages.battleSettings, { mode: "solo" })}>
+          <strong>Sinh tồn</strong>
+          <span>Một mình, người cuối cùng còn sống thắng</span>
+        </button>
+        <button className={s.mode === "squad" ? "on" : ""} disabled={!isHost} onClick={() => room.send(Messages.battleSettings, { mode: "squad" })}>
+          <strong>Đồng đội</strong>
+          <span>Mỗi người dẫn 5 máy (bắn tỉa, súng trường, súng máy, lái xe tăng), đội cuối cùng còn người thắng</span>
+        </button>
+      </div>
+      <p>
+        {s.mode === "squad"
+          ? "Mỗi đội xuất phát cùng một chỗ, có xe tăng riêng · F/G/H ra lệnh cho đội · gục thì nhập vào máy còn sống · Z nằm bắn · E lên xe tăng."
+          : "Xuất phát ngẫu nhiên khắp đảo · bấm B mua vũ khí · vùng an toàn thu hẹp dần · người cuối cùng còn sống thắng. Có vài xe tăng bỏ trống trên đảo."}
+      </p>
       <ul className="b-lobby-players">
         {s.players.map((p) => (
           <li key={p.id}>
@@ -613,8 +724,8 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         ))}
       </ul>
       <label className="b-bots">
-        Máy (bot) cùng chơi: <strong>{s.bots}</strong>
-        <input type="range" min={0} max={12} value={s.bots} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { bots: Number(e.target.value) })} />
+        {s.mode === "squad" ? "Tổng số máy (gồm 5 máy theo mỗi người, còn lại chia thành đội máy)" : "Máy (bot) cùng chơi"}: <strong>{s.mode === "squad" ? Math.max(s.bots, s.players.length * 5) : s.bots}</strong>
+        <input type="range" min={0} max={MAX_BATTLE_BOTS} value={s.bots} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { bots: Number(e.target.value) })} />
       </label>
       <div className="b-sky-pick">
         <label>
@@ -642,7 +753,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
       </div>
       {isHost ? (
         <button className="primary big" onClick={() => room.send(Messages.start)}>
-          <CrossIcon size={18} /> Bắt đầu trận ({s.players.length + s.bots} người)
+          <CrossIcon size={18} /> Bắt đầu trận ({s.players.length + (s.mode === "squad" ? Math.max(s.bots, s.players.length * 5) : s.bots)} người)
         </button>
       ) : (
         <p className="muted">Chờ chủ phòng bắt đầu…</p>
@@ -651,7 +762,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <LogOut size={16} /> Rời phòng
       </button>
       <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · E nhặt · B cửa hàng · Tab bảng điểm · T đổi góc nhìn
+        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · E nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: F tới điểm, G giữ chỗ, H theo sau
       </p>
     </div>
   );
@@ -660,7 +771,9 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
 function Scoreboard({ room }: { room: IslandRoom }) {
   const hud = useBattleHud();
   const rows = useRoomSnapshot(room, (s) =>
-    [...s.players.entries()].map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot })).sort((a, b) => Number(b.alive) - Number(a.alive) || b.kills - a.kills),
+    [...s.players.entries()]
+      .map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot, team: p.team }))
+      .sort((a, b) => (a.team < b.team ? -1 : a.team > b.team ? 1 : 0) || Number(b.alive) - Number(a.alive) || b.kills - a.kills),
   );
   const phase = useRoomSnapshot(room, (s) => s.phase);
   if (!hud.scoreboard && phase !== "ended") return null;
@@ -671,7 +784,10 @@ function Scoreboard({ room }: { room: IslandRoom }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className={`${r.alive ? "" : "dead"} ${r.id === myId(room) ? "me" : ""}`}>
-              <td>{r.name}</td>
+              <td>
+                {r.team && <i className="b-team-dot" style={{ background: teamColor(r.team) }} title={teamName(room, r.team)} />}
+                {r.name}
+              </td>
               <td>{r.kills} hạ gục</td>
               <td>{r.alive ? "còn sống" : "đã gục"}</td>
             </tr>
@@ -691,6 +807,8 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
       phase: st.phase,
       alive: p?.alive ?? false,
       winner: st.winner,
+      team: p?.team ?? "",
+      squad: st.battleMode === "squad",
       kills: p?.kills ?? 0,
       aliveCount: st.aliveCount,
       host: st.hostId,
@@ -705,7 +823,8 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
     if ((s.phase === "battle" || s.phase === "prep") && !s.alive && !rank) {
       setRank(s.aliveCount + 1);
       // Xem kẻ đã hạ mình, không thì người còn sống đầu tiên.
-      if (s.killer && room.state.players.get(s.killer)?.alive) setBattleHud({ spectating: s.killer });
+      // Đồng đội: xem người trong đội mình (để chọn máy nhập vào).
+      if (s.killer && !s.squad && room.state.players.get(s.killer)?.alive) setBattleHud({ spectating: s.killer });
       else nextSpectate(room);
     }
     if (s.alive && rank) setRank(0);
@@ -716,18 +835,18 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   });
 
   if (s.phase === "ended") {
-    const won = s.winner === me;
+    const won = s.squad ? !!s.team && s.winner === s.team : s.winner === me;
     return (
       <div className={`b-end ${won ? "win" : ""}`}>
         {won ? (
           <>
             <Trophy size={48} />
             <h1>WINNER WINNER!</h1>
-            <p>Bạn là người cuối cùng còn sống · {s.kills} hạ gục</p>
+            <p>{s.squad ? "Đội bạn là đội cuối cùng còn trụ lại" : "Bạn là người cuối cùng còn sống"} · {s.kills} hạ gục</p>
           </>
         ) : (
           <>
-            <h1>{s.winner ? `${nameOf(room, s.winner)} chiến thắng` : "Không ai sống sót"}</h1>
+            <h1>{s.winner ? `${s.squad ? teamName(room, s.winner) : nameOf(room, s.winner)} chiến thắng` : "Không ai sống sót"}</h1>
             <p>
               Hạng #{rank || 1} · {s.kills} hạ gục
             </p>
@@ -751,7 +870,7 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
         <Skull size={28} />
         <h2>{s.killer ? `${nameOf(room, s.killer)} đã hạ bạn` : "Bạn đã gục"}</h2>
         <p>
-          {s.weapon === "zone" ? "vùng độc" : WEAPON.get(s.weapon)?.name ?? (s.weapon === "mine" ? "mìn" : s.weapon === "frag" ? "lựu đạn" : "")} · Hạng #{rank} · {s.kills} hạ gục
+          {s.weapon === "zone" ? "vùng độc" : WEAPON.get(s.weapon)?.name ?? (s.weapon === "mine" ? "mìn" : s.weapon === "frag" ? "lựu đạn" : s.weapon === "tank" ? "pháo xe tăng" : "")} · Hạng #{rank} · {s.kills} hạ gục
         </p>
         {hud.spectating && <p className="muted">Đang xem {nameOf(room, hud.spectating)} · bấm chuột để đổi người</p>}
         <button className="ghost" onClick={onLeave}>
@@ -764,6 +883,60 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
 }
 
 // ---------------------------------------------------------------------------- cài đặt
+
+const FPS_CHOICES = [30, 60, 90, 120, 0];
+const DPR_CHOICES = [0, 1, 1.25, 1.5, 2];
+
+/** Phần đồ hoạ của bảng cài đặt: mức chất lượng, giới hạn khung hình, độ phân giải, tự thích ứng, số liệu F3. */
+function GraphicsSettings() {
+  const g = useGraphics();
+  const stats = useStatsOpen();
+  const native = window.devicePixelRatio || 1;
+  return (
+    <>
+      <div className="b-set-title">Đồ hoạ</div>
+      <div className="b-set-row">
+        <span>Chất lượng</span>
+        <div className="b-set-seg">
+          {(["high", "medium", "low"] as Quality[]).map((q) => (
+            <button key={q} className={g.quality === q ? "on" : ""} onClick={() => setGraphics({ quality: q })}>
+              {QUALITY_LABEL[q]}
+            </button>
+          ))}
+        </div>
+        <em>P</em>
+      </div>
+      <label className="b-set-row">
+        <span>Giới hạn khung hình</span>
+        <select value={g.fpsCap} onChange={(e) => setGraphics({ fpsCap: Number(e.target.value) })}>
+          {FPS_CHOICES.map((f) => (
+            <option key={f} value={f}>
+              {f === 0 ? "Không giới hạn (nóng máy)" : `${f} FPS`}
+            </option>
+          ))}
+        </select>
+        <em />
+      </label>
+      <label className="b-set-row">
+        <span>Độ phân giải vẽ</span>
+        <select value={g.maxDpr} onChange={(e) => setGraphics({ maxDpr: Number(e.target.value) })}>
+          {DPR_CHOICES.filter((d) => d <= Math.max(1, native)).map((d) => (
+            <option key={d} value={d}>
+              {d === 0 ? "Tự động theo chất lượng" : d >= native ? `${d}x (gốc của màn hình)` : `${d}x`}
+            </option>
+          ))}
+        </select>
+        <em />
+      </label>
+      <label className="b-set-check">
+        <input type="checkbox" checked={g.adaptive} onChange={(e) => setGraphics({ adaptive: e.target.checked })} /> Tự hạ độ phân giải khi bị giật
+      </label>
+      <label className="b-set-check">
+        <input type="checkbox" checked={stats} onChange={toggleStats} /> Hiện số liệu hiệu năng (F3)
+      </label>
+    </>
+  );
+}
 
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useSettings();
@@ -778,7 +951,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
   return (
     <div className="b-settings" onMouseDown={(e) => e.stopPropagation()}>
       <header>
-        <Gear size={18} /> Cài đặt điều khiển
+        <Gear size={18} /> Cài đặt
         <button className="x" onClick={onClose} aria-label="Đóng">
           <X size={18} />
         </button>
@@ -795,7 +968,14 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
       <label className="b-set-check">
         <input type="checkbox" checked={s.toggleAim} onChange={(e) => setSettings({ toggleAim: e.target.checked })} /> Bấm chuột phải một lần để ngắm (không cần giữ)
       </label>
-      <button className="ghost" onClick={() => setSettings(DEFAULT_SETTINGS)}>
+      <GraphicsSettings />
+      <button
+        className="ghost"
+        onClick={() => {
+          setSettings(DEFAULT_SETTINGS);
+          setGraphics({ fpsCap: DEFAULT_GRAPHICS.fpsCap, maxDpr: DEFAULT_GRAPHICS.maxDpr, adaptive: DEFAULT_GRAPHICS.adaptive });
+        }}
+      >
         Về mặc định
       </button>
     </div>
@@ -856,6 +1036,10 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       )}
       {fighting && <Vitals room={room} />}
       {fighting && <OutsideZone room={room} />}
+      {fighting && <SquadHud room={room} />}
+      {fighting && <TankHud />}
+      <Toast />
+      <TankPrompt />
       <Pickup />
       <BuyMenu room={room} />
       <Scoreboard room={room} />

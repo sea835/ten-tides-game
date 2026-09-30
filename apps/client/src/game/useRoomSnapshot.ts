@@ -2,24 +2,32 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { IslandState } from "@tentides/protocol";
 import type { IslandRoom } from "../net.ts";
 
+/** So sánh sâu dữ liệu thường (số, chuỗi, mảng, object thuần) mà không phải dựng chuỗi JSON. */
+function same(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!same(a[i], b[i])) return false;
+    return true;
+  }
+  if (Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  for (const k of ka) {
+    if (!same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) return false;
+  }
+  return true;
+}
+
 /**
  * Đọc một phần state phòng cho React. `select` phải trả về dữ liệu thường (không phải object schema);
  * component chỉ render lại khi phần được chọn thật sự đổi.
- *
- * `getSnapshot` chạy mỗi lần render *và* mỗi lần state đổi, mà client có ~34 chỗ gọi, nên so
- * sánh bằng `JSON.stringify` mỗi lần là tốn kém và lặp lại nhiều. Ở đây ta cache theo hai tầng:
- *  1. chữ ký rẻ của state (đếm Map/Set + các trường vảy) — nếu không đổi thì trả lại đúng kết quả
- *     cũ mà không gọi `select` lẫn không stringify;
- *  2. nếu chữ ký đã đổi thì mới gọi `select` và so sánh nội dung kết quả để quyết định có render
- *     lại không (giữ lại object cũ nếu nội dung tương đương, để `useSyncExternalStore` ổn định).
  */
 export function useRoomSnapshot<T>(room: IslandRoom, select: (state: IslandState) => T): T {
   const selectRef = useRef(select);
   selectRef.current = select;
-  // Tầng 1: chữ ký state + kết quả tương ứng.
-  const bySig = useRef<{ sig: string; value: T } | null>(null);
-  // Tầng 2: kết quả đã xác nhận là khác lần trước, kèm chuỗi so sánh nội dung.
-  const last = useRef<{ json: string; value: T } | null>(null);
+  const cache = useRef<{ value: T } | null>(null);
 
   const subscribe = useCallback(
     (onChange: () => void) => {
@@ -30,26 +38,10 @@ export function useRoomSnapshot<T>(room: IslandRoom, select: (state: IslandState
   );
 
   const getSnapshot = () => {
-    const state = room.state;
-    // Phải liệt kê *mọi* trường mà `select` đọc, nếu không component sẽ đóng băng theo chữ ký cũ.
-    // Riêng các lựa chọn của phòng Battleground (`hostId`, `bots`, thời tiết, giờ) trước đây thiếu mất:
-    // pha lobby không cho `clock` chạy nên chữ ký đứng yên, server đã đổi `state.bots` mà UI không vẽ lại,
-    // làm thanh trượt số máy (và hai ô chọn kèm theo) bật lại về giá trị cũ.
-    const sig =
-      `${state.phase}|${state.mode}|${state.clock}|${state.campX}|${state.campZ}|` +
-      `${state.treasureSite}|${state.treasureDug}|${state.stumps.length}|${state.plants.size}|${state.buildings.size}|` +
-      `${state.players.size}|${state.anchors.size}|${state.groundItems.size}|${state.discovered.length}|${state.traps.size}|` +
-      `${state.hostId}|${state.bots}|${state.weatherPick}|${state.timePick}`;
-    if (bySig.current?.sig === sig) return bySig.current.value;
-
-    const value = selectRef.current(state);
-    const json = JSON.stringify(value ?? null);
-    // Nội dung tương đương thì giữ object cũ: useSyncExternalStore so sánh tham chiếu, trả object
-    // mới sẽ khiến component render lại dù dữ liệu không đổi.
-    const out = last.current?.json === json ? last.current.value : value;
-    last.current = { json, value: out };
-    bySig.current = { sig, value: out };
-    return out;
+    const value = selectRef.current(room.state);
+    // Giữ nguyên tham chiếu cũ khi nội dung không đổi (useSyncExternalStore so bằng Object.is).
+    if (!cache.current || !same(cache.current.value, value)) cache.current = { value };
+    return cache.current.value;
   };
 
   return useSyncExternalStore(subscribe, getSnapshot);

@@ -8,6 +8,9 @@
   --bg-0: #07131c;
   --panel: rgba(8, 20, 29, 0.8);
   --panel-strong: rgba(9, 21, 30, 0.96);
+  /* Khung HUD luôn hiện: đục hơn một chút thay cho làm mờ nền (backdrop-filter bắt trình duyệt làm mờ lại cảnh 3D
+     mỗi khung hình). */
+  --panel-hud: rgba(8, 20, 29, 0.86);
   --raise: rgba(255, 255, 255, 0.06);
   --raise-hover: rgba(255, 255, 255, 0.11);
   --line: rgba(255, 236, 205, 0.1);
@@ -562,7 +565,7 @@ kbd {
 }
 .hud .panel {
   position: absolute;
-  background: var(--panel);
+  background: var(--panel-hud);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 14px;
@@ -570,7 +573,6 @@ kbd {
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.05) inset,
     var(--shadow);
-  backdrop-filter: blur(10px);
 }
 
 /* ---------- Khung phòng (trên trái) ---------- */
@@ -712,10 +714,9 @@ kbd {
   gap: 6px;
   padding: 8px 16px 9px;
   border-radius: 999px;
-  background: var(--panel);
+  background: var(--panel-hud);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
   white-space: nowrap;
 }
 .hud .clock:not(:has(.clock-row)) {
@@ -1485,11 +1486,10 @@ kbd {
   gap: 8px;
   padding: 7px 14px;
   border-radius: 999px;
-  background: var(--panel);
+  background: var(--panel-hud);
   border: 1px solid var(--line-strong);
   font-size: 13px;
   white-space: nowrap;
-  backdrop-filter: blur(8px);
   animation: rise 0.2s ease;
 }
 .posture svg {
@@ -3165,9 +3165,8 @@ kbd {
   gap: 4px;
   padding: 5px;
   border-radius: 12px;
-  background: var(--panel);
+  background: var(--panel-hud);
   border: 1px solid var(--line);
-  backdrop-filter: blur(8px);
   pointer-events: auto;
 }
 .hotbar .slot {
@@ -4079,4 +4078,26 @@ details.more > .hint {
 }
 .battle-button:hover:not(:disabled) {
   background: linear-gradient(180deg, #a8321f, #6e1f15);
+}
+
+/* Bảng số liệu hiệu năng (F3). */
+.perf-overlay {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 60;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #d8f5c8;
+  font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.perf-overlay b {
+  font-size: 15px;
+  color: #9fe870;
+}
+.perf-overlay span {
+  opacity: 0.6;
 }

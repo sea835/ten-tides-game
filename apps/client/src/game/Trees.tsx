@@ -289,7 +289,7 @@ function PalmForest({ trees, world }: { trees: Tree[]; world: World }) {
   );
 }
 
-function BroadleafForest({ trees, world }: { trees: Tree[]; world: World }) {
+function BroadleafForest({ trees, world, indices }: { trees: Tree[]; world: World; indices: number[] }) {
   const trunks = useRef<InstancedMesh>(null);
   const canopies = useRef<InstancedMesh>(null);
   const cores = useRef<InstancedMesh>(null);
@@ -307,7 +307,8 @@ function BroadleafForest({ trees, world }: { trees: Tree[]; world: World }) {
       dummy.scale.set(t.lean, height, t.lean);
       dummy.updateMatrix();
       trunks.current!.setMatrixAt(i, dummy.matrix);
-      trunks.current!.setColorAt(i, color.setHSL(0.07, 0.35, 0.22 + grain(i, 15) * 0.06));
+      // Màu theo thứ tự trong cả khu rừng (không theo ô) để chia ô không làm đổi màu từng cây.
+      trunks.current!.setColorAt(i, color.setHSL(0.07, 0.35, 0.22 + grain(indices[i]!, 15) * 0.06));
       dummy.position.set(t.x, ground + t.height * 0.95, t.z);
       dummy.scale.setScalar(t.lean);
       dummy.updateMatrix();
@@ -321,7 +322,7 @@ function BroadleafForest({ trees, world }: { trees: Tree[]; world: World }) {
       if (m.current!.instanceColor) m.current!.instanceColor.needsUpdate = true;
       m.current!.computeBoundingSphere();
     }
-  }, [trees, world]);
+  }, [trees, world, indices]);
   if (trees.length === 0) return null;
   return (
     <group key={trees.length}>
@@ -411,6 +412,31 @@ function Falling({ tree, dir, onDone }: { tree: FallingTree; dir: number; onDone
   );
 }
 
+/** Cạnh ô chia rừng (mét): mỗi ô một bộ InstancedMesh, three.js bỏ qua ô ngoài khung hình và ngoài vùng bóng đổ. */
+const FOREST_CELL = 64;
+
+interface ForestChunk {
+  key: string;
+  trees: Tree[];
+  /** Thứ tự của từng cây trong cả danh sách (giữ màu ổn định). */
+  indices: number[];
+}
+
+function forestChunks(trees: Tree[]): ForestChunk[] {
+  const map = new Map<string, ForestChunk>();
+  trees.forEach((t, i) => {
+    const key = `${Math.floor(t.x / FOREST_CELL)},${Math.floor(t.z / FOREST_CELL)}`;
+    let c = map.get(key);
+    if (!c) {
+      c = { key, trees: [], indices: [] };
+      map.set(key, c);
+    }
+    c.trees.push(t);
+    c.indices.push(i);
+  });
+  return [...map.values()];
+}
+
 export function Trees({ room, world }: { room: IslandRoom; world: World }) {
   const stumpKey = useRoomSnapshot(room, (s) => [...s.stumps].join(","));
   const plants = useRoomSnapshot(room, (s) =>
@@ -420,6 +446,8 @@ export function Trees({ room, world }: { room: IslandRoom; world: World }) {
   const palms = useMemo(() => world.trees.filter((t) => t.kind === "palm" && !felled.has(t.id)), [world, felled]);
   const broad = useMemo(() => world.trees.filter((t) => t.kind === "broadleaf" && !felled.has(t.id)), [world, felled]);
   const stumps = useMemo(() => world.trees.filter((t) => felled.has(t.id)), [world, felled]);
+  const palmChunks = useMemo(() => forestChunks(palms), [palms]);
+  const broadChunks = useMemo(() => forestChunks(broad), [broad]);
   const [falling, setFalling] = useState<{ key: number; tree: FallingTree; dir: number }[]>([]);
   const lastPlants = useRef(plants);
   lastPlants.current = plants;
@@ -445,8 +473,12 @@ export function Trees({ room, world }: { room: IslandRoom; world: World }) {
 
   return (
     <>
-      <PalmForest trees={palms} world={world} />
-      <BroadleafForest trees={broad} world={world} />
+      {palmChunks.map((c) => (
+        <PalmForest key={`${c.key}:${c.trees.length}`} trees={c.trees} world={world} />
+      ))}
+      {broadChunks.map((c) => (
+        <BroadleafForest key={`${c.key}:${c.trees.length}`} trees={c.trees} world={world} indices={c.indices} />
+      ))}
       {stumps.map((t) => (
         <mesh key={t.id} geometry={shared.stump} material={mats.stump} position={[t.x, world.heightAt(t.x, t.z) - 0.05, t.z]} scale={t.kind === "palm" ? 0.8 : t.lean} castShadow receiveShadow />
       ))}

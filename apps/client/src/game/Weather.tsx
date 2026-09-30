@@ -12,7 +12,7 @@ import {
 } from "three";
 import { WATER_LEVEL, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
-import { useQuality } from "./graphics.ts";
+import { useProfile } from "./graphics.ts";
 import { mulberry32, windStrength } from "./nature.ts";
 import { play } from "./sound/sfx.ts";
 import { weatherUniforms } from "./textures.ts";
@@ -334,12 +334,12 @@ function Fireflies({ world }: { world: World }) {
 }
 
 export function Weather({ room, world }: { room: IslandRoom; world: World }) {
-  const high = useQuality() === "high";
+  const profile = useProfile();
   return (
     <>
       <WeatherState room={room} />
-      <Rain count={high ? 1600 : 600} />
-      <Snow count={high ? 2400 : 900} />
+      <Rain count={profile.rain} />
+      <Snow count={profile.snow} />
       <Lightning />
       <Quake />
       <Fireflies world={world} />

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
 import { Bloom, BrightnessContrast, EffectComposer, HueSaturation, SMAA, ToneMapping, Vignette } from "@react-three/postprocessing";
@@ -21,7 +21,8 @@ import { Trails } from "./Trails.tsx";
 import { WaypointTracker } from "./Waypoint.tsx";
 import { Weather } from "./Weather.tsx";
 import { DayCycle } from "./DayCycle.tsx";
-import { degrade, toggleQuality, useQuality } from "./graphics.ts";
+import { cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
+import { FrameDriver, PerfOverlay } from "./FrameDriver.tsx";
 import { Hud } from "./hud/Hud.tsx";
 import { Island } from "./Island.tsx";
 import { LocalPlayer } from "./LocalPlayer.tsx";
@@ -32,16 +33,12 @@ import { debugCam, localEnv, localPosition, weatherFx } from "./shared.ts";
 import { useWorld } from "./world.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { cameraMode } from "./camera.ts";
-// Battleground nặng ~180 KB mã (Shooter, ViewModel, GunModel, BattleHud, Effects, cấu trúc bản đồ).
-// Tải chậm để người chơi chế độ cốt truyện không phải tải cả phần đó lúc mở game.
-const BattleIsland = lazy(() => import("./battle/BattleWorld.tsx").then((m) => ({ default: m.BattleIsland })));
-const BattleEffects = lazy(() => import("./battle/Effects.tsx").then((m) => ({ default: m.BattleEffects })));
-const BattleHud = lazy(() => import("./battle/BattleHud.tsx").then((m) => ({ default: m.BattleHud })));
-const Shooter = lazy(() => import("./battle/Shooter.tsx").then((m) => ({ default: m.Shooter })));
-const ViewModel = lazy(() => import("./battle/ViewModel.tsx").then((m) => ({ default: m.ViewModel })));
-// ViewPass quản lý render riêng (composer) nên phải luôn có mặt, không đợi tải xong.
-import { ViewPass } from "./battle/ViewModel.tsx";
-import { SettingsButton } from "./battle/BattleHud.tsx";
+import { BattleIsland } from "./battle/BattleWorld.tsx";
+import { BattleEffects } from "./battle/Effects.tsx";
+import { BattleHud, SettingsButton } from "./battle/BattleHud.tsx";
+import { Shooter } from "./battle/Shooter.tsx";
+import { ViewModel, ViewPass } from "./battle/ViewModel.tsx";
+import { Vehicles } from "./battle/Vehicles.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -77,17 +74,17 @@ function PlayerLight() {
 }
 
 /**
- * Hậu kỳ (chỉ ở chất lượng cao): bóng tối ở khe, góc, chân cây (ambient occlusion); lửa, dung nham, nắng loá
- * toả quầng; tone map kiểu phim (AgX, màu tự nhiên, không cháy sáng); chỉnh màu nhẹ; góc màn hình tối nhẹ.
+ * Hậu kỳ: bóng tối ở khe, góc, chân cây (ambient occlusion, chỉ ở mức Cao); lửa, dung nham, nắng loá toả quầng;
+ * tone map kiểu phim (AgX, màu tự nhiên, không cháy sáng); chỉnh màu nhẹ; góc màn hình tối nhẹ.
  */
-function PostFx({ ao: wantAo }: { ao: boolean }) {
+function PostFx({ ao: withAo }: { ao: boolean }) {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
   // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần).
   const [ao, setAo] = useState<N8AOPostPass | null>(null);
   useEffect(() => {
-    if (!wantAo) return;
+    if (!withAo) return;
     const pass = new N8AOPostPass(scene, camera, size.width, size.height);
     pass.configuration.aoRadius = 1.6;
     pass.configuration.distanceFalloff = 1;
@@ -96,16 +93,18 @@ function PostFx({ ao: wantAo }: { ao: boolean }) {
     pass.configuration.gammaCorrection = false;
     pass.setQualityMode("Medium");
     setAo(pass);
-    return () => pass.dispose();
+    return () => {
+      pass.dispose();
+      setAo(null);
+    };
     // Kích thước đổi thì EffectComposer tự gọi setSize.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, camera, wantAo]);
-  if (!wantAo) return null;
+  }, [scene, camera, withAo]);
+  if (withAo && !ao) return null;
   return (
-    <EffectComposer multisampling={0}>
-      {/* N8AO phải quét lại cả hình học: mỗi pass thêm một lượt vẽ toàn cảnh. Bật ở "medium"/
-          "high", tắt ở "low" — mất chút độ sâu ở góc vật gần đổi lại một lượt vẽ. */}
-      {ao && <primitive object={ao} />}
+    // Bật tắt AO thì dựng lại cả chuỗi hậu kỳ.
+    <EffectComposer key={withAo ? "full" : "lite"} multisampling={0}>
+      {withAo && ao && <primitive object={ao} />}
       <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.7} radius={0.75} />
       <ToneMapping mode={ToneMappingMode.AGX} />
       <HueSaturation saturation={0.22} />
@@ -117,37 +116,47 @@ function PostFx({ ao: wantAo }: { ao: boolean }) {
 }
 
 /**
- * Theo dõi khung hình để tự hạ cấp đồ hoạ khi máy không kịp. Trước đây cấp chất lượng chỉ phụ
- * thuộc `hardwareConcurrency` (đo CPU, không đo GPU), nên laptop iGPU rơi vào "high" rồi tụt
- * khung hình mà không có cách nào lùi lại ngoài việc bấm phím P.
+ * Bóng đổ vẽ lại theo nhịp của mức chất lượng thay vì mọi khung hình (mặt trời gần như đứng yên; tâm vùng bóng
+ * khớp lưới điểm ảnh nên bản đồ bóng cũ vẫn đúng chỗ, chỉ vật đang chuyển động là bóng trễ vài chục ms).
  */
-function FrameWatch() {
+function ShadowScheduler({ hz }: { hz: number }) {
+  const gl = useThree((s) => s.gl);
+  const due = useRef(0);
   useEffect(() => {
-    let last = performance.now();
-    let bad = 0;
-    let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      const now = performance.now();
-      const dt = now - last;
-      last = now;
-      // Bỏ qua các khung hình đầu (biên dịch shader, dựng cảnh) và lúc tab ẩn.
-      if (dt > 500) {
-        bad = 0;
-        return;
-      }
-      // Vượt ~45 fps liên tục 90 khung thì hạ một bậc.
-      if (dt > 22) bad++;
-      else bad = Math.max(0, bad - 2);
-      if (bad > 90) {
-        bad = 0;
-        degrade();
-      }
+    gl.shadowMap.autoUpdate = hz === 0;
+    gl.shadowMap.needsUpdate = true;
+    return () => {
+      gl.shadowMap.autoUpdate = true;
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [gl, hz]);
+  useFrame(({ clock }) => {
+    if (hz === 0 || clock.elapsedTime < due.current) return;
+    // Trễ nhịp (tab bị ẩn) thì bắt lại từ bây giờ, không dồn nhiều lần vẽ liền nhau.
+    due.current = Math.max(due.current + 1 / hz, clock.elapsedTime);
+    gl.shadowMap.needsUpdate = true;
+  });
   return null;
+}
+
+function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null>; profile: Profile; quality: string }) {
+  const e = profile.shadowExtent;
+  return (
+    <directionalLight
+      ref={sun}
+      intensity={2.2}
+      castShadow
+      key={quality}
+      shadow-mapSize={[profile.shadowMap, profile.shadowMap]}
+      shadow-bias={-0.0003}
+      shadow-normalBias={0.04}
+      shadow-radius={profile.shadowRadius}
+      shadow-camera-left={-e}
+      shadow-camera-right={e}
+      shadow-camera-top={e}
+      shadow-camera-bottom={-e}
+      shadow-camera-far={180}
+    />
+  );
 }
 
 export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
@@ -155,21 +164,27 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   const hemi = useRef<HemisphereLight>(null);
   const wrapper = useRef<HTMLDivElement>(null);
   const quality = useQuality();
-  const high = quality === "high";
-  const low = quality === "low";
-  // "medium" (mặc định) giữ hình ảnh và cỏ nhưng bỏ AO, giảm bóng và độ phân giải.
-  const dpr: [number, number] = high ? [1, 2] : quality === "medium" ? [1, 1.5] : [1, 1];
-  const shadowSize = high ? 4096 : quality === "medium" ? 2048 : 1024;
+  const profile = useProfile();
+  const post = profile.post !== "none";
+  // Độ phân giải lúc tạo canvas; sau đó FrameDriver tự chỉnh.
+  const [initialDpr] = useState(() => targetDpr(getGraphics()));
   const world = useWorld(room);
   // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
   const battle = useRoomSnapshot(room, (s) => s.mode) === "battle";
   cameraMode.battle = battle;
+  renderHints.idle = useRoomSnapshot(room, (s) => s.paused);
+  useEffect(() => () => void (renderHints.idle = false), []);
 
   useEffect(() => bindInput(wrapper.current!), []);
   useEffect(() => listenFx(room), [room]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!isTyping(e) && e.code === "KeyP" && !e.repeat) toggleQuality();
+      if (isTyping(e) || e.repeat) return;
+      if (e.code === "KeyP") cycleQuality();
+      if (e.code === "F3") {
+        e.preventDefault();
+        toggleStats();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -177,28 +192,14 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
 
   return (
     <div className="game" ref={wrapper}>
-      <Canvas shadows="percentage" dpr={dpr} camera={{ fov: 60, near: 0.1, far: 500 }}>
-        <FrameWatch />
+      <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} camera={{ fov: 60, near: 0.1, far: 500 }}>
+        <FrameDriver />
+        <ShadowScheduler hz={profile.shadowHz} />
         <color attach="background" args={[HORIZON]} />
         <fog attach="fog" args={[HORIZON, 70, 230]} />
         <hemisphereLight ref={hemi} args={["#e0f4ff", "#c2a36b", 1.1]} />
-        {high && <SkyEnvironment intensity={0.7} />}
-        <directionalLight
-          ref={sun}
-          intensity={2.2}
-          castShadow
-          key={quality}
-          shadow-mapSize={[shadowSize, shadowSize]}
-          shadow-bias={-0.0003}
-          shadow-normalBias={0.04}
-          shadow-radius={high ? 4 : 1}
-          // Không dùng shadow-blurSamples: chỉ VSM đọc, với PCF là cấu hình chết.
-          shadow-camera-left={high ? -55 : -35}
-          shadow-camera-right={high ? 55 : 35}
-          shadow-camera-top={high ? 55 : 35}
-          shadow-camera-bottom={high ? -55 : -35}
-          shadow-camera-far={180}
-        />
+        {profile.ibl && <SkyEnvironment intensity={0.7} />}
+        <Sun sun={sun} profile={profile} quality={quality} />
         <Suspense fallback={null}>
           <SkyDome />
           {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
@@ -207,6 +208,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
             {battle ? <BattleIsland room={room} world={world} /> : <Island room={room} world={world} />}
             <LocalPlayer room={room} world={world} />
             {battle && <Shooter room={room} />}
+            {battle && <Vehicles room={room} />}
           </Physics>
           <PlayerLight />
           {!battle && <FirstPersonHands room={room} />}
@@ -222,12 +224,13 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <Fx />
           <WaypointTracker />
           <Texturize />
-          <DayCycle room={room} sun={sun} hemi={hemi} ibl={high} />
+          <DayCycle room={room} sun={sun} hemi={hemi} ibl={profile.ibl} />
           <DebugHook room={room} />
-          {!low && <PostFx ao={high} />}
-          {battle && <ViewPass post={!low} />}
+          {post && <PostFx ao={profile.post === "full"} />}
+          {battle && <ViewPass post={post} />}
         </Suspense>
       </Canvas>
+      <PerfOverlay />
       {battle ? (
         <BattleHud room={room} onLeave={onLeave} />
       ) : (
