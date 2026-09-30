@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, MELEE, SIGHTS, WEAPON, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
+import { HEALS, MELEE, SIGHTS, WEAPON, withAttachments, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
@@ -27,6 +27,11 @@ const GUN_SLOTS = ["primary1", "primary2", "pistol"] as const;
 
 function magOf(kit: KitState, slot: string): number {
   return slot === "primary1" ? kit.mag1 : slot === "primary2" ? kit.mag2 : slot === "pistol" ? kit.magP : 0;
+}
+
+/** Phụ kiện khác (đầu nòng, tay cầm, băng, báng) trên khẩu ở ô này. */
+export function attsOf(kit: KitState, slot: string): string {
+  return slot === "primary1" ? kit.att1 : slot === "primary2" ? kit.att2 : slot === "pistol" ? kit.attP : "";
 }
 
 export function sightOf(kit: KitState, slot: string): string {
@@ -77,6 +82,7 @@ const PUNCH: Record<WeaponDef["class"], { pitch: number; roll: number; body: num
   dmr: { pitch: 0.9, roll: 0.02, body: 0.85 },
   sniper: { pitch: 1.1, roll: 0.035, body: 1 },
   shotgun: { pitch: 1.1, roll: 0.03, body: 1 },
+  launcher: { pitch: 1.3, roll: 0.03, body: 1.2 },
 };
 
 /**
@@ -368,10 +374,13 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (!k || !alive()) return false;
     const def = WEAPON.get((k as unknown as Record<string, string>)[k.active] ?? "");
     if (!def || gun.reloadUntil > performance.now()) return false;
-    if (magOf(k, k.active) >= def.mag || (k.ammo.get(def.ammo) ?? 0) <= 0) return false;
+    // Phụ kiện (nòng, bóp tay, băng, chân súng) đổi cả số tròn trong băng lẫn thời gian nạp.
+    const eff = withAttachments(def, attsOf(k, k.active));
+    if (magOf(k, k.active) >= eff.mag || (k.ammo.get(def.ammo) ?? 0) <= 0) return false;
     room.send(Messages.reload);
-    gun.reloadUntil = performance.now() + def.reload * 1000;
-    gun.cancelReload = playReload(def.id, def.reload);
+    gun.reloadDur = eff.reload;
+    gun.reloadUntil = performance.now() + eff.reload * 1000;
+    gun.cancelReload = playReload(def.id, eff.reload);
     return true;
   };
 
@@ -430,6 +439,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Ngắm.
     const wantAim = (getSettings().toggleAim ? inp.aimToggle : inp.aimHeld) && !!def && !reloading && !stance.sprinting && now >= gun.readyAt;
     stance.aiming = wantAim;
+    gun.atts = def ? attsOf(k, slot) : "";
     stance.zoom = def ? zoomOf(def, sight) : 1;
     stance.scoped = !!sight && SIGHTS[sight as SightId]?.scope === true;
     stance.holdFire = inp.fire;
@@ -442,6 +452,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (stance.airborne) spread *= 3;
       if (stance.prone) spread *= stance.moving ? 1 : 0.5;
       else if (stance.crouching) spread *= 0.75;
+      // Phụ kiện: tay cầm nghiêng chụm hơn khi bắn hông, choke làm chùm đạn shotgun chụm lại.
+      spread *= withAttachments(def, gun.atts).spread;
       stance.spread = spread + bloom.current;
     }
 
@@ -589,7 +601,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Góc thứ ba: lấy đúng đầu nòng khẩu súng trên tay nhân vật.
     const held = first ? null : localAvatar.current?.getObjectByName("weapon");
     if (held?.visible) {
-      const at = held.localToWorld(new Vector3(...muzzleOffset(def.id)));
+      const at = held.localToWorld(new Vector3(...muzzleOffset(def.id, gun.atts)));
       if (at.distanceTo(localPosition) < 3) muzzle = at;
     }
     // Đầu nòng thò qua tường (đứng sát vật cản): đạn xuất phát ngay mặt tường phía mình, không bắn xuyên qua được.
@@ -624,6 +636,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       d.y += lift * Math.sqrt(1 - d.y * d.y);
       d.normalize();
       rays.push([d.x, d.y, d.z]);
+      // RPG: server dò đường bay và báo nổ; vệt đạn vẽ theo tin "shot" server gửi về.
+      if (def.explosive) continue;
       const d3: [number, number, number] = [d.x, d.y, d.z];
       // Đạn bay theo đường cong: dò từng đoạn dây cung, gặp tường hay người trước thì dừng.
       let sHit = maxRange;
@@ -677,14 +691,17 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const seconds = now / 1000;
     // Vệt đạn: góc nhất thì bay ra từ đầu nòng khẩu súng trước mặt (chỗ lửa đầu nòng), không phải từ mắt.
     const from = first && muzzleView.valid ? new Vector3(muzzleView.x, muzzleView.y, muzzleView.z) : muzzle;
-    for (const e of ends) effects.tracers.push({ ox: from.x, oy: from.y, oz: from.z, ex: e.at.x, ey: e.at.y, ez: e.at.z, born: seconds, mine: true, speed: def.velocity });
+    if (!def.explosive) for (const e of ends) effects.tracers.push({ ox: from.x, oy: from.y, oz: from.z, ex: e.at.x, ey: e.at.y, ez: e.at.z, born: seconds, mine: true, speed: def.velocity });
     // Lửa đầu nòng: góc nhất thì ViewModel tự vẽ trên súng; góc ba vẽ ở đầu nòng thật.
-    if (!first) effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
-    playGunshot(def.id, muzzle, true);
-    if (def.class !== "sniper" && def.class !== "shotgun") playShotMechanics(def.id);
+    const eff = withAttachments(def, gun.atts);
+    // Giảm thanh, che lửa: không loé lửa (không lộ vị trí), giảm thanh thì tiếng đục nhỏ.
+    if (!first && !eff.flashless) effects.flashes.push({ x: muzzle.x, y: muzzle.y, z: muzzle.z, born: seconds });
+    gun.flashless = eff.flashless;
+    playGunshot(def.id, muzzle, true, eff.suppressed);
+    if (def.class !== "sniper" && def.class !== "shotgun" && def.class !== "launcher") playShotMechanics(def.id);
     // Vỏ đạn văng ra cửa thoát bên phải (súng khoá nòng: văng khi kéo khoá, sau phát bắn một chút; shotgun hai nòng
     // bẻ ra lúc nạp đạn).
-    if (def.class !== "shotgun") {
+    if (def.class !== "shotgun" && def.class !== "launcher") {
       let ex: Vector3;
       let rx = right.x;
       let rz = right.z;
@@ -724,7 +741,10 @@ export function Shooter({ room }: { room: IslandRoom }) {
     }
     room.send(Messages.fire, { weapon: def.id, o: [muzzle.x, muzzle.y, muzzle.z], rays, hits } satisfies FireMessage);
     // Giật: dồn vào góc nhìn trong vài khung hình tới (updateRecoil), hất màn hình một cái, súng trên tay lùi lại.
-    const { up, side } = recoilFor(def, recoil.shot, stance);
+    const raw = recoilFor(def, recoil.shot, stance);
+    // Phụ kiện đỡ giật: bù giật, tay cầm, báng.
+    const up = raw.up * eff.recoilV;
+    const side = raw.side * eff.recoilH;
     recoil.shot++;
     recoil.pendPitch += up;
     recoil.pendYaw += side;

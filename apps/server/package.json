@@ -18,10 +18,13 @@
     "@tentides/content": "workspace:*",
     "@tentides/protocol": "workspace:*",
     "@tentides/rules": "workspace:*",
-    "@tentides/story": "workspace:*"
+    "@tentides/story": "workspace:*",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@colyseus/sdk": "^0.18.4",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.23.15"
   }
 }

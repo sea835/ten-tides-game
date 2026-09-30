@@ -156,15 +156,18 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     const slot = k.active;
     const w = slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "";
     const sg = slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "";
-    return `${slot}|${w}|${sg}|${k.outfit}`;
+    const at = slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "";
+    // Skin súng đang lắp cho khẩu này (tài khoản), để súng trước mặt cũng mang skin.
+    const sk = w ? (p.skins.get(w) ?? "") : "";
+    return `${slot}|${w}|${sg}|${k.outfit}|${at}|${sk}`;
   });
-  const [slot = "", weapon = "", sightId = "", outfit = "woodland"] = held.split("|");
+  const [slot = "", weapon = "", sightId = "", outfit = "woodland", atts = "", skin = ""] = held.split("|");
   const def = WEAPON.get(weapon);
   const sight = def ? aimLineHeight(weapon, sightId) : 0;
   const thrown = THROWN_SLOTS.includes(slot) ? slot : "";
   const flash = useRef<Group>(null);
   const flashState = useRef({ fired: 0, until: 0 });
-  const support = useMemo(() => (def ? supportOffset(weapon) : ([0, 0, 0.2] as [number, number, number])), [def, weapon]);
+  const support = useMemo(() => (def ? supportOffset(weapon, atts) : ([0, 0, 0.2] as [number, number, number])), [def, weapon, atts]);
   const magAt = useMemo(() => (def ? magCenter(weapon) : ([0, -0.1, 0.1] as [number, number, number])), [def, weapon]);
 
   useFrame(({ camera }, rawDt) => {
@@ -239,7 +242,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
       if (def) {
         // Thay đạn: tiến trình 0–1 theo thời gian thay đạn của súng.
         const reloading = gun.reloadUntil > now;
-        const r = reloading ? 1 - (gun.reloadUntil - now) / (def.reload * 1000) : 1;
+        const r = reloading ? 1 - (gun.reloadUntil - now) / (gun.reloadDur * 1000) : 1;
         const tiltK = reloading ? ramp(r, 0, 0.12) * (1 - ramp(r, 0.86, 1)) : 0;
         const lower = Math.max(raise, meleeOn ? bump(meleeK, 0, 1) * 0.9 : 0);
         const hip = 1 - st.aim;
@@ -267,7 +270,9 @@ export function ViewModel({ room }: { room: IslandRoom }) {
           const out = reloading && withMag ? ramp(r, 0.12, 0.3) : 0;
           const back = reloading && withMag ? ramp(r, 0.62, 0.76) : 1;
           const gone = reloading && withMag && r > 0.3 && r < 0.62;
-          magG.visible = !gone;
+          // Ống phóng: quả đạn đã bay đi thì miệng ống trống tới khi nạp quả mới.
+          const fired = def.class === "launcher" && gun.mag <= 0 && !(reloading && r >= 0.62);
+          magG.visible = !gone && !fired;
           const drop = r < 0.5 ? out : 1 - back;
           magG.position.set(0, -0.22 * drop, -0.03 * drop);
           magG.rotation.set(0.35 * drop, 0, 0);
@@ -357,7 +362,8 @@ export function ViewModel({ room }: { room: IslandRoom }) {
         f.scale.setScalar(big * (0.8 + Math.random() * 0.45));
         f.rotation.z = Math.random() * Math.PI;
       }
-      f.visible = now < fs.until;
+      // Giảm thanh, che lửa: không loé lửa.
+      f.visible = now < fs.until && !gun.flashless;
       m.updateMatrixWorld();
       f.getWorldPosition(flashPos);
       muzzle.x = flashPos.x;
@@ -389,7 +395,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
       <group ref={gunG}>
         {def && (
           <>
-            <GunModel weaponId={weapon} sight={sightId} scale={1} view />
+            <GunModel weaponId={weapon} sight={sightId} atts={atts} skin={skin} scale={1} view />
             {(sightId || weapon === "scar") && <Reticle weapon={weapon} sight={sightId || "builtin"} />}
             <RightHand />
             <group ref={leftG} position={support}>
@@ -402,7 +408,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
             <group position={ejectPort(weapon)}>
               <group ref={ejectRef} />
             </group>
-            <group position={muzzleOffset(weapon)}>
+            <group position={muzzleOffset(weapon, atts)}>
               <group ref={flash} visible={false}>
                 <MuzzleFlash />
               </group>

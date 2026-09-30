@@ -703,6 +703,11 @@ const PROFILES: Record<WeaponClass, GunProfile> = {
     vol: 1.25, range: 500, rev: 0.65, tailVol: 0.62,
     blast: { crack: 1.5, nwave: 0.55, click: 1, drive: 5.5, body: [88, 36, 0.085, 1.25], blast: [450, 0.075, 1.3], bark: [1250, 0.9, 0.038, 0.85], bark2: [580, 0.8, 0.06, 0.85], dry: 1.05, tail: [4.4, 950, 1, 8] },
   },
+  // RPG: tiếng phụt đẩy trầm và khối khí phụt sau (không có sóng nứt siêu thanh), đuôi vang dài.
+  launcher: {
+    vol: 1.2, range: 420, rev: 0.55, tailVol: 0.5,
+    blast: { crack: 0.1, nwave: 0.6, click: 0.7, drive: 4.4, body: [70, 30, 0.09, 1.35], blast: [380, 0.09, 1.5], bark: [700, 0.6, 0.05, 0.9], bark2: [320, 0.6, 0.08, 0.9], dry: 0.9, tail: [3, 900, 0.6, 6] },
+  },
   // Shotgun: bùm rộng, dày, trầm, ít tiếng nứt.
   shotgun: {
     vol: 1.2, range: 320, rev: 0.5, tailVol: 0.5,
@@ -749,38 +754,49 @@ function hash(s: string): number {
   return ((h >>> 0) % 10000) / 10000;
 }
 
+/** Nhân độ to chung của tiếng súng. */
+const GUN_LOUDNESS = 1.35;
+
 /** Lúc phát súng gần nhất của chính mình: bắn liên thanh thì đuôi mỗi phát nhỏ lại (các đuôi chồng lên nhau). */
 let lastLocalShot = 0;
 
 /** Một phát súng. `local` là do chính mình bắn (to hơn, không lọc khoảng cách, rộng). `at` là đầu nòng. */
-export const playGunshot = safe((weaponId: string, at: Place, local: boolean) => {
+export const playGunshot = safe((weaponId: string, at: Place, local: boolean, suppressed = false) => {
   const ctx = live();
   if (!ctx) return;
   const def = WEAPON.get(weaponId);
   const cls: WeaponClass = def?.class ?? "ar";
   const P = PROFILES[cls];
   const damage = def?.damage ?? 40;
-  const sp = local ? null : spatial(at, P.range);
+  // Tầm "to rõ" 32 m (trước là 20 m): súng người khác ở vài chục mét vẫn nghe đanh, to.
+  // Giảm thanh: nghe xa chừng một phần tư, tiếng đục "phụt", tiếng dội rất nhỏ.
+  const sp = local ? null : spatial(at, P.range * 1.15 * (suppressed ? 0.25 : 1), 32);
   if (!local && !sp) return;
   const d = sp?.d ?? 0;
   const bank = bankFor(ctx, weaponId, blastFor(cls, def?.ammo, damage));
   // Cao độ riêng từng khẩu (theo tên), khẩu sát thương cao hơi trầm hơn; mỗi phát lệch nhẹ để liên thanh không như máy lặp.
   const heavy = clamp((damage - 30) / 70, 0, 1);
   const rate = (0.95 + hash(weaponId) * 0.1) * (1 - heavy * 0.05) * rand(0.97, 1.03);
-  const loud = P.vol * rand(0.92, 1.04);
+  // To hơn trước khoảng 35% (bộ nén và chặn đỉnh ở engine giữ cho không vỡ tiếng).
+  const loud = P.vol * GUN_LOUDNESS * rand(0.92, 1.04);
   const now = ctx.currentTime;
   const burst = local && now - lastLocalShot < 0.2;
   if (local) lastLocalShot = now;
   // Gần: phần thẳng áp đảo; xa: phần thẳng mờ nhanh, còn lại chủ yếu tiếng dội (như tiếng súng xa thật).
   const direct = local ? 1 : 1 / (1 + Math.pow(d / 110, 1.6));
-  const dryLevel = loud * (local ? 1 : 0.95 * sp!.gain * direct);
-  const tailLevel = loud * P.tailVol * (local ? (burst ? 0.6 : 1) : Math.pow(sp!.gain, 0.55) * (1 + 0.8 * Math.min(1, d / 160)));
+  const dryLevel = loud * (local ? 1 : 0.95 * sp!.gain * direct) * (suppressed ? 0.45 : 1);
+  const tailLevel = loud * P.tailVol * (local ? (burst ? 0.6 : 1) : Math.pow(sp!.gain, 0.55) * (1 + 0.8 * Math.min(1, d / 160))) * (suppressed ? 0.18 : 1);
   const reverb = P.rev * (local ? 0.45 : 0.6 + 1.2 * Math.min(1, d / 180));
   const v = voice("gun", Math.max(dryLevel, tailLevel * 0.6), { sp, reverb, wide: local ? 0.35 : 0, gain: 1 });
   if (!v) return;
 
   // 1–4. Phần khô dựng sẵn: tiếng nứt siêu thanh + tách dải rộng (bão hòa), khối hơi, thân trầm, bark.
-  v.buffer(0, pick(bank.dry), rate, dryLevel);
+  if (suppressed) {
+    // Phần khô đi qua lọc thấp (mất tiếng nổ chói), thêm tiếng "phụt" khí.
+    const muffled = v.branch(local ? 2600 : 1600, sp?.pan ?? 0);
+    v.buffer(0, pick(bank.dry), rate * 1.05, dryLevel, muffled);
+    v.noise(0, { type: "bandpass", freq: rand(900, 1300), q: 1.2, attack: 0.002, decay: 0.05, peak: 0.5 * dryLevel });
+  } else v.buffer(0, pick(bank.dry), rate, dryLevel);
   // 5. Tiếng cơ khí của chính mình: kim hỏa đập, khối khóa nòng va vào hộp khóa, lò xo rung kim loại.
   if (local) {
     const m = cls === "sniper" || cls === "dmr" ? 0.8 : cls === "pistol" ? 1.1 : 1;
@@ -789,6 +805,11 @@ export const playGunshot = safe((weaponId: string, at: Place, local: boolean) =>
     v.noise(0.002, { type: "bandpass", freq: rand(2800, 3400), q: 4, decay: 0.012, peak: 0.16 * m, attack: 0.0005 }, v.side);
     v.noise(0.012, { type: "bandpass", freq: rand(1000, 1300), q: 6, decay: 0.035, peak: 0.12 * m }, v.side);
     v.osc(0.012, { type: "triangle", freq: rand(430, 520), freqEnd: 380, decay: 0.05, peak: 0.05 * m }, v.side);
+  }
+  // RPG: động cơ tên lửa rít xa dần sau cú phụt.
+  if (cls === "launcher") {
+    v.noise(0.03, { type: "bandpass", freq: 2200, freqEnd: 900, q: 0.8, attack: 0.03, decay: 0.9, peak: 0.5 * dryLevel });
+    v.noise(0.02, { type: "lowpass", freq: 600, decay: 0.7, peak: 0.6 * dryLevel });
   }
   // 6. Đuôi vang ngoài trời: nhánh riêng, lọc nhẹ theo khoảng cách, lệch trái phải ít (tiếng dội đến từ nhiều phía).
   const tailCut = local ? 20000 : clamp(9000 * Math.exp(-d / 150), 450, 20000);

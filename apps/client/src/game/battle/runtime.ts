@@ -73,6 +73,10 @@ export interface Tracer {
   mine: boolean;
   /** Sơ tốc (m/s): vệt bay tới đích mất chừng ấy thời gian, võng xuống theo đường đạn rơi. */
   speed?: number;
+  /** Đạn nổ: RPG (lửa đuôi to, vệt khói dài), pháo xe tăng (vệt sáng to, khói mỏng). */
+  trail?: "rocket" | "shell";
+  /** Khói đuôi đã nhả tới quãng nào (m). */
+  smoked?: number;
 }
 export interface Impact {
   x: number;
@@ -106,6 +110,10 @@ export interface Blast {
   y: number;
   z: number;
   born: number;
+  /** Nổ to (đạn pháo, RPG, xe nổ tung): cầu lửa, sóng xung kích lớn hơn. */
+  big?: boolean;
+  /** Số ngẫu nhiên riêng của vụ nổ (hình dạng cầu lửa mỗi vụ một khác). */
+  seed?: number;
 }
 
 /** Vết máu bắn lên tường, sàn phía sau người trúng đạn. */
@@ -154,6 +162,12 @@ export const gun = {
   /** Vừa rút tay khỏi chạy: còn nhịp này nữa mới bắn như thường, phát đầu dễ trượt hơn. */
   raiseUntil: 0,
   lastMelee: 0,
+  /** Thời gian nạp của lần nạp đang chạy (s) — ViewModel và LocalPlayer chia để vẽ thanh nạp. */
+  reloadDur: 2,
+  /** Phụ kiện đang gắn ở ô đang cầm, xem `withAttachments` trong @tentides/content. */
+  atts: "",
+  /** Súng im lặng: nổ vừa phát thì ViewModel bỏ qua hiệu ứng loa. */
+  flashless: false,
   reloadUntil: 0,
   cancelReload: null as null | (() => void),
   healUntil: 0,

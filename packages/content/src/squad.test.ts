@@ -42,6 +42,16 @@ describe("xe tăng", () => {
     expect(speed).toBeLessThanOrEqual(TANK.forward);
   });
 
+  it("D quay sang phải, A quay sang trái (theo hướng người lái nhìn)", () => {
+    // Nhìn theo +z thì bên phải là −x (quy ước camera: phải = (cos yaw, −sin yaw) với hướng nhìn (−sin yaw, −cos yaw)).
+    let pose = { x: 30, y: 0, z: 30, rotY: 0 };
+    for (let k = 0; k < 10; k++) pose = tankStep(map, pose, 0, 1, 0, 0.05).pose;
+    expect(Math.sin(pose.rotY)).toBeLessThan(0);
+    pose = { x: 30, y: 0, z: 30, rotY: 0 };
+    for (let k = 0; k < 10; k++) pose = tankStep(map, pose, 0, -1, 0, 0.05).pose;
+    expect(Math.sin(pose.rotY)).toBeGreaterThan(0);
+  });
+
   it("thân xe chặn tia đạn", () => {
     const t = { x: 0, y: 0, z: 0, rotY: 0.4 };
     expect(rayTank(t, [-10, 1.2, 0], [1, 0, 0], 50)).toBeLessThan(10);

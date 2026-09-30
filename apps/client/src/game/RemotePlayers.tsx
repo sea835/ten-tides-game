@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObjec
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Callbacks } from "@colyseus/sdk";
-import type { Group } from "three";
+import { MeshBasicMaterial, OctahedronGeometry, type Group } from "three";
 import type { PlayerState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { WEAPON } from "@tentides/content";
+import { WEAPON, withAttachments } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
 import { physicsProbe } from "./battle/surface.ts";
 import { muzzleOffset } from "./GunModel.tsx";
@@ -17,8 +17,12 @@ import { localPosition } from "./shared.ts";
 import { playFootstep } from "./sound/guns.ts";
 import { FarSoldier } from "./battle/FarSoldier.tsx";
 
+/** Dấu đồng đội (chiến trường): hình thoi xanh sáng, không bị sương mù làm mờ. */
+const MATE_GEO = new OctahedronGeometry(0.16, 0);
+const MATE_MAT = new MeshBasicMaterial({ color: "#6fb0ff", fog: false, depthTest: false, transparent: true, opacity: 0.9 });
+
 /** Nhãn vai trò trên đầu đồng đội. */
-const ROLE_TAG: Record<string, string> = { rifle: "súng trường", sniper: "bắn tỉa", support: "súng máy", tanker: "lái tăng" };
+const ROLE_TAG: Record<string, string> = { rifle: "súng trường", sniper: "bắn tỉa", support: "súng máy", tanker: "lái tăng", antitank: "chống tăng" };
 
 const BUBBLE_MS = 6000;
 
@@ -121,6 +125,7 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
   const [inTank, setInTank] = useState(!!player.vehicle);
   const [pose, setPose] = useState<"stand" | "crouch" | "prone">("stand");
   const shadow = useRef({ on: true, detail: true, at: 0 });
+  const war = useRoomSnapshot(room, (s) => s.battleMode === "war");
   const mate = useRoomSnapshot(room, (s) => {
     const me = s.players.get(myId(room));
     return !!me?.team && me.team === player.team;
@@ -158,7 +163,8 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       const def = WEAPON.get(look.weapon);
       if (k.reloading && !an.reloading) an.reloadAt = now;
       an.reloading = k.reloading;
-      m.reload = k.reloading && def ? Math.min(0.99, (now - an.reloadAt) / (def.reload * 1000)) : undefined;
+      const reloadDur = def ? withAttachments(def, k.active === "primary1" ? k.att1 : k.active === "primary2" ? k.att2 : k.attP).reload : 1;
+      m.reload = k.reloading && def ? Math.min(0.99, (now - an.reloadAt) / (reloadDur * 1000)) : undefined;
       const current = `${k.active}|${look.weapon}`;
       if (current !== an.weapon) {
         if (an.weapon) an.swapAt = now;
@@ -188,8 +194,10 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
     // Mức chi tiết theo khoảng cách tới camera.
     if (r) {
       const d = camera.position.distanceTo(r.position);
-      if (!far && d > LOD_FAR) setFar(true);
-      else if (far && d < LOD_NEAR) setFar(false);
+      // Trận đông (chiến trường 100 người): vẽ đầy đủ ở gần hơn.
+      const crowd = room.state.players.size > 60 ? 0.65 : 1;
+      if (!far && d > LOD_FAR * crowd) setFar(true);
+      else if (far && d < LOD_NEAR * crowd) setFar(false);
       const now = performance.now();
       const sh = shadow.current;
       if (!far && avatar.current && now - sh.at > 400) {
@@ -237,12 +245,14 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
   return (
     <group ref={root} position={[player.x, player.y, player.z]} visible={alive && !inTank}>
       {far ? (
-        <FarSoldier ref={avatar} outfit={look.outfit} pose={pose} gun={!!look.weapon} />
+        <FarSoldier ref={avatar} outfit={look.outfit} pose={pose} gun={!!look.weapon} band={player.team === "blue" || player.team === "red" ? player.color : undefined} />
       ) : (
         <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
       )}
       {/* Đồng đội: dấu tên trên đầu (luôn thấy, để biết ai là người mình). */}
-      {mate && alive && !inTank && (
+      {/* Chiến trường (49 đồng đội): dấu hình thoi trên đầu vẽ bằng một khối nhỏ, nhẹ hơn nhãn chữ. */}
+      {mate && alive && !inTank && war && <mesh geometry={MATE_GEO} material={MATE_MAT} position-y={pose === "prone" ? 1.0 : 2.3} />}
+      {mate && alive && !inTank && !war && (
         <Html position={[0, pose === "prone" ? 1.1 : 2.25, 0]} center zIndexRange={[4, 0]} className="b-mate">
           <i />
           {player.name.replace("🤖 ", "")}

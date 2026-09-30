@@ -1,4 +1,4 @@
-import { WATER_LEVEL, battleMap, boxAt, type BoxMat, type World } from "@tentides/content";
+import { WATER_LEVEL, boxAt, mapOf, type BoxMat, type World } from "@tentides/content";
 
 // Đạn găm vào cái gì: tra khối công trình chứa điểm trúng (lùi vào trong mặt một chút theo pháp tuyến), không có
 // thì là địa hình (đất, đường nhựa, đá...), nước, hay thân cây. Dùng để chọn lỗ đạn, bụi / tia lửa và tiếng găm.
@@ -24,7 +24,7 @@ const BY_MAT: Record<BoxMat, HitSurface> = {
 
 export function surfaceAt(world: World, x: number, y: number, z: number, nx: number, ny: number, nz: number): HitSurface {
   if (y < WATER_LEVEL + 0.05) return "water";
-  const map = battleMap(world.seed || 1);
+  const map = mapOf(world);
   const box = boxAt(map.index, x - nx * 0.05, y - ny * 0.05, z - nz * 0.05, 0.02);
   if (box) return BY_MAT[box.mat];
   const ground = world.heightAt(x, z);

@@ -1,6 +1,7 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { BATTLE_ROOM_NAME, DEFAULT_SERVER_PORT, IslandState, KICKED_CLOSE_CODE, ROOM_NAME } from "@tentides/protocol";
 import { listenPrivate } from "./game/privateStore.ts";
+import { sessionToken } from "./account/account.ts";
 
 export type IslandRoom = Room<any, IslandState>;
 
@@ -36,6 +37,11 @@ function playerToken(): string {
   return token;
 }
 
+/** Tham số vào phòng: tên, token khách của tab, và phiên đăng nhập (nếu có) để server gắn với tài khoản. */
+function joinOptions(name: string) {
+  return { name, token: playerToken(), session: sessionToken() };
+}
+
 /** Phòng gần nhất tab này đã vào, để tải lại trang thì mời vào lại. */
 export function lastRoom(): string | null {
   return storage()?.getItem(LAST_ROOM_KEY) ?? null;
@@ -69,16 +75,16 @@ function whenReady(room: IslandRoom): Promise<IslandRoom> {
 }
 
 export async function createRoom(name: string): Promise<IslandRoom> {
-  return whenReady(await client.create(ROOM_NAME, { name, token: playerToken() }, IslandState));
+  return whenReady(await client.create(ROOM_NAME, joinOptions(name), IslandState));
 }
 
 /** Tạo phòng Battleground (mã phòng dùng chung ô "Vào phòng" như phòng thường). */
 export async function createBattleRoom(name: string): Promise<IslandRoom> {
-  return whenReady(await client.create(BATTLE_ROOM_NAME, { name, token: playerToken() }, IslandState));
+  return whenReady(await client.create(BATTLE_ROOM_NAME, joinOptions(name), IslandState));
 }
 
 export async function joinRoom(code: string, name: string): Promise<IslandRoom> {
-  return whenReady(await client.joinById(code.trim().toUpperCase(), { name, token: playerToken() }, IslandState));
+  return whenReady(await client.joinById(code.trim().toUpperCase(), joinOptions(name), IslandState));
 }
 
 export function wasKicked(code: number): boolean {

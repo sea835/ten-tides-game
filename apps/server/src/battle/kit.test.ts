@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { KitState } from "@tentides/protocol";
-import { everything, giveWeapon, priceOf, receive, resetKit } from "./kit.ts";
+import { everything, giveWeapon, magSize, priceOf, receive, reloadTime, resetKit } from "./kit.ts";
 import { WEAPON } from "@tentides/content";
 
 function kit() {
@@ -85,5 +85,37 @@ describe("hành trang Battleground", () => {
     expect(everything(k)).toContain("sight:x8");
     expect(priceOf("sight:x8")).toBeNull();
     expect(priceOf("sight:x2")).toBe(300);
+  });
+
+  it("phụ kiện: lắp đúng khẩu hợp, thay món cùng chỗ (món cũ rơi), băng mở rộng thêm đạn, tháo thì trả đạn thừa", () => {
+    const k = kit();
+    const dropped: string[] = [];
+    expect(receive(k, "att:comp", dropped)).toBe(false);
+    receive(k, "p92", dropped);
+    expect(receive(k, "att:comp", dropped)).toBe(false);
+    expect(receive(k, "att:suppressor", dropped)).toBe(true);
+    expect(k.attP).toBe("suppressor");
+    receive(k, "m416", dropped);
+    k.active = "primary1";
+    expect(receive(k, "att:comp", dropped)).toBe(true);
+    expect(receive(k, "att:vgrip", dropped)).toBe(true);
+    expect(k.att1.split(",").sort()).toEqual(["comp", "vgrip"]);
+    expect(receive(k, "att:suppressor", dropped)).toBe(true);
+    expect(k.att1.split(",").sort()).toEqual(["suppressor", "vgrip"]);
+    expect(dropped).toContain("att:comp");
+    k.mag1 = 30;
+    receive(k, "att:extmag", dropped);
+    expect(magSize(k, "primary1")).toBe(41);
+    k.mag1 = 41;
+    // Khẩu đang cầm đã có băng: băng thay nhanh sang khẩu còn trống chỗ (súng lục).
+    receive(k, "att:quickmag", dropped);
+    expect(k.attP.split(",")).toContain("quickmag");
+    // Lần nữa thì chỉ còn khẩu chính: thay băng mở rộng, đạn thừa trả về dự trữ.
+    receive(k, "att:quickmag", dropped);
+    expect(k.att1.split(",")).toContain("quickmag");
+    expect(k.mag1).toBe(30);
+    expect(k.ammo.get("556")).toBe(11);
+    expect(reloadTime(k, "primary1")).toBeCloseTo(WEAPON.get("m416")!.reload * 0.7);
+    expect(everything(k)).toEqual(expect.arrayContaining(["att:quickmag", "att:vgrip", "att:suppressor"]));
   });
 });

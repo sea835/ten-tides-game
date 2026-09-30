@@ -3,8 +3,12 @@ import {
   ARMOR,
   HEALS,
   HELMETS,
+  ATTACHMENTS,
   OUTFITS,
   SIGHTS,
+  attachmentFits,
+  withAttachments,
+  type AttachmentId,
   THROWABLES,
   sightFits,
   WEAPON,
@@ -49,6 +53,70 @@ export function setSight(kit: KitState, slot: GunSlot, sight: string) {
   else kit.sightP = sight;
 }
 
+/** Phụ kiện (không kể ống ngắm) lắp trên khẩu ở ô này, dạng "comp,vgrip". */
+export function attOf(kit: KitState, slot: GunSlot): string {
+  return slot === "primary1" ? kit.att1 : slot === "primary2" ? kit.att2 : kit.attP;
+}
+
+export function setAtt(kit: KitState, slot: GunSlot, list: string) {
+  if (slot === "primary1") kit.att1 = list;
+  else if (slot === "primary2") kit.att2 = list;
+  else kit.attP = list;
+}
+
+/** Sức chứa băng đạn thật của khẩu ở ô này (tính băng mở rộng). */
+export function magSize(kit: KitState, slot: GunSlot): number {
+  const def = weaponIn(kit, slot);
+  return def ? withAttachments(def, attOf(kit, slot)).mag : 0;
+}
+
+/** Thời gian thay đạn thật (tính băng thay nhanh). */
+export function reloadTime(kit: KitState, slot: GunSlot): number {
+  const def = weaponIn(kit, slot);
+  return def ? withAttachments(def, attOf(kit, slot)).reload : 1;
+}
+
+/** Băng đạn nhỏ lại (tháo băng mở rộng): đạn thừa trong băng trả về đạn dự trữ. */
+function fitMag(kit: KitState, slot: GunSlot) {
+  const def = weaponIn(kit, slot);
+  if (!def) return;
+  const cap = magSize(kit, slot);
+  const cur = magOf(kit, slot);
+  if (cur > cap) {
+    addAmmo(kit, def.ammo, cur - cap);
+    setMag(kit, slot, cap);
+  }
+}
+
+/**
+ * Lắp phụ kiện (đầu nòng, tay cầm, băng đạn, báng): ưu tiên khẩu đang cầm, rồi khẩu còn trống chỗ đó; chỗ đã có
+ * món cùng loại thì thay, món cũ rơi xuống. Không khẩu nào lắp được thì không nhận.
+ */
+export function attachPart(kit: KitState, att: AttachmentId, dropped: Dropped): boolean {
+  const a = ATTACHMENTS[att];
+  const fits = GUN_SLOTS.filter((slot) => {
+    const def = weaponIn(kit, slot);
+    return def && attachmentFits(att, def) && !attOf(kit, slot).split(",").includes(att);
+  });
+  if (!fits.length) return false;
+  const has = (slot: GunSlot) => attOf(kit, slot).split(",").some((id) => ATTACHMENTS[id as AttachmentId]?.slot === a.slot);
+  const slot = fits.find((sl) => sl === kit.active && !has(sl)) ?? fits.find((sl) => !has(sl)) ?? fits.find((sl) => sl === kit.active) ?? fits[0]!;
+  const list = attOf(kit, slot)
+    .split(",")
+    .filter((id) => {
+      if (!id) return false;
+      if (ATTACHMENTS[id as AttachmentId]?.slot === a.slot) {
+        dropped.push(`att:${id}`);
+        return false;
+      }
+      return true;
+    });
+  list.push(att);
+  setAtt(kit, slot, list.join(","));
+  fitMag(kit, slot);
+  return true;
+}
+
 /**
  * Lắp ống ngắm: ưu tiên khẩu đang cầm, rồi khẩu chưa có ống, rồi khẩu đang có ống kém hơn. Ống cũ tháo ra rơi xuống.
  * Không khẩu nào lắp được thì không nhận.
@@ -83,6 +151,7 @@ export function resetKit(kit: KitState, money: number) {
   kit.primary1 = kit.primary2 = kit.pistol = "";
   kit.mag1 = kit.mag2 = kit.magP = 0;
   kit.sight1 = kit.sight2 = kit.sightP = "";
+  kit.att1 = kit.att2 = kit.attP = "";
   kit.active = "";
   kit.ammo.clear();
   kit.frag = kit.smoke = kit.flash = kit.mine = kit.bandage = kit.medkit = 0;
@@ -116,6 +185,18 @@ export function giveWeapon(kit: KitState, def: WeaponDef, mag = def.mag): Droppe
     dropped.push(`sight:${sight}`);
     setSight(kit, slot, "");
   }
+  // Phụ kiện khác cũng vậy: hợp thì giữ, không hợp thì tháo ra để lại.
+  const keep = attOf(kit, slot)
+    .split(",")
+    .filter((id) => {
+      if (!id) return false;
+      if (attachmentFits(id, def)) return true;
+      dropped.push(`att:${id}`);
+      return false;
+    });
+  setAtt(kit, slot, keep.join(","));
+  // Súng mới đầy băng thì đầy theo sức chứa thật (có băng mở rộng thì thêm đạn).
+  setMag(kit, slot, mag >= def.mag ? magSize(kit, slot) : Math.min(mag, magSize(kit, slot)));
   kit.active = slot;
   kit.reloading = false;
   return dropped;
@@ -138,6 +219,7 @@ export function receive(kit: KitState, item: string, dropped: Dropped): boolean 
     return true;
   }
   if (kind === "sight" && arg && arg in SIGHTS) return attachSight(kit, arg, dropped);
+  if (kind === "att" && arg && arg in ATTACHMENTS) return attachPart(kit, arg as AttachmentId, dropped);
   if (kind === "armor" || kind === "helmet") {
     const level = Number(arg);
     const table = kind === "armor" ? ARMOR : HELMETS;
@@ -184,6 +266,7 @@ export function priceOf(item: string): number | null {
   if (kind === "helmet") return HELMETS[Number(arg) - 1]?.price || null;
   if (kind === "outfit") return 0;
   if (kind === "sight") return (arg && arg in SIGHTS && SIGHTS[arg as keyof typeof SIGHTS].price) || null;
+  if (kind === "att") return (arg && arg in ATTACHMENTS && ATTACHMENTS[arg as AttachmentId].price) || null;
   if (item in THROWABLES) return THROWABLES[item as ThrowableId].price;
   if (item in HEALS) return HEALS[item as HealId].price;
   return null;
@@ -198,6 +281,7 @@ export function everything(kit: KitState): string[] {
     out.push(def.id);
     const sight = sightOf(kit, slot);
     if (sight) out.push(`sight:${sight}`);
+    for (const id of attOf(kit, slot).split(",")) if (id) out.push(`att:${id}`);
     const inMag = magOf(kit, slot);
     if (inMag) addAmmo(kit, def.ammo, inMag);
   }

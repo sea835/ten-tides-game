@@ -1,7 +1,7 @@
 // Danh mục đồ của chế độ Battleground: súng, đạn, lựu đạn, bom khói, mìn, giáp, mũ, đồ hồi máu, trang phục.
 // Dùng chung cho server (sát thương, tốc độ bắn, giá) và client (mô hình, âm thanh, cửa hàng).
 
-export type AmmoId = "9mm" | "45acp" | "556" | "762" | "12g" | "300";
+export type AmmoId = "9mm" | "45acp" | "556" | "762" | "12g" | "300" | "rocket";
 
 export const AMMO: Record<AmmoId, { name: string; price: number; pack: number }> = {
   "9mm": { name: "Đạn 9mm", price: 60, pack: 45 },
@@ -10,10 +10,11 @@ export const AMMO: Record<AmmoId, { name: string; price: number; pack: number }>
   "762": { name: "Đạn 7.62mm", price: 120, pack: 60 },
   "12g": { name: "Đạn 12 Gauge", price: 80, pack: 15 },
   "300": { name: "Đạn .300 Magnum", price: 200, pack: 10 },
+  rocket: { name: "Đạn RPG", price: 350, pack: 2 },
 };
 
 /** Nhóm súng: quyết định ô đeo, dáng cầm, tiếng nổ. */
-export type WeaponClass = "pistol" | "smg" | "ar" | "lmg" | "dmr" | "sniper" | "shotgun";
+export type WeaponClass = "pistol" | "smg" | "ar" | "lmg" | "dmr" | "sniper" | "shotgun" | "launcher";
 
 export interface WeaponDef {
   id: string;
@@ -51,10 +52,15 @@ export interface WeaponDef {
   headshot: number;
   /** Chỉ có trong kho vũ khí (hàng hiếm). */
   rare?: boolean;
+  /**
+   * Súng phóng đạn nổ (chống tăng): đạn không dò trúng người như đạn thường, server dò đường bay một lần rồi nổ ở
+   * chỗ chạm (bán kính, sát thương nổ vào người ở tâm, sát thương thêm vào xe tăng trúng thẳng).
+   */
+  explosive?: { radius: number; damage: number; armor: number };
 }
 
 /** Sơ tốc đầu nòng (m/s), gần với súng thật. */
-const VELOCITY: Record<string, number> = { p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, s686: 380, sks: 800, kar98k: 760, awm: 945 };
+const VELOCITY: Record<string, number> = { rpg7: 150, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, s686: 380, sks: 800, kar98k: 760, awm: 945 };
 
 const w = (d: Omit<WeaponDef, "pellets" | "headshot" | "speed" | "velocity"> & Partial<Pick<WeaponDef, "pellets" | "headshot" | "speed">>): WeaponDef => ({
   pellets: 1,
@@ -76,6 +82,8 @@ export const WEAPONS: readonly WeaponDef[] = [
   w({ id: "s686", name: "S686", class: "shotgun", ammo: "12g", mag: 2, rpm: 200, damage: 24, pellets: 9, range: 22, hipSpread: 0.075, adsSpread: 0.06, recoil: 0.06, recoilSide: 0.02, auto: false, reload: 2.2, zoom: 1.2, price: 1100, headshot: 1.5 }),
   w({ id: "sks", name: "SKS", class: "dmr", ammo: "762", mag: 10, rpm: 330, damage: 55, range: 220, hipSpread: 0.035, adsSpread: 0.003, recoil: 0.03, recoilSide: 0.008, auto: false, reload: 2.9, zoom: 1.5, price: 3200, speed: 0.95, headshot: 2.3 }),
   w({ id: "kar98k", name: "Kar98k", class: "sniper", ammo: "762", mag: 5, rpm: 48, damage: 80, range: 400, hipSpread: 0.05, adsSpread: 0.0008, recoil: 0.06, recoilSide: 0.01, auto: false, reload: 3.8, zoom: 1.5, price: 3800, speed: 0.95, headshot: 2.5 }),
+  // RPG-7: một quả mỗi lần nạp, bay chậm, rơi nhiều ở xa; nổ phá xe tăng, người đứng gần cũng chết.
+  w({ id: "rpg7", name: "RPG-7", class: "launcher", ammo: "rocket", mag: 1, rpm: 40, damage: 0, range: 160, hipSpread: 0.04, adsSpread: 0.006, recoil: 0.05, recoilSide: 0.01, auto: false, reload: 3.4, zoom: 1.4, price: 2200, speed: 0.88, headshot: 1, explosive: { radius: 4.5, damage: 110, armor: 380 } }),
   w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, rpm: 40, damage: 105, range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, headshot: 2.5, rare: true }),
 ];
 
@@ -180,8 +188,106 @@ export const SIGHT_IDS = Object.keys(SIGHTS) as SightId[];
 /** Ống ngắm nào lắp được lên súng nào (súng lục chỉ kính phản xạ, shotgun tới 2x, tiểu liên tới 4x). */
 export function sightFits(sight: string, def: WeaponDef): boolean {
   if (!(sight in SIGHTS)) return false;
+  if (def.class === "launcher") return false;
   const max = def.class === "pistol" ? 1.5 : def.class === "shotgun" ? 2 : def.class === "smg" ? 4 : 8;
   return SIGHTS[sight as SightId].zoom <= max;
+}
+
+// ---------------------------------------------------------------------------- phụ kiện khác (như PUBG)
+
+export type AttachmentSlot = "muzzle" | "grip" | "mag" | "stock";
+export type AttachmentId = "comp" | "suppressor" | "flashhider" | "choke" | "vgrip" | "agrip" | "halfgrip" | "extmag" | "quickmag" | "extquick" | "tacstock" | "cheekpad";
+
+export interface AttachmentDef {
+  id: AttachmentId;
+  name: string;
+  slot: AttachmentSlot;
+  /** Giá ở cửa hàng; 0 là chỉ nhặt được. */
+  price: number;
+  /** Nhân giật dọc, giật ngang (1 là không đổi), độ toả (shotgun: độ chụm). */
+  recoilV?: number;
+  recoilH?: number;
+  spread?: number;
+  /** Băng đạn to hơn (phần trăm, làm tròn) và thay đạn nhanh hơn (nhân thời gian). */
+  magBonus?: number;
+  reload?: number;
+  /** Giảm thanh: tiếng súng nhỏ, nghe gần mới thấy; không loé lửa đầu nòng. */
+  suppressed?: boolean;
+  /** Che lửa đầu nòng. */
+  flashless?: boolean;
+  /** Mô tả ngắn cho cửa hàng. */
+  desc: string;
+}
+
+export const ATTACHMENTS: Record<AttachmentId, AttachmentDef> = {
+  comp: { id: "comp", name: "Bù giật (Compensator)", slot: "muzzle", price: 500, recoilV: 0.75, recoilH: 0.8, desc: "giảm 25% giật dọc, 20% giật ngang" },
+  suppressor: { id: "suppressor", name: "Giảm thanh", slot: "muzzle", price: 700, recoilV: 0.95, suppressed: true, flashless: true, desc: "tiếng súng nhỏ, không loé lửa, máy nghe gần mới thấy" },
+  flashhider: { id: "flashhider", name: "Che lửa", slot: "muzzle", price: 300, recoilV: 0.9, recoilH: 0.9, flashless: true, desc: "không loé lửa, giảm 10% giật" },
+  choke: { id: "choke", name: "Choke (shotgun)", slot: "muzzle", price: 300, spread: 0.72, desc: "đạn chùm chụm hơn 28%" },
+  vgrip: { id: "vgrip", name: "Tay cầm dọc", slot: "grip", price: 450, recoilV: 0.8, desc: "giảm 20% giật dọc" },
+  agrip: { id: "agrip", name: "Tay cầm nghiêng", slot: "grip", price: 450, recoilH: 0.75, spread: 0.9, desc: "giảm 25% giật ngang, chụm hơn khi bắn hông" },
+  halfgrip: { id: "halfgrip", name: "Tay cầm nửa", slot: "grip", price: 400, recoilV: 0.9, recoilH: 0.88, desc: "giảm cân bằng giật dọc và ngang" },
+  extmag: { id: "extmag", name: "Băng đạn mở rộng", slot: "mag", price: 500, magBonus: 0.35, desc: "thêm khoảng 35% đạn mỗi băng" },
+  quickmag: { id: "quickmag", name: "Băng đạn thay nhanh", slot: "mag", price: 400, reload: 0.7, desc: "thay đạn nhanh hơn 30%" },
+  extquick: { id: "extquick", name: "Băng mở rộng thay nhanh", slot: "mag", price: 0, magBonus: 0.35, reload: 0.7, desc: "vừa nhiều đạn vừa thay nhanh (hàng hiếm)" },
+  tacstock: { id: "tacstock", name: "Báng chiến thuật", slot: "stock", price: 400, recoilV: 0.9, recoilH: 0.9, desc: "giảm 10% giật, ngắm vững hơn" },
+  cheekpad: { id: "cheekpad", name: "Đệm má", slot: "stock", price: 400, recoilV: 0.85, desc: "súng bắn tỉa: giảm 15% giật, ngắm vững" },
+};
+export const ATTACHMENT_IDS = Object.keys(ATTACHMENTS) as AttachmentId[];
+
+/** Phụ kiện nào lắp được lên súng nào (giống PUBG: súng lục chỉ giảm thanh + băng; shotgun chỉ choke; M249 chỉ báng). */
+export function attachmentFits(att: string, def: WeaponDef): boolean {
+  const a = ATTACHMENTS[att as AttachmentId];
+  if (!a) return false;
+  const c = def.class;
+  // Súng phóng rocket không lắp phụ kiện.
+  if (c === "launcher") return false;
+  switch (a.slot) {
+    case "muzzle":
+      if (a.id === "choke") return c === "shotgun";
+      if (c === "shotgun" || c === "lmg") return false;
+      if (c === "pistol") return a.id === "suppressor";
+      return true;
+    case "grip":
+      return c === "ar" || c === "smg" || c === "dmr";
+    case "mag":
+      if (c === "shotgun" || def.id === "kar98k") return false;
+      return c !== "lmg";
+    case "stock":
+      if (a.id === "cheekpad") return c === "sniper" || c === "dmr";
+      return c === "ar" || c === "smg" || c === "lmg";
+  }
+}
+
+/** Danh sách phụ kiện lắp trên một khẩu (chuỗi "comp,vgrip" trong KitState). */
+export function parseAttachments(list: string): AttachmentDef[] {
+  if (!list) return [];
+  return list
+    .split(",")
+    .map((id) => ATTACHMENTS[id as AttachmentId])
+    .filter((a): a is AttachmentDef => !!a);
+}
+
+/** Chỉ số thật của khẩu súng khi lắp các phụ kiện (băng, thời gian thay đạn, hệ số giật, toả, giảm thanh). */
+export function withAttachments(def: WeaponDef, list: string) {
+  const atts = parseAttachments(list).filter((a) => attachmentFits(a.id, def));
+  let mag = def.mag;
+  let reload = def.reload;
+  let recoilV = 1;
+  let recoilH = 1;
+  let spread = 1;
+  let suppressed = false;
+  let flashless = false;
+  for (const a of atts) {
+    if (a.magBonus) mag = Math.round(def.mag * (1 + a.magBonus));
+    if (a.reload) reload *= a.reload;
+    recoilV *= a.recoilV ?? 1;
+    recoilH *= a.recoilH ?? 1;
+    spread *= a.spread ?? 1;
+    suppressed ||= !!a.suppressed;
+    flashless ||= !!a.flashless;
+  }
+  return { mag, reload, recoilV, recoilH, spread, suppressed, flashless, atts };
 }
 
 /** Phóng đại khi ngắm: theo ống ngắm đang lắp, không có thì theo thước ngắm sắt của súng. */
@@ -244,6 +350,7 @@ export function lootLabel(id: BattleLootId): string {
   if (kind === "helmet") return HELMETS[Number(arg) - 1]?.name ?? id;
   if (kind === "money") return `${arg}$`;
   if (kind === "sight") return SIGHTS[arg as SightId]?.name ?? id;
+  if (kind === "att") return ATTACHMENTS[arg as AttachmentId]?.name ?? id;
   if (id in THROWABLES) return THROWABLES[id as ThrowableId].name;
   if (id in HEALS) return HEALS[id as HealId].name;
   return id;

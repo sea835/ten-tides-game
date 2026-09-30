@@ -158,7 +158,7 @@ export const SQUAD_BOTS = 5;
 /** Số máy tối đa trong một phòng. */
 export const MAX_BOTS = 50;
 
-export type SquadRole = "leader" | "rifle" | "sniper" | "tanker" | "support";
+export type SquadRole = "leader" | "rifle" | "sniper" | "tanker" | "support" | "antitank";
 
 /** Tên vai trò, súng mang theo, đồ kèm. Máy trong đội đủ vai: tay súng trường, bắn tỉa, xạ thủ súng máy, lái tăng. */
 export const ROLES: Record<SquadRole, { name: string; guns: readonly string[]; sight: string; outfit?: string; extras: readonly string[] }> = {
@@ -167,10 +167,11 @@ export const ROLES: Record<SquadRole, { name: string; guns: readonly string[]; s
   sniper: { name: "Bắn tỉa", guns: ["kar98k", "sks"], sight: "x8", outfit: "ghillie", extras: ["smoke", "bandage"] },
   support: { name: "Súng máy", guns: ["m249"], sight: "holo", extras: ["smoke", "bandage", "bandage"] },
   tanker: { name: "Lái xe tăng", guns: ["ump45", "vector"], sight: "reddot", extras: ["bandage"] },
+  antitank: { name: "Chống tăng", guns: ["ump45", "m416"], sight: "reddot", extras: ["rpg7", "ammo:rocket:6", "bandage", "bandage"] },
 };
 
 /** Thứ tự vai trò của 5 máy đi theo một người (hay đội máy: máy đầu tiên làm đội trưởng). */
-export const SQUAD_ROLES: readonly SquadRole[] = ["rifle", "sniper", "tanker", "support", "rifle"];
+export const SQUAD_ROLES: readonly SquadRole[] = ["rifle", "sniper", "tanker", "support", "antitank"];
 
 /** Màu đội (tên, màu vẽ trên HUD, trên xe tăng). */
 export const TEAM_COLORS = ["#3d8bff", "#ff5a4a", "#ffc233", "#3fcf6a", "#c46bff", "#ff8a2a", "#35d6d0", "#ff5fb0", "#a0a0a0", "#8fd14f"] as const;
@@ -203,7 +204,7 @@ export const TANK = {
   /** Đứng cách xe chừng này (m) thì bấm E lên xe được. */
   enter: 4.5,
   /** Súng, nổ gây bao nhiêu phần sát thương lên xe (thép dày): đạn thường gần như không xi nhê. */
-  bulletFactor: 0.02,
+  bulletFactor: 0.07,
   blastFactor: 1.4,
 } as const;
 
@@ -277,10 +278,10 @@ export function tankFits(map: BattleMap, x: number, z: number, rotY: number): bo
     const px = x + c * u + s * v;
     const pz = z - s * u + c * v;
     const ph = map.world.heightAt(px, pz);
-    if (ph < 0.2 || Math.abs(ph - h) > 2.6) return false;
+    if (ph < 0.2 || Math.abs(ph - h) > 3.2) return false;
     // Rào thép gai, biển báo, bao cát thấp thì xe cán qua; tường, nhà, container thì chặn.
     const box = boxAt(map.index, px, ph + 0.9, pz, 0.15) ?? boxAt(map.index, px, ph + 1.6, pz, 0.15);
-    if (box && box.mat !== "fence" && box.mat !== "sign" && box.h > 1.1) return false;
+    if (box && box.mat !== "fence" && box.mat !== "sign" && box.mat !== "sandbag" && box.h > 1.3) return false;
   }
   return true;
 }
@@ -293,29 +294,47 @@ export function tankStep(map: BattleMap, t: TankPose, throttle: number, steer: n
   const want = throttle > 0 ? throttle * TANK.forward : throttle * TANK.reverse;
   const accel = Math.abs(want) > Math.abs(speed) ? 2.2 : 4.5;
   let v = speed + Math.max(-accel * dt, Math.min(accel * dt, want - speed));
-  // Quay tại chỗ được (hai dải xích chạy ngược nhau), đang lùi thì lái ngược chiều như xe thật.
-  const rotY = t.rotY + steer * TANK.turn * dt * (v < -0.2 ? -1 : 1);
-  let x = t.x + Math.sin(rotY) * v * dt;
-  let z = t.z + Math.cos(rotY) * v * dt;
-  let turn = rotY;
+  // Quay tại chỗ được (hai dải xích chạy ngược nhau). Hướng xe (sin rotY, cos rotY): rotY giảm là quay sang phải,
+  // nên D (steer +1) trừ góc. Lùi cũng giữ nguyên chiều quay của thân (như điều khiển xe tăng trong game bắn súng).
+  const rotY = t.rotY - steer * TANK.turn * dt;
+  const turn = rotY;
   let blocked = false;
-  // Đang kẹt sẵn (chỗ đứng hiện tại đã chạm tường) thì cho đi để thoát ra.
-  if (!tankFits(map, x, z, rotY) && tankFits(map, t.x, t.z, t.rotY)) {
-    blocked = true;
-    // Thử lần lượt: đi thẳng không bẻ lái, chỉ quay tại chỗ; không được thì đứng yên.
-    const sx = t.x + Math.sin(t.rotY) * v * dt;
-    const sz = t.z + Math.cos(t.rotY) * v * dt;
-    if (tankFits(map, sx, sz, t.rotY)) {
-      x = sx;
-      z = sz;
-      turn = t.rotY;
-      v *= 0.6;
-    } else if (tankFits(map, t.x, t.z, rotY)) {
-      x = t.x;
-      z = t.z;
+  const at = (heading: number, k: number) => {
+    const x = t.x + Math.sin(heading) * v * k * dt;
+    const z = t.z + Math.cos(heading) * v * k * dt;
+    return tankFits(map, x, z, rotY) ? { x, z } : null;
+  };
+  let p: { x: number; z: number } | null;
+  if (!tankFits(map, t.x, t.z, t.rotY)) {
+    // Đang kẹt sẵn (chỗ đứng hiện tại đã chạm tường): cho đi để thoát ra.
+    p = { x: t.x + Math.sin(rotY) * v * dt, z: t.z + Math.cos(rotY) * v * dt };
+  } else {
+    p = at(rotY, 1);
+    if (!p && Math.abs(v) > 0.05) {
+      // Đâm vào vật cản: trượt dọc theo nó (lệch hướng đi một chút, chậm lại) thay vì đứng khựng.
+      blocked = true;
+      for (const [off, k] of [
+        [0.35, 0.75],
+        [-0.35, 0.75],
+        [0.8, 0.5],
+        [-0.8, 0.5],
+        [1.3, 0.3],
+        [-1.3, 0.3],
+      ] as const) {
+        p = at(rotY + off, k);
+        if (p) break;
+      }
+      if (p) v *= 0.85;
+    }
+    if (!p) {
+      blocked = true;
       v = 0;
-    } else return { pose: { x: t.x, y: t.y, z: t.z, rotY: t.rotY }, speed: 0, blocked };
+      if (!tankFits(map, t.x, t.z, rotY)) return { pose: { x: t.x, y: t.y, z: t.z, rotY: t.rotY }, speed: 0, blocked };
+      p = { x: t.x, z: t.z };
+    }
   }
+  const x = p.x;
+  const z = p.z;
   return { pose: { x, y: map.world.heightAt(x, z), z, rotY: turn }, speed: v, blocked };
 }
 

@@ -68,7 +68,7 @@ class AudioEngine {
     limiter.attack.value = 0.001;
     limiter.release.value = 0.09;
     this.muffle.connect(this.master).connect(comp).connect(limiter).connect(ctx.destination);
-    const levels: Record<Bus, number> = { sfx: 0.9, ambience: 0.4, music: this.settings.music ? 0.32 : 0, ui: 0.5 };
+    const levels: Record<Bus, number> = { sfx: 1, ambience: 0.4, music: this.settings.music ? 0.32 : 0, ui: 0.5 };
     for (const [bus, level] of Object.entries(levels) as [Bus, number][]) {
       const g = ctx.createGain();
       g.gain.value = level;
