@@ -179,8 +179,8 @@ export interface SightDef {
 export const SIGHTS: Record<SightId, SightDef> = {
   reddot: { id: "reddot", name: "Red Dot", zoom: 1.35, scope: false, price: 150, reticle: "dot" },
   holo: { id: "holo", name: "Holo", zoom: 1.35, scope: false, price: 150, reticle: "holo" },
-  x2: { id: "x2", name: "Ống 2x", zoom: 2, scope: true, price: 300, reticle: "cross" },
-  x4: { id: "x4", name: "Ống 4x (ACOG)", zoom: 4, scope: true, price: 700, reticle: "chevron" },
+  x2: { id: "x2", name: "Ống 2x", zoom: 2, scope: true, price: 300, reticle: "chevron" },
+  x4: { id: "x4", name: "Ống 4x", zoom: 4, scope: true, price: 700, reticle: "cross" },
   x8: { id: "x8", name: "Ống 8x", zoom: 8, scope: true, price: 0, reticle: "mil" },
 };
 export const SIGHT_IDS = Object.keys(SIGHTS) as SightId[];

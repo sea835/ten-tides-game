@@ -32,6 +32,7 @@ import {
   makeRand,
   raycastBoxes,
   raycastTerrain,
+  raycastTrunks,
   type BattleMap,
   type LootSpot,
 } from "@tentides/content";
@@ -883,7 +884,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         const b = bulletAt(o, d, def.velocity, steps[i]!);
         const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
         const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
-        let t = Math.min(raycastBoxes(this.map.index, a, cd, len, true), raycastTerrain(this.map.world, a, cd, len));
+        let t = Math.min(raycastBoxes(this.map.index, a, cd, len, true), raycastTerrain(this.map.world, a, cd, len), raycastTrunks(this.map.world, a, cd, len));
         // Xe tăng chặn đạn (thép dày, đạn thường không xuyên).
         let tank = "";
         for (const [vid, v] of this.state.vehicles) {

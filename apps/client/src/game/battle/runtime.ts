@@ -240,6 +240,23 @@ export function useBattleHud(): HudState {
   );
 }
 
+/**
+ * Đóng cửa hàng và khoá chuột lại ngay (gọi trong lúc xử lý phím / bấm chuột để trình duyệt cho phép), khỏi
+ * phải bấm Esc rồi bấm vào màn hình thêm một lần mới chơi tiếp được.
+ */
+export function closeBuyMenu() {
+  setBattleHud({ buyOpen: false });
+  const canvas = document.querySelector("canvas");
+  if (!canvas || document.pointerLockElement === canvas) return;
+  try {
+    // Trình duyệt mới trả về Promise (bị từ chối nếu vừa thoát khoá bằng Esc); bản cũ trả về undefined.
+    const p = canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
+    p?.catch?.(() => {});
+  } catch {
+    // Không khoá được thì người chơi bấm vào màn hình như cũ.
+  }
+}
+
 /** Có bảng nào đang mở (mua đồ, cài đặt) thì thôi điều khiển nhân vật. */
 export function menuOpen(): boolean {
   return hud.buyOpen || hud.settingsOpen;

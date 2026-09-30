@@ -42,6 +42,21 @@ describe("xe tăng", () => {
     expect(speed).toBeLessThanOrEqual(TANK.forward);
   });
 
+  it("không lấn vào góc tường nằm lọt giữa các điểm mẫu", () => {
+    // Góc một khối tường cao: đặt tâm xe sao cho góc tường chui vào giữa hông xe (không trúng điểm mẫu nào).
+    const wall = map.boxes.find((b) => b.solid && b.h > 2.5 && b.mat !== "fence" && Math.abs(b.pitch) < 0.01 && b.w > 3 && b.d > 3)!;
+    expect(wall).toBeDefined();
+    const [hw, , hl] = TANK.half;
+    const c = Math.cos(wall.rot);
+    const s = Math.sin(wall.rot);
+    // Góc (+u, +v) của tường, lùi ra ngoài theo u một chút, xe quay cùng hướng tường, hông trái xe đè lên góc.
+    const u = wall.w / 2 + hw - 0.4;
+    const v = wall.d / 2 + hl * 0.5;
+    const x = wall.x + c * u + s * v;
+    const z = wall.z - s * u + c * v;
+    expect(tankFits(map, x, z, wall.rot)).toBe(false);
+  });
+
   it("D quay sang phải, A quay sang trái (theo hướng người lái nhìn)", () => {
     // Nhìn theo +z thì bên phải là −x (quy ước camera: phải = (cos yaw, −sin yaw) với hướng nhìn (−sin yaw, −cos yaw)).
     let pose = { x: 30, y: 0, z: 30, rotY: 0 };

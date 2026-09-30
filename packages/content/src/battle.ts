@@ -755,6 +755,27 @@ export function boxAt(index: BoxIndex, x: number, y: number, z: number, pad = 0)
   return null;
 }
 
+/** Các khối đặc có thể chạm hình tròn (x, z, r) trên mặt bằng (theo ô lưới, chưa lọc chính xác). */
+export function boxesNear(index: BoxIndex, x: number, z: number, r: number): BattleBox[] {
+  const out: BattleBox[] = [];
+  if (++index.stamp >= 0xffffffff) {
+    index.seen.fill(0);
+    index.stamp = 1;
+  }
+  const stamp = index.stamp;
+  for (let gx = Math.floor((x - r) / index.cell); gx <= Math.floor((x + r) / index.cell); gx++)
+    for (let gz = Math.floor((z - r) / index.cell); gz <= Math.floor((z + r) / index.cell); gz++) {
+      const list = index.grid.get(cellKey(gx, gz));
+      if (!list) continue;
+      for (const i of list) {
+        if (index.seen[i] === stamp) continue;
+        index.seen[i] = stamp;
+        out.push(index.boxes[i]!);
+      }
+    }
+  return out;
+}
+
 /** Điểm có nằm trong khối đặc nào không (dùng để chọn chỗ xuất phát, chỗ rơi đồ). */
 export function insideBox(index: BoxIndex, x: number, y: number, z: number, pad = 0): boolean {
   return boxAt(index, x, y, z, pad) !== null;
@@ -771,6 +792,94 @@ export function floorBelow(map: BattleMap, x: number, yTop: number, z: number): 
 // ---------------------------------------------------------------------------- thế giới
 
 /** Tia chạm địa hình: đi từng bước 1 m rồi chia đôi cho chính xác. Trả khoảng cách hoặc Infinity. */
+/** Bán kính thân cây chặn đạn (khớp CylinderCollider của client trong Trees.tsx). */
+export function trunkRadius(t: Tree): number {
+  return t.kind === "palm" ? 0.3 : 0.35 * t.lean;
+}
+
+interface TrunkIndex {
+  cell: number;
+  grid: Map<number, number[]>;
+  /** x, z, bán kính, chân, đỉnh của từng thân. */
+  data: Float64Array;
+}
+const trunkIndexes = new WeakMap<World, TrunkIndex>();
+
+function trunkIndex(world: World): TrunkIndex {
+  let idx = trunkIndexes.get(world);
+  if (idx && idx.data.length === world.trees.length * 5) return idx;
+  const cell = 8;
+  const grid = new Map<number, number[]>();
+  const data = new Float64Array(world.trees.length * 5);
+  world.trees.forEach((t, i) => {
+    const r = trunkRadius(t);
+    const y = world.heightAt(t.x, t.z);
+    data.set([t.x, t.z, r, y - 0.2, y + t.height], i * 5);
+    for (let gx = Math.floor((t.x - r) / cell); gx <= Math.floor((t.x + r) / cell); gx++)
+      for (let gz = Math.floor((t.z - r) / cell); gz <= Math.floor((t.z + r) / cell); gz++) {
+        const key = cellKey(gx, gz);
+        const list = grid.get(key);
+        if (list) list.push(i);
+        else grid.set(key, [i]);
+      }
+  });
+  idx = { cell, grid, data };
+  trunkIndexes.set(world, idx);
+  return idx;
+}
+
+/**
+ * Tia chạm thân cây gần nhất (trụ đứng) trong `max` mét: trả khoảng cách hoặc Infinity. Client có va chạm thân cây
+ * (đạn người chơi găm vào cây) nên server cũng phải tính: trước đây máy nhìn và bắn xuyên qua cây người chơi nấp sau.
+ */
+export function raycastTrunks(world: World, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
+  if (!world.trees.length) return Infinity;
+  const { cell, grid, data } = trunkIndex(world);
+  let best = max;
+  const tried = new Set<number>();
+  // Đi từng đoạn dài một ô, xét mọi ô mà hộp bao của đoạn chạm tới (không lọt ô nào khi tia đi chéo).
+  for (let t0 = 0; t0 < best; t0 += cell) {
+    const t1 = Math.min(t0 + cell, best);
+    const ax = o[0] + d[0] * t0;
+    const az = o[2] + d[2] * t0;
+    const bx = o[0] + d[0] * t1;
+    const bz = o[2] + d[2] * t1;
+    for (let gx = Math.floor(Math.min(ax, bx) / cell); gx <= Math.floor(Math.max(ax, bx) / cell); gx++)
+      for (let gz = Math.floor(Math.min(az, bz) / cell); gz <= Math.floor(Math.max(az, bz) / cell); gz++) {
+        const list = grid.get(cellKey(gx, gz));
+        if (!list) continue;
+        for (const i of list) {
+          if (tried.has(i)) continue;
+          tried.add(i);
+          const k = i * 5;
+          const hit = rayTrunk(o, d, data[k]!, data[k + 1]!, data[k + 2]!, data[k + 3]!, data[k + 4]!, best);
+          if (hit < best) best = hit;
+        }
+      }
+  }
+  return best < max ? best : Infinity;
+}
+
+/** Tia cắt trụ đứng (tâm x, z, bán kính r, từ y0 tới y1). */
+function rayTrunk(o: readonly [number, number, number], d: readonly [number, number, number], x: number, z: number, r: number, y0: number, y1: number, max: number): number {
+  const ox = o[0] - x;
+  const oz = o[2] - z;
+  const a = d[0] * d[0] + d[2] * d[2];
+  if (a < 1e-9) return Infinity;
+  const b = ox * d[0] + oz * d[2];
+  const c = ox * ox + oz * oz - r * r;
+  const disc = b * b - a * c;
+  if (disc < 0) return Infinity;
+  const sq = Math.sqrt(disc);
+  let t = (-b - sq) / a;
+  // Gốc tia nằm trong thân (đứng sát cây): không tính là chặn, kẻo bắn không ra.
+  if (t < 0) return Infinity;
+  if (t > max) return Infinity;
+  const y = o[1] + d[1] * t;
+  if (y < y0 || y > y1) return Infinity;
+  return t;
+}
+
 export function raycastTerrain(world: World, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
   const step = 1;
   let prev = 0;

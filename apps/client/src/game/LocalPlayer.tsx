@@ -120,6 +120,8 @@ const BHOP_DECAY = 2;
 /** Battleground: tốc độ đi, chạy, ngồi xổm (m/s), camera qua vai (khoảng cách thường, khi ngắm, lệch sang phải). */
 const BATTLE_WALK = 5.6;
 const BATTLE_RUN = 8.6;
+/** Chạy bắn (giữ Shift + bóp cò): chậm hơn chạy nước rút, nhanh hơn đi bộ. */
+const BATTLE_RUN_GUN = 7;
 const BATTLE_CROUCH = 3.2;
 const BATTLE_CAM_DIST = 3.4;
 const BATTLE_CAM_AIM = 1.9;
@@ -502,6 +504,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (battle && shift && s.prone && (forward !== 0 || strafe !== 0)) setProne(false);
     const wantsRun = shift && (forward !== 0 || strafe !== 0) && !frozen && !s.prone && !(battle && (stance.aiming || stance.holdFire || s.crouching));
     const running = wantsRun && (battle || (!s.exhausted && s.energy > 0));
+    // Vừa chạy vừa bắn: giữ Shift và bóp cò thì không chạy nước rút (không bắn được) mà chạy bắn,
+    // nhanh hơn đi bộ, đạn toả rộng hơn (Shooter tính toả theo stance.moving).
+    const runAndGun = battle && shift && stance.holdFire && !stance.aiming && (forward !== 0 || strafe !== 0) && !frozen && !s.prone && !s.crouching;
     const strength = sheet?.stats.get("strength") ?? 3;
     if (running && !battle) {
       s.energy = Math.max(0, s.energy - (SPRINT_DRAIN_BASE - SPRINT_DRAIN_PER_STRENGTH * strength) * dt);
@@ -519,7 +524,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const landSpeed = battle
       ? s.prone
         ? PRONE_SPEED * (stance.aiming ? 0.6 : 1) * (proneMoving ? 0.2 : 1)
-        : (running ? BATTLE_RUN : s.crouching ? BATTLE_CROUCH : BATTLE_WALK) * (gun?.speed ?? 1) * (stance.aiming ? 0.68 : 1)
+        : (running ? BATTLE_RUN : runAndGun ? BATTLE_RUN_GUN : s.crouching ? BATTLE_CROUCH : BATTLE_WALK) * (gun?.speed ?? 1) * (stance.aiming ? 0.68 : 1)
       : running
         ? MAX_RUN_SPEED
         : WALK_SPEED;

@@ -10,7 +10,7 @@ import { isTyping, keys, look, view } from "../input.ts";
 import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
 import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
-import { bodies, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, seat, setBattleHud, stance, stopHit, type Body } from "./runtime.ts";
+import { bodies, closeBuyMenu, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, seat, setBattleHud, stance, stopHit, type Body } from "./runtime.ts";
 import { BULLET_GROUPS, physicsProbe } from "./surface.ts";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 
@@ -241,8 +241,10 @@ export function Shooter({ room }: { room: IslandRoom }) {
           return heal("medkit");
         case "KeyB": {
           const open = !getBattleHud().buyOpen;
-          setBattleHud({ buyOpen: open });
-          if (open) document.exitPointerLock?.();
+          if (open) {
+            setBattleHud({ buyOpen: true });
+            document.exitPointerLock?.();
+          } else closeBuyMenu();
           return;
         }
         case "Tab":
@@ -250,7 +252,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
           setBattleHud({ scoreboard: true });
           return;
         case "Escape":
-          if (getBattleHud().buyOpen) setBattleHud({ buyOpen: false });
+          if (getBattleHud().buyOpen) closeBuyMenu();
           return;
       }
     };
@@ -258,6 +260,11 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (e.code === "Tab") setBattleHud({ scoreboard: false });
     };
     const onDown = (e: MouseEvent) => {
+      // Cửa hàng đang mở mà bấm ra ngoài (vào cảnh 3D): đóng cửa hàng, khoá chuột, chơi tiếp luôn.
+      if (getBattleHud().buyOpen && e.target instanceof HTMLCanvasElement) {
+        closeBuyMenu();
+        return;
+      }
       if (!locked() || menuOpen()) return;
       if (e.button === 0) {
         input.current.fire = true;
@@ -469,7 +476,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     bloom.current = Math.max(0, bloom.current - dt * 0.12);
     if (def) {
       let spread = stance.aiming ? def.adsSpread : def.hipSpread;
-      if (stance.moving) spread *= stance.aiming ? 1.6 : 1.5;
+      if (stance.moving) spread *= stance.aiming ? 1.6 : stance.speed > 6.5 ? 1.9 : 1.5;
       if (stance.airborne) spread *= 3;
       if (stance.prone) spread *= stance.moving ? 1 : 0.5;
       else if (stance.crouching) spread *= 0.75;
@@ -504,13 +511,16 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // thay vì bị `return` ở dưới nuốt mất hoàn toàn (người chơi thường báo là "game lag").
     const buffered = inp.firePressedAt > 0 && now - inp.firePressedAt <= BUFFER_INPUT;
     if (!inp.fire && !inp.firePressed && !buffered && !inp.fireAfterReload) return;
+    // Đang chạy nước rút: giữ nguyên lệnh bấm (không tiêu), giữ chuột đã làm LocalPlayer thôi chạy
+    // (holdFire), vài khung sau súng giơ lên là phát bắn ra. Trước đây cú bấm bị nuốt mất ở đây.
+    if (stance.sprinting) return;
     const pressed = inp.firePressed || buffered || inp.fireAfterReload;
     inp.firePressed = false;
     inp.firePressedAt = 0;
     // Lệnh chỉ dùng một lần: nếu vẫn đang nạp thì nhánh dưới đặt lại, nạp xong thì thành đúng một phát.
     // Không xoá thì cờ kẹt ở true mãi và súng tự bắn liên tục dù đã thả chuột.
     inp.fireAfterReload = false;
-    if (stance.sprinting || now < gun.readyAt) return;
+    if (now < gun.readyAt) return;
 
     if (isThrown(slot)) {
       if (pressed && !stance.cookAt) {

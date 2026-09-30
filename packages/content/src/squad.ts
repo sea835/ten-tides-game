@@ -1,7 +1,7 @@
 // Chế độ Đồng đội (Battleground kiểu Arma) và những thứ dùng chung giữa server và client: thân người khi đứng, ngồi
 // xổm, nằm sấp (để dò đạn trúng khớp nhau), vai trò trong đội, xe tăng.
 
-import { boxAt, type BattleMap } from "./battle.ts";
+import { boxAt, boxesNear, type BattleMap } from "./battle.ts";
 
 type V3 = readonly [number, number, number];
 
@@ -282,6 +282,35 @@ export function tankFits(map: BattleMap, x: number, z: number, rotY: number): bo
     // Rào thép gai, biển báo, bao cát thấp thì xe cán qua; tường, nhà, container thì chặn.
     const box = boxAt(map.index, px, ph + 0.9, pz, 0.15) ?? boxAt(map.index, px, ph + 1.6, pz, 0.15);
     if (box && box.mat !== "fence" && box.mat !== "sign" && box.mat !== "sandbag" && box.h > 1.3) return false;
+  }
+  // Tám điểm mẫu cách nhau cả mét: góc tường mỏng, cột, mép container lọt vào giữa hai điểm thì xe lấn vào tường
+  // và kẹt ở góc. Xét thêm chồng lấn hình chữ nhật (SAT trên mặt bằng) giữa thân xe và từng khối chặn ở gần.
+  for (const b of boxesNear(map.index, x, z, Math.hypot(hw, hl) + 1)) {
+    if (b.mat === "fence" || b.mat === "sign" || b.mat === "sandbag" || b.h <= 1.3 || Math.abs(b.pitch) > 0.2) continue;
+    // Chỉ khối chắn ngang thân xe (từ gầm tới nóc); mái, sàn tầng trên thì xe chui qua được.
+    if (b.y - b.h / 2 > h + 2.4 || b.y + b.h / 2 < h + 0.5) continue;
+    if (rectsOverlap(x, z, rotY, hw, hl, b.x, b.z, b.rot, b.w / 2, b.d / 2)) return false;
+  }
+  return true;
+}
+
+/**
+ * Hai hình chữ nhật xoay trên mặt bằng có chồng lên nhau không (định lý trục phân tách). Quy ước hướng giống
+ * tankFits: trục u = (cos r, −sin r), trục v = (sin r, cos r).
+ */
+function rectsOverlap(ax: number, az: number, ar: number, ahu: number, ahv: number, bx: number, bz: number, br: number, bhu: number, bhv: number): boolean {
+  const axes = [
+    [Math.cos(ar), -Math.sin(ar)],
+    [Math.sin(ar), Math.cos(ar)],
+    [Math.cos(br), -Math.sin(br)],
+    [Math.sin(br), Math.cos(br)],
+  ] as const;
+  const dx = bx - ax;
+  const dz = bz - az;
+  for (const [nx, nz] of axes) {
+    const ra = ahu * Math.abs(axes[0][0] * nx + axes[0][1] * nz) + ahv * Math.abs(axes[1][0] * nx + axes[1][1] * nz);
+    const rb = bhu * Math.abs(axes[2][0] * nx + axes[2][1] * nz) + bhv * Math.abs(axes[3][0] * nx + axes[3][1] * nz);
+    if (Math.abs(dx * nx + dz * nz) > ra + rb) return false;
   }
   return true;
 }

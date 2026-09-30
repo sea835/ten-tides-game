@@ -537,7 +537,9 @@ function Reticle({ weapon, sight }: { weapon: string; sight: string }) {
     );
   if (!def || def.scope) return null;
   const [x, y, z] = railMount(weapon);
-  const lensZ = z + (sight === "holo" ? 0.03 : 0.018) + 0.002;
+  // Tâm nằm ngay mặt sau kính (phía mắt): đặt sau kính thì mặt kính ghi độ sâu che mất tâm, nhìn qua
+  // holo chẳng khác gì thước ngắm sắt.
+  const lensZ = z + (sight === "holo" ? 0.028 : 0.015);
   return (
     <group position={[x, y + opticHeight(sight), lensZ]} rotation-y={Math.PI}>
       <mesh geometry={res.dot} material={res.m} renderOrder={21} />

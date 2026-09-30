@@ -499,7 +499,8 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
           ocean: makeLoop(true, "lowpass", 380),
           surf: makeLoop(true, "bandpass", 650, 0.5),
           wind: makeLoop(true, "lowpass", 420, 0.6),
-          rain: makeLoop(false, "bandpass", 1700, 0.35),
+          // Mưa: tiếng ồn trắng qua lọc thấp (lộp độp êm) thay cho dải thông 1,7 kHz nghe xè xè chói tai.
+          rain: makeLoop(false, "lowpass", 1100, 0.5),
           lava: makeLoop(true, "lowpass", 160),
           fire: makeLoop(false, "bandpass", 3200, 0.8),
         };
@@ -568,7 +569,9 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     const height = Math.max(0, Math.min(1, p.y / 30));
     setLevel(loops.current.wind, (0.04 + 0.1 * height + 0.08 * (windStrength.value - 1)) * outdoors * bed);
     loops.current.wind?.filter.frequency.setTargetAtTime(300 + 150 * Math.sin(t * 0.3) + 250 * weatherFx.storm, audio.ctx!.currentTime, 0.5);
-    setLevel(loops.current.rain, 0.3 * weatherFx.rain * (0.3 + 0.7 * outdoors) * (battle ? 0.7 : 1));
+    // Nhỏ hơn nhiều so với trước (0.3 → 0.13), trong nhà gần như tắt, ở sảnh chờ / lúc chuẩn bị còn nhỏ nữa.
+    const waiting = battle && (state.phase === "lobby" || state.phase === "prep");
+    setLevel(loops.current.rain, 0.13 * weatherFx.rain * (0.12 + 0.88 * outdoors) * (battle ? 0.8 : 1) * (waiting ? 0.35 : 1));
     const lavaDist = battle ? 999 : Math.hypot(p.x - LAVA.x, p.z - LAVA.z);
     setLevel(loops.current.lava, 0.7 * Math.pow(Math.max(0, 1 - lavaDist / 70), 2) * (0.6 + state.volcano / 200));
     const campDist = state.campPacked || battle ? 99 : Math.hypot(p.x - state.campX, p.z - state.campZ);

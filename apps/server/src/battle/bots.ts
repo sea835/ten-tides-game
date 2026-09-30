@@ -1,4 +1,4 @@
-import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, insideBox, raycastBoxes, type SquadRole } from "@tentides/content";
+import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, insideBox, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -755,7 +755,8 @@ export class Bots {
     for (let t = 2.5; t < len; t += 2.5) {
       if (eye[1] + dir[1] * t < this.height(eye[0] + dir[0] * t, eye[2] + dir[2] * t) + 0.1) return false;
     }
-    return raycastBoxes(this.room.map.index, eye, dir, len, true) === Infinity;
+    // Thân cây cũng che (client có va chạm thân cây): nấp sau gốc cây thì máy không thấy, không bắn xuyên được.
+    return raycastBoxes(this.room.map.index, eye, dir, len, true) === Infinity && raycastTrunks(this.room.map.world, eye, dir, len) === Infinity;
   }
 
   private shoot(id: string, b: Brain, dt: number, weaponId: string, eye: [number, number, number], target: PlayerState, d: number) {
@@ -771,6 +772,13 @@ export class Bots {
     let targetId = "";
     for (const [tid, t] of this.room.state.players) if (t === target) targetId = tid;
     const aimY = target.y + (target.prone ? 0.25 : target.crouching ? 0.8 : 1.2);
+    // Dò lại tầm nhìn ngay lúc bóp cò (lần dò định kỳ cách 0,3–0,4 s): người chơi vừa lách vào sau tường, gốc cây
+    // thì máy thôi bắn, thay vì xả thêm một loạt vào chỗ nấp như thể nhìn xuyên tường.
+    if (!this.visible(eye, target.x, aimY, target.z)) {
+      b.sees = false;
+      b.burst = 0;
+      return;
+    }
     // Máy bắn kém dần theo khoảng cách, bắn liền nhiều phát thì kém đi (giật súng). Bắn tỉa, nằm bắn thì giữ chính xác xa hơn.
     const reach = def.class === "sniper" ? 420 : def.class === "dmr" ? 260 : 140;
     let chance = Math.max(0.05, Math.min(def.class === "sniper" ? 0.55 : 0.42, 0.5 - d / reach));
