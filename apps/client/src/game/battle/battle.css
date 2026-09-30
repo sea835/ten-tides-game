@@ -1717,3 +1717,62 @@
     display: none;
   }
 }
+
+/* Thùng thính: thông báo lúc thả, nhãn khoảng cách nổi trên thùng, dấu trên bản đồ. */
+.b-airdrop {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 90, 70, 0.7);
+  background: rgba(40, 6, 4, 0.72);
+  text-align: center;
+  pointer-events: none;
+  animation: b-airdrop-in 0.35s ease-out;
+}
+.b-airdrop b {
+  font-size: 22px;
+  color: #ff6a50;
+  text-shadow: 0 1px 3px #000;
+}
+.b-airdrop span {
+  font-size: 13px;
+  opacity: 0.85;
+}
+@keyframes b-airdrop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+.b-drop-tag {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(120, 16, 10, 0.7);
+  color: #fff;
+  font: 700 12px var(--font-ui, system-ui, sans-serif);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.bm-drop rect {
+  fill: #e0332b;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+.bm-drop path {
+  stroke: #fff;
+  stroke-width: 1.2;
+}
+.bm-drop:not(.landed) {
+  animation: bm-drop-blink 0.8s steps(2) infinite;
+}
+@keyframes bm-drop-blink {
+  50% {
+    opacity: 0.35;
+  }
+}

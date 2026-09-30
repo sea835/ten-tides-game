@@ -503,6 +503,26 @@ export const FlagState = schema(
 );
 export type FlagState = SchemaType<typeof FlagState>;
 
+/**
+ * Thùng thính (Battleground): rơi bằng dù từ trên cao xuống một chỗ trong vùng an toàn. `y` là độ cao hiện tại của
+ * thùng, `ground` là mặt đất chỗ rơi; chạm đất thì `landed`, đồ đổ ra quanh thùng (nằm trong groundItems) và khói
+ * đỏ bốc lên trong `smoke` giây. Nằm trong state nên người vào giữa trận cũng thấy.
+ */
+export const AirdropState = schema(
+  {
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    ground: t.float32().default(0),
+    landed: t.boolean().default(false),
+    /** Còn bao nhiêu giây nữa chạm đất (lúc đang rơi). */
+    fallLeft: t.float32().default(0),
+    smoke: t.float32().default(0),
+  },
+  "AirdropState",
+);
+export type AirdropState = SchemaType<typeof AirdropState>;
+
 export const IslandState = schema(
   {
     /**
@@ -523,6 +543,8 @@ export const IslandState = schema(
     zone: t.ref(ZoneState).default(() => new ZoneState()),
     feed: t.array(KillState),
     smokes: t.map(SmokeState),
+    /** Battleground: thùng thính đang rơi hoặc đã chạm đất trong trận này. */
+    airdrops: t.map(AirdropState),
     /** Battleground: còn bao nhiêu người sống, số máy (bot) chủ phòng chọn. */
     aliveCount: t.uint8().default(0),
     bots: t.uint8().default(0),

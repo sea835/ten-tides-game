@@ -1,5 +1,6 @@
 import { mapOf, type World } from "@tentides/content";
 import { WarFlags } from "./WarFlags.tsx";
+import { AirdropCrates } from "./Airdrops.tsx";
 import type { IslandRoom } from "../../net.ts";
 import { Terrain } from "../Island.tsx";
 import { WindClock } from "../nature.ts";
@@ -19,6 +20,7 @@ export function BattleIsland({ room, world }: { room: IslandRoom; world: World }
       <Vegetation world={world} />
       <BattleStructures world={world} />
       {mapOf(world).layout === "war" && <WarFlags room={room} />}
+      <AirdropCrates room={room} />
     </>
   );
 }

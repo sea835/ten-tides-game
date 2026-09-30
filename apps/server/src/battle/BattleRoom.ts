@@ -79,6 +79,7 @@ import {
 import { applySkins, resolveIdentity } from "../account.ts";
 import { isPlausibleMove } from "../movement.ts";
 import { randomRoomCode } from "../roomCode.ts";
+import { Airdrops } from "./airdrops.ts";
 import { Bots } from "./bots.ts";
 import { MatchRewards } from "./rewards.ts";
 import { Vehicles } from "./vehicles.ts";
@@ -180,6 +181,18 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   bots!: Bots;
   vehicles!: Vehicles;
   war!: War;
+  /** Thùng thính: bản đồ và bộ số ngẫu nhiên đổi theo trận nên đọc qua getter. */
+  airdrops = ((room: BattleRoom) =>
+    new Airdrops({
+      get state() {
+        return room.state;
+      },
+      get map() {
+        return room.map;
+      },
+      random: () => room.rand(),
+      putItem: (itemId, x, y, z) => room.putItem(itemId, x, y, z),
+    }))(this);
   private weatherLeft = WEATHER_MIN;
 
   async onCreate() {
@@ -506,6 +519,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.usedField.clear();
     this.timers.clear();
     this.vehicles.clear();
+    this.airdrops.clear();
     const squad = s.battleMode === "squad";
     const war = s.battleMode === "war";
     const humans = [...s.players.entries()].filter(([, p]) => !p.bot).map(([id]) => id);
@@ -781,6 +795,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (s.phase === "battle" && s.battleMode !== "war") {
       this.tickZone(dt);
       if (second) this.zoneDamage();
+      this.airdrops.tick(dt);
     }
     if (s.battleMode === "war") this.war.tick(dt);
     this.tickTimers(dt);
@@ -806,6 +821,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.thrown = [];
     this.bots.clear();
     this.vehicles.clear();
+    this.airdrops.clear();
     s.flags.clear();
     for (const [id, p] of s.players) {
       p.alive = true;
