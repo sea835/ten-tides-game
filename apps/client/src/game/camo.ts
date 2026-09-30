@@ -40,6 +40,37 @@ function grain(g: CanvasRenderingContext2D, rand: () => number, n: number, alpha
   }
 }
 
+/**
+ * Sợi dệt: hàng sợi ngang dọc sáng tối xen kẽ rất nhẹ (vải chéo), vài vệt sợi to nhỏ không đều. Phủ lên mọi tấm vải
+ * để nhìn gần không phẳng lì như nhựa.
+ */
+function weave(g: CanvasRenderingContext2D, rand: () => number, alpha: number) {
+  for (let y = 0; y < S; y += 2) {
+    g.fillStyle = `rgba(0,0,0,${alpha * (0.6 + rand() * 0.4)})`;
+    g.fillRect(0, y, S, 1);
+  }
+  for (let x = 0; x < S; x += 2) {
+    g.fillStyle = `rgba(255,255,255,${alpha * 0.5 * (0.5 + rand() * 0.5)})`;
+    g.fillRect(x, 0, 1, S);
+  }
+  // Sợi chéo (vải twill): vạch chéo mảnh lặp liền mép.
+  g.strokeStyle = `rgba(0,0,0,${alpha * 0.6})`;
+  g.lineWidth = 1;
+  for (let k = -S; k < S; k += 4) {
+    g.beginPath();
+    g.moveTo(k, 0);
+    g.lineTo(k + S, S);
+    g.stroke();
+  }
+  // Sợi to, sợi xù.
+  for (let i = 0; i < 260; i++) {
+    g.fillStyle = rand() < 0.5 ? `rgba(0,0,0,${alpha * 1.4})` : `rgba(255,255,255,${alpha})`;
+    const horizontal = rand() < 0.5;
+    const len = 4 + rand() * 14;
+    g.fillRect(Math.floor(rand() * S), Math.floor(rand() * S), horizontal ? len : 1, horizontal ? 1 : len);
+  }
+}
+
 /** Rằn ri mảng loang: nền và từng lớp màu, mỗi lớp nhiều mảng to nhỏ, kéo dài theo một hướng. */
 function blobs(g: CanvasRenderingContext2D, rand: () => number, base: string, layers: { color: string; n: number; r: number }[]) {
   g.fillStyle = base;
@@ -115,6 +146,7 @@ const DRAW: Record<string, (g: CanvasRenderingContext2D, rand: () => number) => 
       { color: "#1f211a", n: 12, r: 13 },
     ]);
     grain(g, rand, 2600, 0.07);
+    weave(g, rand, 0.035);
   },
   desert: (g, rand) => {
     blobs(g, rand, "#cdb88c", [
@@ -123,6 +155,7 @@ const DRAW: Record<string, (g: CanvasRenderingContext2D, rand: () => number) => 
       { color: "#e2d3ae", n: 10, r: 14 },
     ]);
     grain(g, rand, 2600, 0.06);
+    weave(g, rand, 0.03);
   },
   urban: (g, rand) => {
     blobs(g, rand, "#8e9196", [
@@ -131,10 +164,12 @@ const DRAW: Record<string, (g: CanvasRenderingContext2D, rand: () => number) => 
       { color: "#2f3236", n: 10, r: 14 },
     ]);
     grain(g, rand, 2600, 0.07);
+    weave(g, rand, 0.035);
   },
   digital: (g, rand) => {
     pixels(g, rand, ["#7b7a52", "#565c38", "#6d5a3e", "#2c2f22"], 4);
     grain(g, rand, 1500, 0.05);
+    weave(g, rand, 0.03);
   },
   snow: (g, rand) => {
     blobs(g, rand, "#e9ecef", [
@@ -143,6 +178,7 @@ const DRAW: Record<string, (g: CanvasRenderingContext2D, rand: () => number) => 
       { color: "#f7f9fa", n: 8, r: 20 },
     ]);
     grain(g, rand, 2000, 0.04);
+    weave(g, rand, 0.025);
   },
   ghillie,
 };
@@ -169,5 +205,53 @@ export function camoTexture(outfit: string): Texture {
   tex.minFilter = LinearMipmapLinearFilter;
   tex.anisotropy = 4;
   cache.set(key, tex);
+  return tex;
+}
+
+/** Kiểu vải trơn: vải lanh (sơ mi), vải bạt (quần, balo), da thuộc (giày, thắt lưng). */
+export type FabricKind = "linen" | "canvas" | "leather";
+
+const fabricCache = new Map<FabricKind, Texture>();
+
+/**
+ * Tấm vải trơn lặp gần trắng (nhân với màu vật liệu): loang màu rất nhẹ, sợi dệt, vài nếp sẫm. Dùng chung, tạo một lần.
+ * Để áo quần màu người chơi có thớ vải thật thay vì phẳng lì.
+ */
+export function fabricTexture(kind: FabricKind): Texture {
+  let tex = fabricCache.get(kind);
+  if (tex) return tex;
+  const c = document.createElement("canvas");
+  c.width = S;
+  c.height = S;
+  const g = c.getContext("2d")!;
+  const rand = mulberry32(kind === "linen" ? 71 : kind === "canvas" ? 72 : 73);
+  // Nền gần trắng, loang sáng tối rất nhẹ (vải bạc màu không đều).
+  blobs(g, rand, "#ececec", [
+    { color: "#e2e2e2", n: 18, r: 34 },
+    { color: "#f6f6f6", n: 14, r: 26 },
+    { color: "#dcdcdc", n: 8, r: 18 },
+  ]);
+  if (kind === "leather") {
+    // Da thuộc: vân rạn nhỏ, lỗ chân lông.
+    grain(g, rand, 5000, 0.06);
+    g.strokeStyle = "rgba(0,0,0,0.05)";
+    for (let i = 0; i < 160; i++) {
+      const x = rand() * S;
+      const y = rand() * S;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + (rand() - 0.5) * 18, y + (rand() - 0.5) * 18);
+      g.stroke();
+    }
+  } else {
+    grain(g, rand, 3000, kind === "linen" ? 0.05 : 0.07);
+    weave(g, rand, kind === "linen" ? 0.045 : 0.06);
+  }
+  tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  tex.wrapS = tex.wrapT = RepeatWrapping;
+  tex.minFilter = LinearMipmapLinearFilter;
+  tex.anisotropy = 4;
+  fabricCache.set(kind, tex);
   return tex;
 }

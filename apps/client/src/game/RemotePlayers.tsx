@@ -133,7 +133,12 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
   const look = useRoomSnapshot(room, () => {
     const k = player.kit;
     const slot = k.active;
-    return { weapon: slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "", sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+    const weapon = slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "";
+    return {
+      weapon,
+      atts: slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "",
+      skin: weapon ? (player.skins.get(weapon) ?? "") : "",
+      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
   // Súng người khác chạm tường: dò tia từ ngực theo hướng họ ngắm (vài lần mỗi giây, chỉ khi ở gần).
   const wall = useRef({ value: 0, at: 0 });
@@ -247,7 +252,7 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       {far ? (
         <FarSoldier ref={avatar} outfit={look.outfit} pose={pose} gun={!!look.weapon} band={player.team === "blue" || player.team === "red" ? player.color : undefined} />
       ) : (
-        <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
+        <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} atts={look.atts} gunSkin={look.skin} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
       )}
       {/* Đồng đội: dấu tên trên đầu (luôn thấy, để biết ai là người mình). */}
       {/* Chiến trường (49 đồng đội): dấu hình thoi trên đầu vẽ bằng một khối nhỏ, nhẹ hơn nhãn chữ. */}
