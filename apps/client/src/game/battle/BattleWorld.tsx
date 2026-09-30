@@ -19,7 +19,7 @@ export function BattleIsland({ room, world }: { room: IslandRoom; world: World }
       <Water world={world} />
       <Trees room={room} world={world} />
       <Vegetation world={world} />
-      <BattleStructures world={world} />
+      <BattleStructures room={room} world={world} />
       {mapOf(world).layout === "war" && <WarFlags room={room} />}
       <AirdropCrates room={room} />
       <ShaderWarmup room={room} />

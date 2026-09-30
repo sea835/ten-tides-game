@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, LEAN, MELEE, SIGHTS, WEAPON, withAttachments, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
+import { HEALS, LEAN, MELEE, PEN_MAX, SIGHTS, WEAPON, boxSpan, mapForMode, penetrable, withAttachments, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
@@ -12,6 +12,8 @@ import { localAim, localMotion, localPosition, shake } from "../shared.ts";
 import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
 import { bodies, closeBuyMenu, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, seat, setBattleHud, stance, stopHit, type Body } from "./runtime.ts";
 import { BULLET_GROUPS, physicsProbe } from "./surface.ts";
+import { sprayBlood } from "./Blood.tsx";
+import { wreck } from "./Wreckage.tsx";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
@@ -384,6 +386,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
       setTimeout(() => {
         playKnifeHit({ x: b.x, y: b.y + 1.2, z: b.z }, true);
         effects.impacts.push({ x: b.x, y: b.y + 1.2, z: b.z, nx: -fx, ny: 0.2, nz: -fz, born: performance.now() / 1000, blood: true });
+        sprayBlood(b.x, b.y + 1.2, b.z, fx, 0, fz, { strength: 0.6 });
       }, 140);
     }
     recoil.vPitch += 0.25;
@@ -681,15 +684,37 @@ export function Shooter({ room }: { room: IslandRoom }) {
       let target = "";
       let part: "head" | "body" = "body";
       let wall = false;
+      const battleIndex = mapForMode(room.state.battleMode, room.state.worldSeed).index;
+      // Vách gỗ, tường vữa mỏng: đạn xuyên qua một lần (như server, xem bulletThrough), để lỗ hai mặt.
+      let pens = 0;
       for (let i = 1; i < steps.length; i++) {
         a3.set(...bulletAt(o3, d3, def.velocity, steps[i - 1]!));
         b3.set(...bulletAt(o3, d3, def.velocity, steps[i]!));
         const len = cd.subVectors(b3, a3).length();
         cd.divideScalar(len || 1);
         let t = len;
-        const hw = physics.castRayAndGetNormal(new rapier.Ray(a3, cd), len, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+        const cast = (ox: number, oy: number, oz: number, max: number) =>
+          physics.castRayAndGetNormal(new rapier.Ray({ x: ox, y: oy, z: oz }, cd), max, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+        let hw = cast(a3.x, a3.y, a3.z, len);
+        let offset = 0;
+        if (hw && pens < 1) {
+          const bi = wreck.colliderBox.get(hw.collider.handle) ?? -1;
+          const box = bi >= 0 ? battleIndex.boxes[bi] : undefined;
+          const tin = hw.timeOfImpact;
+          const tout = box && penetrable(box) ? boxSpan(battleIndex, bi, [a3.x, a3.y, a3.z], [cd.x, cd.y, cd.z])[1] : Infinity;
+          if (tout - tin <= PEN_MAX) {
+            pens++;
+            // Lỗ đạn ở mặt vào và mặt ra của vách (đạn tới nơi thì mới phụt bụi).
+            const arrive = now / 1000 + (steps[i - 1]! + (tin / (len || 1)) * (steps[i]! - steps[i - 1]!)) / def.velocity;
+            const n = hw.normal;
+            effects.impacts.push({ x: a3.x + cd.x * tin, y: a3.y + cd.y * tin, z: a3.z + cd.z * tin, nx: n.x, ny: n.y, nz: n.z, born: now / 1000, blood: false, size: 0.8, at: arrive });
+            effects.impacts.push({ x: a3.x + cd.x * tout, y: a3.y + cd.y * tout, z: a3.z + cd.z * tout, nx: -n.x, ny: -n.y, nz: -n.z, born: now / 1000, blood: false, size: 0.9, at: arrive });
+            offset = tout + 0.01;
+            hw = offset < len ? cast(a3.x + cd.x * offset, a3.y + cd.y * offset, a3.z + cd.z * offset, len - offset) : null;
+          }
+        }
         if (hw) {
-          t = hw.timeOfImpact;
+          t = offset + hw.timeOfImpact;
           normal = hw.normal;
           wall = true;
         }
@@ -714,6 +739,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
         const size = def.class === "sniper" ? 1.35 : def.class === "dmr" ? 1.15 : def.pellets > 1 ? 0.6 : def.class === "smg" || def.class === "pistol" ? 0.85 : 1;
         const arrive = now / 1000 + sHit / def.velocity;
         effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: target ? -cd.x : normal.x, ny: target ? -cd.y : normal.y, nz: target ? -cd.z : normal.z, born: now / 1000, blood: !!target, size, at: arrive });
+        // Trúng người: máu phụt ra (sương máu, giọt bắn ra sau lưng); từng viên shotgun thì nhỏ hơn.
+        if (target) sprayBlood(end.x, end.y, end.z, cd.x, cd.y, cd.z, { head: part === "head", strength: def.pellets > 1 ? 0.45 : 1, at: arrive });
         // Trúng người: máu bắn lên tường, sàn phía sau (nếu có gần đó).
         if (target && k < 3) {
           const behind = physics.castRayAndGetNormal(new rapier.Ray(end, cd), 2.6, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);

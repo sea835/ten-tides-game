@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import type { BattleBox } from "@tentides/content";
 // Trạng thái Battleground chạy trên máy mình, đọc ghi mỗi khung hình (không qua React): vị trí vẽ ra của người khác
 // (để dò trúng đạn đúng chỗ mình thấy), tư thế ngắm, giật súng, hiệu ứng cần vẽ (vệt đạn, lửa đầu nòng, nổ).
 // Những gì HUD cần hiện (dấu trúng, hướng bị bắn, bảng mua đồ) đi qua một kho nhỏ có đăng ký lắng nghe.
@@ -196,7 +197,16 @@ export function hitStopScale(): number {
 }
 
 /** Hàng đợi hiệu ứng: bên bắn đẩy vào, bộ vẽ lấy ra. */
-export const effects = { tracers: [] as Tracer[], impacts: [] as Impact[], flashes: [] as Flash[], blasts: [] as Blast[], splats: [] as Splat[], casings: [] as Casing[] };
+export const effects = {
+  tracers: [] as Tracer[],
+  impacts: [] as Impact[],
+  flashes: [] as Flash[],
+  blasts: [] as Blast[],
+  splats: [] as Splat[],
+  casings: [] as Casing[],
+  /** Khối công trình vừa vỡ: xoá lỗ đạn, vết máu dính trên nó (kẻo lơ lửng giữa không trung). */
+  clearIn: [] as BattleBox[],
+};
 
 // ---------------------------------------------------------------------------- kho cho HUD
 

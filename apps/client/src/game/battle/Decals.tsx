@@ -5,6 +5,7 @@ import {
   BoxGeometry,
   CanvasTexture,
   Color,
+  Matrix4,
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
@@ -14,7 +15,7 @@ import {
   Vector3,
   type InstancedMesh,
 } from "three";
-import type { World } from "@tentides/content";
+import { pointInBox, type World } from "@tentides/content";
 import { playImpact } from "../sound/guns.ts";
 import { puffs } from "./Effects.tsx";
 import { effects, type Impact } from "./runtime.ts";
@@ -224,6 +225,9 @@ const _n = new Vector3();
 const _q = new Quaternion();
 const _roll = new Quaternion();
 const dummy = new Object3D();
+const _mat = new Matrix4();
+const _pos = new Vector3();
+const _zero = new Matrix4().makeScale(0, 0, 0);
 
 export function BulletHoles({ world }: { world: World }) {
   const meshes = useRef<Partial<Record<DecalKind, InstancedMesh | null>>>({});
@@ -383,6 +387,22 @@ export function BulletHoles({ world }: { world: World }) {
       spawn(imp, Math.hypot(imp.x - cam.x, imp.y - cam.y, imp.z - cam.z));
     }
     for (const s of effects.splats.splice(0)) if (Math.hypot(s.x - cam.x, s.y - cam.y, s.z - cam.z) < 120) addDecal("blood", s.x, s.y, s.z, s.nx, s.ny, s.nz, s.scale);
+    // Tường vừa vỡ: bỏ lỗ đạn, vết máu dính trên nó (không thì lơ lửng giữa không trung).
+    for (const b of effects.clearIn.splice(0)) {
+      for (const k of KINDS) {
+        const m = meshes.current[k];
+        if (!m) continue;
+        let changed = false;
+        for (let j = 0; j < m.count; j++) {
+          m.getMatrixAt(j, _mat);
+          _pos.setFromMatrixPosition(_mat);
+          if (!pointInBox(b, _pos.x, _pos.y, _pos.z, 0.06)) continue;
+          m.setMatrixAt(j, _zero);
+          changed = true;
+        }
+        if (changed) m.instanceMatrix.needsUpdate = true;
+      }
+    }
 
     const bm = bitMesh.current;
     const sm = sparkMesh.current;

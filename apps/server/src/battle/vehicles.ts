@@ -243,7 +243,7 @@ export class Vehicles {
       const b = bulletAt(o, d, velocity, steps[i]!);
       const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
       const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
-      let t = Math.min(raycastBoxes(this.room.map.index, a, cd, len, true), raycastTerrain(this.room.map.world, a, cd, len), raycastTrunks(this.room.map.world, a, cd, len));
+      let t = Math.min(raycastBoxes(this.room.map.index, a, cd, len, true), raycastTerrain(this.room.map.world, a, cd, len), raycastTrunks(this.room.map.world, a, cd, len, this.room.map.treeDead));
       let hitTank = "";
       for (const [oid, other] of s.vehicles) {
         if (oid === skip) continue;
