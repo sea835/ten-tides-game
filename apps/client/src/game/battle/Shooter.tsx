@@ -12,6 +12,7 @@ import { localAim, localMotion, localPosition, shake } from "../shared.ts";
 import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
 import { bodies, closeBuyMenu, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, seat, setBattleHud, stance, stopHit, type Body } from "./runtime.ts";
 import { BULLET_GROUPS, physicsProbe } from "./surface.ts";
+import { sprayBlood } from "./Blood.tsx";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
@@ -384,6 +385,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
       setTimeout(() => {
         playKnifeHit({ x: b.x, y: b.y + 1.2, z: b.z }, true);
         effects.impacts.push({ x: b.x, y: b.y + 1.2, z: b.z, nx: -fx, ny: 0.2, nz: -fz, born: performance.now() / 1000, blood: true });
+        sprayBlood(b.x, b.y + 1.2, b.z, fx, 0, fz, { strength: 0.6 });
       }, 140);
     }
     recoil.vPitch += 0.25;
@@ -714,6 +716,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
         const size = def.class === "sniper" ? 1.35 : def.class === "dmr" ? 1.15 : def.pellets > 1 ? 0.6 : def.class === "smg" || def.class === "pistol" ? 0.85 : 1;
         const arrive = now / 1000 + sHit / def.velocity;
         effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: target ? -cd.x : normal.x, ny: target ? -cd.y : normal.y, nz: target ? -cd.z : normal.z, born: now / 1000, blood: !!target, size, at: arrive });
+        // Trúng người: máu phụt ra (sương máu, giọt bắn ra sau lưng); từng viên shotgun thì nhỏ hơn.
+        if (target) sprayBlood(end.x, end.y, end.z, cd.x, cd.y, cd.z, { head: part === "head", strength: def.pellets > 1 ? 0.45 : 1, at: arrive });
         // Trúng người: máu bắn lên tường, sàn phía sau (nếu có gần đó).
         if (target && k < 3) {
           const behind = physics.castRayAndGetNormal(new rapier.Ray(end, cd), 2.6, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);

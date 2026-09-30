@@ -30,6 +30,7 @@ import { WEAPON } from "@tentides/content";
 import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
 import { Casings } from "./Casings.tsx";
+import { Blood, sprayBlood } from "./Blood.tsx";
 import { pulseNeon } from "../skinMaterials.ts";
 import { physicsProbe } from "./surface.ts";
 
@@ -870,6 +871,8 @@ function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number
     const top = b.y + (b.prone ? 0.6 : b.crouch ? 1.3 : 1.8);
     if (Math.hypot(ex - b.x, ez - b.z) < (b.prone ? 1.1 : 0.45) && ey > b.y - 0.1 && ey < top) {
       effects.impacts.push({ x: ex, y: ey, z: ez, nx: (ox - ex) * 0.02, ny: 0.2, nz: (oz - ez) * 0.02, born: now, blood: true, at });
+      // Máu phụt theo hướng đạn; điểm cuối cao ngang đầu (đứng thẳng, ngồi xổm) thì là trúng đầu.
+      sprayBlood(ex, ey, ez, dx, dy, dz, { head: !b.prone && ey > b.y + (b.crouch ? 1.04 : 1.5), at });
       return;
     }
   }
@@ -1083,6 +1086,7 @@ export function BattleEffects({ room, world }: { room: IslandRoom; world: World 
       <Tracers />
       <BulletHoles world={world} />
       <Casings world={world} />
+      <Blood room={room} world={world} />
       <NeonPulse />
       <Grenades room={room} />
       <MyMines room={room} />
