@@ -1,5 +1,6 @@
 import { forwardRef, useMemo } from "react";
 import { BoxGeometry, CapsuleGeometry, MeshStandardMaterial, SphereGeometry, type Group } from "three";
+import { withRim } from "../character/rim.ts";
 
 // Người ở xa (hàng chục mét): thay nhân vật đầy đủ (gần trăm khối, bóng đổ, xương khớp chạy mỗi khung hình) bằng một
 // hình người gọn vài khối, cùng màu áo ngụy trang, đúng tư thế đứng / ngồi xổm / nằm. Ở xa mắt không phân biệt được,
@@ -27,7 +28,7 @@ const mats = new Map<string, MeshStandardMaterial>();
 function mat(color: string): MeshStandardMaterial {
   let m = mats.get(color);
   if (!m) {
-    m = new MeshStandardMaterial({ color, roughness: 0.9 });
+    m = withRim(new MeshStandardMaterial({ color, roughness: 0.9 }));
     m.userData.detail = "none";
     mats.set(color, m);
   }

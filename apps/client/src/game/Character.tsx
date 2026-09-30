@@ -10,6 +10,7 @@ import { detailed, type DetailKind } from "./textures.ts";
 import { armband, bedroll, belt, body as bodyShapes, chestRig, pack, rucksack, top } from "./character/shapes.ts";
 import { beardGeometry, face, hairGeometry } from "./character/head.ts";
 import { looks } from "./character/looks.ts";
+import { withRim } from "./character/rim.ts";
 
 export interface Motion {
   moving: boolean;
@@ -99,7 +100,7 @@ function mat(color: string, detail: DetailKind | "none", opacity: number, rough 
   const key = `${color}|${detail}|${opacity}|${rough}|${tag}`;
   let m = mats.get(key);
   if (!m) {
-    m = new MeshStandardMaterial({ color, roughness: rough, transparent: opacity < 1, opacity });
+    m = withRim(new MeshStandardMaterial({ color, roughness: rough, transparent: opacity < 1, opacity }));
     // Da mặt nhỏ: vân da nhẹ thôi kẻo loang lổ như râu.
     if (detail === "none") m.userData.detail = "none";
     else detailed(m, detail, detail === "skin" ? 0.25 : undefined);
@@ -125,7 +126,7 @@ function camoMat(outfit: string, tint: string, opacity: number): MeshStandardMat
   const key = `camo|${outfit}|${tint}|${opacity}`;
   let m = mats.get(key);
   if (!m) {
-    m = new MeshStandardMaterial({ color: tint, map: camoTexture(outfit), roughness: 0.92, transparent: opacity < 1, opacity });
+    m = withRim(new MeshStandardMaterial({ color: tint, map: camoTexture(outfit), roughness: 0.92, transparent: opacity < 1, opacity }), outfit === "ghillie" ? 0.3 : 1);
     mats.set(key, m);
   }
   return m;
@@ -136,7 +137,7 @@ function fabricMat(kind: FabricKind, color: string, opacity: number, rough = 0.9
   const key = `fabric|${kind}|${color}|${opacity}|${rough}`;
   let m = mats.get(key);
   if (!m) {
-    m = new MeshStandardMaterial({ color, map: fabricTexture(kind), roughness: rough, transparent: opacity < 1, opacity });
+    m = withRim(new MeshStandardMaterial({ color, map: fabricTexture(kind), roughness: rough, transparent: opacity < 1, opacity }));
     mats.set(key, m);
   }
   return m;

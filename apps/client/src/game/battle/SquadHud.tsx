@@ -217,7 +217,7 @@ export function TankHud() {
           <span ref={speed} />
         </div>
         <p>
-          <kbd>W</kbd>/<kbd>S</kbd> tiến lùi · <kbd>A</kbd>/<kbd>D</kbd> bẻ lái · chuột xoay tháp pháo · chuột trái bắn · chuột phải (hay <kbd>Q</kbd>) kính ngắm · <kbd>E</kbd> xuống xe
+          <kbd>W</kbd>/<kbd>S</kbd> tiến lùi · <kbd>A</kbd>/<kbd>D</kbd> bẻ lái · chuột xoay tháp pháo · chuột trái bắn · chuột phải (hay <kbd>Q</kbd>) kính ngắm · <kbd>F</kbd> xuống xe
         </p>
       </div>
     </div>
