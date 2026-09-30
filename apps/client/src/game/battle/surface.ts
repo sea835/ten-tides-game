@@ -35,6 +35,13 @@ export function surfaceAt(world: World, x: number, y: number, z: number, nx: num
 }
 
 /**
+ * Nhóm va chạm Rapier (16 bit cao: thuộc nhóm nào, 16 bit thấp: va với nhóm nào). Hàng rào lưới ở nhóm riêng
+ * (bit 1) nên vẫn chặn người đi, còn tia đạn loại bit đó ra khỏi bộ lọc: đạn bay xuyên qua hàng rào.
+ */
+export const FENCE_GROUPS = 0x0002ffff;
+export const BULLET_GROUPS = 0xfffffffd;
+
+/**
  * Tia vật lý cho các thành phần nằm ngoài <Physics> (hiệu ứng phát bắn của người khác, nhân vật người khác):
  * Shooter (ở trong Physics) gắn hàm vào đây. Bỏ qua thân của mình.
  */

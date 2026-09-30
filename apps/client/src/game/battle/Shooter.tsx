@@ -11,7 +11,7 @@ import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
 import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
 import { bodies, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, seat, setBattleHud, stance, stopHit, type Body } from "./runtime.ts";
-import { physicsProbe } from "./surface.ts";
+import { BULLET_GROUPS, physicsProbe } from "./surface.ts";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
@@ -59,6 +59,12 @@ import { gun } from "./runtime.ts";
  * hoặc mới đổi súng sẽ ra phát ngay khi trạng thái cho phép, thay vì bị bỏ.
  */
 const BUFFER_INPUT = 180;
+/** Hai tiếng hitmarker cách nhau ít nhất chừng này (ms): một loạt đạn chỉ kêu một lần. */
+const HITMARKER_COOLDOWN = 200;
+/** Lần cuối phát tiếng hitmarker (client tự dò hay server báo). */
+let lastMarkerAt = 0;
+/** Mốc các phát client đã tự báo trúng, chờ tin Messages.hit của server để khỏi kêu lần hai. */
+const localMarks: number[] = [];
 
 /** Vừa ngừng chạy thì phải chờ chừng này (ms) mới bắn được như thường, và phát đầu dễ trượt hơn. */
 const RAISE_TIME = 220;
@@ -141,7 +147,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
   // Cho các phần ngoài Physics mượn tia vật lý (lỗ đạn của người khác, súng người khác chạm tường).
   useEffect(() => {
     physicsProbe.cast = (ox, oy, oz, dx, dy, dz, max) => {
-      const h = physics.castRayAndGetNormal(new rapier.Ray({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }), max, true, undefined, undefined, undefined, localBody.current ?? undefined);
+      const h = physics.castRayAndGetNormal(new rapier.Ray({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }), max, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
       return h ? { t: h.timeOfImpact, nx: h.normal.x, ny: h.normal.y, nz: h.normal.z } : null;
     };
     // Dev: xem trạng thái súng, giật, hiệu ứng khi thử (window.__tentides).
@@ -299,7 +305,16 @@ export function Shooter({ room }: { room: IslandRoom }) {
       // Máu và VFX đã hiện ngay lúc client tự dò trúng; server chỉ để xác nhận loại (thân/đầu/hạ)
       // và có trúng giáp hay không. Nếu client chưa báo gì thì đây là lần đầu, bật dấu trúng.
       const at = performance.now();
-      if (!getBattleHud().hit || at - getBattleHud().hit!.at > 400) playHitMarker(h.kind);
+      // Client đã tự phát tiếng trúng cho loạt này thì server chỉ xác nhận, không phát đè. Mỗi dấu trúng ở
+      // máy đổi đúng một tin server (bỏ các dấu cũ quá 1s, coi như server đã từ chối); thêm cooldown 200ms
+      // phòng trường hợp không có dấu nào chờ. Riêng hạ gục vẫn kêu vì là tiếng khác, mang thông tin mới.
+      while (localMarks.length && at - localMarks[0]! > 1000) localMarks.shift();
+      const confirmed = localMarks.length > 0;
+      if (confirmed) localMarks.shift();
+      if (h.kind === "kill" || (!confirmed && at - lastMarkerAt > HITMARKER_COOLDOWN)) {
+        playHitMarker(h.kind);
+        lastMarkerAt = at;
+      }
       setBattleHud({ hit: { at, kind: h.kind, armor: h.armor, amount: h.amount } });
       // Đóng băng ngắn cho cú đánh trúng trả về, lâu hơn nếu hạ được.
       stopHit(h.kind === "kill" ? 90 : 45);
@@ -402,6 +417,10 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (!me || !k || !me.alive || menuOpen() || seat.id) {
       stance.aiming = false;
       inp.fire = false;
+      // Chết / gục / lên xe: bỏ hết lệnh bắn đang chờ, không thì hồi sinh xong súng tự nhả đạn.
+      inp.firePressed = false;
+      inp.firePressedAt = 0;
+      inp.fireAfterReload = false;
       return;
     }
     const slot = k.active as Slot;
@@ -418,6 +437,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
         stance.swapDur = !slot ? 0.35 : isThrown(slot) || slot === "mine" ? 0.35 : def?.class === "pistol" ? 0.4 : def?.class === "sniper" || def?.class === "lmg" ? 0.75 : 0.55;
         gun.readyAt = now + stance.swapDur * 1000;
         stance.cookAt = 0;
+        // Lệnh "bắn ngay khi nạp xong" thuộc về súng cũ.
+        inp.fireAfterReload = false;
         playWeaponSwap(!slot ? "knife" : isThrown(slot) || slot === "mine" ? "throwable" : def?.class === "pistol" ? "pistol" : "gun");
       }
       gun.slot = slot;
@@ -481,13 +502,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
 
     // Bấm chuột trong lúc đang nạp hay mới rút súng vẫn được giữ lại trong khung buffer,
     // thay vì bị `return` ở dưới nuốt mất hoàn toàn (người chơi thường báo là "game lag").
-    // Bấm chuột trong lúc đang nạp hay mới rút súng vẫn được giữ lại trong khung buffer,
-    // thay vì bị `return` ở dưới nuốt mất hoàn toàn (người chơi thường báo là "game lag").
     const buffered = inp.firePressedAt > 0 && now - inp.firePressedAt <= BUFFER_INPUT;
     if (!inp.fire && !inp.firePressed && !buffered && !inp.fireAfterReload) return;
     const pressed = inp.firePressed || buffered || inp.fireAfterReload;
     inp.firePressed = false;
     inp.firePressedAt = 0;
+    // Lệnh chỉ dùng một lần: nếu vẫn đang nạp thì nhánh dưới đặt lại, nạp xong thì thành đúng một phát.
+    // Không xoá thì cờ kẹt ở true mãi và súng tự bắn liên tục dù đã thả chuột.
+    inp.fireAfterReload = false;
     if (stance.sprinting || now < gun.readyAt) return;
 
     if (isThrown(slot)) {
@@ -510,7 +532,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (!def.auto && !pressed) return;
     // Đang nạp hoặc đang hồi máu: bấm chuột sẽ thành phát đầu tiên sau khi trở lại.
     if (reloading || gun.healUntil > now) {
-      if (reloading) inp.fireAfterReload = true;
+      if (reloading && pressed) inp.fireAfterReload = true;
       return;
     }
     if (gun.mag <= 0) {
@@ -524,8 +546,10 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const interval = 60000 / def.rpm;
     if (now < gun.nextShotAt) return;
     fire(def, camera.position, fwd, right);
-    // Lùi mốc theo chu kỳ thay vì đặt lại, nhưng không để tụ lại quá một khung hình.
-    gun.nextShotAt = Math.max(gun.nextShotAt + interval, now);
+    // Phát kế tiếp cách phát này đúng một chu kỳ. Kiểu cũ `max(next + interval, now)` sau một quãng nghỉ
+    // lại đặt mốc = now, nên khung sau (~16ms) bắn thêm phát nữa: trừ đạn hai lần và server (chặn
+    // nhanh hơn 80% RPM) từ chối phát thứ hai, băng đạn lệch với server.
+    gun.nextShotAt = Math.max(gun.nextShotAt, now) + interval;
   });
 
   /**
@@ -585,7 +609,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const maxRange = Math.min(600, def.range * 3);
     o.copy(camPos).addScaledVector(fwd, skip);
     let aimT = maxRange;
-    const hitCam = physics.castRay(new rapier.Ray(o, fwd), maxRange, true, undefined, undefined, undefined, localBody.current ?? undefined);
+    const hitCam = physics.castRay(new rapier.Ray(o, fwd), maxRange, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
     if (hitCam) aimT = hitCam.timeOfImpact;
     const team = room.state.players.get(me)?.team ?? "";
     for (const [id, b] of bodies) {
@@ -611,7 +635,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
       const len = to.length();
       if (len > 1e-3) {
         to.divideScalar(len);
-        const block = physics.castRay(new rapier.Ray(from, to), len, true, undefined, undefined, undefined, localBody.current ?? undefined);
+        const block = physics.castRay(new rapier.Ray(from, to), len, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
         if (block) muzzle = from.addScaledVector(to, Math.max(0, block.timeOfImpact - 0.06));
       }
     }
@@ -651,7 +675,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
         const len = cd.subVectors(b3, a3).length();
         cd.divideScalar(len || 1);
         let t = len;
-        const hw = physics.castRayAndGetNormal(new rapier.Ray(a3, cd), len, true, undefined, undefined, undefined, localBody.current ?? undefined);
+        const hw = physics.castRayAndGetNormal(new rapier.Ray(a3, cd), len, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
         if (hw) {
           t = hw.timeOfImpact;
           normal = hw.normal;
@@ -680,7 +704,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
         effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: target ? -cd.x : normal.x, ny: target ? -cd.y : normal.y, nz: target ? -cd.z : normal.z, born: now / 1000, blood: !!target, size, at: arrive });
         // Trúng người: máu bắn lên tường, sàn phía sau (nếu có gần đó).
         if (target && k < 3) {
-          const behind = physics.castRayAndGetNormal(new rapier.Ray(end, cd), 2.6, true, undefined, undefined, undefined, localBody.current ?? undefined);
+          const behind = physics.castRayAndGetNormal(new rapier.Ray(end, cd), 2.6, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
           if (behind) {
             const at = end.clone().addScaledVector(cd, behind.timeOfImpact);
             effects.splats.push({ x: at.x, y: at.y, z: at.z, nx: behind.normal.x, ny: behind.normal.y, nz: behind.normal.z, scale: (part === "head" ? 1.2 : 0.8) * (1 - behind.timeOfImpact / 4) });
@@ -733,8 +757,10 @@ export function Shooter({ room }: { room: IslandRoom }) {
       // `part` đã đến từ rayPerson, tức đã dùng HITBOX chung với server.
       const head = hits.some((h) => h.part === "head");
       const at = performance.now();
-      if (!getBattleHud().hit || at - getBattleHud().hit!.at > 200) {
+      localMarks.push(at);
+      if (at - lastMarkerAt > HITMARKER_COOLDOWN) {
         playHitMarker(head ? "head" : "body");
+        lastMarkerAt = at;
         setBattleHud({ hit: { at, kind: head ? "head" : "body", armor: false, amount: 0 } });
         stopHit(45);
       }

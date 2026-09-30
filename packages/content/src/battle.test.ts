@@ -49,6 +49,22 @@ describe("bản đồ Battleground", () => {
   });
 });
 
+describe("hàng rào lưới", () => {
+  it("chặn người đi nhưng đạn bay xuyên qua", () => {
+    const map = battleMap(12345);
+    const fence = map.boxes.find((b) => b.mat === "fence" && b.solid);
+    expect(fence).toBeDefined();
+    const f = fence!;
+    // Bắn ngang qua mặt mỏng của hàng rào, từ ngoài vào giữa.
+    const thinX = f.w < f.d;
+    const dir: [number, number, number] = thinX ? [Math.cos(f.rot), 0, -Math.sin(f.rot)] : [Math.sin(f.rot), 0, Math.cos(f.rot)];
+    const o: [number, number, number] = [f.x - dir[0] * 1.5, f.y, f.z - dir[2] * 1.5];
+    const plain = raycastBoxes(map.index, o, dir, 1.6);
+    expect(plain).toBeLessThan(1.6);
+    expect(raycastBoxes(map.index, o, dir, 1.6, true)).toBe(Infinity);
+  });
+});
+
 describe("boxAt", () => {
   it("tìm đúng khối chứa điểm (để biết đạn găm vào chất liệu gì)", () => {
     const map = battleMap(1);

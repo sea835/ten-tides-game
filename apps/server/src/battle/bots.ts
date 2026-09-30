@@ -755,7 +755,7 @@ export class Bots {
     for (let t = 2.5; t < len; t += 2.5) {
       if (eye[1] + dir[1] * t < this.height(eye[0] + dir[0] * t, eye[2] + dir[2] * t) + 0.1) return false;
     }
-    return raycastBoxes(this.room.map.index, eye, dir, len) === Infinity;
+    return raycastBoxes(this.room.map.index, eye, dir, len, true) === Infinity;
   }
 
   private shoot(id: string, b: Brain, dt: number, weaponId: string, eye: [number, number, number], target: PlayerState, d: number) {

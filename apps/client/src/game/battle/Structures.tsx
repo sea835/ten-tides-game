@@ -14,7 +14,8 @@ import {
   Vector3,
   type InstancedMesh,
 } from "three";
-import { mapOf, type BattleBox, type BoxMat, type World } from "@tentides/content";
+import { bulletPasses, mapOf, type BattleBox, type BoxMat, type World } from "@tentides/content";
+import { FENCE_GROUPS } from "./surface.ts";
 import { detailed, type DetailKind } from "../textures.ts";
 
 // Công trình của bản đồ Battleground: hàng nghìn khối hộp gom theo chất liệu và theo ô đất TILE mét, mỗi nhóm một
@@ -239,7 +240,10 @@ function Colliders({ boxes }: { boxes: readonly BattleBox[] }) {
     for (const b of boxes) {
       if (!b.solid) continue;
       boxQuaternion(b, q);
-      world.createCollider(rapier.ColliderDesc.cuboid(b.w / 2, b.h / 2, b.d / 2).setTranslation(b.x, b.y, b.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }), body);
+      const desc = rapier.ColliderDesc.cuboid(b.w / 2, b.h / 2, b.d / 2).setTranslation(b.x, b.y, b.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
+      // Hàng rào lưới: chặn người, không chặn đạn (xem BULLET_GROUPS).
+      if (bulletPasses(b)) desc.setCollisionGroups(FENCE_GROUPS);
+      world.createCollider(desc, body);
     }
     return () => {
       // Đổi bản đồ thì cả thế giới vật lý bị huỷ trước; chỉ gỡ khi thân vẫn còn trong thế giới.
