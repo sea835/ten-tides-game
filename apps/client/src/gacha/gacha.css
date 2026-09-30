@@ -1,0 +1,578 @@
+/* ---------- Kho súng · Gacha ---------- */
+
+.gacha-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(168, 85, 247, 0.18), transparent 70%),
+    rgba(3, 9, 14, 0.82);
+  backdrop-filter: blur(8px);
+  animation: gacha-fade 0.2s ease-out;
+}
+@keyframes gacha-fade {
+  from {
+    opacity: 0;
+  }
+}
+.gacha-shell {
+  position: relative;
+  width: min(880px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 20px 20px;
+  border-radius: 18px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
+}
+.gacha-empty {
+  margin: 0;
+  color: var(--muted);
+}
+.gacha-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gacha-top h2 {
+  margin: 0;
+  font-family: var(--font-story);
+  font-size: 22px;
+  color: #fff3d8;
+}
+.gacha-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line);
+}
+.gacha-tabs button {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+.gacha-tabs button.active {
+  background: var(--raise-hover);
+  color: var(--text);
+}
+.coin-pill {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  color: var(--accent-hi);
+  background: rgba(242, 180, 65, 0.12);
+  border: 1px solid rgba(242, 180, 65, 0.35);
+}
+.gacha-close {
+  padding: 6px;
+}
+.gacha-error {
+  text-align: center;
+}
+.gacha-hint {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Ô xem trước skin: hình súng cắt bằng mặt nạ SVG. */
+.skin-swatch {
+  --gun: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40'><path d='M2 14 L22 11 L22 10 L78 10 L78 13 L118 13 L118 17 L78 17 L78 22 L61 22 L63 36 L52 36 L49 22 L38 22 L35 34 L27 34 L30 24 L22 25 L4 31 Z M40 4 H62 V9 H40 Z'/></svg>");
+  width: 96px;
+  aspect-ratio: 3 / 1;
+  -webkit-mask: var(--gun) center / contain no-repeat;
+  mask: var(--gun) center / contain no-repeat;
+  flex: none;
+}
+.skin-swatch.sm {
+  width: 42px;
+}
+.skin-swatch.lg {
+  width: 180px;
+}
+.skin-swatch.bare {
+  -webkit-mask: none;
+  mask: none;
+  border-radius: 6px;
+  aspect-ratio: 1;
+}
+.skin-swatch.empty,
+.skin-swatch.default-look {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), transparent 40%), #2b2d30;
+}
+.skin-swatch.gold,
+.skin-swatch.chrome {
+  background-size: 220% 100% !important;
+  animation: swatch-shine 3.2s ease-in-out infinite;
+}
+@keyframes swatch-shine {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+.skin-swatch.neon {
+  filter: drop-shadow(0 0 6px var(--neon)) drop-shadow(0 0 2px var(--neon));
+  animation: swatch-neon 1.8s ease-in-out infinite;
+}
+@keyframes swatch-neon {
+  50% {
+    filter: drop-shadow(0 0 12px var(--neon)) drop-shadow(0 0 4px var(--neon)) brightness(1.25);
+  }
+}
+
+/* Banner. */
+.gacha-banner {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 18px;
+  padding: 18px;
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 60% 90% at 20% 50%, rgba(245, 184, 46, 0.25), transparent 70%),
+    linear-gradient(120deg, #1d1030, #0b1a2a 60%, #0d2530);
+  border: 1px solid rgba(245, 184, 46, 0.3);
+}
+.banner-art {
+  position: relative;
+  min-height: 150px;
+}
+.banner-gun {
+  position: absolute;
+  left: calc(4% + var(--i) * 6%);
+  top: calc(8% + var(--i) * 22%);
+  transform: rotate(calc(-14deg + var(--i) * 6deg));
+  animation: banner-float 4s ease-in-out infinite;
+  animation-delay: calc(var(--i) * -1s);
+}
+@keyframes banner-float {
+  50% {
+    translate: 0 -6px;
+  }
+}
+.banner-text .kicker {
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
+.banner-text h3 {
+  margin: 4px 0 6px;
+  font-family: var(--font-story);
+  font-size: 24px;
+  color: #fff3d8;
+}
+.banner-text p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.rates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.rates li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid color-mix(in srgb, var(--rarity) 45%, transparent);
+}
+.rates li b {
+  margin-left: auto;
+  color: var(--rarity);
+}
+.rates .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rarity);
+  box-shadow: 0 0 8px var(--rarity);
+}
+
+.pity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.pity-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.pity-label span:first-child {
+  color: var(--rarity);
+  font-weight: 600;
+}
+.pity-track {
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.pity-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--rarity);
+  box-shadow: 0 0 10px var(--rarity);
+  transition: width 0.4s ease;
+}
+
+.roll-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.roll-buttons button {
+  font-size: 15px;
+  padding: 14px 18px;
+}
+.roll-buttons .cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+/* Lật thẻ. */
+.reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(20, 30, 50, 0.9), rgba(2, 5, 9, 0.97));
+  overflow: auto;
+  animation: gacha-fade 0.25s ease-out;
+}
+.reveal.best-epic {
+  background: radial-gradient(ellipse at center, rgba(90, 40, 140, 0.55), rgba(2, 5, 9, 0.97) 70%);
+}
+.reveal.best-legendary {
+  background: radial-gradient(ellipse at center, rgba(160, 110, 20, 0.5), rgba(2, 5, 9, 0.97) 70%);
+}
+.legend-burst {
+  position: absolute;
+  inset: -50%;
+  pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 214, 110, 0.16) 0 6deg, transparent 6deg 18deg);
+  mask: radial-gradient(circle, #000 0 20%, transparent 55%);
+  -webkit-mask: radial-gradient(circle, #000 0 20%, transparent 55%);
+  animation:
+    burst-spin 14s linear infinite,
+    burst-in 0.9s ease-out;
+}
+@keyframes burst-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes burst-in {
+  from {
+    opacity: 0;
+    scale: 0.3;
+  }
+}
+.reveal-cards {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, 132px);
+}
+.reveal-cards.n1 {
+  grid-template-columns: 200px;
+}
+.flip-card {
+  aspect-ratio: 2 / 3;
+  perspective: 900px;
+}
+.flip-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1.1);
+}
+.flip-card.flipped .flip-inner {
+  transform: rotateY(180deg);
+}
+.flip-back,
+.flip-front {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  overflow: hidden;
+}
+.flip-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.04) 0 6px, transparent 6px 12px),
+    linear-gradient(160deg, #1b2a3a, #0c141d);
+  border: 1px solid var(--line-strong);
+}
+.flip-back span {
+  font-family: var(--font-story);
+  font-size: 44px;
+  color: rgba(255, 236, 205, 0.35);
+}
+.flip-front {
+  transform: rotateY(180deg);
+  text-align: center;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 35%, color-mix(in srgb, var(--rarity) 35%, transparent), transparent 75%),
+    linear-gradient(180deg, #121c27, #0a1118);
+  border: 2px solid var(--rarity);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--rarity) 55%, transparent);
+}
+.flip-card.flipped.epic .flip-front,
+.flip-card.flipped.legendary .flip-front {
+  animation: card-pulse 1.6s ease-in-out 0.6s infinite;
+}
+@keyframes card-pulse {
+  50% {
+    box-shadow: 0 0 38px color-mix(in srgb, var(--rarity) 85%, transparent);
+  }
+}
+.flip-card.flipped.legendary {
+  animation: legend-pop 0.7s ease-out 0.35s both;
+}
+@keyframes legend-pop {
+  40% {
+    scale: 1.12;
+  }
+}
+.card-rays {
+  position: absolute;
+  inset: -40%;
+  background: repeating-conic-gradient(rgba(255, 220, 120, 0.25) 0 8deg, transparent 8deg 22deg);
+  animation: burst-spin 8s linear infinite;
+  pointer-events: none;
+}
+.flip-front .skin-swatch {
+  width: 90%;
+  position: relative;
+}
+.card-name {
+  position: relative;
+  font-weight: 700;
+  font-size: 13.5px;
+  line-height: 1.2;
+}
+.card-meta {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.card-rarity {
+  color: var(--rarity);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.card-new,
+.card-dupe {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.card-new {
+  background: var(--success);
+  color: #06200f;
+}
+.card-dupe {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+}
+.reveal-actions {
+  position: relative;
+  display: flex;
+  gap: 10px;
+}
+
+/* Kho súng. */
+.gacha-inventory {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 360px;
+}
+.weapon-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.weapon-list button {
+  justify-content: flex-start;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: transparent;
+  border-color: transparent;
+}
+.weapon-list button.active {
+  background: var(--raise-hover);
+  border-color: var(--line-strong);
+}
+.skin-grid-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.skin-grid-head h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.skin-grid-head span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+.skin-tile {
+  --rarity: var(--line-strong);
+  position: relative;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--rarity) 55%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rarity) 14%, transparent), rgba(0, 0, 0, 0.2));
+}
+.skin-tile:disabled {
+  opacity: 1;
+}
+.skin-tile.locked {
+  opacity: 0.4;
+  filter: grayscale(0.7);
+}
+.skin-tile.equipped {
+  border-color: var(--accent-hi);
+  box-shadow: 0 0 0 1px var(--accent-hi) inset, 0 0 16px rgba(242, 180, 65, 0.25);
+}
+.tile-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+.tile-meta {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.tile-rarity {
+  color: var(--rarity);
+  font-weight: 700;
+}
+.tile-exclusive,
+.tile-count {
+  padding: 0 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.tile-lock {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: var(--muted);
+}
+.tile-equipped {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--accent-hi);
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .gacha-banner {
+    grid-template-columns: 1fr;
+  }
+  .banner-art {
+    min-height: 110px;
+  }
+  .gacha-inventory {
+    grid-template-columns: 1fr;
+  }
+  .weapon-list {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .weapon-list button {
+    flex: none;
+  }
+  .reveal-cards {
+    grid-template-columns: repeat(3, minmax(0, 104px));
+  }
+  .reveal-cards.n1 {
+    grid-template-columns: 180px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gacha-screen *,
+  .reveal * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

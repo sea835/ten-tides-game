@@ -79,7 +79,7 @@ import { chronicle, createPremise, diaryPage, narrateDawn, narrateDusk, narrateP
 import { computeAwards } from "./awards.ts";
 import { GameLogWriter, type GameLogFile } from "./gameLog.ts";
 import { Hazards, type HazardEvent } from "./hazards.ts";
-import { playerIdFromToken } from "./identity.ts";
+import { applySkins, resolveIdentity } from "./account.ts";
 import { isPlausibleMove } from "./movement.ts";
 import { randomRoomCode } from "./roomCode.ts";
 import { syncState } from "./sync.ts";
@@ -106,6 +106,8 @@ function scaled(seconds: number): number {
 
 interface AuthData extends JoinOptions {
   playerId: string;
+  /** Skin súng đang lắp (người có tài khoản). */
+  skins: Record<string, string>;
 }
 
 export class IslandRoom extends Room<{ state: IslandState }> {
@@ -391,13 +393,14 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     this.clock.setInterval(() => this.realtimeTick(REALTIME_STEP_MS / 1000), REALTIME_STEP_MS);
   }
 
-  onAuth(_client: Client, options: unknown): AuthData {
+  async onAuth(_client: Client, options: unknown): Promise<AuthData> {
     const auth = JoinOptions.parse(options);
-    const playerId = playerIdFromToken(auth.token);
+    // Có phiên đăng nhập hợp lệ thì gắn với tài khoản (id u<id>, tên tài khoản), không thì là khách như cũ.
+    const { playerId, name, skins } = await resolveIdentity(auth);
     if (this.kicked.has(playerId)) throw new Error("Chủ phòng đã mời bạn ra khỏi phòng này.");
     // Ván đã bắt đầu thì chỉ người cũ (cùng token) mới vào lại được.
     if (this.game.phase !== "lobby" && !this.game.players[playerId]) throw new Error("Ván đã bắt đầu, không vào thêm được.");
-    return { ...auth, playerId };
+    return { ...auth, name, playerId, skins };
   }
 
   onJoin(client: Client, _options: unknown, auth: AuthData) {
@@ -410,10 +413,12 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       existing.connected = true;
       this.sessions.delete(old);
       this.clients.find((c) => c.sessionId === old)?.leave();
+      applySkins(existing, auth.skins);
     } else {
       const spawn = spawnPoint(this.state.players.size);
       const player = new PlayerState();
       player.name = auth.name;
+      applySkins(player, auth.skins);
       player.color = this.pickColor();
       player.sessionId = client.sessionId;
       player.x = spawn.x;

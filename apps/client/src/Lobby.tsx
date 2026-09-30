@@ -2,6 +2,9 @@ import { useState, type FormEvent } from "react";
 import { CalendarDays, Crosshair, DoorOpen, Drama, Plus, RotateCcw, Users } from "lucide-react";
 import { ROOM_CODE_LENGTH } from "@tentides/protocol";
 import { createBattleRoom, createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
+import { AccountPanel } from "./account/AccountPanel.tsx";
+import { useAccount } from "./account/account.ts";
+import { GachaScreen } from "./gacha/GachaScreen.tsx";
 
 const NAME_KEY = "tentides.name";
 
@@ -28,6 +31,9 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
   const [previous] = useState(lastRoom);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tài khoản: đăng nhập rồi thì tên trong game là tên tài khoản; Kho súng · Gacha mở đè lên sảnh.
+  const signedIn = useAccount().status === "user";
+  const [gacha, setGacha] = useState(false);
 
   async function run(action: () => Promise<IslandRoom>) {
     if (!name.trim()) {
@@ -79,9 +85,11 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
         </header>
 
         <div className="lobby-card">
+          <AccountPanel onUsername={setName} onOpenGacha={() => setGacha(true)} />
+
           <label className="field">
             <span className="label">Tên của bạn</span>
-            <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="vd. Hải" autoFocus />
+            <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="vd. Hải" autoFocus readOnly={signedIn} title={signedIn ? "Đã đăng nhập: dùng tên tài khoản" : undefined} />
           </label>
 
           {notice && <p className="notice">{notice}</p>}
@@ -121,6 +129,7 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
           {error && <p className="error">{error}</p>}
         </div>
       </div>
+      {gacha && <GachaScreen onClose={() => setGacha(false)} />}
     </main>
   );
 }

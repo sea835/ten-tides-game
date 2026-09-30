@@ -98,6 +98,25 @@ Biến môi trường:
 - `BATTLE_DEV`: đặt `1` khi thử nghiệm để server nhận lệnh `devTeleport` (dịch chuyển tức thời, vd. `__tentides.room.send("devTeleport", { x, z })`). Không bật khi chơi thật.
 - `GAME_LOG_DIR`: thư mục ghi log ván (seed + chuỗi hành động + chat), mặc định `logs/`.
 - `VITE_SERVER_URL`: địa chỉ server cho client, dùng khi server không nằm cùng máy (vd. `wss://tentides.fly.dev`).
+- `DATABASE_URL`: chuỗi kết nối PostgreSQL để bật tài khoản, kho skin và gacha (vd. `postgres://tentides:tentides@localhost:5432/tentides`). Không đặt thì server chỉ cho chơi khách.
+
+### Tài khoản, skin súng và gacha (PostgreSQL)
+
+Tài khoản là tuỳ chọn: không có database thì game chạy y như cũ, bảng đăng nhập ở sảnh tự ẩn.
+
+```sh
+scripts/db-dev.sh                 # lần đầu: tạo .pgdata/, chạy PostgreSQL ở cổng 5432, tạo database "tentides"
+DATABASE_URL=postgres://tentides:tentides@localhost:5432/tentides pnpm dev
+scripts/db-dev.sh stop            # tắt PostgreSQL
+```
+
+Không có PostgreSQL cài sẵn thì dùng docker: `docker run -d --name tentides-pg -p 5432:5432 -e POSTGRES_USER=tentides -e POSTGRES_PASSWORD=tentides -e POSTGRES_DB=tentides postgres:16`.
+
+- Server tự chạy migration lúc khởi động (`apps/server/src/db/migrations.ts`, ghi vào bảng `schema_migrations`). Thêm bảng hay cột thì thêm migration mới vào cuối danh sách.
+- API HTTP chạy chung cổng với Colyseus (`apps/server/src/api/api.ts`): `POST /api/register`, `POST /api/login`, `POST /api/logout`, `GET /api/me`, `POST /api/gacha/roll`, `POST /api/skins/equip`, `GET /api/gacha/catalog`, `GET /api/status`.
+- Mật khẩu băm bằng scrypt (muối ngẫu nhiên); token phiên 32 byte, database chỉ giữ bản băm sha256, hết hạn sau 30 ngày.
+- Vào phòng kèm phiên đăng nhập thì nhân vật gắn với tài khoản (id `u<id>`, tên tài khoản, skin đang lắp nằm trong `PlayerState.skins`). Hết trận Battleground, người có tài khoản được cộng xu theo số mạng, hạng và thắng trận.
+- Danh mục skin, tỷ lệ rơi và luật bảo hiểm gacha nằm trong `packages/content/src/skins.ts`. Test tích hợp với database thật chỉ chạy khi có `DATABASE_URL`: `DATABASE_URL=... pnpm test`.
 
 ## Cấu trúc
 
