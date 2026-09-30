@@ -16,6 +16,10 @@ import {
 } from "three";
 import { bulletPasses, mapOf, type BattleBox, type BoxMat, type World } from "@tentides/content";
 import { FENCE_GROUPS } from "./surface.ts";
+import { Wreckage, wreck } from "./Wreckage.tsx";
+import type { IslandRoom } from "../../net.ts";
+
+type Collider = ReturnType<ReturnType<typeof useRapier>["world"]["createCollider"]>;
 import { detailed, type DetailKind } from "../textures.ts";
 
 // Công trình của bản đồ Battleground: hàng nghìn khối hộp gom theo chất liệu và theo ô đất TILE mét, mỗi nhóm một
@@ -208,7 +212,7 @@ export function boxQuaternion(b: BattleBox, out = new Quaternion()) {
   return out.setFromEuler(euler);
 }
 
-function BoxGroup({ mat, boxes, material, geometry }: { mat: BoxMat; boxes: BattleBox[]; material: MeshStandardMaterial; geometry: BoxGeometry }) {
+function BoxGroup({ mat, boxes, ids, material, geometry }: { mat: BoxMat; boxes: BattleBox[]; ids: number[]; material: MeshStandardMaterial; geometry: BoxGeometry }) {
   const mesh = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
     const m = mesh.current;
@@ -222,11 +226,13 @@ function BoxGroup({ mat, boxes, material, geometry }: { mat: BoxMat; boxes: Batt
       m.setMatrixAt(i, matrix);
       color.set(b.tint ?? MAT[mat].color);
       m.setColorAt(i, color);
+      // Cho Wreckage biết khối này nằm ở đâu để ẩn khi vỡ, sạm màu khi hư.
+      wreck.instances[ids[i]!] = { mesh: m, local: i, color: color.clone() };
     });
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
     m.computeBoundingSphere();
-  }, [boxes]);
+  }, [boxes, ids]);
   const solid = mat !== "road" && mat !== "sign" && mat !== "fence";
   return <instancedMesh ref={mesh} args={[geometry, material, boxes.length]} castShadow={solid} receiveShadow />;
 }
@@ -237,15 +243,36 @@ function Colliders({ boxes }: { boxes: readonly BattleBox[] }) {
   useEffect(() => {
     const body = world.createRigidBody(rapier.RigidBodyDesc.fixed());
     const q = new Quaternion();
-    for (const b of boxes) {
-      if (!b.solid) continue;
+    const colliders: (Collider | null)[] = [];
+    wreck.colliderBox.clear();
+    const make = (i: number) => {
+      const b = boxes[i]!;
       boxQuaternion(b, q);
       const desc = rapier.ColliderDesc.cuboid(b.w / 2, b.h / 2, b.d / 2).setTranslation(b.x, b.y, b.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
       // Hàng rào lưới: chặn người, không chặn đạn (xem BULLET_GROUPS).
       if (bulletPasses(b)) desc.setCollisionGroups(FENCE_GROUPS);
-      world.createCollider(desc, body);
-    }
+      const c = world.createCollider(desc, body);
+      colliders[i] = c;
+      wreck.colliderBox.set(c.handle, i);
+    };
+    boxes.forEach((b, i) => {
+      if (b.solid) make(i);
+    });
+    // Khối vỡ thì gỡ va chạm (đạn, người đi qua chỗ đó; người đứng trên sàn nhà sập thì rơi xuống).
+    wreck.removeCollider = (i) => {
+      const c = colliders[i];
+      if (!c) return;
+      wreck.colliderBox.delete(c.handle);
+      if (world.getCollider(c.handle)) world.removeCollider(c, true);
+      colliders[i] = null;
+    };
+    wreck.restoreCollider = (i) => {
+      if (!colliders[i] && boxes[i]?.solid && world.getRigidBody(body.handle)) make(i);
+    };
     return () => {
+      wreck.removeCollider = null;
+      wreck.restoreCollider = null;
+      wreck.colliderBox.clear();
       // Đổi bản đồ thì cả thế giới vật lý bị huỷ trước; chỉ gỡ khi thân vẫn còn trong thế giới.
       if (world.getRigidBody(body.handle)) world.removeRigidBody(body);
     };
@@ -253,7 +280,7 @@ function Colliders({ boxes }: { boxes: readonly BattleBox[] }) {
   return null;
 }
 
-export function BattleStructures({ world }: { world: World }) {
+export function BattleStructures({ room, world }: { room: IslandRoom; world: World }) {
   const map = mapOf(world);
   // Mỗi chất liệu một vật liệu và một hình hộp dùng chung cho mọi ô.
   const materials = useMemo(() => new Map<BoxMat, MeshStandardMaterial>(), []);
@@ -277,13 +304,16 @@ export function BattleStructures({ world }: { world: World }) {
     [materials, geometry],
   );
   const groups = useMemo(() => {
-    const byKey = new Map<string, { mat: BoxMat; boxes: BattleBox[] }>();
-    for (const b of map.boxes) {
+    const byKey = new Map<string, { mat: BoxMat; boxes: BattleBox[]; ids: number[] }>();
+    wreck.instances = [];
+    map.boxes.forEach((b, i) => {
       const key = `${b.mat}:${Math.floor(b.x / TILE)}:${Math.floor(b.z / TILE)}`;
       const group = byKey.get(key);
-      if (group) group.boxes.push(b);
-      else byKey.set(key, { mat: b.mat, boxes: [b] });
-    }
+      if (group) {
+        group.boxes.push(b);
+        group.ids.push(i);
+      } else byKey.set(key, { mat: b.mat, boxes: [b], ids: [i] });
+    });
     return [...byKey.entries()];
   }, [map]);
   const materialOf = (mat: BoxMat) => {
@@ -297,9 +327,10 @@ export function BattleStructures({ world }: { world: World }) {
   return (
     <>
       {groups.map(([key, g]) => (
-        <BoxGroup key={key} mat={g.mat} boxes={g.boxes} material={materialOf(g.mat)} geometry={geometry} />
+        <BoxGroup key={key} mat={g.mat} boxes={g.boxes} ids={g.ids} material={materialOf(g.mat)} geometry={geometry} />
       ))}
       <Colliders boxes={map.boxes} />
+      <Wreckage room={room} world={world} />
     </>
   );
 }

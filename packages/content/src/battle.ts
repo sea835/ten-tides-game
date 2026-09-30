@@ -39,7 +39,13 @@ export interface BattleBox {
   tint?: string;
   /** Có va chạm và chặn đạn không (đường kẻ, biển báo mỏng thì không). */
   solid: boolean;
+  /** Thuộc toà nhà nào (số thứ tự trong bản đồ), để sập cả nhà khi tường đổ quá nhiều. */
+  building?: number;
+  /** Vai trò trong toà nhà: móng, tường, sàn (kể cả cầu thang), mái, đồ đạc. */
+  part?: BoxPart;
 }
+
+export type BoxPart = "base" | "wall" | "floor" | "roof" | "prop";
 
 export type SiteKind = "city" | "port" | "fortress" | "minefield" | "armory" | "village";
 
@@ -90,6 +96,8 @@ export interface BattleMap {
   /** Mìn chôn sẵn trong bãi mìn (server giữ bí mật, client không vẽ). */
   mines: readonly { x: number; z: number }[];
   index: BoxIndex;
+  /** Cây đã đổ (1) theo thứ tự `world.trees`: đạn, tầm nhìn đi qua chỗ đó. */
+  treeDead?: Uint8Array;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -187,23 +195,35 @@ type Rand = ReturnType<typeof makeRand>;
 export class Builder {
   boxes: BattleBox[] = [];
   loot: LootSpot[] = [];
+  /** Toà nhà đang dựng (−1: không thuộc toà nào) và số toà đã dựng, xem `tower`. */
+  group = -1;
+  groups = 0;
   constructor(
     readonly site: BattleSite,
     readonly rand: Rand,
   ) {}
 
   /** Thêm khối theo toạ độ riêng của khu (y tính từ mặt nền của khu). */
-  add(u: number, y: number, v: number, w: number, h: number, d: number, mat: BoxMat, opts: { rot?: number; pitch?: number; tint?: string; solid?: boolean } = {}) {
+  add(u: number, y: number, v: number, w: number, h: number, d: number, mat: BoxMat, opts: { rot?: number; pitch?: number; tint?: string; solid?: boolean; part?: BoxPart } = {}) {
     if (w <= 0.01 || h <= 0.01 || d <= 0.01) return;
     const p = toWorld(this.site, u, v);
-    this.boxes.push({ x: p.x, y: this.site.h + y, z: p.z, w, h, d, rot: this.site.rot + (opts.rot ?? 0), pitch: opts.pitch ?? 0, mat, tint: opts.tint, solid: opts.solid ?? true });
+    const box: BattleBox = { x: p.x, y: this.site.h + y, z: p.z, w, h, d, rot: this.site.rot + (opts.rot ?? 0), pitch: opts.pitch ?? 0, mat, tint: opts.tint, solid: opts.solid ?? true };
+    if (this.group >= 0) box.building = this.group;
+    if (opts.part) box.part = opts.part;
+    this.boxes.push(box);
+  }
+
+  /** Đánh số toà nhà theo thứ tự trong cả bản đồ (gọi khi gom khối của các khu lại). Trả về số kế tiếp. */
+  numberBuildings(base: number): number {
+    for (const b of this.boxes) if (b.building !== undefined) b.building += base;
+    return base + this.groups;
   }
 
   /** Như `add` nhưng trong khung riêng của một toà nhà (gốc u0, v0, quay thêm rot). */
   local(u0: number, v0: number, rot: number) {
     const c = Math.cos(rot);
     const s = Math.sin(rot);
-    return (u: number, y: number, v: number, w: number, h: number, d: number, mat: BoxMat, opts: { pitch?: number; tint?: string; solid?: boolean } = {}) =>
+    return (u: number, y: number, v: number, w: number, h: number, d: number, mat: BoxMat, opts: { pitch?: number; tint?: string; solid?: boolean; part?: BoxPart } = {}) =>
       this.add(u0 + u * c + v * s, y, v0 - u * s + v * c, w, h, d, mat, { ...opts, rot });
   }
 
@@ -241,6 +261,16 @@ export interface TowerOpts {
  * gấp khúc hai vế dọc tường trái lên tới sân thượng, vài vách ngăn và thùng gỗ làm chỗ nấp.
  */
 export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
+  // Mọi khối của toà này mang cùng số toà (để sập cả nhà khi tường đổ quá nhiều).
+  b.group = b.groups++;
+  try {
+    towerBody(b, u0, v0, rot, o);
+  } finally {
+    b.group = -1;
+  }
+}
+
+function towerBody(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts) {
   const add = b.local(u0, v0, rot);
   const { floors, w: W, d: D } = o;
   const mat = o.mat ?? "plaster";
@@ -257,7 +287,7 @@ export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerO
   const rampLen = Math.hypot(FLOOR_H, RUN);
 
   // Móng: khối bê tông chìm xuống đất cho khỏi hở chân trên nền dốc.
-  add(0, -0.7, 0, W + 0.4, 1.5, D + 0.4, "concrete");
+  add(0, -0.7, 0, W + 0.4, 1.5, D + 0.4, "concrete", { part: "base" });
 
   for (let f = 0; f <= floors; f++) {
     const y = f * FLOOR_H + 0.05;
@@ -267,10 +297,10 @@ export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerO
       const hu0 = holeU - 0.75;
       const hu1 = holeU + 0.75;
       const cy = y - SLAB_T / 2;
-      add((-W / 2 + hu0) / 2, cy, 0, hu0 + W / 2, SLAB_T, D, "concrete");
-      add((hu1 + W / 2) / 2, cy, 0, W / 2 - hu1, SLAB_T, D, "concrete");
-      add(holeU, cy, (-D / 2 + z0) / 2, 1.5, SLAB_T, z0 + D / 2, "concrete");
-      add(holeU, cy, (z1 + D / 2) / 2, 1.5, SLAB_T, D / 2 - z1, "concrete");
+      add((-W / 2 + hu0) / 2, cy, 0, hu0 + W / 2, SLAB_T, D, "concrete", { part: "floor" });
+      add((hu1 + W / 2) / 2, cy, 0, W / 2 - hu1, SLAB_T, D, "concrete", { part: "floor" });
+      add(holeU, cy, (-D / 2 + z0) / 2, 1.5, SLAB_T, z0 + D / 2, "concrete", { part: "floor" });
+      add(holeU, cy, (z1 + D / 2) / 2, 1.5, SLAB_T, D / 2 - z1, "concrete", { part: "floor" });
     }
     if (f === floors) {
       if (o.pitched) {
@@ -280,15 +310,15 @@ export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerO
         const ang = Math.atan2(rise, half);
         const len = Math.hypot(rise, half);
         // Nghiêng dương là hạ đầu +v xuống: tấm phía −v phải ngóc đầu +v lên nóc (nghiêng âm), tấm phía +v ngược lại.
-        add(0, y + rise / 2, -half / 2, W + 0.6, 0.18, len, "roof", { pitch: -ang });
-        add(0, y + rise / 2, half / 2, W + 0.6, 0.18, len, "roof", { pitch: ang });
-        add(0, y - SLAB_T / 2, 0, W, SLAB_T, D, "concrete");
+        add(0, y + rise / 2, -half / 2, W + 0.6, 0.18, len, "roof", { pitch: -ang, part: "roof" });
+        add(0, y + rise / 2, half / 2, W + 0.6, 0.18, len, "roof", { pitch: ang, part: "roof" });
+        add(0, y - SLAB_T / 2, 0, W, SLAB_T, D, "concrete", { part: "floor" });
       } else {
         // Sân thượng: lan can bao quanh.
-        add(0, y + 0.55, -D / 2 + WALL_T / 2, W, 1.1, WALL_T, mat, { tint });
-        add(0, y + 0.55, D / 2 - WALL_T / 2, W, 1.1, WALL_T, mat, { tint });
-        add(-W / 2 + WALL_T / 2, y + 0.55, 0, WALL_T, 1.1, D - 2 * WALL_T, mat, { tint });
-        add(W / 2 - WALL_T / 2, y + 0.55, 0, WALL_T, 1.1, D - 2 * WALL_T, mat, { tint });
+        add(0, y + 0.55, -D / 2 + WALL_T / 2, W, 1.1, WALL_T, mat, { tint, part: "wall" });
+        add(0, y + 0.55, D / 2 - WALL_T / 2, W, 1.1, WALL_T, mat, { tint, part: "wall" });
+        add(-W / 2 + WALL_T / 2, y + 0.55, 0, WALL_T, 1.1, D - 2 * WALL_T, mat, { tint, part: "wall" });
+        add(W / 2 - WALL_T / 2, y + 0.55, 0, WALL_T, 1.1, D - 2 * WALL_T, mat, { tint, part: "wall" });
         if (o.tier) b.lootLocal(u0, v0, rot, W / 4, y, D / 4, o.tier);
       }
       break;
@@ -309,7 +339,7 @@ export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerO
         const door = f === 0 && side.front && i === (n - 1) / 2;
         const window = !door && i % 2 === 1 && !(side.along === "v" && side.at < 0 && c > z0 - D / 2 && c < z1);
         const piece = (py: number, ph: number) =>
-          side.along === "u" ? add(c, py, side.at, pw + 0.01, ph, WALL_T, mat, { tint }) : add(side.at, py, c, WALL_T, ph, pw + 0.01, mat, { tint });
+          side.along === "u" ? add(c, py, side.at, pw + 0.01, ph, WALL_T, mat, { tint, part: "wall" }) : add(side.at, py, c, WALL_T, ph, pw + 0.01, mat, { tint, part: "wall" });
         if (door) piece(y + 2.45 + (hw - 2.4) / 2, hw - 2.4);
         else if (window) {
           piece(y + 0.5, 1.0);
@@ -319,19 +349,19 @@ export function tower(b: Builder, u0: number, v0: number, rot: number, o: TowerO
     }
     // Vế cầu thang từ tầng f lên f + 1 (vế chẵn đi về phía sau, vế lẻ quay lại).
     const upBack = f % 2 === 0;
-    add(upBack ? sA : sB, y + FLOOR_H / 2 - 0.12, (z0 + z1) / 2, 1.45, 0.2, rampLen, "concrete", { pitch: upBack ? -slope : slope });
+    add(upBack ? sA : sB, y + FLOOR_H / 2 - 0.12, (z0 + z1) / 2, 1.45, 0.2, rampLen, "concrete", { pitch: upBack ? -slope : slope, part: "floor" });
     // Vách ngăn có cửa, thùng gỗ làm chỗ nấp, chỗ rơi đồ.
     if (W >= 11) {
       const px = stairEnd + (W / 2 - stairEnd) * (0.35 + b.rand() * 0.3);
-      add(px, wallY, -D / 4 - 0.8, 0.15, hw, D / 2 - 1.8, "plaster", { tint: "#e6e1d6" });
-      add(px, wallY, D / 4 + 0.8, 0.15, hw, D / 2 - 1.8, "plaster", { tint: "#e6e1d6" });
+      add(px, wallY, -D / 4 - 0.8, 0.15, hw, D / 2 - 1.8, "plaster", { tint: "#e6e1d6", part: "wall" });
+      add(px, wallY, D / 4 + 0.8, 0.15, hw, D / 2 - 1.8, "plaster", { tint: "#e6e1d6", part: "wall" });
     }
     const crates = 1 + Math.floor(b.rand() * 2);
     for (let k = 0; k < crates; k++) {
       const cu = stairEnd + 1 + b.rand() * (W / 2 - stairEnd - 2);
       const cv = -D / 2 + 1.2 + b.rand() * (D - 2.4);
       const s = 0.9 + b.rand() * 0.3;
-      add(cu, y + s / 2, cv, s, s, s, "wood");
+      add(cu, y + s / 2, cv, s, s, s, "wood", { part: "prop" });
     }
     if (o.tier) {
       const lu = stairEnd + 1 + b.rand() * (W / 2 - stairEnd - 2);
@@ -626,6 +656,8 @@ export interface BoxIndex {
   /** Đánh dấu khối đã thử trong lần dò hiện tại (so với `stamp`), thay cho tạo Set mới mỗi tia. */
   seen: Uint32Array;
   stamp: number;
+  /** Khối đã vỡ / sập (1): mọi tia, mọi phép dò bỏ qua. Mỗi phòng (server) một bản riêng, xem `withDestruction`. */
+  dead?: Uint8Array;
 }
 
 /** Ma trận quay (YXZ) của khối, dùng để đổi điểm và hướng về toạ độ riêng của khối. */
@@ -680,7 +712,13 @@ export function bulletPasses(b: BattleBox): boolean {
  * `bullet`: tia đạn / tầm nhìn bắn, bỏ qua các khối đạn xuyên được (hàng rào lưới).
  */
 export function raycastBoxes(index: BoxIndex, o: readonly [number, number, number], d: readonly [number, number, number], max: number, bullet = false): number {
+  return raycastBoxesHit(index, o, d, max, bullet).t;
+}
+
+/** Như `raycastBoxes` nhưng cho biết cả khối bị chạm (`i`, −1 nếu không chạm gì). */
+export function raycastBoxesHit(index: BoxIndex, o: readonly [number, number, number], d: readonly [number, number, number], max: number, bullet = false, skip = -1): { t: number; i: number } {
   let best = max;
+  let bi = -1;
   // Đánh dấu mới cho lần dò này; tràn số thì xoá sạch dấu cũ.
   if (++index.stamp >= 0xffffffff) {
     index.seen.fill(0);
@@ -688,6 +726,7 @@ export function raycastBoxes(index: BoxIndex, o: readonly [number, number, numbe
   }
   const stamp = index.stamp;
   const seen = index.seen;
+  const dead = index.dead;
   const step = index.cell * 0.5;
   for (let t = 0; t <= best + step; t += step) {
     const px = o[0] + d[0] * Math.min(t, best);
@@ -697,12 +736,126 @@ export function raycastBoxes(index: BoxIndex, o: readonly [number, number, numbe
     for (const i of list) {
       if (seen[i] === stamp) continue;
       seen[i] = stamp;
+      if (i === skip || dead?.[i]) continue;
       if (bullet && bulletPasses(index.boxes[i]!)) continue;
       const hit = rayBoxAt(index, i, o, d, best);
-      if (hit < best) best = hit;
+      if (hit < best) {
+        best = hit;
+        bi = i;
+      }
     }
   }
-  return best < max ? best : Infinity;
+  return best < max ? { t: best, i: bi } : { t: Infinity, i: -1 };
+}
+
+/** Đoạn tia nằm trong khối `i`: [vào, ra] (Infinity nếu không cắt). Để biết đạn đi xuyên bao nhiêu thịt tường. */
+export function boxSpan(index: BoxIndex, i: number, o: readonly [number, number, number], d: readonly [number, number, number]): [number, number] {
+  const b = index.boxes[i]!;
+  const a = index.axes;
+  const k = i * 9;
+  const rx = o[0] - b.x;
+  const ry = o[1] - b.y;
+  const rz = o[2] - b.z;
+  let tmin = -Infinity;
+  let tmax = Infinity;
+  for (let axis = 0; axis < 3; axis++) {
+    const j = k + axis * 3;
+    const lo = rx * a[j]! + ry * a[j + 1]! + rz * a[j + 2]!;
+    const ld = d[0] * a[j]! + d[1] * a[j + 1]! + d[2] * a[j + 2]!;
+    const half = (axis === 0 ? b.w : axis === 1 ? b.h : b.d) / 2;
+    if (Math.abs(ld) < 1e-9) {
+      if (Math.abs(lo) > half) return [Infinity, Infinity];
+      continue;
+    }
+    let t1 = (-half - lo) / ld;
+    let t2 = (half - lo) / ld;
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return [Infinity, Infinity];
+  }
+  return [tmin, tmax];
+}
+
+// ---------------------------------------------------------------------------- phá huỷ: tường vỡ, đạn xuyên, nhà sập
+
+/** Đạn xuyên qua được tấm mỏng chừng này mét (vách gỗ, tường vữa, tôn) nếu vật liệu cho phép, xem `penetrable`. */
+export const PEN_MAX = 0.45;
+/** Sát thương còn lại sau mỗi lần xuyên. */
+export const PEN_DAMAGE = 0.6;
+
+/** Vật liệu đạn xuyên qua được khi đủ mỏng: gỗ, vữa, tôn biển báo. Gạch, bê tông, đá, bao cát, thép dày thì không. */
+export function penetrable(b: BattleBox): boolean {
+  return b.mat === "wood" || b.mat === "plaster" || b.mat === "sign";
+}
+
+/**
+ * Độ bền của khối (0: không phá được). Tường, vách, lan can, thùng gỗ, bao cát vỡ được; móng, sàn, mái, đường,
+ * container, thép, thân tàu thì không (sàn, mái chỉ đổ theo khi cả nhà sập). Tường quá dày (tường thành đá) cũng không.
+ */
+export function boxDurability(b: BattleBox): number {
+  if (!b.solid || b.part === "base" || b.part === "floor" || b.part === "roof") return 0;
+  if (b.mat === "road" || b.mat === "roof" || b.mat === "metal" || b.mat === "container" || b.mat === "hull" || b.mat === "rust") return 0;
+  const thick = Math.min(b.w, b.h, b.d);
+  if (thick > 0.9) return 0;
+  // Tấm to thì bền hơn một chút (nhiều vật liệu hơn), nhưng không quá gấp đôi.
+  const size = Math.min(2, Math.max(0.6, Math.sqrt(b.w * b.h * b.d / 0.5)));
+  const base: Partial<Record<BoxMat, number>> = { wood: 140, plaster: 260, sign: 40, fence: 90, sandbag: 380, brick: 420, concrete: 560, stone: 700 };
+  return Math.round((base[b.mat] ?? 0) * size);
+}
+
+/** Đạn găm vào vật liệu này mất bao nhiêu sát thương vào khối (so với sát thương vào người). */
+export function bulletWallFactor(b: BattleBox): number {
+  return b.mat === "wood" || b.mat === "sign" || b.mat === "fence" ? 0.9 : b.mat === "plaster" ? 0.6 : b.mat === "sandbag" ? 0.35 : 0.4;
+}
+
+/**
+ * Đường đạn thẳng từ o theo d trong `max` mét, có tính xuyên tường mỏng: găm vào khối nào (`t`, `i`), đã xuyên qua
+ * những khối nào, ở đâu (`pens`, tối đa `maxPens`), sát thương còn lại (`mult`).
+ */
+export function bulletThrough(
+  index: BoxIndex,
+  o: readonly [number, number, number],
+  d: readonly [number, number, number],
+  max: number,
+  maxPens = 1,
+): { t: number; i: number; pens: { i: number; t: number }[]; mult: number } {
+  const pens: { i: number; t: number }[] = [];
+  let from = 0;
+  let mult = 1;
+  let skip = -1;
+  for (;;) {
+    const origin: [number, number, number] = [o[0] + d[0] * from, o[1] + d[1] * from, o[2] + d[2] * from];
+    const hit = raycastBoxesHit(index, origin, d, max - from, true, skip);
+    if (hit.i < 0) return { t: Infinity, i: -1, pens, mult };
+    const t = from + hit.t;
+    const b = index.boxes[hit.i]!;
+    if (pens.length < maxPens && penetrable(b)) {
+      const [tin, tout] = boxSpan(index, hit.i, o, d);
+      if (tout - Math.max(tin, from) <= PEN_MAX) {
+        pens.push({ i: hit.i, t });
+        mult *= PEN_DAMAGE;
+        from = tout + 0.01;
+        skip = hit.i;
+        if (from >= max) return { t: Infinity, i: -1, pens, mult };
+        continue;
+      }
+    }
+    return { t, i: hit.i, pens, mult };
+  }
+}
+
+/**
+ * Bản đồ riêng cho một phòng: dùng chung hình khối, lưới (chỉ đọc) với bản đồ gốc trong cache, nhưng có mặt nạ
+ * khối vỡ, cây đổ riêng, để phá nhà trong trận này không ảnh hưởng phòng khác cùng seed.
+ */
+export function withDestruction(map: BattleMap): BattleMap {
+  const n = map.index.boxes.length;
+  return {
+    ...map,
+    index: { ...map.index, seen: new Uint32Array(n), stamp: 0, dead: new Uint8Array(n) },
+    treeDead: new Uint8Array(map.world.trees.length),
+  };
 }
 
 /** Tia cắt khối thứ `i` của chỉ mục (slab test trong toạ độ riêng của khối, trục tính sẵn). */
@@ -734,12 +887,29 @@ function rayBoxAt(index: BoxIndex, i: number, o: readonly [number, number, numbe
   return tmin;
 }
 
+/** Điểm (x, y, z) có nằm trong một khối riêng lẻ không (nới thêm `pad`). */
+export function pointInBox(b: BattleBox, x: number, y: number, z: number, pad = 0): boolean {
+  const cy = Math.cos(b.rot);
+  const sy = Math.sin(b.rot);
+  const cx = Math.cos(b.pitch);
+  const sx = Math.sin(b.pitch);
+  const rx = x - b.x;
+  const ry = y - b.y;
+  const rz = z - b.z;
+  return (
+    Math.abs(rx * cy - rz * sy) < b.w / 2 + pad &&
+    Math.abs(rx * sy * sx + ry * cx + rz * cy * sx) < b.h / 2 + pad &&
+    Math.abs(rx * sy * cx - ry * sx + rz * cy * cx) < b.d / 2 + pad
+  );
+}
+
 /** Khối đặc chứa điểm (x, y, z) (nới thêm `pad`), hoặc null. */
 export function boxAt(index: BoxIndex, x: number, y: number, z: number, pad = 0): BattleBox | null {
   const list = index.grid.get(cellKey(Math.floor(x / index.cell), Math.floor(z / index.cell)));
   if (!list) return null;
   const a = index.axes;
   for (const i of list) {
+    if (index.dead?.[i]) continue;
     const b = index.boxes[i]!;
     const k = i * 9;
     const rx = x - b.x;
@@ -770,7 +940,7 @@ export function boxesNear(index: BoxIndex, x: number, z: number, r: number): Bat
       for (const i of list) {
         if (index.seen[i] === stamp) continue;
         index.seen[i] = stamp;
-        out.push(index.boxes[i]!);
+        if (!index.dead?.[i]) out.push(index.boxes[i]!);
       }
     }
   return out;
@@ -832,10 +1002,16 @@ function trunkIndex(world: World): TrunkIndex {
  * Tia chạm thân cây gần nhất (trụ đứng) trong `max` mét: trả khoảng cách hoặc Infinity. Client có va chạm thân cây
  * (đạn người chơi găm vào cây) nên server cũng phải tính: trước đây máy nhìn và bắn xuyên qua cây người chơi nấp sau.
  */
-export function raycastTrunks(world: World, o: readonly [number, number, number], d: readonly [number, number, number], max: number): number {
-  if (!world.trees.length) return Infinity;
+export function raycastTrunks(world: World, o: readonly [number, number, number], d: readonly [number, number, number], max: number, dead?: Uint8Array): number {
+  return raycastTrunksHit(world, o, d, max, dead).t;
+}
+
+/** Như `raycastTrunks` nhưng cho biết cả cây bị chạm (`i` theo `world.trees`, −1 nếu không). */
+export function raycastTrunksHit(world: World, o: readonly [number, number, number], d: readonly [number, number, number], max: number, dead?: Uint8Array): { t: number; i: number } {
+  if (!world.trees.length) return { t: Infinity, i: -1 };
   const { cell, grid, data } = trunkIndex(world);
   let best = max;
+  let bi = -1;
   const tried = new Set<number>();
   // Đi từng đoạn dài một ô, xét mọi ô mà hộp bao của đoạn chạm tới (không lọt ô nào khi tia đi chéo).
   for (let t0 = 0; t0 < best; t0 += cell) {
@@ -849,15 +1025,23 @@ export function raycastTrunks(world: World, o: readonly [number, number, number]
         const list = grid.get(cellKey(gx, gz));
         if (!list) continue;
         for (const i of list) {
-          if (tried.has(i)) continue;
+          if (tried.has(i) || dead?.[i]) continue;
           tried.add(i);
           const k = i * 5;
           const hit = rayTrunk(o, d, data[k]!, data[k + 1]!, data[k + 2]!, data[k + 3]!, data[k + 4]!, best);
-          if (hit < best) best = hit;
+          if (hit < best) {
+            best = hit;
+            bi = i;
+          }
         }
       }
   }
-  return best < max ? best : Infinity;
+  return best < max ? { t: best, i: bi } : { t: Infinity, i: -1 };
+}
+
+/** Độ bền thân cây trước khi gãy đổ (dừa mảnh thì yếu hơn cây rừng to). */
+export function treeDurability(t: Tree): number {
+  return t.kind === "palm" ? 160 : Math.round(200 * t.lean);
 }
 
 /** Tia cắt trụ đứng (tâm x, z, bán kính r, từ y0 tới y1). */
@@ -964,6 +1148,7 @@ export function battleMap(seed: number): BattleMap {
   const boxes: BattleBox[] = [];
   const loot: LootSpot[] = [];
   const layoutRand = makeRand(20261001);
+  let buildings = 0;
   for (const site of BATTLE_SITES) {
     const b = new Builder(site, layoutRand);
     if (site.kind === "city") buildCity(b);
@@ -972,6 +1157,7 @@ export function battleMap(seed: number): BattleMap {
     else if (site.kind === "minefield") buildMinefield(b);
     else if (site.kind === "armory") buildArmory(b);
     else buildVillage(b);
+    buildings = b.numberBuildings(buildings);
     boxes.push(...b.boxes);
     loot.push(...b.loot);
   }

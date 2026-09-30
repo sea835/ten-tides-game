@@ -1069,6 +1069,34 @@ export const playImpact = safe((at: Place, surface: "dirt" | "concrete" | "metal
   v.done();
 });
 
+/**
+ * Tường / vách vỡ (`big` = 0) hay cả toà nhà sập (`big` = 1): tiếng gãy vỡ giòn, gạch đá đổ ào ào, nhà sập thì thêm
+ * tiếng rền trầm kéo dài và mảnh vụn rơi lộp độp một lúc.
+ */
+export const playCrumble = safe((at: Place, surface: "concrete" | "wood" | "dirt", big: number) => {
+  const sp = spatial(at, big ? 400 : 120, big ? 20 : 8);
+  if (!sp) return;
+  const v = voice("fx", (big ? 1.1 : 0.6) * sp.gain, { sp, reverb: big ? 0.5 : 0.25 });
+  if (!v) return;
+  if (surface === "wood") {
+    // Ván gỗ gãy: rắc rắc giòn rồi ván rơi bịch.
+    for (let i = 0; i < 4; i++) v.noise(i * rand(0.02, 0.05), { type: "bandpass", freq: rand(700, 1400), q: 4, decay: 0.06, peak: 0.8 });
+    v.osc(0.12, { freq: rand(120, 160), freqEnd: 70, decay: 0.2, peak: 0.6 });
+  } else {
+    // Gạch, bê tông: vỡ toang rồi đổ ào.
+    v.noise(0, { type: "highpass", freq: 1800, decay: 0.08, peak: 0.9, attack: 0.002 });
+    v.noise(0.02, { brown: true, type: "lowpass", freq: 900, decay: big ? 1.8 : 0.5, peak: big ? 1.2 : 0.8, attack: 0.03 });
+  }
+  const n = big ? 26 : 8;
+  for (let i = 0; i < n; i++) v.noise(rand(0.08, big ? 2.4 : 0.8), { type: "bandpass", freq: rand(900, 3500), q: 2, decay: 0.05, peak: rand(0.12, 0.35) });
+  if (big) {
+    // Cả nhà đổ: rền trầm như sấm gần.
+    v.osc(0, { freq: 48, freqEnd: 24, decay: 2.2, peak: 0.9, attack: 0.05 });
+    v.noise(0.1, { brown: true, type: "lowpass", freq: 300, decay: 2.5, peak: 1, attack: 0.2 });
+  }
+  v.done();
+});
+
 // ---------------------------------------------------------------------------- lựu đạn, mìn, khói
 
 /** Công thức dựng sẵn cho lựu đạn và mìn: sóng xung kích rất dài, thân trầm sâu, đuôi lăn như sấm. */

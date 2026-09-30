@@ -547,6 +547,11 @@ export const IslandState = schema(
     smokes: t.map(SmokeState),
     /** Battleground: thùng thính đang rơi hoặc đã chạm đất trong trận này. */
     airdrops: t.map(AirdropState),
+    /**
+     * Battleground: khối công trình bị bắn, nổ làm hư (khoá là số thứ tự khối trong bản đồ). 1–254: mức hư (nứt,
+     * sạm), 255: đã vỡ / sập (không còn va chạm). Chỉ khối hư mới có mặt, nên người vào giữa trận cũng thấy.
+     */
+    broken: t.map("uint8"),
     /** Battleground: còn bao nhiêu người sống, số máy (bot) chủ phòng chọn. */
     aliveCount: t.uint8().default(0),
     bots: t.uint8().default(0),
@@ -856,6 +861,16 @@ export interface HurtMessage {
   armor: boolean;
 }
 /** Nổ: lựu đạn, mìn. Khói: bom khói bung ra. */
+/** Battleground: toà nhà sập (tâm chân nhà, bán kính, chiều cao) để vẽ bụi, gạch đổ, rung màn hình. */
+export interface CollapseMessage {
+  building: number;
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  h: number;
+}
+
 export interface BoomMessage {
   kind: "frag" | "mine" | "smoke" | "flash" | "shell";
   x: number;
@@ -923,6 +938,7 @@ export const Messages = {
   hit: "hit",
   hurt: "hurt",
   boom: "boom",
+  collapse: "collapse",
   /** Server báo riêng: vị trí mìn của chính mình (người khác không thấy). */
   myMines: "myMines",
   /** Server báo mọi người: mìn kêu tích (sắp nổ). */

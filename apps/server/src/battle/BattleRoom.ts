@@ -32,7 +32,11 @@ import {
   makeRand,
   raycastBoxes,
   raycastTerrain,
-  raycastTrunks,
+  raycastTrunksHit,
+  bulletThrough,
+  bulletWallFactor,
+  PEN_DAMAGE,
+  withDestruction,
   type BattleMap,
   type LootSpot,
 } from "@tentides/content";
@@ -81,6 +85,7 @@ import { applySkins, resolveIdentity } from "../account.ts";
 import { isPlausibleMove } from "../movement.ts";
 import { randomRoomCode } from "../roomCode.ts";
 import { Airdrops } from "./airdrops.ts";
+import { Destruction } from "./destruction.ts";
 import { Bots } from "./bots.ts";
 import { MatchRewards } from "./rewards.ts";
 import { Vehicles } from "./vehicles.ts";
@@ -193,6 +198,21 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       },
       random: () => room.rand(),
       putItem: (itemId, x, y, z) => room.putItem(itemId, x, y, z),
+    }))(this);
+  /** Tường vỡ, nhà sập, cây đổ trong trận (bản đồ đổi theo trận nên đọc qua getter). */
+  destruction = ((room: BattleRoom) =>
+    new Destruction({
+      get state() {
+        return room.state;
+      },
+      get map() {
+        return room.map;
+      },
+      broadcast: (type, message) => room.broadcast(type, message),
+      crush: (id, amount, by) => {
+        const dealt = room.damage(id, amount, "blast", by, "collapse");
+        if (dealt && by && by !== id) room.clientOf(by)?.send(Messages.hit, { kind: dealt.killed ? "kill" : "body", armor: dealt.armor, amount: Math.round(dealt.amount) } satisfies HitMessage);
+      },
     }))(this);
   private weatherLeft = WEATHER_MIN;
 
@@ -488,7 +508,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   private setupMap(seed: number) {
     this.state.worldSeed = seed;
-    this.map = mapForMode(this.state.battleMode, seed);
+    // Bản riêng của phòng (mặt nạ khối vỡ, cây đổ riêng), không đụng bản đồ trong cache dùng chung.
+    this.map = withDestruction(mapForMode(this.state.battleMode, seed));
+    this.destruction.reset();
     this.rand = makeRand(seed ^ Date.now());
     for (const p of this.state.players.values()) this.placeAtSpawn(p);
   }
@@ -523,6 +545,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.timers.clear();
     this.vehicles.clear();
     this.airdrops.clear();
+    this.destruction.reset();
     const squad = s.battleMode === "squad";
     const war = s.battleMode === "war";
     const humans = [...s.players.entries()].filter(([, p]) => !p.bot).map(([id]) => id);
@@ -826,6 +849,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.bots.clear();
     this.vehicles.clear();
     this.airdrops.clear();
+    this.destruction.reset();
     s.flags.clear();
     for (const [id, p] of s.players) {
       p.alive = true;
@@ -900,13 +924,23 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     }
     // Tia nào găm vào thân xe tăng (id xe), để tính chút sát thương lên xe.
     const tankOf = new Map<number, string>();
+    // Mỗi tia: găm vào khối nào / cây nào (để làm hư), đã xuyên qua vách mỏng nào (ở quãng `s` bao nhiêu).
+    const stops = dirs.map(() => ({ box: -1, tree: -1, yaw: 0, pens: [] as { s: number; box: number }[] }));
     const walls = dirs.map((d, ray) => {
+      const st = stops[ray]!;
       for (let i = 1; i < steps.length; i++) {
         const a = bulletAt(o, d, def.velocity, steps[i - 1]!);
         const b = bulletAt(o, d, def.velocity, steps[i]!);
         const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
         const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
-        let t = Math.min(raycastBoxes(this.map.index, a, cd, len, true), raycastTerrain(this.map.world, a, cd, len), raycastTrunks(this.map.world, a, cd, len));
+        const sAt = (t: number) => steps[i - 1]! + (t / len) * (steps[i]! - steps[i - 1]!);
+        // Vách gỗ, tường vữa mỏng: đạn xuyên qua (mỗi tia tối đa một lần), sát thương giảm.
+        const wall = bulletThrough(this.map.index, a, cd, len, 1 - st.pens.length);
+        for (const pen of wall.pens) st.pens.push({ s: sAt(pen.t), box: pen.i });
+        const trunk = raycastTrunksHit(this.map.world, a, cd, len, this.map.treeDead);
+        let t = Math.min(wall.t, raycastTerrain(this.map.world, a, cd, len), trunk.t);
+        const box = t === wall.t ? wall.i : -1;
+        const tree = t === trunk.t && t < Infinity ? trunk.i : -1;
         // Xe tăng chặn đạn (thép dày, đạn thường không xuyên).
         let tank = "";
         for (const [vid, v] of this.state.vehicles) {
@@ -919,7 +953,12 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         }
         if (t < len) {
           if (tank) tankOf.set(ray, tank);
-          return steps[i - 1]! + (t / len) * (steps[i]! - steps[i - 1]!);
+          else {
+            st.box = box;
+            st.tree = tree;
+            st.yaw = Math.atan2(cd[0], cd[2]);
+          }
+          return sAt(t);
         }
       }
       return maxRange;
@@ -938,7 +977,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (!check) continue;
       const head = check.head;
       hitRay.set(h.ray, h.d);
-      const amount = def.damage * falloff(def, h.d) * (head ? def.headshot : 1);
+      // Bắn xuyên vách mỏng thì đạn yếu đi mỗi lớp xuyên qua trước người.
+      const through = stops[h.ray]!.pens.filter((pen) => pen.s < h.d).length;
+      const amount = def.damage * falloff(def, h.d) * (head ? def.headshot : 1) * Math.pow(PEN_DAMAGE, through);
       const prev = dealt.get(h.target);
       dealt.set(h.target, { amount: (prev?.amount ?? 0) + amount, head: (prev?.head ?? false) || head, d: h.d });
     }
@@ -959,6 +1000,15 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const dist = walls[ray]!;
       this.vehicles.damage(vid, def.damage * falloff(def, dist) * TANK.bulletFactor, id, def.id);
     }
+    // Đạn làm hư tường nó găm vào, vách nó xuyên qua, và thân cây trúng đạn.
+    stops.forEach((st, ray) => {
+      const stop = hitRay.get(ray) ?? walls[ray]!;
+      const power = def.damage * falloff(def, stop) * def.pellets ** -0.3;
+      for (const pen of st.pens) if (pen.s < stop) this.destruction.hitBox(pen.box, power * 0.5 * bulletWallFactor(this.map.index.boxes[pen.box]!), id);
+      if (hitRay.has(ray)) return;
+      if (st.box >= 0) this.destruction.hitBox(st.box, power * bulletWallFactor(this.map.index.boxes[st.box]!), id);
+      else if (st.tree >= 0) this.destruction.hitTree(st.tree, power * 0.5, st.yaw);
+    });
     for (const [target, hit] of dealt) {
       const result = this.damage(target, hit.amount, hit.head ? "head" : "body", id, weaponId, [p.x, p.z]);
       if (result) this.clientOf(id)?.send(Messages.hit, { kind: result.killed ? "kill" : hit.head ? "head" : "body", armor: result.armor, amount: Math.round(result.amount) } satisfies HitMessage);
@@ -1370,6 +1420,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     }
     if (this.state.phase !== "battle") return;
     this.vehicles.blast(x, y, z, radius, maxDamage, owner, weapon, skipVehicle);
+    // Sức nổ làm hư, thủng tường gần đó, gãy cây; nổ đủ nhiều thì sập nhà.
+    this.destruction.blast(x, y, z, radius, maxDamage, owner);
     for (const [id, p] of this.state.players) {
       if (!p.alive || p.vehicle) continue;
       const cx = p.x;

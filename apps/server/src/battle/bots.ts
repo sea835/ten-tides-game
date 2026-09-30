@@ -756,7 +756,7 @@ export class Bots {
       if (eye[1] + dir[1] * t < this.height(eye[0] + dir[0] * t, eye[2] + dir[2] * t) + 0.1) return false;
     }
     // Thân cây cũng che (client có va chạm thân cây): nấp sau gốc cây thì máy không thấy, không bắn xuyên được.
-    return raycastBoxes(this.room.map.index, eye, dir, len, true) === Infinity && raycastTrunks(this.room.map.world, eye, dir, len) === Infinity;
+    return raycastBoxes(this.room.map.index, eye, dir, len, true) === Infinity && raycastTrunks(this.room.map.world, eye, dir, len, this.room.map.treeDead) === Infinity;
   }
 
   private shoot(id: string, b: Brain, dt: number, weaponId: string, eye: [number, number, number], target: PlayerState, d: number) {

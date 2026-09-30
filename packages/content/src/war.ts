@@ -270,6 +270,7 @@ export function warMap(seed: number): BattleMap {
   const loot: BattleMap["loot"][number][] = [];
   const flags: FlagSpot[] = [];
   const layoutRand = makeRand(20261101);
+  let buildings = 0;
   for (const s of WAR_SITES) {
     const b = new Builder(s, layoutRand);
     if (s.build === "hq") buildHq(b);
@@ -289,6 +290,7 @@ export function warMap(seed: number): BattleMap {
       const p = toWorld(s, s.flag.u, s.flag.v);
       flags.push({ id: s.flag.letter, name: s.name, x: p.x, z: p.z, y: s.h, r: s.flag.r });
     }
+    buildings = b.numberBuildings(buildings);
     boxes.push(...b.boxes);
     loot.push(...b.loot);
   }
