@@ -161,7 +161,7 @@ export class Destruction {
       if (index.dead?.[i] || (this.full[i] ?? 0) <= 0) continue;
       const d = distToBox(index.boxes[i]!, index.axes, i, x, y, z);
       if (d > reach) continue;
-      this.hitBox(i, power * 3.2 * Math.pow(1 - d / reach, 1.1), by);
+      this.hitBox(i, power * 4.5 * Math.pow(1 - d / reach, 1.1), by);
     }
     const trees = map.world.trees;
     for (let i = 0; i < trees.length; i++) {

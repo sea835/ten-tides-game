@@ -798,8 +798,8 @@ export function boxDurability(b: BattleBox): number {
   if (b.mat === "road" || b.mat === "roof" || b.mat === "metal" || b.mat === "container" || b.mat === "hull" || b.mat === "rust") return 0;
   const thick = Math.min(b.w, b.h, b.d);
   if (thick > 0.9) return 0;
-  // Tấm to thì bền hơn một chút (nhiều vật liệu hơn), nhưng không quá gấp đôi.
-  const size = Math.min(2, Math.max(0.6, Math.sqrt(b.w * b.h * b.d / 0.5)));
+  // Tấm to thì bền hơn một chút (nhiều vật liệu hơn), tối đa gấp 1,4.
+  const size = Math.min(1.4, Math.max(0.6, Math.sqrt(b.w * b.h * b.d / 0.5)));
   const base: Partial<Record<BoxMat, number>> = { wood: 140, plaster: 260, sign: 40, fence: 90, sandbag: 380, brick: 420, concrete: 560, stone: 700 };
   return Math.round((base[b.mat] ?? 0) * size);
 }
