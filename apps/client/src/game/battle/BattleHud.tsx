@@ -40,6 +40,7 @@ import { ItemIcon } from "./ItemIcons.tsx";
 import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.tsx";
 import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
+import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -377,6 +378,8 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
           {z.nr > 0 && <circle cx={z.nx} cy={z.nz} r={z.nr} className="bm-next" />}
         </>
       )}
+      {/* Thùng thính: ô đỏ (nhấp nháy khi còn đang rơi). */}
+      {phase === "battle" && <AirdropMarks room={room} big={big} />}
       {/* Xe tăng của đội mình và xe bỏ trống (xe địch thì không lộ trên bản đồ). */}
       {[...room.state.vehicles.values()]
         .filter((v) => v.hp > 0 && (!v.driver || (me?.team && v.team === me.team) || v.driver === myId(room)))
@@ -1143,6 +1146,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       )}
       {fighting && <Vitals room={room} />}
       {fighting && <OutsideZone room={room} />}
+      {fighting && <AirdropNotice room={room} />}
       {fighting && <SquadHud room={room} />}
       {fighting && <TankHud />}
       <Toast />
