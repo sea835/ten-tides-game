@@ -47,6 +47,11 @@ import { KillerBanner, XpFeed } from "../../progress/BattleProgress.tsx";
 import { RankBadge } from "../../progress/RankBadge.tsx";
 import { CommsHud, PingMarks } from "./CommsHud.tsx";
 import { CommandCenter } from "./CommandCenter.tsx";
+import { KillcamHud } from "./Killcam.tsx";
+import { useKillcam } from "./replay.ts";
+import { SpectatorHud, setSpectate, useSpectate } from "./Spectator.tsx";
+import { MatchShowcase, useMatchSummary } from "../../progress/MatchShowcase.tsx";
+import type { MatchSummaryMessage } from "@tentides/protocol";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -750,7 +755,7 @@ function BuyMenu({ room }: { room: IslandRoom }) {
 
 // ---------------------------------------------------------------------------- sảnh, bảng điểm, gục, thắng
 
-function Scoreboard({ room }: { room: IslandRoom }) {
+function Scoreboard({ room, summary }: { room: IslandRoom; summary: MatchSummaryMessage | null }) {
   const hud = useBattleHud();
   const rows = useRoomSnapshot(room, (s) =>
     [...s.players.entries()]
@@ -758,7 +763,8 @@ function Scoreboard({ room }: { room: IslandRoom }) {
       .sort((a, b) => (a.team < b.team ? -1 : a.team > b.team ? 1 : 0) || Number(b.alive) - Number(a.alive) || b.kills - a.kills),
   );
   const phase = useRoomSnapshot(room, (s) => s.phase);
-  if (!hud.scoreboard && phase !== "ended") return null;
+  // Hết trận: bảng vinh danh MVP đã có bảng điểm đầy đủ.
+  if (!hud.scoreboard && (phase !== "ended" || summary)) return null;
   return (
     <div className="b-score">
       <h3>Bảng điểm</h3>
@@ -782,7 +788,7 @@ function Scoreboard({ room }: { room: IslandRoom }) {
   );
 }
 
-function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
+function DeathAndWin({ room, onLeave, summary }: { room: IslandRoom; onLeave: () => void; summary: MatchSummaryMessage | null }) {
   const me = myId(room);
   const s = useRoomSnapshot(room, (st) => {
     const p = st.players.get(me);
@@ -803,6 +809,8 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
     };
   });
   const hud = useBattleHud();
+  const killcam = useKillcam();
+  const sp = useSpectate();
   const [rank, setRank] = useState(0);
   useEffect(() => {
     if ((s.phase === "battle" || s.phase === "prep") && !s.alive && !rank) {
@@ -822,7 +830,7 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   if (s.phase === "ended") {
     const won = s.squad || s.war ? !!s.team && s.winner === s.team : s.winner === me;
     return (
-      <div className={`b-end ${won ? "win" : ""}`}>
+      <div className={`b-end ${won ? "win" : ""} ${summary ? "has-mvp" : ""}`}>
         {won ? (
           <>
             <Trophy size={48} />
@@ -837,6 +845,7 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
             </p>
           </>
         )}
+        {summary && <MatchShowcase room={room} summary={summary} />}
         <p className="muted">Về sảnh sau {s.timeLeft}s</p>
         {s.host === me && (
           <button className="primary big" onClick={() => room.send(Messages.start)}>
@@ -849,7 +858,22 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
       </div>
     );
   }
-  if ((s.phase === "battle" || s.phase === "prep") && !s.alive && !s.war) {
+  // Killcam đang chiếu, hay đã chọn "Xem trận": thu bảng lại cho thoáng (dải xem trận ở dưới vẫn hiện).
+  if ((s.phase === "battle" || s.phase === "prep") && !s.alive && !s.war && !killcam && !sp.watch) {
+    // Vào phòng lúc trận đang đánh: chưa từng chơi trận này, chỉ xem.
+    if (!sp.everAlive && !s.killer)
+      return (
+        <div className="b-dead watch">
+          <h2>Trận đang diễn ra</h2>
+          <p>Bạn vào giữa trận nên được xem trận; trận sau sẽ cùng chơi.</p>
+          <button className="primary" onClick={() => setSpectate({ watch: true })}>
+            Xem trận
+          </button>
+          <button className="ghost" onClick={onLeave}>
+            <LogOut size={16} /> Rời phòng
+          </button>
+        </div>
+      );
     return (
       <div className="b-dead">
         <Skull size={28} />
@@ -858,6 +882,9 @@ function DeathAndWin({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           {s.weapon === "zone" ? "vùng độc" : WEAPON.get(s.weapon)?.name ?? (s.weapon === "mine" ? "mìn" : s.weapon === "frag" ? "lựu đạn" : s.weapon === "tank" ? "pháo xe tăng" : "")} · Hạng #{rank} · {s.kills} hạ gục
         </p>
         {hud.spectating && <p className="muted">Đang xem {nameOf(room, hud.spectating)} · bấm chuột để đổi người</p>}
+        <button className="primary" onClick={() => setSpectate({ watch: true })}>
+          Xem trận
+        </button>
         <button className="ghost" onClick={onLeave}>
           <LogOut size={16} /> Rời phòng
         </button>
@@ -1019,6 +1046,7 @@ export function SettingsButton() {
 
 export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const phase = useRoomSnapshot(room, (s) => s.phase);
+  const summary = useMatchSummary(room);
   const war = useRoomSnapshot(room, (s) => s.battleMode === "war");
   useFlagToasts(room);
   const [bigMap, setBigMap] = useState(false);
@@ -1061,10 +1089,12 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       <TankPrompt />
       <Pickup />
       <BuyMenu room={room} />
-      <Scoreboard room={room} />
+      <Scoreboard room={room} summary={summary} />
       <VoiceChat room={room} />
       <CommandCenter room={room} onLeave={onLeave} />
-      <DeathAndWin room={room} onLeave={onLeave} />
+      <DeathAndWin room={room} onLeave={onLeave} summary={summary} />
+      {fighting && <KillcamHud />}
+      {fighting && <SpectatorHud room={room} />}
       <KillerBanner room={room} />
       <XpFeed room={room} />
       <SettingsButton />
