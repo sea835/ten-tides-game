@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_SERVER_PORT } from "@tentides/protocol";
-import type { SkinRarity } from "@tentides/content";
+import type { SkinRarity, WeaponLoadout } from "@tentides/content";
 
 // Tài khoản phía client: gọi API HTTP của server (chung cổng với Colyseus), giữ phiên đăng nhập trong localStorage
 // (khác token khách: token khách theo tab, phiên đăng nhập giữ qua các lần mở trình duyệt), và một store nhỏ cho React.
@@ -51,6 +51,17 @@ export interface Profile {
   skins: { skinId: string; count: number }[];
   equipped: Record<string, string>;
   pity: { sinceEpic: number; sinceLegendary: number };
+  /** Quân hàm (server cũ chưa có thì thiếu). */
+  progress?: Progress;
+  /** Gunsmith: bộ phụ kiện ưa thích theo khẩu. */
+  loadouts?: Record<string, WeaponLoadout>;
+}
+
+export interface Progress {
+  xp: number;
+  rank: number;
+  card: string;
+  emblem: string;
 }
 
 export interface RollOutcome {
@@ -183,4 +194,16 @@ export async function rollGacha(count: 1 | 10): Promise<RollOutcome> {
 export async function equipSkin(weaponId: string, skinId: string): Promise<void> {
   const { equipped } = await api<{ equipped: Record<string, string> }>("POST", "/api/skins/equip", { weaponId, skinId });
   if (state.status === "user") set({ status: "user", profile: { ...state.profile, equipped } });
+}
+
+/** Lắp thẻ tên và huy hiệu (rỗng là bỏ). */
+export async function equipCard(cardId: string, emblemId: string): Promise<void> {
+  const { progress } = await api<{ progress: Progress }>("POST", "/api/profile/card", { cardId, emblemId });
+  if (state.status === "user") set({ status: "user", profile: { ...state.profile, progress } });
+}
+
+/** Gunsmith: lưu bộ phụ kiện của một khẩu, kèm skin ưa thích (undefined là không đổi skin). */
+export async function saveLoadout(weaponId: string, loadout: WeaponLoadout, skinId?: string): Promise<void> {
+  const out = await api<{ loadouts: Record<string, WeaponLoadout>; equipped: Record<string, string> }>("POST", "/api/gunsmith/save", { weaponId, loadout, skinId });
+  if (state.status === "user") set({ status: "user", profile: { ...state.profile, loadouts: out.loadouts, equipped: out.equipped } });
 }

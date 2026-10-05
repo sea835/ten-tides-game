@@ -1,10 +1,12 @@
 import type { PlayerState } from "@tentides/protocol";
 import { userIdOfPlayer } from "../account.ts";
-import { recordMatch, type MatchReward } from "../db/accounts.ts";
+import { addXp, recordMatch, type MatchReward } from "../db/accounts.ts";
+import { XpLedger, type XpNotify } from "./xp.ts";
 
 // Thưởng xu sau mỗi trận Battleground cho người chơi có tài khoản.
 // matchCoins là hàm thuần (dễ test, dễ chỉnh cân bằng); MatchRewards theo dõi hạng trong trận rồi ghi database ở nền.
 // Phòng chỉ cần gọi ba chỗ: begin() lúc vào trận, onDeath() khi có người gục, finish() khi trận kết thúc.
+// XP (quân hàm) cộng dần trong trận qua sổ `xp` (xem xp.ts), ghi database cùng lúc với xu.
 
 export const REWARD = {
   /** Xu tham gia (chơi hết trận là có). */
@@ -46,9 +48,18 @@ export interface MatchLine {
   kills: number;
   placement: number;
   coins: number;
+  /** XP kiếm được trong trận. */
+  xp: number;
 }
 
 export class MatchRewards {
+  /** Sổ XP của phòng: track() khi người có tài khoản vào phòng, award() (hay awardXp) khi có sự kiện. */
+  readonly xp: XpLedger;
+
+  constructor(notify?: XpNotify) {
+    this.xp = new XpLedger(notify);
+  }
+
   /** Hạng và số mạng của người đã gục (giữ cả người bỏ đi giữa trận). */
   private placings = new Map<string, { placement: number; kills: number }>();
   private entrants = 0;
@@ -58,6 +69,7 @@ export class MatchRewards {
     this.placings.clear();
     this.entrants = 0;
     for (const _ of players.values()) this.entrants++;
+    this.xp.active = true;
   }
 
   /** Gọi khi một người gục trong lúc đang đánh, trước khi đánh dấu người đó đã gục. Lần gục đầu mới tính. */
@@ -80,7 +92,7 @@ export class MatchRewards {
     const add = (playerId: string, kills: number, placement: number, entrants: number) => {
       const userId = userIdOfPlayer(playerId);
       if (userId === null) return;
-      lines.push({ playerId, userId, kills, placement, coins: matchCoins(kills, placement, entrants) });
+      lines.push({ playerId, userId, kills, placement, coins: matchCoins(kills, placement, entrants), xp: 0 });
     };
     if (mode === "war") {
       for (const [id, p] of players.entries()) if (teamOf(p)) add(id, p.kills, teamOf(p) === winner ? 1 : 2, 2);
@@ -104,13 +116,32 @@ export class MatchRewards {
     return lines;
   }
 
-  /** Hết trận: tính thưởng rồi ghi database ở nền. Lỗi database chỉ in ra, không bao giờ làm sập phòng. */
+  /** Hết trận: tính thưởng (xu, XP) rồi ghi database ở nền. Lỗi database chỉ in ra, không bao giờ làm sập phòng. */
   finish(players: Players, winner: string, mode: string): MatchLine[] {
-    const lines = this.settle(players, winner, mode).filter((l) => l.coins > 0);
-    if (lines.length) {
-      const rows: MatchReward[] = lines.map(({ userId, kills, placement, coins }) => ({ userId, kills, placement, coins }));
+    const earned = this.xp.drain();
+    this.xp.active = false;
+    const lines = this.settle(players, winner, mode);
+    for (const l of lines) {
+      l.xp = earned.get(l.playerId)?.xp ?? 0;
+      earned.delete(l.playerId);
+    }
+    const kept = lines.filter((l) => l.coins > 0 || l.xp > 0);
+    if (kept.length) {
+      const rows: MatchReward[] = kept.map(({ userId, kills, placement, coins, xp }) => ({ userId, kills, placement, coins, xp }));
       recordMatch(mode, rows).catch((err) => console.warn("Không ghi được thưởng xu sau trận:", err instanceof Error ? err.message : err));
     }
-    return lines;
+    // XP của người đã rời phòng giữa trận (không có dòng kết quả) vẫn được ghi.
+    this.saveXp([...earned.values()]);
+    return kept;
+  }
+
+  /** Phòng đóng (có thể giữa trận): ghi nốt XP đang chờ. */
+  dispose() {
+    this.saveXp([...this.xp.drain().values()]);
+    this.xp.dispose();
+  }
+
+  private saveXp(rows: { userId: number; xp: number }[]) {
+    if (rows.length) addXp(rows).catch((err) => console.warn("Không ghi được XP:", err instanceof Error ? err.message : err));
   }
 }

@@ -34,9 +34,13 @@ export type SkinFinish =
   | { kind: "gold" }
   | { kind: "chrome" }
   /** Phát sáng, nhịp sáng tối theo thời gian (chỉ skin huyền thoại). */
-  | { kind: "neon"; color: string; glow: number };
+  | { kind: "neon"; color: string; glow: number; accent?: string };
 
-export type SkinPattern = "tiger" | "hex" | "digital" | "carbon" | "damascus";
+/**
+ * woodland: mảng lá lớn kèm vệt cành đen (kiểu M81); chip: rằn ri sa mạc "chocolate chip" (mảng nâu, chấm đen trắng);
+ * marpat: điểm ảnh hai cỡ (rằn ri số đô thị); snow: trắng tuyết, vệt chổi xám xanh; filigree: hoa văn chạm khắc mạ vàng.
+ */
+export type SkinPattern = "tiger" | "hex" | "digital" | "carbon" | "damascus" | "woodland" | "chip" | "marpat" | "snow" | "filigree";
 
 export interface SkinDef {
   id: string;
@@ -73,6 +77,12 @@ export const SKINS: readonly SkinDef[] = [
   { id: "m416-carbon", name: "M416 Sợi carbon", rarity: "rare", weapon: "m416", finish: { kind: "pattern", pattern: "carbon", colors: ["#1a1b1e", "#3a3d42"] } },
   { id: "akm-siberia", name: "AKM Rằn ri Siberia", rarity: "rare", weapon: "akm", finish: { kind: "camo", palette: ["#dfe4e8", "#9aa3ab", "#5b646c", "#c4cbd1"] } },
   { id: "vector-circuit", name: "Vector Mạch điện", rarity: "rare", weapon: "vector", finish: { kind: "pattern", pattern: "digital", colors: ["#0c1a12", "#1f6f43", "#35c27a", "#0f2f1f"] } },
+  // Bộ Ngụy Trang Thực Chiến.
+  { id: "woodland-m81", name: "Woodland Camo", rarity: "rare", finish: { kind: "pattern", pattern: "woodland", colors: ["#7a6f45", "#3e4f2a", "#5b4430", "#16140f"] } },
+  { id: "desert-storm", name: "Desert Storm", rarity: "rare", finish: { kind: "pattern", pattern: "chip", colors: ["#d6c29a", "#9e8257", "#b9a37a", "#1b1712", "#f3eee4"] } },
+  { id: "urban-digital", name: "Urban Digital", rarity: "rare", finish: { kind: "pattern", pattern: "marpat", colors: ["#7d8288", "#4f545a", "#a9adb2", "#2d3034"] } },
+  { id: "arctic-snow", name: "Arctic Snow", rarity: "rare", finish: { kind: "pattern", pattern: "snow", colors: ["#eef2f6", "#a7b6c6", "#5f7184"] } },
+  { id: "carbon-fiber", name: "Carbon Fiber", rarity: "rare", finish: { kind: "pattern", pattern: "carbon", colors: ["#121316", "#2f3238"] } },
   { id: "s686-engraved", name: "S686 Chạm bạc", rarity: "rare", weapon: "s686", finish: { kind: "pattern", pattern: "damascus", colors: ["#6e7176", "#c8ccd1"] } },
 
   // Sử thi: kim loại đặc biệt, hoa văn đậm.
@@ -89,6 +99,9 @@ export const SKINS: readonly SkinDef[] = [
   { id: "neon-tsunami", name: "Neon Sóng Thần", rarity: "legendary", finish: { kind: "neon", color: "#22e4ff", glow: 1.6 } },
   { id: "awm-dragon", name: "AWM Long Thần", rarity: "legendary", weapon: "awm", finish: { kind: "neon", color: "#ff3b3b", glow: 1.8 } },
   { id: "akm-inferno", name: "AKM Hoả Ngục", rarity: "legendary", weapon: "akm", finish: { kind: "neon", color: "#ff8a1f", glow: 1.7 } },
+  { id: "damascus-steel", name: "Damascus Steel", rarity: "legendary", finish: { kind: "pattern", pattern: "damascus", colors: ["#16181c", "#c9cfd6", "#3f5f93", "#b0884a", "#7d848c"] } },
+  { id: "gold-plated", name: "Gold Plated", rarity: "legendary", finish: { kind: "pattern", pattern: "filigree", colors: ["#e8b83e", "#8a5d12", "#fff1b8"] } },
+  { id: "neon-cyberpunk", name: "Neon Cyberpunk", rarity: "legendary", finish: { kind: "neon", color: "#ff2fd6", glow: 1.7, accent: "#22e4ff" } },
   { id: "m416-glacier", name: "M416 Băng Hà", rarity: "legendary", weapon: "m416", finish: { kind: "neon", color: "#9fd8ff", glow: 1.4 } },
 ];
 

@@ -41,6 +41,8 @@ import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.t
 import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
+import { KillerBanner, XpFeed } from "../../progress/BattleProgress.tsx";
+import { RankBadge } from "../../progress/RankBadge.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -560,15 +562,25 @@ function OutsideZone({ room }: { room: IslandRoom }) {
 }
 
 function KillFeed({ room }: { room: IslandRoom }) {
-  const feed = useRoomSnapshot(room, (s) => [...s.feed].map((k) => ({ n: k.n, killer: k.killer, victim: k.victim, weapon: k.weapon, head: k.headshot })));
+  const feed = useRoomSnapshot(room, (s) =>
+    [...s.feed].map((k) => ({ n: k.n, killer: k.killer, victim: k.victim, weapon: k.weapon, head: k.headshot, kr: s.players.get(k.killer)?.badge.rank ?? 0, vr: s.players.get(k.victim)?.badge.rank ?? 0 })),
+  );
   const me = myId(room);
   return (
     <div className="b-feed">
       {feed.map((k) => (
         <div key={k.n} className={k.killer === me || k.victim === me ? "me" : ""}>
-          {k.killer ? <b>{nameOf(room, k.killer)}</b> : null}
+          {k.killer ? (
+            <b>
+              <RankBadge rank={k.kr} size={14} />
+              {nameOf(room, k.killer)}
+            </b>
+          ) : null}
           <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : k.weapon === "tank" ? "⛟ pháo" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
-          <b className="v">{nameOf(room, k.victim)}</b>
+          <b className="v">
+            <RankBadge rank={k.vr} size={14} />
+            {nameOf(room, k.victim)}
+          </b>
         </div>
       ))}
     </div>
@@ -851,7 +863,7 @@ function Scoreboard({ room }: { room: IslandRoom }) {
   const hud = useBattleHud();
   const rows = useRoomSnapshot(room, (s) =>
     [...s.players.entries()]
-      .map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot, team: p.team }))
+      .map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot, team: p.team, rank: p.badge.rank }))
       .sort((a, b) => (a.team < b.team ? -1 : a.team > b.team ? 1 : 0) || Number(b.alive) - Number(a.alive) || b.kills - a.kills),
   );
   const phase = useRoomSnapshot(room, (s) => s.phase);
@@ -865,6 +877,7 @@ function Scoreboard({ room }: { room: IslandRoom }) {
             <tr key={r.id} className={`${r.alive ? "" : "dead"} ${r.id === myId(room) ? "me" : ""}`}>
               <td>
                 {r.team && <i className="b-team-dot" style={{ background: teamColor(r.team) }} title={teamName(room, r.team)} />}
+                <RankBadge rank={r.rank} size={16} />
                 {r.name}
               </td>
               <td>{r.kills} hạ gục</td>
@@ -1156,6 +1169,8 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       <Scoreboard room={room} />
       <Lobby room={room} onLeave={onLeave} />
       <DeathAndWin room={room} onLeave={onLeave} />
+      <KillerBanner room={room} />
+      <XpFeed room={room} />
       <SettingsButton />
     </div>
   );

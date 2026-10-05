@@ -1,10 +1,23 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { GACHA, RARITY, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS } from "@tentides/content";
+import { GACHA, RARITY, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS, validateLoadout } from "@tentides/content";
 import type { z } from "zod";
-import { AccountError, equipSkin, login, logout, profile, register, rollGacha, userFromSession, type PublicUser } from "../db/accounts.ts";
+import {
+  AccountError,
+  equipCard,
+  equipSkin,
+  equippedSkins,
+  login,
+  logout,
+  profile,
+  register,
+  rollGacha,
+  saveLoadout,
+  userFromSession,
+  type PublicUser,
+} from "../db/accounts.ts";
 import { accountsEnabled } from "../db/pool.ts";
 import { RateLimiter } from "./rateLimit.ts";
-import { Credentials, EquipBody, LoginBody, RollBody } from "./schemas.ts";
+import { CardBody, Credentials, EquipBody, LoadoutBody, LoginBody, RollBody } from "./schemas.ts";
 
 // API HTTP cho tài khoản và gacha, chạy chung cổng với Colyseus (gắn vào app express của transport).
 // Mọi câu trả lời là JSON. CORS: Colyseus đã đặt header cho mọi request (cho phép mọi origin, có Authorization);
@@ -130,6 +143,23 @@ const routes: Record<string, Handler> = {
     const user = await requireUser(req);
     const { weaponId, skinId } = await parseBody(req, EquipBody);
     send(res, 200, { equipped: await equipSkin(user.id, weaponId, skinId) });
+  },
+
+  "POST /api/profile/card": async (req, res) => {
+    const user = await requireUser(req);
+    const { cardId, emblemId } = await parseBody(req, CardBody);
+    send(res, 200, { progress: await equipCard(user.id, cardId, emblemId) });
+  },
+
+  "POST /api/gunsmith/save": async (req, res) => {
+    const user = await requireUser(req);
+    const body = await parseBody(req, LoadoutBody);
+    const checked = validateLoadout(body.weaponId, body.loadout);
+    if (!checked.ok) throw new AccountError("invalid", 400, checked.reason);
+    // Skin trước (có thể bị từ chối vì chưa có skin), rồi mới ghi bộ phụ kiện.
+    const equipped = body.skinId === undefined ? undefined : await equipSkin(user.id, body.weaponId, body.skinId);
+    const loadouts = await saveLoadout(user.id, body.weaponId, checked.loadout);
+    send(res, 200, { loadouts, equipped: equipped ?? (await equippedSkins(user.id)) });
   },
 };
 

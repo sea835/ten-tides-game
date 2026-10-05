@@ -1,0 +1,198 @@
+/* ---------- Gunsmith 3D ---------- */
+
+.gunsmith-shell {
+  width: min(1180px, 100%);
+}
+.gs-sub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.gunsmith-shell .gacha-close {
+  margin-left: auto;
+}
+.gs-body {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 300px;
+  gap: 14px;
+  min-height: 480px;
+}
+.gs-weapons button {
+  position: relative;
+}
+.gs-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-left: auto;
+  background: var(--accent);
+}
+.gs-stage {
+  position: relative;
+  min-height: 420px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  /* Nền phòng chụp: quầng sáng giữa, sàn tối (canvas trong suốt đè lên). */
+  background:
+    radial-gradient(ellipse 55% 45% at 50% 48%, rgba(120, 160, 200, 0.16), transparent 70%),
+    radial-gradient(ellipse 60% 18% at 50% 82%, rgba(0, 0, 0, 0.45), transparent 75%),
+    linear-gradient(180deg, #111a24, #070b10);
+  cursor: grab;
+}
+.gs-stage:active {
+  cursor: grabbing;
+}
+.gs-stage canvas {
+  display: block;
+}
+.gs-stage-title {
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  pointer-events: none;
+}
+.gs-stage-title b {
+  font-family: var(--font-story);
+  font-size: 22px;
+  color: #fff3d8;
+}
+.gs-stage-title span {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.gs-stats {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+.gs-stats div {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+}
+.gs-stats dt {
+  color: var(--faint);
+  font-size: 10px;
+}
+.gs-stats dd {
+  margin: 0;
+  font-weight: 700;
+}
+.gs-stats .good dd {
+  color: var(--success);
+}
+.gs-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  max-height: 560px;
+  padding-right: 2px;
+}
+.gs-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+}
+.gs-slot-name {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.gs-slot-name span {
+  font-weight: 500;
+  color: var(--accent-hi);
+  text-align: right;
+}
+.gs-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.gs-options button {
+  padding: 4px 9px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+.gs-options button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+.gs-none {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+.gs-skins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gs-skin {
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+}
+.gs-skin.on {
+  border-color: var(--rarity, var(--accent));
+  box-shadow: 0 0 0 1px var(--rarity, var(--accent)), 0 0 12px color-mix(in srgb, var(--rarity, var(--accent)) 50%, transparent);
+}
+.gs-actions {
+  display: flex;
+  gap: 8px;
+}
+.gs-actions .primary {
+  flex: 1;
+}
+.gs-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.gs-note {
+  margin: 0;
+  font-size: 12.5px;
+}
+.gs-note.ok {
+  color: var(--success);
+}
+
+@media (max-width: 900px) {
+  .gs-body {
+    grid-template-columns: 1fr;
+  }
+  .gs-weapons {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .gs-weapons button {
+    flex: none;
+  }
+  .gs-stage {
+    min-height: 300px;
+  }
+  .gs-parts {
+    max-height: none;
+  }
+}

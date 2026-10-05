@@ -2,6 +2,7 @@ import { MAX_HP, ROLES, WAR_BASES, WEAPON, insideBox, type SquadRole } from "@te
 import { FlagState, Messages, type CorrectMessage, type PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, receive, resetKit } from "./kit.ts";
+import { awardXp } from "./xp.ts";
 
 // Chiến trường 50 vs 50: phe Xanh (căn cứ phía tây) đấu phe Đỏ (phía đông). Mỗi phe có số vé quân; mỗi người gục
 // mất một vé, phe giữ ít cứ điểm hơn bị trừ vé dần. Đứng trong vùng một cứ điểm mà không có địch thì chiếm dần
@@ -26,6 +27,11 @@ export const SIDE_COLOR: Record<Side, string> = { blue: "#2f6bff", red: "#e0332b
 
 /** Lớp lính của máy: cứ 10 máy thì 5 súng trường, 1 bắn tỉa, 2 súng máy, 2 chống tăng (lái tăng tính riêng). */
 const BOT_ROLES: readonly SquadRole[] = ["rifle", "rifle", "antitank", "support", "rifle", "sniper", "rifle", "antitank", "support", "rifle"];
+
+/** Người đứng trong vùng cứ điểm (tính chiếm cứ điểm). */
+export function inFlag(f: FlagState, p: PlayerState): boolean {
+  return Math.hypot(p.x - f.x, p.z - f.z) <= f.r && Math.abs(p.y - f.y) <= 12;
+}
 
 export class War {
   private bleed = 0;
@@ -234,6 +240,13 @@ export class War {
     }
   }
 
+  /** Chiếm xong cứ điểm: ai phe mình còn sống đứng trong vùng đều được XP chiếm cứ điểm. */
+  private creditCapture(f: FlagState, side: Side) {
+    for (const [id, p] of this.room.state.players) {
+      if (p.alive && p.team === side && inFlag(f, p)) awardXp(id, "capture");
+    }
+  }
+
   tick(dt: number) {
     const s = this.room.state;
     if (s.phase !== "battle" && s.phase !== "prep") return;
@@ -262,7 +275,7 @@ export class War {
       let red = 0;
       for (const p of s.players.values()) {
         if (!p.alive) continue;
-        if (Math.hypot(p.x - f.x, p.z - f.z) > f.r || Math.abs(p.y - f.y) > 12) continue;
+        if (!inFlag(f, p)) continue;
         if (p.team === "blue") blue++;
         else if (p.team === "red") red++;
       }
@@ -279,10 +292,12 @@ export class War {
       if (f.progress >= 1 && f.owner !== "blue") {
         f.owner = "blue";
         this.room.broadcastFlag(f.name, "blue");
+        this.creditCapture(f, "blue");
       }
       if (f.progress <= -1 && f.owner !== "red") {
         f.owner = "red";
         this.room.broadcastFlag(f.name, "red");
+        this.creditCapture(f, "red");
       }
     }
     // Phe giữ ít cứ điểm hơn bị trừ vé dần.
