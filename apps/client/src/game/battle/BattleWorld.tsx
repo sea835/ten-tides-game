@@ -9,6 +9,7 @@ import { Vegetation } from "../Vegetation.tsx";
 import { Water } from "../Water.tsx";
 import { BattleStructures } from "./Structures.tsx";
 import { ShaderWarmup } from "./ShaderWarmup.tsx";
+import { CommsWorld } from "./CommsWorld.tsx";
 
 /** Cảnh của bản đồ Battleground: địa hình, biển, cây cỏ và mọi công trình (va chạm kèm theo). */
 export function BattleIsland({ room, world }: { room: IslandRoom; world: World }) {
@@ -23,6 +24,7 @@ export function BattleIsland({ room, world }: { room: IslandRoom; world: World }
       {mapOf(world).layout === "war" && <WarFlags room={room} />}
       <AirdropCrates room={room} />
       <ShaderWarmup room={room} />
+      <CommsWorld room={room} world={world} />
     </>
   );
 }

@@ -41,6 +41,7 @@ import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.t
 import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
+import { CommsHud, PingMarks } from "./CommsHud.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -396,6 +397,7 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
           <path d="M-6,-6 L6,6 M6,-6 L-6,6" className="bm-order" />
         </g>
       )}
+      {phase === "battle" || phase === "prep" ? <PingMarks u={u} /> : null}
       {me && (
         <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180}) scale(${u})`}>
           <path d="M0,-10 L7,7 L0,3.5 L-7,7 Z" className="bm-me" />
@@ -1149,6 +1151,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       {fighting && <AirdropNotice room={room} />}
       {fighting && <SquadHud room={room} />}
       {fighting && <TankHud />}
+      {fighting && <CommsHud room={room} />}
       <Toast />
       <TankPrompt />
       <Pickup />

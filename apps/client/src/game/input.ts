@@ -31,6 +31,12 @@ export function smoothView(dt: number, snap = false) {
 
 const MOUSE_SENSITIVITY = 0.0025;
 
+/**
+ * Khoá hướng nhìn (vòng khẩu lệnh bộ đàm đang mở): chuột không xoay camera nữa mà cộng dồn vào `dx`, `dy` để chọn
+ * ô trên vòng.
+ */
+export const lookLock = { active: false, dx: 0, dy: 0 };
+
 /** Phím gõ vào ô chat không được tính là điều khiển nhân vật. */
 export function isTyping(e: KeyboardEvent): boolean {
   return e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
@@ -56,6 +62,11 @@ export function bindInput(canvas: HTMLElement): () => void {
     const k = MOUSE_SENSITIVITY * set.sensitivity * (zoomed ? (aimZoom.value >= 3 ? set.scopeSensitivity : set.adsSensitivity) / Math.sqrt(aimZoom.value) : 1);
     // Bỏ các cú nhảy chuột bất thường (trình duyệt đôi khi trả về một cú movementX khổng lồ khi khoá chuột).
     if (Math.abs(e.movementX) > 600 || Math.abs(e.movementY) > 600) return;
+    if (lookLock.active) {
+      lookLock.dx += e.movementX;
+      lookLock.dy += e.movementY;
+      return;
+    }
     const dy = e.movementY * k * (set.invertY ? -1 : 1);
     look.yaw -= e.movementX * k;
     look.pitch = clampPitch(look.pitch + dy);

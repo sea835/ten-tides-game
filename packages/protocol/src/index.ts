@@ -828,14 +828,53 @@ export const TankFireMessage = z.object({ turret: finite, pitch: z.number().min(
 export type TankFireMessage = z.infer<typeof TankFireMessage>;
 /** Ra lệnh cho máy trong đội: đi theo mình, giữ chỗ, tới điểm (x, z). */
 export const SquadOrderMessage = z.object({ kind: z.enum(["follow", "hold", "move"]), x: finite.optional(), z: finite.optional() });
+/** Ra lệnh cho máy lái tăng trong đội lên chiếc xe tăng trống (cùng đội) mình đang nhìn. */
+export const SquadBoardMessage = z.object({ vid: id });
+
+// ---------------------------------------------------------------------------- liên lạc trong đội: đánh dấu, bộ đàm
+
+/** Đánh dấu (chuột giữa): chỗ thường, địch (kèm người bị đánh dấu), nguy hiểm (bấm đúp). */
+export const PING_KINDS = ["spot", "enemy", "danger"] as const;
+export type PingKind = (typeof PING_KINDS)[number];
+/** Mỗi người đánh dấu tối đa 1 lần / khoảng này (ms), không xa hơn tầm này (m). */
+export const PING_MIN_INTERVAL_MS = 500;
+export const PING_MAX_DISTANCE = 450;
+/** Dấu tồn tại bao lâu (ms) theo loại. */
+export const PING_TTL_MS: Record<PingKind, number> = { spot: 8000, enemy: 6000, danger: 8000 };
+export const PingMessage = z.object({ kind: z.enum(PING_KINDS), x: finite, y: finite, z: finite, target: id.optional() });
+export type PingMessage = z.infer<typeof PingMessage>;
+/** Server chuyển dấu tới đồng đội (solo thì chỉ mình thấy). Dấu địch: vị trí là chỗ người đó lúc đánh dấu. */
+export interface PingBroadcast {
+  from: string;
+  name: string;
+  kind: PingKind;
+  x: number;
+  y: number;
+  z: number;
+  target: string;
+  ttl: number;
+}
+/** Vòng khẩu lệnh bộ đàm: mã từng câu (chữ hiện trên HUD do client dịch). */
+export const RADIO_LINES = ["help", "ammo", "medic", "attack", "defend", "ack", "retreat", "thanks"] as const;
+export type RadioLine = (typeof RADIO_LINES)[number];
+export const RADIO_MIN_INTERVAL_MS = 1000;
+export const RadioMessage = z.object({ line: z.enum(RADIO_LINES) });
+export type RadioMessage = z.infer<typeof RadioMessage>;
+/** Server chuyển câu bộ đàm tới đồng đội; `flag`: cứ điểm gần người nói (chiến trường, câu tấn công / phòng thủ). */
+export interface RadioBroadcast {
+  from: string;
+  name: string;
+  line: RadioLine;
+  flag: string;
+}
 export type SquadOrderMessage = z.infer<typeof SquadOrderMessage>;
 /** Chiến trường: hồi sinh ở căn cứ ("hq") hay ở cứ điểm phe mình đang giữ (chữ cái), với lớp lính đã chọn. */
 export const RespawnMessage = z.object({ at: z.string().max(8), role: z.enum(["rifle", "sniper", "support", "antitank", "tanker"]) });
 export type RespawnMessage = z.infer<typeof RespawnMessage>;
 /** Chiến trường (ở sảnh): chọn phe. */
 export const PickSideMessage = z.object({ side: z.enum(["blue", "red"]) });
-/** Đã gục: nhập vào một máy còn sống trong đội mình. */
-export const PossessMessage = z.object({ id: id });
+/** Đã gục: nhập vào một máy còn sống trong đội mình (theo id, hay theo ô 1–5 trong đội: xem `squadSlots`). */
+export const PossessMessage = z.object({ id: id.optional(), slot: z.int().min(1).max(5).optional() });
 export type PossessMessage = z.infer<typeof PossessMessage>;
 
 /** Server báo mọi người: một phát bắn (để vẽ vệt đạn, chớp lửa, phát tiếng). `e` là điểm cuối từng tia. */
@@ -950,6 +989,10 @@ export const Messages = {
   tankFire: "tankFire",
   squadOrder: "squadOrder",
   possess: "possess",
+  squadBoard: "squadBoard",
+  /** Đánh dấu chuột giữa, câu bộ đàm: gửi lên server, server chuyển cho đồng đội. */
+  ping: "ping",
+  radio: "radio",
   respawn: "respawn",
   pickSide: "pickSide",
   /** Server báo mọi người: một phe vừa chiếm được cứ điểm. */

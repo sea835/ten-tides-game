@@ -1,4 +1,7 @@
 import { Room, matchMaker, type Client } from "@colyseus/core";
+import { squadSlots } from "@tentides/content";
+import { PingMessage, RadioMessage, SquadBoardMessage } from "@tentides/protocol";
+import { Comms } from "./comms.ts";
 import {
   ARMOR,
   FLASH,
@@ -187,6 +190,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   bots!: Bots;
   vehicles!: Vehicles;
   war!: War;
+  /** Liên lạc trong đội: đánh dấu chuột giữa, câu bộ đàm. */
+  comms = new Comms(this);
   /** Thùng thính: bản đồ và bộ số ngẫu nhiên đổi theo trận nên đọc qua getter. */
   airdrops = ((room: BattleRoom) =>
     new Airdrops({
@@ -376,6 +381,28 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const z = m.kind === "move" && m.z !== undefined ? m.z : p.z;
       if (Math.hypot(x - p.x, z - p.z) > 400) return;
       this.bots.orders.set(id, { kind: m.kind, x, z, rot: p.rotY });
+      this.comms.acknowledge(id);
+    });
+
+    this.onMessage(Messages.squadBoard, SquadBoardMessage, (client, { vid }) => {
+      const id = this.playerOf(client);
+      const p = id && this.state.players.get(id);
+      const v = this.state.vehicles.get(vid);
+      // Chỉ đội trưởng còn sống; xe trống, của đội mình (hay chưa của ai), không quá xa.
+      if (!id || !p || !p.alive || p.team !== id || !v || v.driver || (v.team && v.team !== p.team) || !this.fighting()) return;
+      if (Math.hypot(v.x - p.x, v.z - p.z) > 200) return;
+      const bot = this.bots.orderBoard(id, vid);
+      if (bot) this.comms.acknowledge(id, Date.now(), bot);
+    });
+
+    this.onMessage(Messages.ping, PingMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.comms.ping(id, m);
+    });
+
+    this.onMessage(Messages.radio, RadioMessage, (client, { line }) => {
+      const id = this.playerOf(client);
+      if (id) this.comms.radio(id, line);
     });
 
     this.onMessage(Messages.pickSide, PickSideMessage, (client, { side }) => {
@@ -388,9 +415,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (id && this.state.battleMode === "war") this.war.respawn(id, at, role);
     });
 
-    this.onMessage(Messages.possess, PossessMessage, (client, { id: botId }) => {
+    this.onMessage(Messages.possess, PossessMessage, (client, { id: botId, slot }) => {
       const id = this.playerOf(client);
-      if (id) this.possess(id, botId);
+      const target = id && (slot ? this.squadSlotBot(id, slot) : botId);
+      if (id && target) this.possess(id, target);
     });
 
     this.onMessage(Messages.chat, ChatMessage, (client, { text }) => {
@@ -658,7 +686,16 @@ export class BattleRoom extends Room<{ state: IslandState }> {
    * Đồng đội: đã gục thì nhập vào một máy còn sống trong đội mình (máy đó biến mất, mình đứng đúng chỗ nó với đồ, máu,
    * xe tăng của nó; tiền và số mạng hạ gục của mình giữ nguyên).
    */
-  private possess(id: string, botId: string) {
+  /** Máy ở ô `slot` (1–5) trong đội của người `id` (xem `squadSlots`), rỗng nếu ô trống. */
+  squadSlotBot(id: string, slot: number): string {
+    const team = this.state.players.get(id)?.team;
+    if (!team) return "";
+    const mates: { id: string; role: string }[] = [];
+    for (const [bid, b] of this.state.players) if (b.bot && b.team === team) mates.push({ id: bid, role: b.role });
+    return squadSlots(mates)[slot - 1] ?? "";
+  }
+
+  possess(id: string, botId: string) {
     const s = this.state;
     const p = s.players.get(id);
     const b = s.players.get(botId);

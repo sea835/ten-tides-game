@@ -1,0 +1,263 @@
+/* Liên lạc trong đội: dấu nổi trên màn hình, vòng khẩu lệnh bộ đàm, bảng tin bộ đàm, bảng lệnh đội, bảng nhập xác. */
+
+.cm-marks {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* Ô dấu: gốc ô là đúng điểm chiếu; biểu tượng ở giữa, tên ở trên, khoảng cách ở dưới. */
+.cm-mark {
+  --c: #ffd23a;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+}
+.cm-mark.enemy {
+  --c: #ff3b30;
+}
+.cm-mark.danger {
+  --c: #ff9a1f;
+}
+.cm-mark.order {
+  --c: #6fe3ff;
+}
+.cm-icon {
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--c);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--c) 35%, transparent);
+  box-shadow: 0 0 8px var(--c);
+}
+.cm-mark.enemy .cm-icon {
+  border-radius: 2px;
+  transform: rotate(45deg);
+  animation: cm-blink 0.6s ease-in-out infinite alternate;
+}
+.cm-mark.danger .cm-icon {
+  border-radius: 2px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  border-width: 0;
+  background: var(--c);
+  animation: cm-blink 0.4s ease-in-out infinite alternate;
+}
+.cm-mark.order .cm-icon {
+  border-radius: 3px;
+}
+.cm-label,
+.cm-dist {
+  position: absolute;
+  left: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 11.5px;
+  color: var(--c);
+}
+.cm-label {
+  bottom: 11px;
+}
+.cm-dist {
+  top: 11px;
+  font-style: normal;
+  font-size: 10.5px;
+  color: #f3f1ea;
+  opacity: 0.9;
+}
+/* Ngoài khung nhìn: nép vào mép, thu nhỏ, có mũi tên chỉ hướng. */
+.cm-arrow {
+  display: none;
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+}
+.cm-arrow::after {
+  content: "";
+  position: absolute;
+  right: -6px;
+  top: 9px;
+  border: 5px solid transparent;
+  border-left: 8px solid var(--c);
+}
+.cm-mark.edge .cm-arrow {
+  display: block;
+}
+.cm-mark.edge .cm-label {
+  display: none;
+}
+@keyframes cm-blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+/* Bảng tin bộ đàm: góc trái, dưới bảng đội. */
+.cm-feed {
+  position: absolute;
+  left: 14px;
+  bottom: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 340px;
+  font-size: 12.5px;
+  pointer-events: none;
+}
+.cm-feed p {
+  margin: 0;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(20, 40, 24, 0.7);
+  border-left: 3px solid #7fd36f;
+  animation: cm-in 0.18s ease-out;
+}
+.cm-feed p.mine {
+  border-left-color: #ffd23a;
+}
+.cm-feed b {
+  color: #a8e59b;
+}
+@keyframes cm-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+/* Vòng khẩu lệnh: tám ô quanh tâm màn hình. */
+.cm-wheel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(440px, 80vw);
+  height: min(440px, 80vw);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(8, 14, 20, 0.15) 22%, rgba(8, 14, 20, 0.6) 23%, rgba(8, 14, 20, 0.6) 62%, transparent 63%);
+  pointer-events: none;
+}
+.cm-slice {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 104px;
+  padding: 6px 4px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  transition: background 0.08s, transform 0.08s;
+}
+.cm-slice b {
+  font-size: 20px;
+}
+.cm-slice.on {
+  background: rgba(127, 211, 111, 0.85);
+  color: #0b1a0d;
+  text-shadow: none;
+  transform: translate(-50%, -50%) scale(1.12);
+}
+.cm-wheel-hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 130px;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Bảng lệnh đội (đội trưởng). */
+.b-squad-orders {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.b-squad-orders p {
+  margin: 2px 0;
+  padding: 2px 4px;
+  border-radius: 5px;
+  opacity: 0.75;
+}
+.b-squad-orders p.on {
+  opacity: 1;
+  background: rgba(111, 227, 255, 0.18);
+  color: #bff1ff;
+}
+
+/* Nhập xác: mỗi ô một máy (phím, vai, máu, khoảng cách). */
+.b-possess .b-soul {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 150px;
+  text-align: left;
+}
+.b-soul i {
+  grid-column: 1 / span 3;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.b-soul i u {
+  display: block;
+  height: 100%;
+  background: #6fd06f;
+}
+.b-soul span {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+}
+.b-soul small {
+  font-weight: 400;
+  opacity: 0.7;
+  font-size: 11px;
+}
+.b-soul.dead {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Bản đồ nhỏ: dấu đánh dấu. */
+.bm-ping {
+  fill: #ffd23a;
+  stroke: #000;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.bm-ping.enemy {
+  fill: #ff3b30;
+}
+.bm-ping.danger {
+  fill: #ff9a1f;
+}
+
+@media (max-width: 640px) {
+  .cm-feed {
+    bottom: 230px;
+    max-width: 70vw;
+  }
+  .cm-slice {
+    width: 80px;
+    font-size: 11px;
+  }
+}
