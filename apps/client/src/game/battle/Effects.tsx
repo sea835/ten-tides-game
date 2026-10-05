@@ -19,13 +19,16 @@ import {
   type Mesh,
   type PointLight,
 } from "three";
-import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, type World } from "@tentides/content";
+import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, flightDistance, flightTime, type World } from "@tentides/content";
 import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
-import { localPosition, shake } from "../shared.ts";
+import { localPosition, shake, suppression } from "../shared.ts";
 import { audio } from "../sound/engine.ts";
-import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt, playCannon } from "../sound/guns.ts";
+import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt, playCannon, playSuppressed } from "../sound/guns.ts";
+import { closestApproach, flybyTiming, type Approach } from "../sound/acoustics.ts";
+import { setAcousticMap } from "../sound/environment.ts";
+import { mapForMode } from "@tentides/content";
 import { WEAPON } from "@tentides/content";
 import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
@@ -765,7 +768,8 @@ function Tracers() {
       // Viên đạn bay đúng sơ tốc của súng, theo đường cong rơi dần (parabol qua nòng và chỗ găm):
       // vệt sáng dài vài mét lướt đi, bắn xa thì thấy rõ đạn võng lên rồi cắm xuống.
       const speed = t.speed ?? 900;
-      const flight = len / speed;
+      // Rocket có động cơ (RPG-7): rời ống chậm rồi tăng tốc, cùng công thức với server (flightTime).
+      const flight = t.boost ? flightTime(speed, len, t.boost) : len / speed;
       const streak = Math.min(len, Math.max(4, Math.min(14, speed * 0.016)));
       const lag = streak / speed;
       if (age > flight + lag || age > 3) {
@@ -774,19 +778,19 @@ function Tracers() {
       }
       if (n >= MAX_TRACERS) continue;
       const at = (tau: number, out: Vector3) => {
-        const k = Math.max(0, Math.min(1, tau / flight));
         const tt = Math.max(0, Math.min(flight, tau));
+        const k = t.boost ? Math.min(1, flightDistance(speed, tt, t.boost) / len) : Math.max(0, Math.min(1, tau / flight));
         return out.set(t.ox + dx * k, t.oy + dy * k + 0.5 * BULLET_GRAVITY * tt * (flight - tt), t.oz + dz * k);
       };
       at(age, headV);
       at(age - lag, tailV);
       // Đạn nổ nhả khói dọc đường bay (RPG dày, pháo mỏng).
       if (t.trail && age < flight) {
-        const flown = Math.min(len, age * speed);
+        const flown = Math.min(len, t.boost ? flightDistance(speed, age, t.boost) : age * speed);
         const gap = t.trail === "rocket" ? 0.9 : 3;
         let sd = t.smoked ?? 0;
         for (; sd < flown && puffs.length < 880; sd += gap) {
-          at(sd / speed, sideV);
+          at(t.boost ? flightTime(speed, sd, t.boost) : sd / speed, sideV);
           const grey = t.trail === "rocket" ? 0.72 + Math.random() * 0.1 : 0.8;
           puffs.push({ x: sideV.x, y: sideV.y, z: sideV.z, vx: (Math.random() - 0.5) * 0.4, vy: 0.2 + Math.random() * 0.3, vz: (Math.random() - 0.5) * 0.4, size: t.trail === "rocket" ? 0.45 : 0.3, grow: t.trail === "rocket" ? 0.9 : 0.5, life: t.trail === "rocket" ? 2.5 + Math.random() : 1.2, age: 0, r: grey, g: grey, b: grey, alpha: t.trail === "rocket" ? 0.55 : 0.25, dense: false });
         }
@@ -899,9 +903,14 @@ function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number
 }
 
 /** Phát bắn của người khác: vệt đạn, lửa đầu nòng, tiếng súng, tiếng đạn rít qua đầu nếu sượt gần mình. */
+/** Dùng lại cho mỗi phát (khỏi tạo đối tượng mới). */
+const approach: Approach = { t: 0, miss: 0, x: 0, y: 0, z: 0, len: 0 };
+
 function useShots(room: IslandRoom) {
   useEffect(() => {
-    return room.onMessage(Messages.shot, (m: ShotMessage) => {
+    // Âm thanh dò môi trường (phố, đồi, rừng, trong nhà) trên bản đồ trận đang chơi.
+    setAcousticMap(() => mapForMode(room.state.battleMode, room.state.worldSeed));
+    const off = room.onMessage(Messages.shot, (m: ShotMessage) => {
       const now = performance.now() / 1000;
       const [ox, oy, oz] = m.o;
       const alive = room.state.players.get(myId(room))?.alive ?? false;
@@ -916,7 +925,7 @@ function useShots(room: IslandRoom) {
       if (launcher?.explosive) {
         // RPG: quả đạn có lửa đuôi và vệt khói dài; khói phụt ngược ra sau ống phóng.
         const [ex, ey, ez] = m.e[0] ?? m.o;
-        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: launcher.velocity, trail: "rocket" });
+        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: launcher.velocity, boost: launcher.boost, trail: "rocket" });
         effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
         const l = Math.hypot(ex - ox, ez - oz) || 1;
         for (let k = 0; k < 10; k++)
@@ -964,25 +973,34 @@ function useShots(room: IslandRoom) {
         effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false, speed: def?.velocity });
         remoteImpact(ox, oy, oz, ex, ey, ez, now, def?.velocity ?? 900);
         if (whizzed || m.id === myId(room)) continue;
-        const dx = ex - ox;
-        const dy = ey - oy;
-        const dz = ez - oz;
-        const len = Math.hypot(dx, dy, dz) || 1;
-        const t = Math.max(0, Math.min(len, ((lx - ox) * dx + (ly - oy) * dy + (lz - oz) * dz) / len));
-        const cx = ox + (dx / len) * t;
-        const cy = oy + (dy / len) * t;
-        const cz = oz + (dz / len) * t;
-        const miss = Math.hypot(cx - lx, cy - ly, cz - lz);
+        const a = closestApproach(ox, oy, oz, ex, ey, ez, lx, ly, lz, approach);
         // Đạn găm vào chính mình (điểm cuối sát người) thì đã có tiếng trúng đạn.
         const intoMe = Math.hypot(ex - lx, ey - ly, ez - lz) < 0.9;
-        if (t > 4 && miss < 7 && !intoMe) {
-          playBulletWhiz({ x: cx, y: cy, z: cz }, miss, t / (def?.velocity ?? 900), def?.velocity ?? 900);
-          whizzed = true;
-          // Đạn sượt sát đầu: giật mình (rung nhẹ màn hình).
-          if (miss < 1.5 && alive) shake.amount = Math.min(0.4, shake.amount + 0.08);
-        }
+        if (intoMe) continue;
+        // Đạn siêu thanh: tiếng nứt "CHÁT!" tới lúc đạn bay ngang, tiếng nổ đầu nòng (playGunshot ở trên) tới sau theo
+        // khoảng cách / 343. Đạn cận âm hay giảm thanh: chỉ rít khi sượt gần.
+        const velocity = def?.velocity ?? 900;
+        const fb = flybyTiming(a.t, a.miss, a.t < a.len - 0.5, Math.hypot(ox - lx, oy - ly, oz - lz), velocity, !!m.s);
+        if (fb.zone === "none") continue;
+        playBulletWhiz({ x: a.x, y: a.y, z: a.z }, a.miss, fb.crackDelay, velocity, fb.supersonic);
+        whizzed = true;
+        if (!alive) continue;
+        if (fb.zone === "snap") {
+          // Đạn sượt sát đầu (dưới 1 m): giật thót, rung nhẹ màn hình, bị áp chế một thoáng (tối mép, tiếng hụt đi).
+          const hit = () => {
+            shake.amount = Math.min(0.5, shake.amount + 0.16);
+            suppression.amount = Math.min(1, suppression.amount + 0.55);
+            playSuppressed(0.8);
+          };
+          if (fb.crackDelay > 0.03) setTimeout(hit, fb.crackDelay * 1000);
+          else hit();
+        } else if (fb.zone === "whiz" && a.miss < 2) shake.amount = Math.min(0.4, shake.amount + 0.04);
       }
     });
+    return () => {
+      off();
+      setAcousticMap(null);
+    };
   }, [room]);
 }
 

@@ -2,14 +2,14 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { HEALS, LEAN, MELEE, PEN_MAX, SIGHTS, WEAPON, boxSpan, mapForMode, penetrable, withAttachments, bulletAt, bulletDrop, bulletSteps, rayBody, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
+import { DUAL_MAG_RELOAD, HEALS, LEAN, MELEE, RICOCHET, SIGHTS, WEAPON, boxSpan, caliberOf, mapForMode, penetrableBy, penetration, ricochet, withAttachments, bulletAt, bulletSteps, rayBody, weaponDrop, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
 import { isTyping, keys, look, view } from "../input.ts";
 import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
-import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
+import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playPump, playRicochet, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
 import { bodies, closeBuyMenu, effects, eject, getBattleHud, localAvatar, localBody, menuOpen, muzzle as muzzleView, recoil, seat, setBattleHud, stance, stopHit, type Body } from "./runtime.ts";
 import { BULLET_GROUPS, physicsProbe } from "./surface.ts";
 import { sprayBlood } from "./Blood.tsx";
@@ -99,7 +99,8 @@ const PUNCH: Record<WeaponDef["class"], { pitch: number; roll: number; body: num
  * rung tay ngẫu nhiên. Ngắm, ngồi xổm thì đỡ giật; chạy, nhảy thì giật mạnh hơn.
  */
 export function recoilFor(def: WeaponDef, shot: number, st: { aiming: boolean; crouching: boolean; prone?: boolean; moving: boolean; airborne: boolean }): { up: number; side: number } {
-  const tame = (st.aiming ? 0.78 : 1) * (st.prone ? 0.55 : st.crouching ? 0.8 : 1) * (st.moving ? 1.15 : 1) * (st.airborne ? 1.6 : 1);
+  // Nằm sấp giảm 65% giật (kế hoạch 5.2), ngồi xổm giảm 20%.
+  const tame = (st.aiming ? 0.78 : 1) * (st.prone ? 0.35 : st.crouching ? 0.8 : 1) * (st.moving ? 1.15 : 1) * (st.airborne ? 1.6 : 1);
   const seed = weaponSeed(def.id) * Math.PI * 2;
   // Liên thanh: phát đầu nhẹ, nặng dần tới phát thứ tám, sau đó chững lại (nòng đã "lên" hết cỡ, chủ yếu lượn ngang).
   const ramp = def.auto ? (shot === 0 ? 0.7 : shot < 8 ? 0.9 + shot * 0.05 : Math.max(0.8, 1.25 - (shot - 8) * 0.04)) : 1;
@@ -178,6 +179,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
       gun.cancelReload?.();
       gun.cancelReload = null;
       gun.reloadUntil = 0;
+      gun.dualPending = "";
       gun.cancelHeal?.();
       gun.cancelHeal = null;
       gun.healUntil = 0;
@@ -401,11 +403,19 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (!def || gun.reloadUntil > performance.now()) return false;
     // Phụ kiện (nòng, bóp tay, băng, chân súng) đổi cả số tròn trong băng lẫn thời gian nạp.
     const eff = withAttachments(def, attsOf(k, k.active));
-    if (magOf(k, k.active) >= eff.mag || (k.ammo.get(def.ammo) ?? 0) <= 0) return false;
+    const reserve = k.ammo.get(def.ammo) ?? 0;
+    if (magOf(k, k.active) >= eff.mag || reserve <= 0) return false;
     room.send(Messages.reload);
-    gun.reloadDur = eff.reload;
-    gun.reloadUntil = performance.now() + eff.reload * 1000;
-    gun.cancelReload = playReload(def.id, eff.reload);
+    // Nạp từng viên (S1897): đưa súng lên rồi mỗi viên một nhịp, tới khi đầy hoặc hết đạn dự trữ.
+    gun.shells = def.shell ? Math.min(eff.mag - magOf(k, k.active), reserve) : 0;
+    // Hộp đạn kép: cứ cách một lần thay là lần lật băng (nhanh). Server giữ lượt thật; máy mình đoán theo lượt đã thay.
+    const dualKey = `${k.active}|${def.id}`;
+    const flip = eff.dualMag && gun.dualFlip === dualKey;
+    gun.dualPending = eff.dualMag ? dualKey : "";
+    const dur = def.shell ? def.reload + gun.shells * def.shell : flip ? eff.reload * DUAL_MAG_RELOAD : eff.reload;
+    gun.reloadDur = dur;
+    gun.reloadUntil = performance.now() + dur * 1000;
+    gun.cancelReload = playReload(def.id, dur, { shells: gun.shells, flip });
     return true;
   };
 
@@ -456,8 +466,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
       stance.sight = sight;
       stance.zero = def ? zeroRange(def, sight).base : 100;
     } else if (now - gun.lastShot > 350) gun.mag = serverMag;
+    // Hộp đạn kép: lần thay vừa xong thì đổi lượt (lần sau lật băng, lần sau nữa thay thường).
+    if (gun.dualPending && gun.reloadUntil && now > gun.reloadUntil && !k.reloading) {
+      gun.dualFlip = gun.dualFlip === gun.dualPending ? "" : gun.dualPending;
+      gun.dualPending = "";
+    }
     if (!k.reloading && gun.reloadUntil && now > gun.reloadUntil + 400) gun.reloadUntil = 0;
-    const reloading = k.reloading || gun.reloadUntil > now;
+    // Vừa bắn ngắt lần nạp từng viên: server chưa kịp báo hết nạp thì vẫn coi như đã thôi nạp.
+    const reloading = (k.reloading && now - gun.reloadBreakAt > 500) || gun.reloadUntil > now;
     // Phím R bấm sớm: nạp ngay khoảnh khắc không còn bị chặn nữa.
     if (inp.reloadAt && now >= gun.readyAt && !reloading) {
       inp.reloadAt = 0;
@@ -481,8 +497,9 @@ export function Shooter({ room }: { room: IslandRoom }) {
       let spread = stance.aiming ? def.adsSpread : def.hipSpread;
       if (stance.moving) spread *= stance.aiming ? 1.6 : stance.speed > 6.5 ? 1.9 : 1.5;
       if (stance.airborne) spread *= 3;
+      // Ngồi xổm giảm 35% độ toả (kế hoạch 5.2); nằm yên giảm một nửa.
       if (stance.prone) spread *= stance.moving ? 1 : 0.5;
-      else if (stance.crouching) spread *= 0.75;
+      else if (stance.crouching) spread *= 0.65;
       // Phụ kiện: tay cầm nghiêng chụm hơn khi bắn hông, choke làm chùm đạn shotgun chụm lại.
       spread *= withAttachments(def, gun.atts).spread;
       stance.spread = spread + bloom.current;
@@ -543,8 +560,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
     }
     if (!def) return;
     if (!def.auto && !pressed) return;
-    // Đang nạp hoặc đang hồi máu: bấm chuột sẽ thành phát đầu tiên sau khi trở lại.
-    if (reloading || gun.healUntil > now) {
+    // Súng nạp từng viên (S1897): bấm cò giữa lúc nạp thì thôi nạp, bắn luôn bằng các viên đã nhét vào.
+    if (reloading && pressed && def.shell && gun.mag > 0 && gun.healUntil <= now) {
+      gun.cancelReload?.();
+      gun.cancelReload = null;
+      gun.reloadUntil = 0;
+      gun.reloadBreakAt = now;
+    } else if (reloading || gun.healUntil > now) {
+      // Đang nạp hoặc đang hồi máu: bấm chuột sẽ thành phát đầu tiên sau khi trở lại.
       if (reloading && pressed) inp.fireAfterReload = true;
       return;
     }
@@ -659,11 +682,13 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const ends: { at: Vector3; s: number }[] = [];
     const o3: [number, number, number] = [muzzle.x, muzzle.y, muzzle.z];
     // Thước ngắm chỉnh ở cự ly `zero`: nòng ngóc lên một chút để đường đạn cắt tâm ngắm đúng ở cự ly đó.
-    const lift = bulletDrop(def.velocity, stance.zero) / stance.zero;
+    const lift = weaponDrop(def, stance.zero) / stance.zero;
     const steps = bulletSteps(def.velocity, maxRange);
     const a3 = new Vector3();
     const b3 = new Vector3();
     const cd = new Vector3();
+    // Sức xuyên theo cỡ đạn (súng trường xuyên vách gỗ, tôn gần như nguyên vẹn; tiểu liên, chì shotgun yếu hơn).
+    const cal = caliberOf(def);
     for (let k = 0; k < def.pellets; k++) {
       d.copy(p).sub(muzzle).normalize();
       // Lệch ngẫu nhiên trong hình nón độ toả.
@@ -687,6 +712,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       const battleIndex = mapForMode(room.state.battleMode, room.state.worldSeed).index;
       // Vách gỗ, tường vữa mỏng: đạn xuyên qua một lần (như server, xem bulletThrough), để lỗ hai mặt.
       let pens = 0;
+      // Khối công trình chặn đạn (để xét đạn nảy, như server).
+      let wallBox = -1;
       for (let i = 1; i < steps.length; i++) {
         a3.set(...bulletAt(o3, d3, def.velocity, steps[i - 1]!));
         b3.set(...bulletAt(o3, d3, def.velocity, steps[i]!));
@@ -701,8 +728,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
           const bi = wreck.colliderBox.get(hw.collider.handle) ?? -1;
           const box = bi >= 0 ? battleIndex.boxes[bi] : undefined;
           const tin = hw.timeOfImpact;
-          const tout = box && penetrable(box) ? boxSpan(battleIndex, bi, [a3.x, a3.y, a3.z], [cd.x, cd.y, cd.z])[1] : Infinity;
-          if (tout - tin <= PEN_MAX) {
+          const tout = box && penetrableBy(box, cal) ? boxSpan(battleIndex, bi, [a3.x, a3.y, a3.z], [cd.x, cd.y, cd.z])[1] : Infinity;
+          if (box && tout < Infinity && penetration(box, cal, tout - tin) > 0) {
             pens++;
             // Lỗ đạn ở mặt vào và mặt ra của vách (đạn tới nơi thì mới phụt bụi).
             const arrive = now / 1000 + (steps[i - 1]! + (tin / (len || 1)) * (steps[i]! - steps[i - 1]!)) / def.velocity;
@@ -717,6 +744,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
           t = offset + hw.timeOfImpact;
           normal = hw.normal;
           wall = true;
+          wallBox = wreck.colliderBox.get(hw.collider.handle) ?? -1;
         }
         for (const [id, b] of bodies) {
           if (!enemy(id, b, me, team)) continue;
@@ -735,10 +763,42 @@ export function Shooter({ room }: { room: IslandRoom }) {
       const end = new Vector3(...bulletAt(o3, d3, def.velocity, sHit));
       ends.push({ at: end, s: sHit });
       if (target) hits.push({ target, part, d: sHit, ray: k });
+      // Đạn sượt vào kim loại / bê tông: nảy đi (phản xạ qua mặt khối, tính y như server), tóe lửa, rít; viên nảy trúng
+      // người thì báo với quãng đường tính cả đoạn nảy (server kiểm tra lại, sát thương giảm).
+      let bounce: { d: [number, number, number] } | null = null;
+      if (wall && !target && wallBox >= 0) bounce = ricochet(battleIndex, wallBox, [end.x, end.y, end.z], [cd.x, cd.y, cd.z]);
+      if (bounce) {
+        const rd = new Vector3(...bounce.d);
+        const from = end.clone().addScaledVector(rd, 0.02);
+        const back = physics.castRay(new rapier.Ray(from, rd), RICOCHET.range, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+        let t2 = back ? back.timeOfImpact : RICOCHET.range;
+        let hit2 = "";
+        let part2: "head" | "body" = "body";
+        for (const [id, b] of bodies) {
+          if (!enemy(id, b, me, team)) continue;
+          const h = rayPerson(from, rd, b);
+          if (h && h.t < t2) {
+            t2 = h.t;
+            hit2 = id;
+            part2 = h.part;
+          }
+        }
+        const arrive = now / 1000 + sHit / def.velocity;
+        const stop = from.clone().addScaledVector(rd, t2);
+        // Viên nảy bay chậm hơn hẳn (mất nhiều năng lượng); vệt chỉ bắt đầu khi đạn tới chỗ nảy.
+        effects.tracers.push({ ox: end.x, oy: end.y, oz: end.z, ex: stop.x, ey: stop.y, ez: stop.z, born: arrive, mine: true, speed: def.velocity * 0.4 });
+        if (hit2) {
+          hits.push({ target: hit2, part: part2, d: sHit + 0.02 + t2, ray: k });
+          const at2 = arrive + t2 / (def.velocity * 0.4);
+          effects.impacts.push({ x: stop.x, y: stop.y, z: stop.z, nx: -rd.x, ny: -rd.y, nz: -rd.z, born: now / 1000, blood: true, size: 0.7, at: at2 });
+          sprayBlood(stop.x, stop.y, stop.z, rd.x, rd.y, rd.z, { head: part2 === "head", strength: 0.5, at: at2 });
+        }
+        if (k < 2) playRicochet({ x: end.x, y: end.y, z: end.z }, arrive - now / 1000);
+      }
       if (target || wall) {
         const size = def.class === "sniper" ? 1.35 : def.class === "dmr" ? 1.15 : def.pellets > 1 ? 0.6 : def.class === "smg" || def.class === "pistol" ? 0.85 : 1;
         const arrive = now / 1000 + sHit / def.velocity;
-        effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: target ? -cd.x : normal.x, ny: target ? -cd.y : normal.y, nz: target ? -cd.z : normal.z, born: now / 1000, blood: !!target, size, at: arrive });
+        effects.impacts.push({ x: end.x, y: end.y, z: end.z, nx: target ? -cd.x : normal.x, ny: target ? -cd.y : normal.y, nz: target ? -cd.z : normal.z, born: now / 1000, blood: !!target, size, at: arrive, ...(bounce ? { ricochet: bounce.d } : {}) });
         // Trúng người: máu phụt ra (sương máu, giọt bắn ra sau lưng); từng viên shotgun thì nhỏ hơn.
         if (target) sprayBlood(end.x, end.y, end.z, cd.x, cd.y, cd.z, { head: part === "head", strength: def.pellets > 1 ? 0.45 : 1, at: arrive });
         // Trúng người: máu bắn lên tường, sàn phía sau (nếu có gần đó).
@@ -764,7 +824,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     if (def.class !== "sniper" && def.class !== "shotgun" && def.class !== "launcher") playShotMechanics(def.id);
     // Vỏ đạn văng ra cửa thoát bên phải (súng khoá nòng: văng khi kéo khoá, sau phát bắn một chút; shotgun hai nòng
     // bẻ ra lúc nạp đạn).
-    if (def.class !== "shotgun" && def.class !== "launcher") {
+    if ((def.class !== "shotgun" || def.pump) && def.class !== "launcher") {
       let ex: Vector3;
       let rx = right.x;
       let rz = right.z;
@@ -774,7 +834,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
         rz = eject.rz;
       } else if (held?.visible) ex = held.localToWorld(new Vector3(...ejectPort(def.id)));
       else ex = muzzle.clone().addScaledVector(fwd, -0.5);
-      const bolt = def.class === "sniper";
+      const bolt = def.class === "sniper" || !!def.pump;
       const sp = 1.6 + Math.random() * 1.2;
       effects.casings.push({
         x: ex.x,
@@ -783,12 +843,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
         vx: rx * sp + fwd.x * (Math.random() * 0.6 - 0.4),
         vy: 1.2 + Math.random() * 1.1,
         vz: rz * sp + fwd.z * (Math.random() * 0.6 - 0.4),
-        at: seconds + (bolt ? 0.55 : 0),
-        kind: "brass",
+        at: seconds + (def.pump ? 0.3 : bolt ? 0.55 : 0),
+        kind: def.pump ? "shotgun" : "brass",
         size: def.class === "pistol" || def.class === "smg" ? 0.75 : bolt || def.class === "dmr" ? 1.3 : 1,
       });
     }
     if (def.class === "sniper") setTimeout(() => playBolt(), 450);
+    // Shotgun bơm: kéo ốp lót tay lên đạn ngay sau phát bắn (vỏ đạn đỏ văng ra lúc kéo về).
+    if (def.pump) setTimeout(() => playPump(), 220);
     // Báo trúng ngay ở máy: trước đây dấu trúng chỉ hiện khi tin server về (1 RTT), trong khi máu và
     // tia lửa đã hiện từ khung bắn — trên LAN thì quên, nhưng 60–120ms RTT thì dấu X hiện sau
     // vệt máu một cách vô lý. Server vẫn giữ quyền quyết định và sẽ ghi đè loại/số sát thương.
@@ -807,9 +869,10 @@ export function Shooter({ room }: { room: IslandRoom }) {
     room.send(Messages.fire, { weapon: def.id, o: [muzzle.x, muzzle.y, muzzle.z], rays, hits } satisfies FireMessage);
     // Giật: dồn vào góc nhìn trong vài khung hình tới (updateRecoil), hất màn hình một cái, súng trên tay lùi lại.
     const raw = recoilFor(def, recoil.shot, stance);
-    // Phụ kiện đỡ giật: bù giật, tay cầm, báng.
-    const up = raw.up * eff.recoilV;
-    const side = raw.side * eff.recoilH;
+    // Phụ kiện đỡ giật: bù giật, tay cầm, báng; chân chống chỉ đỡ khi nằm sấp, đứng yên.
+    const bipod = stance.prone && !stance.moving ? eff.proneRecoil : 1;
+    const up = raw.up * eff.recoilV * bipod;
+    const side = raw.side * eff.recoilH * bipod;
     recoil.shot++;
     recoil.pendPitch += up;
     recoil.pendYaw += side;

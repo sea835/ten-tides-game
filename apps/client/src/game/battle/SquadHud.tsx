@@ -7,6 +7,9 @@ import { localPosition } from "../shared.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { getBattleHud, setBattleHud, useBattleHud } from "./runtime.ts";
 import { tankHud } from "./Vehicles.tsx";
+import { CarrierHud } from "./CarrierHud.tsx";
+import { carrierPrompt } from "./Carriers.tsx";
+import { carrierHud, nearInfo } from "./vehicleParts.tsx";
 
 // Giao diện chế độ Đồng đội và xe tăng: bảng đội (máu, vai trò, ai đang lái tăng), ra lệnh cho máy (Y tới chỗ đang
 // nhìn, G giữ chỗ, H theo sau), gục rồi thì chọn máy trong đội để nhập vào, và bảng điều khiển khi lái xe tăng.
@@ -158,10 +161,10 @@ export function SquadHud({ room }: { room: IslandRoom }) {
 /** Nhắc lên xe tăng khi đứng cạnh. */
 export function TankPrompt() {
   const hud = useBattleHud();
-  if (!hud.nearTank || tankHud.active) return null;
+  if (!hud.nearTank || tankHud.active || carrierHud.active) return null;
   return (
     <div className="b-pickup">
-      ⛟ <kbd>F</kbd> Lên xe tăng
+      ⛟ <kbd>F</kbd> {nearInfo.kind && nearInfo.kind !== "tank" ? carrierPrompt(nearInfo.kind, Number(nearInfo.seat)) : "Lên xe tăng"}
     </div>
   );
 }
@@ -174,6 +177,7 @@ export function TankHud() {
   const hpText = useRef<HTMLSpanElement>(null);
   const reload = useRef<HTMLElement>(null);
   const speed = useRef<HTMLSpanElement>(null);
+  const tracks = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -193,15 +197,22 @@ export function TankHud() {
       if (hpText.current) hpText.current.textContent = `${Math.max(0, Math.round(tankHud.hp))}`;
       if (reload.current) reload.current.style.width = `${Math.max(0, tankHud.reload) * 100}%`;
       if (speed.current) speed.current.textContent = `${Math.round(Math.abs(tankHud.speed) * 3.6)} km/h`;
+      if (tracks.current) {
+        tracks.current.style.display = tankHud.tracks > 0 ? "" : "none";
+        if (tankHud.tracks > 0) tracks.current.textContent = `⚠ Đứt xích — chỉ quay tại chỗ được (${tankHud.tracks}s)`;
+      }
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
   return (
+    <>
+    <CarrierHud />
     <div ref={root} className="b-tank" style={{ display: "none" }}>
       <div className="b-tank-cross" />
       <div ref={ring} className="b-tank-ring" />
       <div className="b-tank-panel">
+        <div ref={tracks} className="b-tank-tracks" style={{ display: "none" }} />
         <div className="b-tank-row">
           <span>⛟ Giáp</span>
           <div className="b-tank-bar">
@@ -221,5 +232,6 @@ export function TankHud() {
         </p>
       </div>
     </div>
+    </>
   );
 }

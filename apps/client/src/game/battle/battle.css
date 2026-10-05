@@ -1385,6 +1385,47 @@
 .b-tank-bar.reload i {
   background: #ffc233;
 }
+.b-tank-tracks {
+  margin: 0 0 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(220, 70, 40, 0.75);
+  font-weight: 700;
+  text-align: center;
+  animation: b-tracks-blink 0.9s ease-in-out infinite alternate;
+}
+@keyframes b-tracks-blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.6;
+  }
+}
+/* Xe trinh sát, thuyền: danh sách ghế (mình ở ghế nào, ghế nào có người), tốc độ. */
+.b-carrier-seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 4px 0 0;
+  font-size: 11.5px;
+}
+.b-carrier-seats span {
+  opacity: 0.6;
+}
+.b-carrier-seats span.taken {
+  opacity: 0.85;
+}
+.b-carrier-seats span.mine {
+  opacity: 1;
+  color: #9fe870;
+  font-weight: 700;
+}
+.b-carrier-seats .b-carrier-speed {
+  margin-left: auto;
+  opacity: 1;
+  font-weight: 700;
+}
 
 /* ---------------------------------------------------------------- chế độ Chiến trường (50 vs 50) */
 

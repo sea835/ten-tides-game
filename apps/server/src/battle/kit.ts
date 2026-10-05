@@ -4,6 +4,7 @@ import {
   HEALS,
   HELMETS,
   ATTACHMENTS,
+  DUAL_MAG_RELOAD,
   OUTFITS,
   SIGHTS,
   attachmentFits,
@@ -70,10 +71,58 @@ export function magSize(kit: KitState, slot: GunSlot): number {
   return def ? withAttachments(def, attOf(kit, slot)).mag : 0;
 }
 
-/** Thời gian thay đạn thật (tính băng thay nhanh). */
+/**
+ * Hộp đạn kép: ô súng nào đang chờ lần thay "lật băng" (nhanh). Chỉ server cần biết (thời gian thay là của server),
+ * nên giữ ngoài KitState; đổi súng, đổi phụ kiện thì về lại lần thay thường.
+ */
+const dualFlip = new WeakMap<KitState, Partial<Record<GunSlot, boolean>>>();
+
+/**
+ * Thời gian thay đạn thật (tính băng thay nhanh, hộp đạn kép). Súng nạp từng viên (S1897): thời gian tới khi viên đầu
+ * vào ổ (đưa súng lên + một viên); các viên sau xem `shellTime`.
+ */
 export function reloadTime(kit: KitState, slot: GunSlot): number {
   const def = weaponIn(kit, slot);
-  return def ? withAttachments(def, attOf(kit, slot)).reload : 1;
+  if (!def) return 1;
+  if (def.shell) return def.reload + def.shell;
+  const eff = withAttachments(def, attOf(kit, slot));
+  return eff.dualMag && dualFlip.get(kit)?.[slot] ? eff.reload * DUAL_MAG_RELOAD : eff.reload;
+}
+
+/** Súng nạp từng viên: thời gian nhét thêm một viên (0 nếu súng thay cả băng). */
+export function shellTime(kit: KitState, slot: GunSlot): number {
+  return weaponIn(kit, slot)?.shell ?? 0;
+}
+
+/** Một lần thay xong: hộp đạn kép đổi lượt (lần sau lật băng nhanh, lần sau nữa thay thường). */
+export function reloadDone(kit: KitState, slot: GunSlot) {
+  const def = weaponIn(kit, slot);
+  if (!def || !withAttachments(def, attOf(kit, slot)).dualMag) return;
+  const flips = dualFlip.get(kit) ?? {};
+  flips[slot] = !flips[slot];
+  dualFlip.set(kit, flips);
+}
+
+/**
+ * Một chặng thay đạn xong: lấy đạn dự trữ nhét vào băng (súng nạp từng viên thì một viên). Trả về số giây cho chặng kế
+ * tiếp (súng nạp từng viên còn thiếu đạn và còn đạn dự trữ), 0 là đã thay xong.
+ */
+export function reloadStep(kit: KitState, slot: GunSlot): number {
+  const def = weaponIn(kit, slot);
+  if (!def) return 0;
+  const need = magSize(kit, slot) - magOf(kit, slot);
+  const take = Math.max(0, Math.min(def.shell ? 1 : need, need, ammoOf(kit, def.ammo)));
+  kit.ammo.set(def.ammo, ammoOf(kit, def.ammo) - take);
+  setMag(kit, slot, magOf(kit, slot) + take);
+  if (def.shell && take > 0 && magOf(kit, slot) < magSize(kit, slot) && ammoOf(kit, def.ammo) > 0) return def.shell;
+  reloadDone(kit, slot);
+  return 0;
+}
+
+/** Về lại lần thay thường (đổi súng, tháo lắp phụ kiện ở ô này). */
+function resetFlip(kit: KitState, slot: GunSlot) {
+  const flips = dualFlip.get(kit);
+  if (flips) delete flips[slot];
 }
 
 /** Băng đạn nhỏ lại (tháo băng mở rộng): đạn thừa trong băng trả về đạn dự trữ. */
@@ -113,6 +162,7 @@ export function attachPart(kit: KitState, att: AttachmentId, dropped: Dropped): 
     });
   list.push(att);
   setAtt(kit, slot, list.join(","));
+  resetFlip(kit, slot);
   fitMag(kit, slot);
   return true;
 }
@@ -178,6 +228,7 @@ export function giveWeapon(kit: KitState, def: WeaponDef, mag = def.mag): Droppe
     if (oldDef) addAmmo(kit, oldDef.ammo, magOf(kit, slot));
   }
   kit[slot] = def.id;
+  resetFlip(kit, slot);
   setMag(kit, slot, mag);
   // Ống ngắm của khẩu cũ: lắp được lên khẩu mới thì giữ, không thì tháo ra để lại.
   const sight = sightOf(kit, slot);

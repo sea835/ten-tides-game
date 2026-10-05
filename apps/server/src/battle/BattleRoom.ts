@@ -23,9 +23,9 @@ import {
   battleSpawn,
   checkBodyPoint,
   falloff,
-  rayTank,
+  rayVehicle,
+  type WeaponDef,
   SQUAD_BOTS,
-  TANK,
   floorBelow,
   HITBOX,
   insideBox,
@@ -35,7 +35,9 @@ import {
   raycastTrunksHit,
   bulletThrough,
   bulletWallFactor,
-  PEN_DAMAGE,
+  caliberOf,
+  ricochet,
+  RICOCHET,
   withDestruction,
   type BattleMap,
   type LootSpot,
@@ -72,6 +74,9 @@ import {
   SquadOrderMessage,
   TankFireMessage,
   VehicleMoveMessage,
+  VehicleSeatMessage,
+  VehicleAimMessage,
+  VehicleGunMessage,
   MAX_BATTLE_BOTS,
   type BoomMessage,
   type ChatBroadcast,
@@ -90,7 +95,7 @@ import { Bots } from "./bots.ts";
 import { MatchRewards } from "./rewards.ts";
 import { Vehicles } from "./vehicles.ts";
 import { War, type Side } from "./war.ts";
-import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize, priceOf, receive, reloadTime, resetKit, setMag, weaponIn, type GunSlot } from "./kit.ts";
+import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize, priceOf, receive, reloadStep, reloadTime, resetKit, setMag, weaponIn, type GunSlot } from "./kit.ts";
 
 // Phòng Battleground: ai cũng xuất phát ở một chỗ ngẫu nhiên trên đảo, bấm B mua súng, giáp, lựu đạn bằng tiền
 // khởi điểm, nhặt đồ trong nhà và kho vũ khí, vùng an toàn thu hẹp dần; người (hoặc máy) cuối cùng còn sống thắng.
@@ -367,6 +372,20 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (id) this.vehicles.fire(id, m.turret, m.pitch);
     });
 
+    // Xe trinh sát, thuyền: đổi ghế, xạ thủ xoay và bắn đại liên.
+    this.onMessage(Messages.vehicleSeat, VehicleSeatMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.switchSeat(id, m.seat);
+    });
+    this.onMessage(Messages.vehicleAim, VehicleAimMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.aim(id, m.turret, m.pitch);
+    });
+    this.onMessage(Messages.vehicleGun, VehicleGunMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.gun(id, m);
+    });
+
     this.onMessage(Messages.squadOrder, SquadOrderMessage, (client, m) => {
       const id = this.playerOf(client);
       const p = id && this.state.players.get(id);
@@ -575,6 +594,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (!war) this.bots.equipAll();
     // Xe tăng: chỉ chế độ Đồng đội (chiến trường tự đặt xe ở căn cứ; sinh tồn không có xe tăng).
     if (squad) this.placeTanks(true);
+    // Xe trinh sát, thuyền tuần tra bỏ trống trên đảo (chiến trường tự đặt ở căn cứ, bờ biển).
+    if (!war) this.vehicles.fleet.setup();
     this.bots.warm();
     this.spawnLoot(this.map.loot);
     this.rollSky();
@@ -889,9 +910,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (!p || !p.alive || p.vehicle) return;
     const kit = p.kit;
     const slot = kit.active;
-    if (!isGunSlot(slot) || kit[slot] !== weaponId || kit.reloading) return;
+    if (!isGunSlot(slot) || kit[slot] !== weaponId) return;
     const def = WEAPON.get(weaponId);
     if (!def) return;
+    // Đang thay đạn thì không bắn được, trừ súng nạp từng viên (S1897): bắn là dừng nạp, giữ các viên đã nhét.
+    if (kit.reloading && !def.shell) return;
     const now = Date.now();
     if (now - (this.lastShotAt.get(id) ?? 0) < (60000 / def.rpm) * 0.8) return;
     const mag = magOf(kit, slot);
@@ -903,10 +926,31 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Lề 4 m quanh chân đã đủ cho đầu nòng khi nghiêng người (Q/E, đầu lệch LEAN.side ≈ 0,4 m sang bên): phát bắn
     // vòng qua góc tường từ chỗ đã nghiêng vẫn hợp lệ.
     if (Math.hypot(o[0] - p.x, o[2] - p.z) > 4 || o[1] < p.y - 1 || o[1] > p.y + 3) return;
+    if (kit.reloading) this.cancelTimer(id);
     this.lastShotAt.set(id, now);
     setMag(kit, slot, mag - 1);
     p.shots = (p.shots + 1) % 65536;
     this.cancelHeal(id);
+    // Súng phóng đạn nổ (RPG): không dò trúng người, phóng quả đạn nổ theo hướng tia đầu tiên.
+    if (def.explosive) {
+      const r0 = rays[0]!;
+      const l = Math.hypot(r0[0], r0[1], r0[2]) || 1;
+      this.vehicles.launch(id, o, [r0[0] / l, r0[1] / l, r0[2] / l], def.velocity, def.explosive, def.id, "", def.boost);
+      this.bots.onShot(id, p.x, p.z, 120);
+      return;
+    }
+    this.shootRays(id, def, o, rays, hits, attOf(kit, slot).split(",").includes("suppressor"));
+  }
+
+  /**
+   * Dò đường đạn thường đã qua kiểm tra (súng cầm tay, đại liên gắn trên xe): tường, đồi, cây, vỏ xe, rồi kiểm tra
+   * lại những người máy người bắn báo trúng; trừ máu, làm hư tường, báo mọi người vẽ vệt đạn. `skipVehicle` là xe
+   * của chính người bắn (đại liên trên xe không tự găm vào xe mình).
+   */
+  shootRays(id: string, def: WeaponDef, o: [number, number, number], rays: [number, number, number][], hits: { target: string; part: "head" | "body"; d: number; ray: number }[], suppressed: boolean, skipVehicle = "") {
+    const p = this.state.players.get(id);
+    if (!p) return;
+    const weaponId = def.id;
     const maxRange = Math.min(600, def.range * 3);
     const dirs = rays.slice(0, def.pellets).map((r) => {
       const l = Math.hypot(r[0], r[1], r[2]) || 1;
@@ -915,17 +959,14 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const ends: [number, number, number][] = [];
     // Đạn bay theo đường cong (rơi dần do trọng lực): dò tường từng đoạn dây cung; `walls` là quãng đường `s` tới chỗ găm.
     const steps = bulletSteps(def.velocity, maxRange);
-    // Súng phóng đạn nổ (RPG): không dò trúng người, phóng quả đạn nổ theo hướng tia đầu tiên.
-    if (def.explosive) {
-      const d0 = dirs[0];
-      if (d0) this.vehicles.launch(id, o, d0, def.velocity, def.explosive, def.id);
-      this.bots.onShot(id, p.x, p.z, 120);
-      return;
-    }
-    // Tia nào găm vào thân xe tăng (id xe), để tính chút sát thương lên xe.
-    const tankOf = new Map<number, string>();
+    // Tia nào găm vào vỏ xe (id xe, mặt trúng, góc tới), để tính sát thương lên xe theo giáp.
+    const tankOf = new Map<number, { vid: string; face: "front" | "side" | "rear" | "top"; cos: number }>();
     // Mỗi tia: găm vào khối nào / cây nào (để làm hư), đã xuyên qua vách mỏng nào (ở quãng `s` bao nhiêu).
-    const stops = dirs.map(() => ({ box: -1, tree: -1, yaw: 0, pens: [] as { s: number; box: number }[] }));
+    // `rico`: đạn sượt vào kim loại / bê tông thì nảy đi (xem `ricochet`): từ điểm `p` ở quãng `s` bay thẳng theo `d` thêm
+    // tối đa `len` mét; người trúng viên nảy chỉ còn `mult` sát thương. Server tự tính lại y hệt client (phản xạ gương
+    // qua mặt khối) nên điểm trúng báo về được kiểm tra như phát thường.
+    const cal = caliberOf(def);
+    const stops = dirs.map(() => ({ box: -1, tree: -1, yaw: 0, pens: [] as { s: number; box: number; mult: number }[], rico: null as null | { s: number; p: [number, number, number]; d: [number, number, number]; len: number; mult: number } }));
     const walls = dirs.map((d, ray) => {
       const st = stops[ray]!;
       for (let i = 1; i < steps.length; i++) {
@@ -935,20 +976,20 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
         const sAt = (t: number) => steps[i - 1]! + (t / len) * (steps[i]! - steps[i - 1]!);
         // Vách gỗ, tường vữa mỏng: đạn xuyên qua (mỗi tia tối đa một lần), sát thương giảm.
-        const wall = bulletThrough(this.map.index, a, cd, len, 1 - st.pens.length);
-        for (const pen of wall.pens) st.pens.push({ s: sAt(pen.t), box: pen.i });
+        const wall = bulletThrough(this.map.index, a, cd, len, 1 - st.pens.length, cal);
+        for (const pen of wall.pens) st.pens.push({ s: sAt(pen.t), box: pen.i, mult: pen.mult });
         const trunk = raycastTrunksHit(this.map.world, a, cd, len, this.map.treeDead);
         let t = Math.min(wall.t, raycastTerrain(this.map.world, a, cd, len), trunk.t);
         const box = t === wall.t ? wall.i : -1;
         const tree = t === trunk.t && t < Infinity ? trunk.i : -1;
-        // Xe tăng chặn đạn (thép dày, đạn thường không xuyên).
-        let tank = "";
+        // Xe chặn đạn (kể cả xác xe đang cháy; thép dày, đạn thường không xuyên).
+        let tank: { vid: string; face: "front" | "side" | "rear" | "top"; cos: number } | null = null;
         for (const [vid, v] of this.state.vehicles) {
-          if (Math.abs(v.x - a[0]) + Math.abs(v.z - a[2]) > len + 8) continue;
-          const tt = rayTank(v, a, cd, len);
-          if (tt < t) {
-            t = tt;
-            tank = vid;
+          if (vid === skipVehicle || Math.abs(v.x - a[0]) + Math.abs(v.z - a[2]) > len + 10) continue;
+          const hv = rayVehicle(v, a, cd, len);
+          if (hv && hv.t < t) {
+            t = hv.t;
+            tank = { vid, face: hv.face, cos: hv.cos };
           }
         }
         if (t < len) {
@@ -957,6 +998,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
             st.box = box;
             st.tree = tree;
             st.yaw = Math.atan2(cd[0], cd[2]);
+            if (box >= 0) st.rico = this.ricochetPath(box, [a[0] + cd[0] * t, a[1] + cd[1] * t, a[2] + cd[2] * t], cd, sAt(t));
           }
           return sAt(t);
         }
@@ -971,15 +1013,25 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (!d || !target || !target.alive || target.vehicle || h.target === id || hitRay.has(h.ray)) continue;
       // Không bắn trúng đồng đội.
       if (p.team && target.team === p.team) continue;
-      if (h.d > walls[h.ray]! + HITBOX.wallSlack || h.d > maxRange) continue;
-      const pt = bulletAt(o, d, def.velocity, h.d);
-      const check = checkBodyPoint(pt, { x: target.x, y: target.y, z: target.z, rotY: target.rotY, crouch: target.crouching, prone: target.prone, lean: target.lean }, h.part === "head");
+      if (h.d > maxRange) continue;
+      const body = { x: target.x, y: target.y, z: target.z, rotY: target.rotY, crouch: target.crouching, prone: target.prone, lean: target.lean };
+      const rico = stops[h.ray]!.rico;
+      // Phát thẳng (trước chỗ găm), hoặc viên nảy (sau chỗ găm, trong quãng bay của viên nảy).
+      let check = h.d <= walls[h.ray]! + HITBOX.wallSlack ? checkBodyPoint(bulletAt(o, d, def.velocity, h.d), body, h.part === "head") : null;
+      let bounce = 1;
+      if (!check && rico && h.d > rico.s && h.d <= rico.s + rico.len + HITBOX.wallSlack) {
+        const k = h.d - rico.s;
+        check = checkBodyPoint([rico.p[0] + rico.d[0] * k, rico.p[1] + rico.d[1] * k, rico.p[2] + rico.d[2] * k], body, h.part === "head");
+        bounce = rico.mult;
+      }
       if (!check) continue;
       const head = check.head;
-      hitRay.set(h.ray, h.d);
-      // Bắn xuyên vách mỏng thì đạn yếu đi mỗi lớp xuyên qua trước người.
-      const through = stops[h.ray]!.pens.filter((pen) => pen.s < h.d).length;
-      const amount = def.damage * falloff(def, h.d) * (head ? def.headshot : 1) * Math.pow(PEN_DAMAGE, through);
+      // Viên nảy: vệt đạn ở máy khác vẽ tới chỗ nảy.
+      hitRay.set(h.ray, bounce < 1 ? rico!.s : h.d);
+      // Bắn xuyên vách mỏng thì đạn yếu đi tuỳ vật liệu và cỡ đạn, mỗi lớp xuyên qua trước người.
+      let through = bounce;
+      for (const pen of stops[h.ray]!.pens) if (pen.s < h.d) through *= pen.mult;
+      const amount = def.damage * falloff(def, h.d) * (head ? def.headshot : 1) * through;
       const prev = dealt.get(h.target);
       dealt.set(h.target, { amount: (prev?.amount ?? 0) + amount, head: (prev?.head ?? false) || head, d: h.d });
     }
@@ -988,17 +1040,16 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       ends.push(bulletAt(o, d, def.velocity, t));
     });
     // Máy ở gần nghe tiếng súng (súng to nghe xa hơn, giảm thanh thì chỉ nghe rất gần) thì đi dò về hướng đó.
-    const suppressed = attOf(kit, slot).split(",").includes("suppressor");
     const loud = def.class === "sniper" || def.class === "dmr" ? 140 : def.class === "pistol" || def.class === "smg" ? 60 : 90;
     this.bots.onShot(id, p.x, p.z, suppressed ? loud * 0.25 : loud);
     const shot: ShotMessage = { id, w: weaponId, o, e: ends, ...(suppressed ? { s: 1 as const } : {}) };
     this.broadcast(Messages.shot, shot, { except: this.clientOf(id) });
     if (this.state.phase !== "battle") return;
-    // Đạn găm vào vỏ xe tăng: sát thương nhỏ (thép dày), súng to, bắn tỉa thì nhiều hơn.
-    for (const [ray, vid] of tankOf) {
+    // Đạn găm vào vỏ xe: xe tăng gần như không xi nhê (thép dày), xe trinh sát, thuyền thì hư dần.
+    for (const [ray, hv] of tankOf) {
       if (hitRay.has(ray)) continue;
       const dist = walls[ray]!;
-      this.vehicles.damage(vid, def.damage * falloff(def, dist) * TANK.bulletFactor, id, def.id);
+      this.vehicles.bulletHit(hv.vid, def.damage * falloff(def, dist), id, def.id, hv.face, hv.cos);
     }
     // Đạn làm hư tường nó găm vào, vách nó xuyên qua, và thân cây trúng đạn.
     stops.forEach((st, ray) => {
@@ -1014,6 +1065,18 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (result) this.clientOf(id)?.send(Messages.hit, { kind: result.killed ? "kill" : hit.head ? "head" : "body", armor: result.armor, amount: Math.round(result.amount) } satisfies HitMessage);
       this.bots.onHurt(target, id);
     }
+  }
+
+  /**
+   * Đạn theo hướng `cd` găm vào khối `box` ở điểm `p` (quãng `s`): nếu sượt đủ để nảy thì dò quãng bay thẳng của viên
+   * nảy (tới tường, đất, thân cây gần nhất, tối đa RICOCHET.range mét).
+   */
+  private ricochetPath(box: number, p: [number, number, number], cd: [number, number, number], s: number) {
+    const r = ricochet(this.map.index, box, p, cd);
+    if (!r) return null;
+    const from: [number, number, number] = [p[0] + r.d[0] * 0.02, p[1] + r.d[1] * 0.02, p[2] + r.d[2] * 0.02];
+    const len = Math.min(RICOCHET.range, raycastBoxes(this.map.index, from, r.d, RICOCHET.range, true), raycastTerrain(this.map.world, from, r.d, RICOCHET.range), raycastTrunksHit(this.map.world, from, r.d, RICOCHET.range, this.map.treeDead).t);
+    return { s, p, d: r.d, len, mult: r.mult };
   }
 
   reload(id: string) {
@@ -1044,6 +1107,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   }
 
   private tickTimers(dt: number) {
+    const again: [string, Timed][] = [];
     for (const [id, t] of this.timers) {
       t.left -= dt;
       if (t.left > 0) continue;
@@ -1055,10 +1119,12 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         kit.reloading = false;
         const def = weaponIn(kit, t.slot);
         if (!def || kit.active !== t.slot) continue;
-        const need = magSize(kit, t.slot) - magOf(kit, t.slot);
-        const take = Math.min(need, ammoOf(kit, def.ammo));
-        kit.ammo.set(def.ammo, ammoOf(kit, def.ammo) - take);
-        setMag(kit, t.slot, magOf(kit, t.slot) + take);
+        // Súng nạp từng viên: còn thiếu thì hẹn viên kế tiếp (đặt lại sau vòng lặp).
+        const next = reloadStep(kit, t.slot);
+        if (next > 0) {
+          kit.reloading = true;
+          again.push([id, { kind: "reload", left: next, slot: t.slot }]);
+        }
       } else if (t.kind === "heal" && t.heal) {
         kit.healing = "";
         const h = HEALS[t.heal];
@@ -1067,6 +1133,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         p.hp = Math.min(Math.max(p.hp, Math.min(h.cap, p.hp + h.amount)), MAX_HP);
       }
     }
+    for (const [id, t] of again) this.timers.set(id, t);
   }
 
   /**
@@ -1108,14 +1175,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   kill(id: string, killer: string, weapon: string, headshot: boolean) {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return;
-    if (p.vehicle) {
-      const v = this.state.vehicles.get(p.vehicle);
-      if (v && v.driver === id) {
-        v.driver = "";
-        v.moving = false;
-      }
-      p.vehicle = "";
-    }
+    if (p.vehicle) this.vehicles.leave(id);
     // Chiến trường có hồi sinh: hạng tính theo phe thắng thua, không theo lúc gục.
     if (this.fighting() && this.state.battleMode !== "war") this.rewards.onDeath(id, this.state.players);
     p.alive = false;
@@ -1226,7 +1286,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const pick = <T>(list: readonly T[]) => list[Math.floor(this.rand() * list.length)]!;
     const byTier = {
       1: WEAPONS.filter((w) => !w.rare && (w.class === "pistol" || w.class === "smg" || w.class === "shotgun")),
-      2: WEAPONS.filter((w) => !w.rare && (w.class === "ar" || w.class === "dmr" || w.class === "smg")),
+      2: WEAPONS.filter((w) => !w.rare && (w.class === "ar" || w.class === "dmr" || w.class === "smg" || w.class === "lmg")),
       3: WEAPONS.filter((w) => w.rare || w.class === "sniper"),
     };
     for (const spot of spots) {

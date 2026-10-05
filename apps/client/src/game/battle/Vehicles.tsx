@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Callbacks } from "@colyseus/sdk";
-import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
-import { TANK, TEAM_COLORS, mapForMode, cannonMuzzle, cannonPitch, tankStep, type TankPose } from "@tentides/content";
+import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, Vector3, type Group, type PerspectiveCamera } from "three";
+import { TANK, TEAM_COLORS, mapForMode, cannonMuzzle, cannonPitch, vehicleSpec, vehicleStep, type TankPose } from "@tentides/content";
 import { Messages, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -11,6 +11,8 @@ import { getSettings, aimZoom } from "../settings.ts";
 import { localPosition, shake } from "../shared.ts";
 import { playCannon, playCannonReady, tankEngine } from "../sound/guns.ts";
 import { effects, getBattleHud, menuOpen, seat, setBattleHud } from "./runtime.ts";
+import { Carrier, CarrierSeat, useVehicleFx } from "./Carriers.tsx";
+import { nearInfo, seatOwner, WreckFire } from "./vehicleParts.tsx";
 
 // Xe tăng: vẽ thân, xích, tháp pháo quay độc lập, nòng pháo ngẩng hạ; hộp va chạm để người, đạn không xuyên qua.
 // Xe mình lái: W/S tiến lùi, A/D bẻ lái (quay tại chỗ được), chuột xoay tháp pháo theo hướng nhìn, chuột trái bắn
@@ -22,7 +24,7 @@ const CAM_DIST = 11;
 const CAM_HEIGHT = 3.1;
 
 /** Trạng thái xe mình đang lái (cho HUD đọc): máu, nạp đạn, tốc độ, điểm nòng pháo đang chĩa tới trên màn hình. */
-export const tankHud = { active: false, hp: 0, reload: 1, speed: 0, zoom: false, aimX: 0.5, aimY: 0.5, aimOn: false };
+export const tankHud = { active: false, hp: 0, reload: 1, speed: 0, zoom: false, aimX: 0.5, aimY: 0.5, aimOn: false, tracks: 0 };
 
 /** Thân vật lý của từng xe (để tia ngắm của xe mình bỏ qua chính nó). */
 type RapierBody = ReturnType<ReturnType<typeof useRapier>["world"]["createRigidBody"]>;
@@ -35,7 +37,6 @@ const OLIVE_DARK = new MeshStandardMaterial({ color: "#3f4730", roughness: 0.82,
 const TRACK = new MeshStandardMaterial({ color: "#1d1d1b", roughness: 0.95 });
 const WHEEL = new MeshStandardMaterial({ color: "#2e3226", roughness: 0.8, metalness: 0.3 });
 const WRECK = new MeshStandardMaterial({ color: "#1c1a18", roughness: 1 });
-const SMOKE = new MeshStandardMaterial({ color: "#2b2b2b", roughness: 1, transparent: true, opacity: 0.35, depthWrite: false });
 for (const m of [OLIVE, OLIVE_DARK, TRACK, WHEEL, WRECK]) m.userData.detail = "metal";
 const teamMats = new Map<string, MeshStandardMaterial>();
 function teamMat(color: string): MeshStandardMaterial {
@@ -59,7 +60,6 @@ const G = {
   brake: new CylinderGeometry(0.16, 0.16, 0.35, 10),
   hatch: new CylinderGeometry(0.34, 0.34, 0.14, 12),
   stripe: new BoxGeometry(2.14, 0.14, 1.2),
-  puff: new SphereGeometry(1, 8, 6),
 };
 G.wheel.rotateZ(Math.PI / 2);
 G.barrel.rotateX(Math.PI / 2);
@@ -121,7 +121,6 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
   const turret = useRef<Group>(null);
   const gun = useRef<Group>(null);
   const recoil = useRef<Group>(null);
-  const smoke = useRef<Group>(null);
   const [wreck, setWreck] = useState(v.hp <= 0);
   const [color, setColor] = useState(teamColor(v.team));
   const anim = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY, turret: v.turret, pitch: v.pitch, shots: v.shots, kick: 0, tiltX: 0, tiltZ: 0 });
@@ -199,18 +198,6 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
       _q.setFromEuler(_e.set(0, a.rotY, 0));
       body.setNextKinematicRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w });
     }
-    // Xác xe: khói đen bốc lên.
-    if (smoke.current) {
-      smoke.current.visible = wreck;
-      if (wreck) {
-        const t = performance.now() / 1000;
-        smoke.current.children.forEach((p, i) => {
-          const u = (t * 0.25 + i / smoke.current!.children.length) % 1;
-          p.position.set(Math.sin(i * 2.1 + t * 0.3) * (0.3 + u), 2 + u * 9, Math.cos(i * 1.7) * (0.3 + u));
-          p.scale.setScalar(0.6 + u * 2.4);
-        });
-      }
-    }
     // Tiếng máy: chỉ xe còn chạy, trong tầm nghe.
     const d = camera.position.distanceTo(g?.position ?? camera.position);
     if (!wreck && d < 110) {
@@ -223,15 +210,11 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
     }
   });
 
-  const puffs = useMemo(() => Array.from({ length: 7 }, (_, i) => i), []);
   return (
     <group ref={root}>
       <TankModel turret={turret} gun={gun} recoil={recoil} color={color} wreck={wreck} />
-      <group ref={smoke} visible={false}>
-        {puffs.map((i) => (
-          <mesh key={i} geometry={G.puff} material={SMOKE} />
-        ))}
-      </group>
+      {/* Xác xe: khói đen đặc bốc cao, lửa liếm trên thân. */}
+      <WreckFire wreck={wreck} top={2.2} />
     </group>
   );
 }
@@ -284,27 +267,52 @@ function TankDriver({ room }: { room: IslandRoom }) {
     const me = room.state.players.get(myId(room));
     const vid = me?.alive && me.vehicle ? me.vehicle : "";
     const v = vid ? room.state.vehicles.get(vid) : undefined;
-    const driving = !!v && v.hp > 0 && v.driver === myId(room);
+    const driving = !!v && v.hp > 0 && v.kind === "tank" && v.driver === myId(room);
     if (!driving) {
-      if (seat.id) {
+      if (seatOwner.kind === "tank") {
         // Vừa xuống xe (hay xe nổ): trả camera, FOV về cho nhân vật.
+        seatOwner.kind = "";
         seat.id = "";
         tankHud.active = false;
         aimZoom.value = 1;
       }
-      // Đứng cạnh xe lên được thì báo HUD.
+      // Đứng cạnh xe lên được thì báo HUD (cùng luật với server: xe tăng trống hay máy cùng đội lái; xe trinh sát,
+      // thuyền còn ghế trống và không có người phe khác).
       let near = "";
       if (me?.alive && !me.vehicle && room.state.phase !== "lobby") {
-        let best: number = TANK.enter;
+        let best = Infinity;
+        const mode = room.state.battleMode;
         for (const [id, t] of room.state.vehicles) {
           if (t.hp <= 0) continue;
           const d = Math.hypot(t.x - localPosition.x, t.z - localPosition.z);
-          if (d > best) continue;
-          const driver = t.driver ? room.state.players.get(t.driver) : undefined;
-          if (driver && !(driver.bot && me.team && driver.team === me.team)) continue;
-          if (!driver && t.team && me.team && t.team !== me.team && room.state.battleMode === "squad") continue;
+          const spec = vehicleSpec(t.kind);
+          if (d > best || d > spec.enter || Math.abs(t.y - localPosition.y) > 4) continue;
+          let free = 0;
+          if (t.kind === "tank") {
+            const driver = t.driver ? room.state.players.get(t.driver) : undefined;
+            if (driver && !(driver.bot && me.team && driver.team === me.team)) continue;
+            if (!driver && t.team && me.team && t.team !== me.team && mode !== "solo") continue;
+          } else {
+            free = -1;
+            let crew = 0;
+            let foe = false;
+            for (let k = 0; k < spec.seats; k++) {
+              const q = k === 0 ? t.driver : t.seats.get(String(k));
+              if (!q) {
+                if (free < 0) free = k;
+                continue;
+              }
+              crew++;
+              if (room.state.players.get(q)?.team !== me.team) foe = true;
+            }
+            if (free < 0) continue;
+            if (crew && (mode === "solo" || !me.team || foe)) continue;
+            if (!crew && t.team && me.team && t.team !== me.team && mode !== "solo") continue;
+          }
           best = d;
           near = id;
+          nearInfo.kind = t.kind;
+          nearInfo.seat = String(free);
         }
       }
       if (getBattleHud().nearTank !== near) setBattleHud({ nearTank: near });
@@ -313,6 +321,7 @@ function TankDriver({ room }: { room: IslandRoom }) {
     if (seat.id !== vid) {
       // Vừa lên xe: lấy tư thế từ server, nhìn theo hướng tháp pháo.
       seat.id = vid;
+      seatOwner.kind = "tank";
       drive.pose = { x: v.x, y: v.y, z: v.z, rotY: v.rotY };
       drive.turret = v.turret;
       drive.pitch = v.pitch;
@@ -327,7 +336,8 @@ function TankDriver({ room }: { room: IslandRoom }) {
     const typing = menuOpen();
     const throttle = typing ? 0 : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const steer = typing ? 0 : (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
-    const step = tankStep(map, drive.pose, throttle, steer, drive.speed, dt);
+    // Đứt xích: không tiến lùi được, chỉ quay tại chỗ.
+    const step = vehicleStep("tank", map, drive.pose, throttle, steer, drive.speed, dt, v.tracks <= 0);
     // Không chạy xuyên qua xe khác.
     let blocked = false;
     for (const [oid, o] of room.state.vehicles) {
@@ -424,6 +434,7 @@ function TankDriver({ room }: { room: IslandRoom }) {
     seat.z = p.z;
     tankHud.active = true;
     tankHud.hp = v.hp;
+    tankHud.tracks = v.tracks;
     tankHud.speed = drive.speed;
     tankHud.zoom = zoom;
 
@@ -446,8 +457,8 @@ function useTankCorrections(room: IslandRoom) {
   useEffect(
     () =>
       room.onMessage(Messages.correct, (at: { x: number; y: number; z: number }) => {
-        if (!seat.id) return;
-        drive.pose = { ...drive.pose, x: at.x, y: at.y, z: at.z };
+        if (!seat.id || seatOwner.kind !== "tank") return;
+        drive.pose ={ ...drive.pose, x: at.x, y: at.y, z: at.z };
         drive.speed = 0;
       }),
     [room],
@@ -467,16 +478,17 @@ export function Vehicles({ room }: { room: IslandRoom }) {
       a();
       r();
       seat.id = "";
+      seatOwner.kind = "";
       tankHud.active = false;
     };
   }, [room]);
   useTankCorrections(room);
+  useVehicleFx(room);
   return (
     <>
-      {list.map(([id, v]) => (
-        <Tank key={id} room={room} id={id} v={v} />
-      ))}
+      {list.map(([id, v]) => (v.kind === "tank" ? <Tank key={id} room={room} id={id} v={v} /> : <Carrier key={id} room={room} id={id} v={v} teamColor={teamColor} />))}
       <TankDriver room={room} />
+      <CarrierSeat room={room} />
     </>
   );
 }

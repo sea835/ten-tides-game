@@ -1,4 +1,4 @@
-import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, insideBox, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
+import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, flightTime, insideBox, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -19,7 +19,7 @@ const NAMES = [
   "Hổ Mang", "Linh Miêu", "Diều Hâu", "Bọ Cạp", "Cá Sấu", "Tê Giác", "Sư Tử", "Báo Săn", "Quạ Đen", "Ó Biển", "Nhím", "Chồn",
   "Sấm Sét", "Lốc Xoáy", "Mũi Tên", "Thép", "Đá Tảng", "Bóng Đêm",
 ];
-const LOADOUTS = ["m416", "akm", "scar", "ump45", "vector", "sks", "s686", "m416", "akm"];
+const LOADOUTS = ["m416", "akm", "scar", "ump45", "vector", "sks", "s686", "s1897", "dp28", "m416", "akm"];
 /** Tầm nhìn (m) theo vai trò; lái tăng nhìn từ tháp pháo, xa hơn. */
 const SIGHT: Record<string, number> = { "": 75, leader: 85, rifle: 85, support: 85, sniper: 150, tanker: 160 };
 /** Đội hình mũi tên sau lưng đội trưởng: (ngang, dọc) theo hướng đội trưởng nhìn, dương là bên phải / phía trước. */
@@ -333,7 +333,8 @@ export class Bots {
       }
       const tank = p.vehicle ? s.vehicles.get(p.vehicle) : undefined;
       if (tank && tank.hp > 0) {
-        this.tickTanker(id, p, b, tank, alive, dt);
+        // Máy chỉ lái xe tăng; ngồi xe khác (xe trinh sát, thuyền) thì ngồi yên theo xe.
+        if (tank.kind === "tank") this.tickTanker(id, p, b, tank, alive, dt);
         continue;
       }
       this.tickSoldier(id, p, b, alive, dt);
@@ -647,7 +648,7 @@ export class Bots {
     p.prone = false;
     const rocketEye: [number, number, number] = [p.x, p.y + 1.2, p.z];
     // Ngẩng thêm để bù đạn rơi (đạn bay chậm, rơi nhiều ở xa), lệch chút ít theo khoảng cách.
-    const flight = d / def.velocity;
+    const flight = flightTime(def.velocity, d, def.boost);
     const drop = 0.5 * 9.81 * flight * flight;
     const err = 0.012 + d * 0.00012;
     const ty = v.y + 1.2 + drop - rocketEye[1];

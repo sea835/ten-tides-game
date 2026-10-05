@@ -483,6 +483,13 @@ export const VehicleState = schema(
     /** Bộ đếm phát pháo, để máy khác diễn giật nòng, lửa đầu nòng. */
     shots: t.uint16().default(0),
     moving: t.boolean().default(false),
+    /**
+     * Xe trinh sát, thuyền: người ngồi các ghế khác ghế lái (khoá là số ghế "1"…"4", ghế 0 là `driver`). Xe tăng
+     * không dùng. Với xe có đại liên, `turret`/`pitch` là hướng đại liên do xạ thủ xoay.
+     */
+    seats: t.map("string"),
+    /** Xe tăng đứt xích: còn bao nhiêu giây (làm tròn lên) mới chạy lại được; 0 là xích lành. */
+    tracks: t.uint8().default(0),
   },
   "VehicleState",
 );
@@ -826,6 +833,27 @@ export type VehicleMoveMessage = z.infer<typeof VehicleMoveMessage>;
 /** Bắn pháo xe tăng theo hướng tháp pháo, góc nòng hiện tại. */
 export const TankFireMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1) });
 export type TankFireMessage = z.infer<typeof TankFireMessage>;
+/** Đổi ghế trên xe đang ngồi (0 là ghế lái). */
+export const VehicleSeatMessage = z.object({ seat: z.int().min(0).max(4) });
+export type VehicleSeatMessage = z.infer<typeof VehicleSeatMessage>;
+/** Xạ thủ đại liên xoay súng (hướng thế giới, góc ngẩng). */
+export const VehicleAimMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1) });
+export type VehicleAimMessage = z.infer<typeof VehicleAimMessage>;
+/** Xạ thủ đại liên bắn một phát: đầu nòng, hướng tia, người máy mình thấy trúng (server kiểm tra lại như súng cầm tay). */
+export const VehicleGunMessage = z.object({
+  o: vec3,
+  d: vec3,
+  hits: z.array(z.object({ target: id, part: z.enum(["head", "body"]), d: z.number().min(0).max(1000), ray: z.int().min(0).max(0) })).max(1),
+});
+export type VehicleGunMessage = z.infer<typeof VehicleGunMessage>;
+/** Server báo mọi người: đạn nảy khỏi giáp trước, xe tăng đứt xích (để vẽ tia lửa, khói, phát tiếng). */
+export interface VehicleFxMessage {
+  kind: "ricochet" | "tracks";
+  vid: string;
+  x: number;
+  y: number;
+  z: number;
+}
 /** Ra lệnh cho máy trong đội: đi theo mình, giữ chỗ, tới điểm (x, z). */
 export const SquadOrderMessage = z.object({ kind: z.enum(["follow", "hold", "move"]), x: finite.optional(), z: finite.optional() });
 export type SquadOrderMessage = z.infer<typeof SquadOrderMessage>;
@@ -948,6 +976,10 @@ export const Messages = {
   vehicleExit: "vehicleExit",
   vehicleMove: "vehicleMove",
   tankFire: "tankFire",
+  vehicleSeat: "vehicleSeat",
+  vehicleAim: "vehicleAim",
+  vehicleGun: "vehicleGun",
+  vehicleFx: "vehicleFx",
   squadOrder: "squadOrder",
   possess: "possess",
   respawn: "respawn",

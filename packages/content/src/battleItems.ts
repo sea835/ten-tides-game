@@ -57,10 +57,30 @@ export interface WeaponDef {
    * chỗ chạm (bán kính, sát thương nổ vào người ở tâm, sát thương thêm vào xe tăng trúng thẳng).
    */
   explosive?: { radius: number; damage: number; armor: number };
+  /** Đạn rocket có động cơ: rời ống ở `velocity` rồi tăng tốc `accel` (m/s²) tới `vmax` (xem flightTime). */
+  boost?: Boost;
+  /** Sức chứa khi lắp băng mở rộng (không có thì cộng theo phần trăm của phụ kiện). */
+  extMag?: number;
+  /**
+   * Nạp từng viên (shotgun bơm): `reload` là lúc đưa súng lên mở cửa nạp, mỗi viên mất thêm `shell` giây; bắn lúc đang
+   * nạp thì dừng nạp, giữ số viên đã nhét vào.
+   */
+  shell?: number;
+  /** Súng bơm: sau mỗi phát kéo ốp lót tay lên đạn (hoạt ảnh, tiếng). */
+  pump?: boolean;
+}
+
+/** Động cơ rocket: tốc độ tối đa (m/s) và gia tốc (m/s²) từ sơ tốc rời ống. */
+export interface Boost {
+  vmax: number;
+  accel: number;
 }
 
 /** Sơ tốc đầu nòng (m/s), gần với súng thật. */
-const VELOCITY: Record<string, number> = { rpg7: 150, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, s686: 380, sks: 800, kar98k: 760, awm: 945 };
+const VELOCITY: Record<string, number> = { rpg7: 115, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, dp28: 840, s686: 380, s1897: 360, sks: 800, kar98k: 760, awm: 945 };
+
+/** Hệ số trúng đầu từ bảng sát thương thân / đầu (bảng 5.1 trong kế hoạch): damage × headshot = sát thương đầu. */
+const head = (body: number, headDamage: number) => headDamage / body;
 
 const w = (d: Omit<WeaponDef, "pellets" | "headshot" | "speed" | "velocity"> & Partial<Pick<WeaponDef, "pellets" | "headshot" | "speed">>): WeaponDef => ({
   pellets: 1,
@@ -71,20 +91,26 @@ const w = (d: Omit<WeaponDef, "pellets" | "headshot" | "speed" | "velocity"> & P
 });
 
 export const WEAPONS: readonly WeaponDef[] = [
-  w({ id: "p92", name: "P92", class: "pistol", ammo: "9mm", mag: 15, rpm: 450, damage: 32, range: 45, hipSpread: 0.018, adsSpread: 0.008, recoil: 0.018, recoilSide: 0.006, auto: false, reload: 1.6, zoom: 1.2, price: 250, speed: 1.05 }),
-  w({ id: "deagle", name: "Deagle", class: "pistol", ammo: "45acp", mag: 7, rpm: 220, damage: 62, range: 55, hipSpread: 0.025, adsSpread: 0.01, recoil: 0.05, recoilSide: 0.012, auto: false, reload: 1.9, zoom: 1.25, price: 700, speed: 1.05 }),
-  w({ id: "ump45", name: "UMP45", class: "smg", ammo: "45acp", mag: 25, rpm: 650, damage: 35, range: 55, hipSpread: 0.022, adsSpread: 0.01, recoil: 0.011, recoilSide: 0.006, auto: true, reload: 2.4, zoom: 1.3, price: 1200, speed: 1.02 }),
-  w({ id: "vector", name: "Vector", class: "smg", ammo: "9mm", mag: 25, rpm: 1100, damage: 29, range: 45, hipSpread: 0.024, adsSpread: 0.011, recoil: 0.009, recoilSide: 0.007, auto: true, reload: 2.1, zoom: 1.3, price: 1500, speed: 1.02 }),
-  w({ id: "m416", name: "M416", class: "ar", ammo: "556", mag: 30, rpm: 700, damage: 40, range: 120, hipSpread: 0.028, adsSpread: 0.006, recoil: 0.012, recoilSide: 0.006, auto: true, reload: 2.3, zoom: 1.6, price: 2700, speed: 0.95 }),
-  w({ id: "akm", name: "AKM", class: "ar", ammo: "762", mag: 30, rpm: 600, damage: 47, range: 110, hipSpread: 0.032, adsSpread: 0.008, recoil: 0.018, recoilSide: 0.01, auto: true, reload: 2.5, zoom: 1.6, price: 2500, speed: 0.95 }),
-  w({ id: "scar", name: "SCAR-L", class: "ar", ammo: "556", mag: 30, rpm: 625, damage: 41, range: 120, hipSpread: 0.026, adsSpread: 0.006, recoil: 0.011, recoilSide: 0.005, auto: true, reload: 2.4, zoom: 1.6, price: 2800, speed: 0.95 }),
-  w({ id: "m249", name: "M249", class: "lmg", ammo: "556", mag: 100, rpm: 750, damage: 40, range: 110, hipSpread: 0.04, adsSpread: 0.012, recoil: 0.01, recoilSide: 0.008, auto: true, reload: 5.5, zoom: 1.6, price: 0, speed: 0.85, rare: true }),
+  w({ id: "p92", name: "P92", class: "pistol", ammo: "9mm", mag: 15, extMag: 20, rpm: 450, damage: 32, range: 45, hipSpread: 0.018, adsSpread: 0.008, recoil: 0.018, recoilSide: 0.006, auto: false, reload: 1.6, zoom: 1.2, price: 250, speed: 1.05 }),
+  w({ id: "deagle", name: "Deagle", class: "pistol", ammo: "45acp", mag: 7, extMag: 10, rpm: 220, damage: 62, range: 55, hipSpread: 0.025, adsSpread: 0.01, recoil: 0.05, recoilSide: 0.012, auto: false, reload: 1.9, zoom: 1.25, price: 700, speed: 1.05 }),
+  w({ id: "ump45", name: "UMP45", class: "smg", ammo: "45acp", mag: 25, extMag: 35, rpm: 650, damage: 35, range: 55, hipSpread: 0.022, adsSpread: 0.01, recoil: 0.011, recoilSide: 0.006, auto: true, reload: 2.4, zoom: 1.3, price: 1200, speed: 1.02 }),
+  // Vector: xả cực nhanh, băng nhỏ (19, mở rộng 33), đạn chậm nên bắn xa phải ngắm đón.
+  w({ id: "vector", name: "Vector", class: "smg", ammo: "9mm", mag: 19, extMag: 33, rpm: 1100, damage: 31, headshot: head(31, 58), range: 45, hipSpread: 0.024, adsSpread: 0.011, recoil: 0.009, recoilSide: 0.007, auto: true, reload: 1.9, zoom: 1.3, price: 1500, speed: 1.02 }),
+  w({ id: "m416", name: "M416", class: "ar", ammo: "556", mag: 30, extMag: 40, rpm: 700, damage: 41, headshot: head(41, 86), range: 120, hipSpread: 0.028, adsSpread: 0.006, recoil: 0.012, recoilSide: 0.006, auto: true, reload: 2.3, zoom: 1.6, price: 2700, speed: 0.95 }),
+  w({ id: "akm", name: "AKM", class: "ar", ammo: "762", mag: 30, extMag: 40, rpm: 600, damage: 49, headshot: head(49, 102), range: 110, hipSpread: 0.032, adsSpread: 0.008, recoil: 0.018, recoilSide: 0.01, auto: true, reload: 2.5, zoom: 1.6, price: 2500, speed: 0.95 }),
+  w({ id: "scar", name: "SCAR-L", class: "ar", ammo: "556", mag: 30, extMag: 40, rpm: 625, damage: 41, range: 120, hipSpread: 0.026, adsSpread: 0.006, recoil: 0.011, recoilSide: 0.005, auto: true, reload: 2.4, zoom: 1.6, price: 2800, speed: 0.95 }),
+  w({ id: "m249", name: "M249", class: "lmg", ammo: "556", mag: 100, rpm: 750, damage: 45, headshot: head(45, 94), range: 110, hipSpread: 0.04, adsSpread: 0.012, recoil: 0.01, recoilSide: 0.008, auto: true, reload: 5.5, zoom: 1.6, price: 0, speed: 0.85, rare: true }),
+  // DP-28: trung liên đĩa đạn 47 viên nằm trên nóc, bắn chậm mà đầm, đạn 7.62.
+  w({ id: "dp28", name: "DP-28", class: "lmg", ammo: "762", mag: 47, rpm: 550, damage: 51, headshot: head(51, 107), range: 120, hipSpread: 0.042, adsSpread: 0.01, recoil: 0.014, recoilSide: 0.006, auto: true, reload: 4.4, zoom: 1.5, price: 3600, speed: 0.87 }),
   w({ id: "s686", name: "S686", class: "shotgun", ammo: "12g", mag: 2, rpm: 200, damage: 24, pellets: 9, range: 22, hipSpread: 0.075, adsSpread: 0.06, recoil: 0.06, recoilSide: 0.02, auto: false, reload: 2.2, zoom: 1.2, price: 1100, headshot: 1.5 }),
-  w({ id: "sks", name: "SKS", class: "dmr", ammo: "762", mag: 10, rpm: 330, damage: 55, range: 220, hipSpread: 0.035, adsSpread: 0.003, recoil: 0.03, recoilSide: 0.008, auto: false, reload: 2.9, zoom: 1.5, price: 3200, speed: 0.95, headshot: 2.3 }),
-  w({ id: "kar98k", name: "Kar98k", class: "sniper", ammo: "762", mag: 5, rpm: 48, damage: 80, range: 400, hipSpread: 0.05, adsSpread: 0.0008, recoil: 0.06, recoilSide: 0.01, auto: false, reload: 3.8, zoom: 1.5, price: 3800, speed: 0.95, headshot: 2.5 }),
-  // RPG-7: một quả mỗi lần nạp, bay chậm, rơi nhiều ở xa; nổ phá xe tăng, người đứng gần cũng chết.
-  w({ id: "rpg7", name: "RPG-7", class: "launcher", ammo: "rocket", mag: 1, rpm: 40, damage: 0, range: 160, hipSpread: 0.04, adsSpread: 0.006, recoil: 0.05, recoilSide: 0.01, auto: false, reload: 3.4, zoom: 1.4, price: 2200, speed: 0.88, headshot: 1, explosive: { radius: 4.5, damage: 110, armor: 380 } }),
-  w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, rpm: 40, damage: 105, range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, headshot: 2.5, rare: true }),
+  // S1897: shotgun bơm 5 viên, nạp từng viên (bắn được giữa chừng), kéo bơm sau mỗi phát.
+  w({ id: "s1897", name: "S1897", class: "shotgun", ammo: "12g", mag: 5, rpm: 75, damage: 24, pellets: 9, range: 24, hipSpread: 0.07, adsSpread: 0.055, recoil: 0.065, recoilSide: 0.018, auto: false, reload: 0.4, shell: 0.5, pump: true, zoom: 1.2, price: 1300, headshot: 1.5 }),
+  w({ id: "sks", name: "SKS", class: "dmr", ammo: "762", mag: 10, extMag: 20, rpm: 330, damage: 55, range: 220, hipSpread: 0.035, adsSpread: 0.003, recoil: 0.03, recoilSide: 0.008, auto: false, reload: 2.9, zoom: 1.5, price: 3200, speed: 0.95, headshot: 2.3 }),
+  w({ id: "kar98k", name: "Kar98k", class: "sniper", ammo: "762", mag: 5, rpm: 48, damage: 79, headshot: head(79, 197), range: 400, hipSpread: 0.05, adsSpread: 0.0008, recoil: 0.06, recoilSide: 0.01, auto: false, reload: 3.8, zoom: 1.5, price: 3800, speed: 0.95 }),
+  // RPG-7: một quả mỗi lần nạp; rời ống chậm (115 m/s) rồi động cơ đẩy lên 295 m/s, võng theo trọng lực.
+  w({ id: "rpg7", name: "RPG-7", class: "launcher", ammo: "rocket", mag: 1, rpm: 40, damage: 0, range: 160, hipSpread: 0.04, adsSpread: 0.006, recoil: 0.05, recoilSide: 0.01, auto: false, reload: 3.4, zoom: 1.4, price: 2200, speed: 0.88, headshot: 1, explosive: { radius: 4.5, damage: 110, armor: 380 }, boost: { vmax: 295, accel: 400 } }),
+  // AWM: trúng đầu 250, mũ cấp 3 cũng không đỡ nổi (một phát gục).
+  w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, extMag: 7, rpm: 40, damage: 105, headshot: head(105, 250), range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, rare: true }),
 ];
 
 export const WEAPON: ReadonlyMap<string, WeaponDef> = new Map(WEAPONS.map((d) => [d.id, d]));
@@ -118,6 +144,39 @@ export function bulletSteps(velocity: number, max: number): number[] {
   for (let s = seg; s < max; s += seg) out.push(s);
   out.push(max);
   return out;
+}
+
+/**
+ * Thời gian (giây) để đạn đi được `s` mét. Đạn thường bay đều ở sơ tốc; rocket có động cơ (`boost`) rời ống ở sơ tốc
+ * rồi tăng tốc đều tới `vmax`, sau đó bay đều. Server (hẹn giờ nổ) và client (vệt đạn) cùng dùng hàm này.
+ */
+export function flightTime(velocity: number, s: number, boost?: Boost): number {
+  if (!boost || boost.vmax <= velocity || boost.accel <= 0) return s / velocity;
+  const tb = (boost.vmax - velocity) / boost.accel;
+  const sb = velocity * tb + 0.5 * boost.accel * tb * tb;
+  if (s <= sb) return (-velocity + Math.sqrt(velocity * velocity + 2 * boost.accel * s)) / boost.accel;
+  return tb + (s - sb) / boost.vmax;
+}
+
+/** Ngược lại của `flightTime`: sau `t` giây đạn đã đi được bao nhiêu mét. */
+export function flightDistance(velocity: number, t: number, boost?: Boost): number {
+  if (!boost || boost.vmax <= velocity || boost.accel <= 0) return t * velocity;
+  const tb = (boost.vmax - velocity) / boost.accel;
+  if (t <= tb) return velocity * t + 0.5 * boost.accel * t * t;
+  return velocity * tb + 0.5 * boost.accel * tb * tb + (t - tb) * boost.vmax;
+}
+
+/** Như `bulletAt` nhưng tính cả động cơ rocket: rơi g·t²/2 với t là thời gian bay thật tới quãng `s`. */
+export function projectileAt(o: readonly [number, number, number], d: readonly [number, number, number], velocity: number, s: number, boost?: Boost): [number, number, number] {
+  if (!boost) return bulletAt(o, d, velocity, s);
+  const t = flightTime(velocity, s, boost);
+  return [o[0] + d[0] * s, o[1] + d[1] * s - 0.5 * BULLET_GRAVITY * t * t, o[2] + d[2] * s];
+}
+
+/** Đạn của khẩu này rơi bao nhiêu mét ở cự ly `s` (rocket tính cả tăng tốc). */
+export function weaponDrop(def: Pick<WeaponDef, "velocity" | "boost">, s: number): number {
+  const t = flightTime(def.velocity, s, def.boost);
+  return 0.5 * BULLET_GRAVITY * t * t;
 }
 
 /**
@@ -196,7 +255,7 @@ export function sightFits(sight: string, def: WeaponDef): boolean {
 // ---------------------------------------------------------------------------- phụ kiện khác (như PUBG)
 
 export type AttachmentSlot = "muzzle" | "grip" | "mag" | "stock";
-export type AttachmentId = "comp" | "suppressor" | "flashhider" | "choke" | "vgrip" | "agrip" | "halfgrip" | "extmag" | "quickmag" | "extquick" | "tacstock" | "cheekpad";
+export type AttachmentId = "comp" | "suppressor" | "flashhider" | "choke" | "vgrip" | "agrip" | "halfgrip" | "extmag" | "quickmag" | "extquick" | "dualmag" | "tacstock" | "cheekpad" | "bipod";
 
 export interface AttachmentDef {
   id: AttachmentId;
@@ -215,6 +274,10 @@ export interface AttachmentDef {
   suppressed?: boolean;
   /** Che lửa đầu nòng. */
   flashless?: boolean;
+  /** Chân chống: nhân giật khi nằm sấp, đứng yên (tì chân xuống đất); các tư thế khác không có tác dụng. */
+  proneRecoil?: number;
+  /** Hộp đạn kép (hai băng dán nhau): cứ một lần thay thì lần sau chỉ lật băng, nhanh hơn (nhân `DUAL_MAG_RELOAD`). */
+  dualMag?: boolean;
   /** Mô tả ngắn cho cửa hàng. */
   desc: string;
 }
@@ -227,13 +290,18 @@ export const ATTACHMENTS: Record<AttachmentId, AttachmentDef> = {
   vgrip: { id: "vgrip", name: "Tay cầm dọc", slot: "grip", price: 450, recoilV: 0.8, desc: "giảm 20% giật dọc" },
   agrip: { id: "agrip", name: "Tay cầm nghiêng", slot: "grip", price: 450, recoilH: 0.75, spread: 0.9, desc: "giảm 25% giật ngang, chụm hơn khi bắn hông" },
   halfgrip: { id: "halfgrip", name: "Tay cầm nửa", slot: "grip", price: 400, recoilV: 0.9, recoilH: 0.88, desc: "giảm cân bằng giật dọc và ngang" },
+  bipod: { id: "bipod", name: "Chân chống (Bipod)", slot: "grip", price: 550, proneRecoil: 0.45, desc: "nằm sấp bắn: giảm 55% giật; đứng, ngồi thì không tác dụng" },
   extmag: { id: "extmag", name: "Băng đạn mở rộng", slot: "mag", price: 500, magBonus: 0.35, desc: "thêm khoảng 35% đạn mỗi băng" },
   quickmag: { id: "quickmag", name: "Băng đạn thay nhanh", slot: "mag", price: 400, reload: 0.7, desc: "thay đạn nhanh hơn 30%" },
   extquick: { id: "extquick", name: "Băng mở rộng thay nhanh", slot: "mag", price: 0, magBonus: 0.35, reload: 0.7, desc: "vừa nhiều đạn vừa thay nhanh (hàng hiếm)" },
+  dualmag: { id: "dualmag", name: "Hộp đạn kép", slot: "mag", price: 450, dualMag: true, desc: "hai băng dán nhau: cứ cách một lần thay thì chỉ lật băng, nhanh gấp đôi" },
   tacstock: { id: "tacstock", name: "Báng chiến thuật", slot: "stock", price: 400, recoilV: 0.9, recoilH: 0.9, desc: "giảm 10% giật, ngắm vững hơn" },
   cheekpad: { id: "cheekpad", name: "Đệm má", slot: "stock", price: 400, recoilV: 0.85, desc: "súng bắn tỉa: giảm 15% giật, ngắm vững" },
 };
 export const ATTACHMENT_IDS = Object.keys(ATTACHMENTS) as AttachmentId[];
+
+/** Hộp đạn kép: lần thay "lật băng" mất chừng này phần thời gian thay thường. */
+export const DUAL_MAG_RELOAD = 0.5;
 
 /** Phụ kiện nào lắp được lên súng nào (giống PUBG: súng lục chỉ giảm thanh + băng; shotgun chỉ choke; M249 chỉ báng). */
 export function attachmentFits(att: string, def: WeaponDef): boolean {
@@ -249,9 +317,12 @@ export function attachmentFits(att: string, def: WeaponDef): boolean {
       if (c === "pistol") return a.id === "suppressor";
       return true;
     case "grip":
+      // Chân chống chỉ cho súng nòng dài bắn xa (súng trường, trung liên, bắn tỉa); tiểu liên thì không.
+      if (a.id === "bipod") return c === "ar" || c === "lmg" || c === "dmr" || c === "sniper";
       return c === "ar" || c === "smg" || c === "dmr";
     case "mag":
       if (c === "shotgun" || def.id === "kar98k") return false;
+      if (a.id === "dualmag") return c === "ar" || c === "smg" || c === "dmr";
       return c !== "lmg";
     case "stock":
       if (a.id === "cheekpad") return c === "sniper" || c === "dmr";
@@ -278,16 +349,20 @@ export function withAttachments(def: WeaponDef, list: string) {
   let spread = 1;
   let suppressed = false;
   let flashless = false;
+  let proneRecoil = 1;
+  let dualMag = false;
   for (const a of atts) {
-    if (a.magBonus) mag = Math.round(def.mag * (1 + a.magBonus));
+    if (a.magBonus) mag = def.extMag ?? Math.round(def.mag * (1 + a.magBonus));
     if (a.reload) reload *= a.reload;
     recoilV *= a.recoilV ?? 1;
     recoilH *= a.recoilH ?? 1;
     spread *= a.spread ?? 1;
     suppressed ||= !!a.suppressed;
     flashless ||= !!a.flashless;
+    proneRecoil *= a.proneRecoil ?? 1;
+    dualMag ||= !!a.dualMag;
   }
-  return { mag, reload, recoilV, recoilH, spread, suppressed, flashless, atts };
+  return { mag, reload, recoilV, recoilH, spread, suppressed, flashless, proneRecoil, dualMag, atts };
 }
 
 /** Phóng đại khi ngắm: theo ống ngắm đang lắp, không có thì theo thước ngắm sắt của súng. */

@@ -1,5 +1,7 @@
 import { WEAPON, type WeaponClass } from "@tentides/content";
 import { audio, noiseBurst, tone, type Bus, type Place } from "./engine.ts";
+import { CRACK_RANGE, ENV_SHAPE, MAX_SOUND_DELAY, SNAP_RANGE, SPEED_OF_SOUND, WHIZ_RANGE, echoTaps } from "./acoustics.ts";
+import { acousticAt } from "./environment.ts";
 
 // Âm thanh đấu súng (chế độ Battleground): tiếng nổ từng loại súng, thay đạn, lựu đạn, trúng đích, bước chân...
 // Tất cả tổng hợp tại chỗ như sfx.ts. Tiếng nổ súng và lựu đạn được dựng sẵn thành buffer (tính từng mẫu, xem
@@ -12,9 +14,8 @@ import { audio, noiseBurst, tone, type Bus, type Place } from "./engine.ts";
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
-/** Vận tốc âm thanh (m/s) và độ trễ tối đa (không để tiếng đến quá muộn so với hình). */
-const SPEED_OF_SOUND = 343;
-const MAX_DELAY = 1.1;
+/** Độ trễ tối đa (không để tiếng đến quá muộn so với hình); vận tốc âm thanh ở acoustics.ts. */
+const MAX_DELAY = MAX_SOUND_DELAY;
 
 /** Chạy an toàn: âm thanh không bao giờ được làm hỏng trò chơi. */
 function safe<A extends unknown[]>(fn: (...args: A) => void): (...args: A) => void {
@@ -785,8 +786,12 @@ export const playGunshot = safe((weaponId: string, at: Place, local: boolean, su
   // Gần: phần thẳng áp đảo; xa: phần thẳng mờ nhanh, còn lại chủ yếu tiếng dội (như tiếng súng xa thật).
   const direct = local ? 1 : 1 / (1 + Math.pow(d / 110, 1.6));
   const dryLevel = loud * (local ? 1 : 0.95 * sp!.gain * direct) * (suppressed ? 0.45 : 1);
-  const tailLevel = loud * P.tailVol * (local ? (burst ? 0.6 : 1) : Math.pow(sp!.gain, 0.55) * (1 + 0.8 * Math.min(1, d / 160))) * (suppressed ? 0.18 : 1);
-  const reverb = P.rev * (local ? 0.45 : 0.6 + 1.2 * Math.min(1, d / 180));
+  // Môi trường quanh chỗ bắn (phố, đồi, rừng, trong nhà): chỉnh đuôi vang, hồi âm, tiếng dội từ vách.
+  const L = audio.listener;
+  const env = local ? acousticAt(L.x, L.y, L.z) : acousticAt(at.x, at.y, at.z);
+  const E = ENV_SHAPE[env?.kind ?? "open"];
+  const tailLevel = E.tail * loud * P.tailVol * (local ? (burst ? 0.6 : 1) : Math.pow(sp!.gain, 0.55) * (1 + 0.8 * Math.min(1, d / 160))) * (suppressed ? 0.18 : 1);
+  const reverb = E.reverb * P.rev * (local ? 0.45 : 0.6 + 1.2 * Math.min(1, d / 180));
   const v = voice("gun", Math.max(dryLevel, tailLevel * 0.6), { sp, reverb, wide: local ? 0.35 : 0, gain: 1 });
   if (!v) return;
 
@@ -812,11 +817,32 @@ export const playGunshot = safe((weaponId: string, at: Place, local: boolean, su
     v.noise(0.02, { type: "lowpass", freq: 600, decay: 0.7, peak: 0.6 * dryLevel });
   }
   // 6. Đuôi vang ngoài trời: nhánh riêng, lọc nhẹ theo khoảng cách, lệch trái phải ít (tiếng dội đến từ nhiều phía).
-  const tailCut = local ? 20000 : clamp(9000 * Math.exp(-d / 150), 450, 20000);
+  const tailCut = Math.min(E.cut, local ? 20000 : clamp(9000 * Math.exp(-d / 150), 450, 20000));
   const tail = v.branch(tailCut, (sp?.pan ?? 0) * 0.35);
   v.buffer(0.004, pick(bank.tail), Math.sqrt(rate), tailLevel, tail);
-  // 7. Súng lớn nghe từ xa: thêm một đợt dội muộn từ đồi xa, lăn rền như sấm.
-  if (d > 110 && (cls === "sniper" || cls === "dmr" || cls === "lmg")) {
+  if (E.hold < Infinity) {
+    // Đỉnh đồi / trong nhà: cắt đuôi ngoài trời sớm (tan nhanh, hay bị tường nuốt).
+    tail.gain.setValueAtTime(1, v.t0 + E.hold);
+    tail.gain.exponentialRampToValueAtTime(0.001, v.t0 + E.hold + E.fade);
+  }
+  // 6b. Trong nhà: phản xạ sớm dày đặc từ tường, trần sát nhau (7–25 ms) qua lọc thấp, nghe "ùng" và bí.
+  const roomLevel = dryLevel * (suppressed ? 0.4 : 1);
+  if (E.boom > 0) {
+    const boom = v.branch(local ? 1100 : 800, (sp?.pan ?? 0) * 0.3);
+    v.buffer(0.007, pick(bank.dry), rate * 0.97, roomLevel * 0.5 * E.boom, boom);
+    v.buffer(0.016, pick(bank.dry), rate * 0.94, roomLevel * 0.35 * E.boom, boom);
+    v.buffer(0.027, pick(bank.dry), rate * 0.9, roomLevel * 0.22 * E.boom, boom);
+  }
+  // 6c. Tiếng dội rời từ các vách quanh chỗ bắn (phố: "đét... đét" lệch hai bên), trễ theo khoảng cách tới vách.
+  if (env && E.slap > 0) {
+    const taps = echoTaps(env.walls, L.yaw, E.slap, E.boom > 0 ? 2 : 3);
+    for (const tap of taps) {
+      const b = v.branch(Math.min(tailCut, E.boom > 0 ? 2400 : 4200), tap.pan);
+      v.buffer(tap.delay, pick(bank.dry), rate * 0.96, roomLevel * tap.gain * (local ? 1 : Math.min(1, 0.4 + d / 60)), b);
+    }
+  }
+  // 7. Súng lớn nghe từ xa: thêm một đợt dội muộn từ đồi xa, lăn rền như sấm (đỉnh đồi thì không có gì dội lại).
+  if (d > 110 && E.hold === Infinity && (cls === "sniper" || cls === "dmr" || cls === "lmg")) {
     v.buffer(rand(0.35, 0.7), pick(bank.tail), Math.sqrt(rate) * 0.85, tailLevel * 0.55, tail);
   }
   v.done();
@@ -892,14 +918,42 @@ function boltCycle(v: Voice, dt: number, rate = 1) {
   v.osc(dt + 0.4 * rate, { freq: 210, freqEnd: 100, decay: 0.05, peak: 0.35 });
 }
 
-/** Thay đạn cho khẩu này, trải trong `seconds` giây. Trả về hàm hủy (khi đổi súng giữa chừng). */
-export function playReload(weaponId: string, seconds: number): () => void {
+/** Kéo bơm shotgun (S1897): ốp lót tay lùi về (vỏ đạn văng), đẩy tới đóng khoá. */
+function pumpCycle(v: Voice, dt: number) {
+  slide(v, dt, 900, 1700, 0.08, 0.5);
+  clack(v, dt + 0.08, 1500, 0.9);
+  v.osc(dt + 0.08, { freq: 200, freqEnd: 95, decay: 0.05, peak: 0.4 });
+  slide(v, dt + 0.15, 1600, 900, 0.07, 0.45);
+  clack(v, dt + 0.22, 1250, 1);
+  v.osc(dt + 0.22, { freq: 170, freqEnd: 80, decay: 0.06, peak: 0.45 });
+}
+
+/**
+ * Thay đạn cho khẩu này, trải trong `seconds` giây. Trả về hàm hủy (khi đổi súng giữa chừng, hay bắn ngắt lần nạp từng
+ * viên). `shells`: súng nạp từng viên thì số viên sẽ nhét; `flip`: hộp đạn kép, chỉ lật băng.
+ */
+export function playReload(weaponId: string, seconds: number, opts: { shells?: number; flip?: boolean } = {}): () => void {
   try {
-    const cls: WeaponClass = WEAPON.get(weaponId)?.class ?? "ar";
+    const def = WEAPON.get(weaponId);
+    const cls: WeaponClass = def?.class ?? "ar";
     const s = clamp(Number.isFinite(seconds) ? seconds : 2, 0.5, 8);
     const v = voice("local", 0.5);
     if (!v) return noop;
-    if (cls === "shotgun") {
+    if (def?.shell && opts.shells) {
+      // Shotgun bơm: lật súng, nhét từng viên vào ống tiếp đạn (tiếng nhựa trượt + lò xo bật), mỗi viên một nhịp.
+      clack(v, 0.05, 1300, 0.4);
+      for (let i = 0; i < opts.shells; i++) {
+        const t = def.reload + i * def.shell + def.shell * 0.45;
+        slide(v, t, 650, 1300, 0.08, 0.32);
+        clack(v, t + 0.08, rand(1150, 1350), 0.55);
+        v.osc(t + 0.08, { type: "triangle", freq: rand(2300, 2700), decay: 0.04, peak: 0.12 });
+      }
+    } else if (opts.flip) {
+      // Hộp đạn kép: rút băng, lật sang băng kia, đẩy vào, kéo khoá.
+      magOut(v, s * 0.1);
+      magIn(v, s * 0.45);
+      charge(v, s * 0.78);
+    } else if (cls === "shotgun") {
       // Bẻ nòng, nạp hai viên, đóng nòng.
       clack(v, 0.05, 1500, 0.8);
       slide(v, 0.08, 1100, 600, 0.12, 0.3);
@@ -938,6 +992,32 @@ export function playReload(weaponId: string, seconds: number): () => void {
     return noop;
   }
 }
+
+/** Kéo bơm sau phát bắn shotgun bơm (S1897). */
+export const playPump = safe(() => {
+  const v = voice("local", 0.5);
+  if (!v) return;
+  pumpCycle(v, 0);
+  v.done();
+});
+
+/**
+ * Đạn nảy khỏi kim loại / bê tông: tiếng "keng" chát rồi tiếng rít kim loại trượt cao độ xuống (viên đạn méo xoáy
+ * bay đi). `delay`: lúc đạn tới chỗ nảy.
+ */
+export const playRicochet = safe((at: Place, delay: number) => {
+  const sp = spatial(at, 90, 6);
+  if (!sp) return;
+  sp.delay = Math.min(0.8, sp.delay + Math.max(0, delay));
+  const v = voice("fx", 0.5 * sp.gain, { sp, reverb: 0.2 });
+  if (!v) return;
+  const f = rand(2400, 3400);
+  v.noise(0, { type: "highpass", freq: 3200, decay: 0.015, peak: 0.9, attack: 0.0005 });
+  v.osc(0, { type: "triangle", freq: f * 1.4, decay: 0.08, peak: 0.3 });
+  v.noise(0.01, { type: "bandpass", freq: f * 1.6, freqEnd: f * 0.45, q: 9, attack: 0.03, decay: 0.45, peak: 0.6 });
+  v.osc(0.012, { type: "sine", freq: f, freqEnd: f * 0.4, attack: 0.02, decay: 0.42, peak: 0.22 });
+  v.done();
+});
 
 /** Chu trình khóa nòng sau phát bắn tỉa (Kar98k, AWM). */
 export const playBolt = safe(() => {
@@ -1002,32 +1082,48 @@ export const playArmorHit = safe(() => {
 });
 
 /**
- * Đạn bay sượt qua người: `at` là điểm đường đạn gần mình nhất, `miss` là khoảng cách tới đầu (m), `delay` là lúc
- * viên đạn tới điểm đó (giây, theo sơ tốc). Đạn siêu thanh (nhanh hơn 343 m/s) kêu "chát!" như roi quất (sóng xung
- * kích), sát tai thì rất to và gắt; đạn chậm (UMP45, súng lục) chỉ rít "víu" trượt cao độ. Cả hai lệch đúng bên đạn bay.
+ * Đạn bay ngang người: `at` là điểm đường đạn gần mình nhất, `miss` là khoảng cách tới đầu (m), `delay` là lúc tiếng
+ * tới tai (giây, xem `flybyTiming`: đạn bay tới điểm đó theo sơ tốc). Đạn siêu thanh (nhanh hơn 343 m/s, không giảm
+ * thanh) kêu "CHÁT!" đanh như roi quất (sóng xung kích) từ điểm gần nhất, tới trước tiếng nổ đầu nòng, nghe được
+ * khi đạn bay ngang trong 12 m; dưới 1 m thì cực to, gắt. Đạn chậm (UMP45, giảm thanh) chỉ rít "víu" trượt cao độ khi
+ * cách dưới 4 m. Tiếng lệch đúng bên đạn bay.
  */
-export const playBulletWhiz = safe((at: Place, miss: number, delay: number, velocity: number) => {
+export const playBulletWhiz = safe((at: Place, miss: number, delay: number, velocity: number, supersonic = velocity > SPEED_OF_SOUND) => {
   const sp = spatial(at, 30, 3);
   if (!sp) return;
-  sp.delay = Math.min(0.6, Math.max(0, delay));
+  sp.delay = clamp(delay, 0, MAX_DELAY);
   sp.cutoff = 17000;
-  // Gần tai thì lệch hẳn sang một bên (đạn bay bên trái hay bên phải đầu).
-  sp.pan = clamp(sp.pan * 1.3, -0.95, 0.95);
-  const near = clamp(1 - miss / 7, 0, 1);
-  const level = (0.35 + 0.75 * near * near) * clamp(sp.gain * 1.6, 0.3, 1);
+  const snap = miss < SNAP_RANGE;
+  // Gần tai thì lệch hẳn sang một bên (đạn bay bên trái hay bên phải đầu); sát tai thì gần như chỉ một tai nghe.
+  sp.pan = clamp(sp.pan * (snap ? 1.6 : 1.3), -0.95, 0.95);
+  const near = clamp(1 - miss / WHIZ_RANGE, 0, 1);
+  const crackNear = clamp(1 - miss / CRACK_RANGE, 0, 1);
+  const whizzes = miss < WHIZ_RANGE;
+  if (!supersonic && !whizzes) return;
+  const level = (supersonic ? 0.3 + 0.9 * crackNear * crackNear : 0.35 + 0.75 * near * near) * clamp(sp.gain * 1.6, 0.3, 1) * (snap ? 1.25 : 1);
   const v = voice("fx", level, { sp, gain: level });
   if (!v) return;
-  if (velocity > 360) {
-    // Sóng xung kích: cú "chát" cực ngắn dải rộng, rồi tiếng tách cộng hưởng cao.
-    v.noise(0, { type: "highpass", freq: 1800, q: 0.6, decay: 0.006 + 0.004 * near, peak: 1.3, attack: 0.0002 });
-    v.noise(0.0008, { type: "bandpass", freq: rand(2600, 3400), q: 2.2, decay: 0.018, peak: 0.8, attack: 0.0003 });
-    v.osc(0, { type: "square", freq: rand(900, 1300), freqEnd: 400, decay: 0.012, peak: 0.12 * near, attack: 0.0002 });
+  if (supersonic) {
+    // Sóng xung kích: cú "chát" cực ngắn dải rộng, rồi tiếng tách cộng hưởng cao. Đạn càng nhanh càng gắt;
+    // đạn vừa qua tốc độ âm thanh (9 mm ~360 m/s) nứt nhẹ.
+    const mach = clamp((velocity - SPEED_OF_SOUND) / 450, 0.2, 1);
+    const k = mach * (0.45 + 0.55 * crackNear);
+    v.noise(0, { type: "highpass", freq: 1800, q: 0.6, decay: 0.005 + 0.005 * crackNear, peak: 1.3 * k, attack: 0.0002 });
+    v.noise(0.0008, { type: "bandpass", freq: rand(2600, 3400), q: 2.2, decay: 0.014 + 0.008 * crackNear, peak: 0.8 * k, attack: 0.0003 });
+    v.osc(0, { type: "square", freq: rand(900, 1300), freqEnd: 400, decay: 0.012, peak: 0.12 * crackNear * k, attack: 0.0002 });
   }
-  // Tiếng rít: tiếng ồn qua bộ lọc dải trượt từ cao xuống thấp (hiệu ứng Doppler khi đạn lao qua).
-  const f = rand(2600, 3600) * (velocity > 360 ? 1 : 0.8);
-  const whizz = velocity > 360 ? 0.35 : 0.9;
-  v.noise(0.002, { type: "bandpass", freq: f, freqEnd: f * 0.35, q: 4, attack: 0.02, decay: 0.16 + 0.1 * near, peak: whizz });
-  v.noise(0.004, { type: "bandpass", freq: f * 1.6, freqEnd: f * 0.5, q: 6, attack: 0.015, decay: 0.1, peak: whizz * 0.5 });
+  if (snap) {
+    // Sát mang tai: thêm cú "bụp" áp suất trầm và tiếng xé gió dày, giật thót tim.
+    v.noise(0, { type: "highpass", freq: 5200, q: 0.7, decay: 0.012, peak: 1.1, attack: 0.0002 });
+    v.osc(0, { freq: 170, freqEnd: 55, decay: 0.07, peak: 0.6, attack: 0.001 });
+  }
+  if (whizzes) {
+    // Tiếng rít: tiếng ồn qua bộ lọc dải trượt từ cao xuống thấp (hiệu ứng Doppler khi đạn lao qua).
+    const f = rand(2600, 3600) * (supersonic ? 1 : 0.8);
+    const whizz = (supersonic ? 0.35 : 0.9) * (0.5 + 0.5 * near);
+    v.noise(0.002, { type: "bandpass", freq: f, freqEnd: f * 0.35, q: 4, attack: 0.02, decay: 0.16 + 0.1 * near, peak: whizz });
+    v.noise(0.004, { type: "bandpass", freq: f * 1.6, freqEnd: f * 0.5, q: 6, attack: 0.015, decay: 0.1, peak: whizz * 0.5 });
+  }
   v.done();
 });
 
@@ -1105,6 +1201,9 @@ const BLASTS: Record<"frag" | "mine", Blast> = {
   mine: { crack: 1.6, nwave: 1.4, click: 1.3, drive: 6.5, body: [85, 26, 0.3, 1.5], blast: [380, 0.22, 1.7], bark: [900, 0.8, 0.05, 0.9], bark2: [340, 0.7, 0.1, 0.9], dry: 1.4, tail: [4.5, 750, 0.9, 7] },
 };
 
+/** Nổ gần hơn chừng này mét thì ù tai nặng. */
+const TINNITUS_RANGE = 5;
+
 /** Nổ lựu đạn / mìn: tiếng nổ lớn với đuôi trầm lăn dài, xa thì có tiếng dội; gần thì rất mạnh và ù tai. */
 export const playExplosion = safe((at: Place, kind: "frag" | "mine" | "flash") => {
   // Lựu đạn choáng có tiếng riêng.
@@ -1141,8 +1240,12 @@ export const playExplosion = safe((at: Place, kind: "frag" | "mine" | "flash") =
     v.buffer(rand(0.5, 0.9), pick(bank.tail), rate * 0.85, tailLevel * 0.5, tail);
   }
   v.done();
-  if (d < 12) {
-    // Ù tai: tiếng rít cao mảnh tắt dần.
+  if (d < TINNITUS_RANGE) {
+    // Nổ sát người (dưới 5 m): ù tai nặng, mất gần hết tiếng xung quanh, chỉ còn "Eeeee" chừng 3 giây. Tiếng nổ vẫn
+    // kịp vang lên trước rồi mới tắt lịm (giảm tiếng bắt đầu sau cú nổ một chút).
+    playTinnitus(3.2, 1 - (d / TINNITUS_RANGE) * 0.4, { depth: 0.97, delay: sp.delay + 0.12 });
+  } else if (d < 12) {
+    // Ù tai nhẹ: tiếng rít cao mảnh tắt dần.
     const ring = voice("local", 0.08 * (1 - d / 12), { delay: sp.delay });
     if (ring) {
       ring.osc(0.05, { freq: rand(3300, 3900), attack: 0.1, decay: 2.2, peak: 1 });
@@ -1384,82 +1487,33 @@ export const playFlashbang = safe((at: Place) => {
   v.done();
 });
 
-/** Mức giảm hiện tại của các bus trò chơi khi ù tai; nhiều lần ù chồng nhau thì lấy mức nặng nhất. */
-interface Deafen {
-  start: number;
-  seconds: number;
-  depth: number;
-}
-const deafens = new Set<Deafen>();
-let deafTimer: ReturnType<typeof setInterval> | null = null;
-/** Độ to gốc của bus sfx và ambience (lấy ở lần giảm đầu tiên; không ai khác chỉnh hai bus này). */
-let deafBase: { sfx: number; ambience: number } | null = null;
-
-/** Độ giảm (0–1) của một lần ù tai ở thời điểm `now`: giảm nhanh, giữ một lúc rồi hồi dần về 0. */
-function deafAt(x: Deafen, now: number): number {
-  const s = (now - x.start) / 1000;
-  if (s < 0) return 0;
-  const hold = x.seconds * 0.3;
-  if (s < hold) return x.depth;
-  return x.depth * Math.max(0, 1 - (s - hold) / Math.max(0.1, x.seconds - hold));
-}
-
-/** Cập nhật độ to hai bus theo các lần ù tai đang còn; hết thì trả về mức gốc và dừng hẹn giờ. */
-function deafTick() {
-  try {
-    const ctx = audio.ctx;
-    const now = performance.now();
-    let depth = 0;
-    for (const x of deafens) {
-      const dx = deafAt(x, now);
-      if ((now - x.start) / 1000 >= x.seconds) deafens.delete(x);
-      else depth = Math.max(depth, dx);
-    }
-    if (ctx && deafBase) {
-      const t = ctx.currentTime;
-      audio.bus("sfx").gain.setTargetAtTime(deafBase.sfx * (1 - depth), t, deafens.size ? 0.05 : 0.25);
-      audio.bus("ambience").gain.setTargetAtTime(deafBase.ambience * (1 - depth), t, deafens.size ? 0.05 : 0.25);
-    }
-    if (!deafens.size && deafTimer) {
-      clearInterval(deafTimer);
-      deafTimer = null;
-    }
-  } catch {
-    // Lỗi âm thanh thì im lặng bỏ qua.
-  }
-}
-
 /**
- * Ù tai sau khi bị lựu đạn choáng: tiếng rít sin cao (3.5–4.5 kHz) có nhịp phách nhẹ, tắt dần trong `seconds` giây,
- * to theo `strength` (0–1). Trong lúc ù, tiếng trò chơi (sfx, ambience) bị giảm nhỏ rồi hồi lại êm. Tiếng ù đi qua
- * bus giao diện nên không bị giảm theo. Trả về hàm dừng sớm.
+ * Ù tai (lựu đạn choáng, nổ sát người): tiếng rít sin cao (3.5–4.5 kHz) có nhịp phách nhẹ, tắt dần trong `seconds`
+ * giây, to theo `strength` (0–1). Trong lúc ù, tiếng trò chơi (sfx, ambience) bị giảm còn `1 − depth` rồi hồi lại êm
+ * (nút giảm tiếng riêng ở engine, không đụng âm lượng người chơi chỉnh). Tiếng ù đi qua bus giao diện nên không bị
+ * giảm theo, nhưng vẫn nhỏ theo âm lượng hiệu ứng đã chỉnh. Trả về hàm dừng sớm.
  */
-export function playTinnitus(seconds: number, strength: number): () => void {
+export function playTinnitus(seconds: number, strength: number, opts: { depth?: number; delay?: number } = {}): () => void {
   try {
     const s = clamp(Number.isFinite(seconds) ? seconds : 3, 0.3, 20);
     const k = clamp(Number.isFinite(strength) ? strength : 1, 0, 1);
-    const v = voice("local", 0.16 * k, { bus: "ui" });
-    if (!v) return noop;
+    const delay = clamp(opts.delay ?? 0, 0, 2);
+    const undo = audio.duck((opts.depth ?? 0.75) * k, s, delay);
+    const v = voice("local", 0.16 * k * audio.settings.volume.sfx, { bus: "ui", delay });
+    if (!v) return undo;
     const f = rand(3500, 4500);
     // Hai sin lệch vài Hz tạo nhịp phách chậm; thêm bồi âm mảnh cho khó chịu hơn.
     v.osc(0, { freq: f, attack: 0.08, decay: s, peak: 1 });
     v.osc(0, { freq: f + rand(3, 7), attack: 0.12, decay: s * 0.85, peak: 0.45 });
     v.osc(0, { freq: f * 1.5, attack: 0.2, decay: s * 0.5, peak: 0.08 });
     v.done();
-
-    if (!deafBase) deafBase = { sfx: audio.bus("sfx").gain.value, ambience: audio.bus("ambience").gain.value };
-    const me: Deafen = { start: performance.now(), seconds: s, depth: 0.75 * k };
-    deafens.add(me);
-    if (!deafTimer) deafTimer = setInterval(deafTick, 60);
-    deafTick();
     let stopped = false;
     return () => {
       if (stopped) return;
       stopped = true;
       try {
         v.kill();
-        deafens.delete(me);
-        deafTick();
+        undo();
       } catch {
         // Lỗi âm thanh thì im lặng bỏ qua.
       }
@@ -1468,6 +1522,13 @@ export function playTinnitus(seconds: number, strength: number): () => void {
     return noop;
   }
 }
+
+/**
+ * Bị áp chế (đạn sượt sát đầu): tiếng xung quanh hụt đi trong chốc lát như tai bị ép. Nhẹ hơn ù tai nhiều.
+ */
+export const playSuppressed = safe((strength: number) => {
+  audio.duck(0.45 * clamp(strength, 0, 1), 0.7, 0.04, 0.03);
+});
 
 // ---------------------------------------------------------------------------- dao, đổi vũ khí, lựu đạn
 

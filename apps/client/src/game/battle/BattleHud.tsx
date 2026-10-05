@@ -41,6 +41,7 @@ import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.t
 import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
+import { Suppression } from "./Suppression.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -71,7 +72,7 @@ function nameOf(room: IslandRoom, id: string): string {
 
 /** Tên súng kèm ống ngắm đang lắp (vd. "Kar98k · 8x"). */
 /** Ký hiệu ngắn của phụ kiện trên ô súng. */
-const ATT_SHORT: Record<string, string> = { comp: "Bù giật", suppressor: "Giảm thanh", flashhider: "Che lửa", choke: "Choke", vgrip: "TC dọc", agrip: "TC nghiêng", halfgrip: "TC nửa", extmag: "Băng+", quickmag: "Băng nhanh", extquick: "Băng+ nhanh", tacstock: "Báng", cheekpad: "Đệm má" };
+const ATT_SHORT: Record<string, string> = { comp: "Bù giật", suppressor: "Giảm thanh", flashhider: "Che lửa", choke: "Choke", vgrip: "TC dọc", agrip: "TC nghiêng", halfgrip: "TC nửa", extmag: "Băng+", quickmag: "Băng nhanh", extquick: "Băng+ nhanh", tacstock: "Báng", cheekpad: "Đệm má", bipod: "Chân chống", dualmag: "Băng kép" };
 
 function withSight(name: string | undefined, sight: string, atts = ""): string {
   if (!name) return "";
@@ -382,10 +383,17 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
       {phase === "battle" && <AirdropMarks room={room} big={big} />}
       {/* Xe tăng của đội mình và xe bỏ trống (xe địch thì không lộ trên bản đồ). */}
       {[...room.state.vehicles.values()]
-        .filter((v) => v.hp > 0 && (!v.driver || (me?.team && v.team === me.team) || v.driver === myId(room)))
-        .map((v, i) => (
-          <rect key={`v${i}`} x={v.x - 6 * u} y={v.z - 6 * u} width={12 * u} height={12 * u} className="bm-tank" style={{ fill: v.driver ? teamColor(v.team) : "#bbb" }} />
-        ))}
+        .filter((v) => v.hp > 0 && ((!v.driver && !v.seats.size) || (me?.team && v.team === me.team) || v.driver === myId(room)))
+        .map((v, i) => {
+          // Xe tăng ô vuông to, xe trinh sát ô vuông nhỏ bo góc, thuyền hình thoi.
+          const r = (v.kind === "tank" ? 6 : 4.5) * u;
+          const fill = v.driver || v.seats.size ? teamColor(v.team) : "#bbb";
+          return v.kind === "boat" ? (
+            <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.4} L${v.x + r},${v.z} L${v.x},${v.z + r * 1.4} L${v.x - r},${v.z} Z`} className="bm-tank" style={{ fill }} />
+          ) : (
+            <rect key={`v${i}`} x={v.x - r} y={v.z - r} width={2 * r} height={2 * r} rx={v.kind === "tank" ? 0 : r * 0.4} className="bm-tank" style={{ fill }} />
+          );
+        })}
       {/* Đồng đội. */}
       {me?.team &&
         [...room.state.players.entries()]
@@ -1128,6 +1136,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
     <div className="hud battle-hud">
       {fighting && <Reticle room={room} />}
       {fighting && <Flashed room={room} />}
+      {fighting && <Suppression />}
       <Compass />
       {fighting && (war ? <WarTop room={room} /> : <TopBar room={room} />)}
       {fighting && war && <CaptureBar room={room} />}
