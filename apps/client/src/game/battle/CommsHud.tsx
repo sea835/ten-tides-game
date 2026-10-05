@@ -3,6 +3,7 @@ import { Messages, type PingBroadcast, type RadioBroadcast } from "@tentides/pro
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, lookLock } from "../input.ts";
 import { playPing, playRadio } from "../sound/radio.ts";
+import { playSpotted } from "../sound/gadgets.ts";
 import { MARKER_POOL, RADIO_ICON, RADIO_KEY, RADIO_KEY_LABEL, RADIO_TEXT, RADIO_WHEEL, addPing, markerPool, pings, pruneRadio, pushRadio, useRadioFeed } from "./comms.ts";
 import { getBattleHud } from "./runtime.ts";
 import "./comms.css";
@@ -24,7 +25,8 @@ export function CommsHud({ room }: { room: IslandRoom }) {
   useEffect(() => {
     const offPing = room.onMessage(Messages.ping, (m: PingBroadcast) => {
       addPing(m, myId(room));
-      playPing(m.kind);
+      if (m.kind === "spotted") playSpotted();
+      else playPing(m.kind);
     });
     const offRadio = room.onMessage(Messages.radio, (m: RadioBroadcast) => {
       pushRadio(m, myId(room));
@@ -167,7 +169,7 @@ export function PingMarks({ u }: { u: number }) {
     <>
       {pings.map((p) => (
         <g key={p.key} transform={`translate(${p.x} ${p.z}) scale(${u})`} className={`bm-ping ${p.kind}`}>
-          {p.kind === "danger" ? <path d="M0,-8 L7,6 L-7,6 Z" /> : p.kind === "enemy" ? <path d="M0,-7 L7,0 L0,7 L-7,0 Z" /> : <circle r={5} />}
+          {p.kind === "danger" ? <path d="M0,-8 L7,6 L-7,6 Z" /> : p.kind === "enemy" || p.kind === "spotted" ? <path d="M0,-7 L7,0 L0,7 L-7,0 Z" /> : <circle r={5} />}
         </g>
       ))}
     </>

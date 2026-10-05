@@ -139,7 +139,7 @@ export function CommsWorld({ room, world }: { room: IslandRoom; world: World }) 
         els[n]!.className = `cm-mark ${p.kind}${p.mine ? " mine" : ""}`;
         els[n]!.children[2]!.textContent = p.mine ? PING_LABEL[p.kind] : `${PING_LABEL[p.kind]} · ${p.name}`;
       }
-      place(els[n]!, n, cam, size, p.x, p.y + (p.kind === "enemy" ? 2.3 : 0.6), p.z);
+      place(els[n]!, n, cam, size, p.x, p.y + (p.kind === "enemy" || p.kind === "spotted" ? 2.3 : 0.6), p.z);
       n++;
     }
     // Lệnh đội đang ra (đội trưởng, chế độ Đồng đội): tới điểm / giữ chốt ở chỗ đã chỉ, lên xe tăng thì ghim vào xe.

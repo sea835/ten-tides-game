@@ -1,7 +1,8 @@
 import { Room, matchMaker, type Client } from "@colyseus/core";
-import { squadSlots } from "@tentides/content";
-import { PingMessage, RadioMessage, SquadBoardMessage } from "@tentides/protocol";
+import { ADRENALINE, AT_MINE, isSoldierClass, squadSlots, withDynamicSlots } from "@tentides/content";
+import { GadgetMessage, PickClassMessage, PingMessage, RadioMessage, SquadBoardMessage } from "@tentides/protocol";
 import { Comms } from "./comms.ts";
+import { Gadgets, SANDBAG_SLOTS } from "./gadgets.ts";
 import {
   ARMOR,
   FLASH,
@@ -172,6 +173,8 @@ interface Mine {
   armIn: number;
   /** Đã bị giẫm: nổ sau chừng này giây. */
   fuse: number;
+  /** Mìn chống tăng (lính Kỹ Thuật): chỉ xe địch cán qua mới nổ. */
+  at?: boolean;
 }
 
 interface Timed {
@@ -234,6 +237,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         return room.map;
       },
       broadcast: (type, message) => room.broadcast(type, message),
+      dynamic: (i, left) => room.gadgets.sandbagHit(i, left),
       crush: (id, amount, by) => {
         const dealt = room.damage(id, amount, "blast", by, "collapse");
         if (dealt && by && by !== id) room.clientOf(by)?.send(Messages.hit, { kind: dealt.killed ? "kill" : "body", armor: dealt.armor, amount: Math.round(dealt.amount) } satisfies HitMessage);
@@ -242,6 +246,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private weatherLeft = WEATHER_MIN;
   /** Giọng nói: chuyển gói bắt tay WebRTC giữa những người thật trong phòng. */
   voice = new VoiceRelay(this);
+  /** Khí tài của bốn lớp lính (gadgets.ts). */
+  gadgets = new Gadgets(this);
 
   async onCreate() {
     this.roomId = await this.uniqueRoomCode();
@@ -261,7 +267,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (p.vehicle) return;
       const now = Date.now();
       const elapsed = now - (this.lastMoveAt.get(id) ?? now);
-      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half)) {
+      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half, p.gear.boost > 0 ? ADRENALINE.speed : 1)) {
         client.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
         return;
       }
@@ -335,6 +341,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const kit = p.kit;
       if (isGunSlot(slot) && !kit[slot]) return;
       if ((slot === "frag" || slot === "smoke" || slot === "mine") && kit[slot] <= 0) return;
+      if ((slot === "gadget1" || slot === "gadget2") && !this.gadgets.canHold(p, slot)) return;
       kit.active = slot;
       this.cancelTimer(id);
     });
@@ -352,6 +359,17 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.melee, MeleeMessage, (client, msg) => {
       const id = this.playerOf(client);
       if (id) this.melee(id, msg.yaw, msg.target);
+    });
+
+    this.onMessage(Messages.gadget, GadgetMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.gadgets.use(id, m);
+    });
+
+    // Sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới.
+    this.onMessage(Messages.pickClass, PickClassMessage, (client, { cls }) => {
+      const p = this.state.players.get(this.playerOf(client) ?? "");
+      if (p && this.state.phase === "lobby") p.gear.cls = cls;
     });
 
     this.onMessage(Messages.placeMine, (client) => {
@@ -604,7 +622,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private setupMap(seed: number) {
     this.state.worldSeed = seed;
     // Bản riêng của phòng (mặt nạ khối vỡ, cây đổ riêng), không đụng bản đồ trong cache dùng chung.
-    this.map = withDestruction(mapForMode(this.state.battleMode, seed));
+    // Thêm chỗ trống cuối danh sách khối cho bao cát dựng giữa trận.
+    this.gadgets.clear();
+    this.map = withDynamicSlots(withDestruction(mapForMode(this.state.battleMode, seed)), SANDBAG_SLOTS);
     this.destruction.reset();
     this.rand = makeRand(seed ^ Date.now());
     for (const p of this.state.players.values()) this.placeAtSpawn(p);
@@ -640,6 +660,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.timers.clear();
     this.vehicles.clear();
     this.airdrops.clear();
+    this.gadgets.clear();
     this.destruction.reset();
     const squad = s.battleMode === "squad";
     const war = s.battleMode === "war";
@@ -662,6 +683,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const outfit = p.kit.outfit;
       resetKit(p.kit, START_MONEY);
       p.kit.outfit = outfit;
+      // Lớp lính: Đồng đội thì đội trưởng (người) mang đồ, khí tài của lớp đã chọn ở sảnh; sinh tồn solo thì không.
+      const cls = p.gear.cls;
+      if (squad && !p.bot && isSoldierClass(cls)) this.gadgets.loadout(p, cls);
+      else if (!war) this.gadgets.equip(p, "");
+      p.gear.cls = cls;
     }
     if (war) this.war.start(clampBots("war", s.bots || WAR_MAX_PER_SIDE));
     else if (squad) this.placeTeams();
@@ -946,6 +972,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     }
     if (s.battleMode === "war") this.war.tick(dt);
     this.tickTimers(dt);
+    this.gadgets.tick(dt);
     this.tickThrown(dt);
     this.tickMines(dt);
     for (const p of s.players.values()) if (p.blind > 0) p.blind = Math.max(0, p.blind - dt);
@@ -969,6 +996,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.bots.clear();
     this.vehicles.clear();
     this.airdrops.clear();
+    this.gadgets.clear();
     this.destruction.reset();
     s.flags.clear();
     for (const [id, p] of s.players) {
@@ -1617,8 +1645,16 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.sendMines(id);
   }
 
+  /** Gài mìn ở (x, y, z) cho người `owner` (`at`: mìn chống tăng của lính Kỹ Thuật). */
+  plantMine(owner: string, x: number, y: number, z: number, at = false): boolean {
+    if (!this.fighting()) return false;
+    this.mines.push({ x, y, z, owner, armIn: at ? AT_MINE.arm : MINE.arm, fuse: -1, at });
+    this.sendMines(owner);
+    return true;
+  }
+
   private sendMines(id: string) {
-    const own = this.mines.filter((m) => m.owner === id && m.fuse < 0).map((m) => ({ x: m.x, y: m.y, z: m.z }));
+    const own = this.mines.filter((m) => m.owner === id && m.fuse < 0).map((m) => ({ x: m.x, y: m.y, z: m.z, ...(m.at ? { at: true } : {}) }));
     this.clientOf(id)?.send(Messages.myMines, own);
   }
 
@@ -1634,15 +1670,18 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         continue;
       }
       if (m.fuse < 0) {
+        const owner = m.at ? this.state.players.get(m.owner) : undefined;
         for (const v of this.state.vehicles.values()) {
           if (v.hp <= 0 || v.driver === m.owner || !v.moving) continue;
-          if (Math.hypot(v.x - m.x, v.z - m.z) < 2.6) {
+          // Mìn chống tăng: xe phe mình cán qua thì không nổ.
+          if (m.at && owner?.team && v.team === owner.team) continue;
+          if (Math.hypot(v.x - m.x, v.z - m.z) < (m.at ? AT_MINE.trigger : 2.6)) {
             m.fuse = 0.2;
             this.broadcast(Messages.mineClick, { x: m.x, y: m.y, z: m.z });
             break;
           }
         }
-        if (m.fuse >= 0) continue;
+        if (m.fuse >= 0 || m.at) continue;
         for (const [id, p] of this.state.players) {
           if (!p.alive || p.vehicle || id === m.owner) continue;
           if (Math.hypot(p.x - m.x, p.z - m.z) < MINE.trigger && Math.abs(p.y - m.y) < 1.2) {
@@ -1657,7 +1696,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (m.fuse <= 0) exploded.add(m);
     }
     for (const m of exploded) {
-      this.explode(m.x, m.y + 0.2, m.z, "mine", m.owner, MINE.radius, MINE.damage);
+      if (m.at) this.gadgets.atBlast(m.x, m.y, m.z, m.owner);
+      else this.explode(m.x, m.y + 0.2, m.z, "mine", m.owner, MINE.radius, MINE.damage);
       if (this.mines.includes(m)) {
         this.mines = this.mines.filter((x) => x !== m);
         this.sendMines(m.owner);

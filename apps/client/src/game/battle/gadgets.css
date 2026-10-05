@@ -1,0 +1,193 @@
+/* Khí tài lớp lính: ô khí tài, ống nhòm, Adrenaline, sửa xe, tiếp tế, chọn lớp, biểu tượng lớp. */
+
+.g-slots {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.g-slot {
+  position: relative;
+  overflow: hidden;
+}
+.g-slot b {
+  color: #ffd97a;
+  font-weight: 600;
+}
+.g-wait {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: #ffb02e;
+}
+
+/* Biểu tượng lớp lính. */
+.g-class {
+  display: inline-block;
+  min-width: 15px;
+  margin-right: 4px;
+  font-style: normal;
+  font-size: 11px;
+  text-align: center;
+  color: #d8d8c8;
+}
+.g-class.c-assault {
+  color: #ff9a4a;
+}
+.g-class.c-recon {
+  color: #8fd14f;
+}
+.g-class.c-support {
+  color: #6fc3ff;
+}
+.g-class.c-engineer {
+  color: #ffd23a;
+}
+
+/* Ống nhòm: hai vòng kính, thước mil, chữ hướng dẫn. */
+.g-binoc {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.g-binoc-mask {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at calc(50% - 17vmin) 50%, transparent 0, transparent 30vmin, rgba(0, 0, 0, 0.93) 31vmin),
+    radial-gradient(circle at calc(50% + 17vmin) 50%, transparent 0, transparent 30vmin, rgba(0, 0, 0, 0.93) 31vmin);
+  background-blend-mode: multiply;
+}
+.g-binoc-mil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26vmin;
+  height: 1px;
+  margin-left: -13vmin;
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.75) 0 1px, transparent 1px 2.6vmin);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4);
+}
+.g-binoc-mil::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1.4vmin;
+  width: 1px;
+  height: 2.8vmin;
+  background: rgba(0, 0, 0, 0.8);
+}
+.g-binoc p {
+  position: absolute;
+  left: 50%;
+  bottom: 13%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Adrenaline: thanh đỏ trên thanh máu. */
+.g-boost {
+  position: absolute;
+  left: 50%;
+  bottom: 118px;
+  width: 220px;
+  margin-left: -110px;
+  font-size: 12px;
+  text-align: center;
+  color: #ff8a8a;
+  text-shadow: 0 1px 2px #000;
+}
+.g-boost i {
+  display: block;
+  height: 4px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.g-boost u {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ff3b30, #ff9a4a);
+}
+
+/* Sửa xe: thanh máu xe. */
+.g-repair i {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.g-repair u {
+  display: block;
+  height: 100%;
+  background: #6fe36f;
+}
+.g-repair.muted {
+  opacity: 0.75;
+}
+
+.g-supply {
+  position: absolute;
+  left: 50%;
+  bottom: 140px;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(40, 70, 30, 0.7);
+  font-size: 12px;
+}
+
+/* Chọn lớp lính ở sảnh. */
+.g-picker {
+  margin-top: 12px;
+}
+.g-picker h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.g-picker-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.g-picker-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.g-picker-list button.on {
+  border-color: #ffb02e;
+  background: rgba(230, 150, 30, 0.3);
+}
+.g-picker-list small {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.g-picker .muted {
+  margin: 6px 0 0;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .g-picker-list {
+    grid-template-columns: 1fr;
+  }
+}
