@@ -71,7 +71,7 @@ function nameOf(room: IslandRoom, id: string): string {
 
 /** Tên súng kèm ống ngắm đang lắp (vd. "Kar98k · 8x"). */
 /** Ký hiệu ngắn của phụ kiện trên ô súng. */
-const ATT_SHORT: Record<string, string> = { comp: "Bù giật", suppressor: "Giảm thanh", flashhider: "Che lửa", choke: "Choke", vgrip: "TC dọc", agrip: "TC nghiêng", halfgrip: "TC nửa", extmag: "Băng+", quickmag: "Băng nhanh", extquick: "Băng+ nhanh", tacstock: "Báng", cheekpad: "Đệm má" };
+const ATT_SHORT: Record<string, string> = { comp: "Bù giật", suppressor: "Giảm thanh", flashhider: "Che lửa", choke: "Choke", vgrip: "TC dọc", agrip: "TC nghiêng", halfgrip: "TC nửa", extmag: "Băng+", quickmag: "Băng nhanh", extquick: "Băng+ nhanh", tacstock: "Báng", cheekpad: "Đệm má", bipod: "Chân chống", dualmag: "Băng kép" };
 
 function withSight(name: string | undefined, sight: string, atts = ""): string {
   if (!name) return "";

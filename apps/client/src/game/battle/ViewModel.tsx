@@ -266,6 +266,8 @@ export function ViewModel({ room }: { room: IslandRoom }) {
         // Băng đạn: rút ra rơi xuống, lắp băng mới từ tay trái đẩy lên. Tay trái rời ốp lót tay đi lấy băng.
         const magG = gg.getObjectByName("mag");
         const withMag = hasMag(weapon);
+        // Băng nằm trên nóc (đĩa đạn DP-28): nhấc lên tháo ra thay vì rút xuống.
+        const topMag = magAt[1] > 0.1;
         if (magG) {
           const out = reloading && withMag ? ramp(r, 0.12, 0.3) : 0;
           const back = reloading && withMag ? ramp(r, 0.62, 0.76) : 1;
@@ -274,21 +276,31 @@ export function ViewModel({ room }: { room: IslandRoom }) {
           const fired = def.class === "launcher" && gun.mag <= 0 && !(reloading && r >= 0.62);
           magG.visible = !gone && !fired;
           const drop = r < 0.5 ? out : 1 - back;
-          magG.position.set(0, -0.22 * drop, -0.03 * drop);
-          magG.rotation.set(0.35 * drop, 0, 0);
+          magG.position.set(topMag ? 0.06 * drop : 0, (topMag ? 0.2 : -0.22) * drop, -0.03 * drop);
+          magG.rotation.set((topMag ? -0.25 : 0.35) * drop, 0, topMag ? 0.4 * drop : 0);
         }
         const lg = leftG.current;
         if (lg) {
           // Các chặng: tới băng đạn (0,1–0,2) → theo băng xuống, khuất dưới (0,2–0,45) → mang băng mới lên (0,45–0,62)
           // → đẩy băng vào (0,62–0,76) → về ốp lót tay (0,76–0,9).
           _v.set(...support);
-          if (reloading) {
+          if (reloading && def.shell) {
+            // Nạp từng viên: tay trái xuống túi đạn ở hông lấy một viên, đưa lên nhét vào cửa nạp dưới hộp khoá nòng.
+            const into = gun.reloadDur * r - def.reload;
+            const ph = into > 0 ? (into % def.shell) / def.shell : 0;
+            const away = into > 0 ? bump(ph, 0, 0.9) : 0;
+            _w.set(0.0, -0.02, 0.06);
+            _v.lerp(_w, ramp(r, 0, 0.08) * (1 - ramp(r, 0.94, 1)));
+            _v.y -= away * 0.2;
+            _v.x += away * 0.06;
+            _v.z -= away * 0.05;
+          } else if (reloading) {
             const toMag = ramp(r, 0.08, 0.2);
             const down = ramp(r, 0.2, 0.36) * (1 - ramp(r, 0.44, 0.6));
             const home = ramp(r, 0.76, 0.9);
-            _w.set(magAt[0] + 0.01, magAt[1] - 0.07, magAt[2]);
+            _w.set(magAt[0] + 0.01, magAt[1] + (topMag ? 0.05 : -0.07), magAt[2]);
             _v.lerp(_w, toMag * (1 - home));
-            _v.y -= down * 0.42;
+            _v.y += down * (topMag ? 0.22 : -0.42);
             _v.z -= down * 0.12;
             _v.x += down * 0.08;
             if (r > 0.62 && r < 0.76) _v.y += 0.02 * bump(r, 0.62, 0.76);
@@ -304,11 +316,14 @@ export function ViewModel({ room }: { room: IslandRoom }) {
           const since = (now - st.actionAt) / 1000;
           let k = 0;
           if (def.class === "sniper") k = bump(since, 0.35, 0.95);
+          // Shotgun bơm: kéo ốp bơm về rồi đẩy tới ngay sau phát bắn (tay trái kéo theo, xem dưới).
+          else if (def.pump) k = bump(since, 0.12, 0.5);
           else k = since < 0.07 ? 1 - since / 0.07 : 0;
           if (def.class === "pistol" && gun.mag <= 0 && !reloading) k = 1;
-          if (reloading && def.class !== "pistol") k = Math.max(k, bump(r, 0.8, 0.94));
+          if (reloading && def.class !== "pistol" && !def.shell) k = Math.max(k, bump(r, 0.8, 0.94));
           if (reloading && def.class === "pistol") k = Math.max(k, 1 - ramp(r, 0.78, 0.86));
           act.position.z = -travel * k;
+          if (def.pump && lg) lg.position.z -= travel * k;
         }
       }
     }

@@ -1,6 +1,7 @@
 import type { ZoneId } from "@tentides/rules";
 import type { GrassPatch } from "./island.ts";
 import { makeRand, subSeed, type Surface, type Tree, type World } from "./worldgen.ts";
+import { PEN_THICK, penetrableBy, penetration, type Caliber } from "./ballistics.ts";
 
 // Bản đồ Battleground: một hòn đảo lớn khác hẳn đảo cốt truyện, có núi, đồi, rừng, bãi biển, và các khu cho đấu súng:
 // thành phố nhà cao tầng, cảng biển lớn (cầu tàu, container, cần cẩu, nhà kho, tàu hàng), pháo đài trên đồi,
@@ -779,14 +780,17 @@ export function boxSpan(index: BoxIndex, i: number, o: readonly [number, number,
 
 // ---------------------------------------------------------------------------- phá huỷ: tường vỡ, đạn xuyên, nhà sập
 
-/** Đạn xuyên qua được tấm mỏng chừng này mét (vách gỗ, tường vữa, tôn) nếu vật liệu cho phép, xem `penetrable`. */
-export const PEN_MAX = 0.45;
-/** Sát thương còn lại sau mỗi lần xuyên. */
+/** Đạn súng trường xuyên qua được tấm mỏng chừng này mét; cỡ đạn khác xem `PEN_THICK` (ballistics.ts). */
+export const PEN_MAX = PEN_THICK.rifle;
+/**
+ * Sát thương còn lại sau mỗi lần xuyên — giá trị cũ dùng chung cho mọi vật liệu, nay chỉ còn để tương thích; sát thương
+ * thật theo vật liệu và cỡ đạn: `penetration` (ballistics.ts).
+ */
 export const PEN_DAMAGE = 0.6;
 
-/** Vật liệu đạn xuyên qua được khi đủ mỏng: gỗ, vữa, tôn biển báo. Gạch, bê tông, đá, bao cát, thép dày thì không. */
+/** Vật liệu đạn súng trường xuyên qua được khi đủ mỏng: gỗ, vữa, tôn. Gạch, bê tông, đá, bao cát, thép dày thì không. */
 export function penetrable(b: BattleBox): boolean {
-  return b.mat === "wood" || b.mat === "plaster" || b.mat === "sign";
+  return penetrableBy(b, "rifle");
 }
 
 /**
@@ -811,7 +815,8 @@ export function bulletWallFactor(b: BattleBox): number {
 
 /**
  * Đường đạn thẳng từ o theo d trong `max` mét, có tính xuyên tường mỏng: găm vào khối nào (`t`, `i`), đã xuyên qua
- * những khối nào, ở đâu (`pens`, tối đa `maxPens`), sát thương còn lại (`mult`).
+ * những khối nào, ở đâu, còn bao nhiêu sát thương sau lớp đó (`pens`, tối đa `maxPens`), sát thương còn lại (`mult`).
+ * Xuyên được hay không, mất bao nhiêu tuỳ vật liệu và cỡ đạn `cal` (xem `penetration`).
  */
 export function bulletThrough(
   index: BoxIndex,
@@ -819,8 +824,9 @@ export function bulletThrough(
   d: readonly [number, number, number],
   max: number,
   maxPens = 1,
-): { t: number; i: number; pens: { i: number; t: number }[]; mult: number } {
-  const pens: { i: number; t: number }[] = [];
+  cal: Caliber = "rifle",
+): { t: number; i: number; pens: { i: number; t: number; mult: number }[]; mult: number } {
+  const pens: { i: number; t: number; mult: number }[] = [];
   let from = 0;
   let mult = 1;
   let skip = -1;
@@ -830,11 +836,12 @@ export function bulletThrough(
     if (hit.i < 0) return { t: Infinity, i: -1, pens, mult };
     const t = from + hit.t;
     const b = index.boxes[hit.i]!;
-    if (pens.length < maxPens && penetrable(b)) {
+    if (pens.length < maxPens && penetrableBy(b, cal)) {
       const [tin, tout] = boxSpan(index, hit.i, o, d);
-      if (tout - Math.max(tin, from) <= PEN_MAX) {
-        pens.push({ i: hit.i, t });
-        mult *= PEN_DAMAGE;
+      const keep = penetration(b, cal, tout - Math.max(tin, from));
+      if (keep > 0) {
+        pens.push({ i: hit.i, t, mult: keep });
+        mult *= keep;
         from = tout + 0.01;
         skip = hit.i;
         if (from >= max) return { t: Infinity, i: -1, pens, mult };

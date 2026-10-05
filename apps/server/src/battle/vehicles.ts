@@ -1,7 +1,9 @@
 import {
   TANK,
-  bulletAt,
   bulletSteps,
+  flightTime,
+  projectileAt,
+  type Boost,
   cannonMuzzle,
   cannonPitch,
   insideBox,
@@ -229,9 +231,10 @@ export class Vehicles {
 
   /**
    * Phóng một viên đạn nổ (pháo xe tăng, RPG) từ `o` theo hướng `d`: dò đường bay cong một lần (đồi, nhà, xe, người),
-   * báo mọi máy vẽ vệt đạn, hẹn giờ nổ đúng lúc đạn tới nơi. `skip` là xe của chính người bắn.
+   * báo mọi máy vẽ vệt đạn, hẹn giờ nổ đúng lúc đạn tới nơi. `skip` là xe của chính người bắn. `boost`: rocket có động
+   * cơ (RPG-7) rời ống chậm rồi tăng tốc: đường bay, độ rơi và giờ nổ tính theo thời gian bay thật (flightTime).
    */
-  launch(owner: string, o: [number, number, number], d: [number, number, number], velocity: number, spec: { radius: number; damage: number; armor: number }, weapon: string, skip = "") {
+  launch(owner: string, o: [number, number, number], d: [number, number, number], velocity: number, spec: { radius: number; damage: number; armor: number }, weapon: string, skip = "", boost?: Boost) {
     const s = this.room.state;
     const shooter = s.players.get(owner);
     const max = 450;
@@ -239,8 +242,8 @@ export class Vehicles {
     let hitS = max;
     let direct = "";
     for (let i = 1; i < steps.length; i++) {
-      const a = bulletAt(o, d, velocity, steps[i - 1]!);
-      const b = bulletAt(o, d, velocity, steps[i]!);
+      const a = projectileAt(o, d, velocity, steps[i - 1]!, boost);
+      const b = projectileAt(o, d, velocity, steps[i]!, boost);
       const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
       const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
       let t = Math.min(raycastBoxes(this.room.map.index, a, cd, len, true), raycastTerrain(this.room.map.world, a, cd, len), raycastTrunks(this.room.map.world, a, cd, len, this.room.map.treeDead));
@@ -267,8 +270,8 @@ export class Vehicles {
         break;
       }
     }
-    const e = bulletAt(o, d, velocity, hitS);
-    this.shells.push({ left: hitS / velocity, x: e[0], y: e[1], z: e[2], owner, direct, ...spec, weapon });
+    const e = projectileAt(o, d, velocity, hitS, boost);
+    this.shells.push({ left: flightTime(velocity, hitS, boost), x: e[0], y: e[1], z: e[2], owner, direct, ...spec, weapon });
     this.room.broadcast(Messages.shot, { id: owner, w: weapon, o, e: [e] } satisfies ShotMessage);
   }
 

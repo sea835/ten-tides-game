@@ -504,6 +504,73 @@ const GUNS: Record<string, GunSpec> = {
     ],
     action: () => [],
   },
+  // S1897: shotgun bơm kiểu "trench gun": hộp khoá nòng thép có búa lộ, nòng dài trên ống tiếp đạn, ốp bơm gỗ có rãnh
+  // (phần "action": lùi về khi kéo bơm), báng gỗ. Không có băng rời (nạp từng viên vào ống).
+  s1897: {
+    muzzle: [0, 0.105, 0.72],
+    sight: 0.124,
+    support: [0.0, 0.05, 0.3],
+    stock: 0.4,
+    eject: [-0.024, 0.1, 0.05],
+    travel: 0.09,
+    parts: () => [
+      box("metal", 0.046, 0.078, 0.18, [0, 0.085, 0.03]),
+      box("metal", 0.034, 0.03, 0.05, [0, 0.13, -0.035]),
+      box("metal", 0.009, 0.03, 0.012, [0, 0.148, -0.06], [-0.6, 0, 0]),
+      cyl("metal", 0.0135, 0.6, [0, 0.105, 0.42]),
+      cyl("metal", 0.011, 0.5, [0, 0.07, 0.36], { segs: 10 }),
+      cyl("steel", 0.0125, 0.02, [0, 0.07, 0.615], { segs: 10 }),
+      box("metal", 0.012, 0.05, 0.016, [0, 0.088, 0.58]),
+      box("metal", 0.03, 0.006, 0.6, [0, 0.12, 0.42]),
+      sph("brass", 0.0045, [0, 0.124, 0.71], [1, 1, 1], undefined, [6, 4]),
+      box("darkwood", 0.036, 0.1, 0.05, [0, 0.0, -0.03], [0.45, 0, 0]),
+      ...trigger(0.03, 0.03),
+      box("wood", 0.044, 0.07, 0.3, [0, 0.055, -0.2], [-0.12, 0, 0]),
+      box("wood", 0.045, 0.11, 0.03, [0, 0.035, -0.35], [-0.12, 0, 0]),
+      box("metal", 0.047, 0.114, 0.012, [0, 0.033, -0.368], [-0.12, 0, 0]),
+    ],
+    // Ốp bơm gỗ có rãnh và thanh trượt thép nối vào khoá nòng.
+    action: () => [
+      cyl("wood", 0.023, 0.17, [0, 0.07, 0.3], { segs: 12 }),
+      cyl("darkwood", 0.0235, 0.008, [0, 0.07, 0.25], { segs: 12 }),
+      cyl("darkwood", 0.0235, 0.008, [0, 0.07, 0.3], { segs: 12 }),
+      cyl("darkwood", 0.0235, 0.008, [0, 0.07, 0.35], { segs: 12 }),
+      box("steel", 0.004, 0.012, 0.16, [-0.021, 0.08, 0.17]),
+    ],
+  },
+  // DP-28: trung liên Liên Xô, đĩa đạn 47 viên nằm phẳng trên nóc, nòng có ống tản nhiệt đục lỗ, báng gỗ, chân chống.
+  dp28: {
+    muzzle: [0, 0.09, 0.84],
+    sight: 0.19,
+    support: [0.0, 0.055, 0.27],
+    stock: 0.42,
+    eject: [-0.03, 0.06, 0.06],
+    travel: 0.035,
+    parts: () => [
+      box("metal", 0.05, 0.07, 0.32, [0, 0.08, 0.03]),
+      cyl("metal", 0.027, 0.38, [0, 0.09, 0.4], { segs: 12 }),
+      ...[0.26, 0.34, 0.42, 0.5].map((z) => cyl("poly", 0.0275, 0.025, [0, 0.09, z], { segs: 12 })),
+      cyl("metal", 0.011, 0.22, [0, 0.09, 0.69]),
+      cyl("metal", 0.021, 0.07, [0, 0.09, 0.805], { segs: 10, r2: 0.012 }),
+      post(0.19, 0.6, 0.115),
+      box("metal", 0.03, 0.012, 0.03, [0, 0.11, 0.6]),
+      ...notch(0.19, -0.09),
+      ...bipod(0.06, 0.52, 0.32),
+      grip("wood"),
+      ...trigger(0.03, 0.03),
+      box("wood", 0.044, 0.08, 0.3, [0, 0.05, -0.25], [-0.1, 0, 0]),
+      box("wood", 0.046, 0.12, 0.04, [0, 0.03, -0.4], [-0.1, 0, 0]),
+      box("metal", 0.048, 0.124, 0.012, [0, 0.03, -0.42], [-0.1, 0, 0]),
+    ],
+    // Tay kéo khoá nòng bên phải.
+    action: () => [box("steel", 0.012, 0.016, 0.03, [-0.033, 0.07, 0.12]), cyl("steel", 0.005, 0.025, [-0.047, 0.07, 0.12], { axis: "x", segs: 6 })],
+    // Đĩa đạn: đĩa thép mỏng có gân hướng tâm, chụp giữa.
+    mag: () => [
+      cyl("metal", 0.125, 0.026, [0, 0.135, 0.02], { axis: "y", segs: 24 }),
+      cyl("steel", 0.035, 0.012, [0, 0.153, 0.02], { axis: "y", segs: 12 }),
+      ...[0, 1, 2, 3, 4, 5].map((k) => box("steel", 0.006, 0.006, 0.2, [0, 0.149, 0.02], [0, (k * Math.PI) / 6, 0])),
+    ],
+  },
   // SKS: báng gỗ liền thân, lưỡi lê gấp dưới nòng, ống ngắm 4x.
   sks: {
     muzzle: [0, 0.095, 0.66],
@@ -748,6 +815,16 @@ function attachmentParts(weaponId: string, att: string): Part[] {
       return [box("poly", 0.024, 0.03, 0.08, [0, sy - 0.035, sz + 0.02], [0.45, 0, 0])];
     case "halfgrip":
       return [box("poly", 0.022, 0.025, 0.055, [0, sy - 0.03, sz + 0.01], [-0.2, 0, 0])];
+    case "bipod":
+      // Chân chống gấp dưới ốp lót tay: kẹp ray, hai chân gấp dọc nòng (súng có sẵn chân chống thì thôi).
+      if (weaponId === "m249" || weaponId === "dp28" || weaponId === "awm") return [];
+      return [box("metal", 0.03, 0.018, 0.035, [0, sy - 0.03, sz + 0.06]), ...bipod(sy - 0.045, sz + 0.06, 0.22)];
+    case "dualmag": {
+      // Hộp đạn kép: băng thứ hai dán ngược cạnh băng đang lắp, quấn băng dính.
+      const c = magCenter(weaponId);
+      const spare = (g.mag?.() ?? []).map(([k, geo]): Part => [k, geo.translate(0.032, 0, 0)]);
+      return [...spare, box("olive", 0.066, 0.018, 0.075, [c[0] + 0.016, c[1], c[2]])];
+    }
     case "tacstock":
       // Báng chiến thuật: đế tì vai cao su, gờ trên.
       return pistol ? [] : [box("poly", 0.04, 0.12, 0.03, [0, -0.02, -g.stock + 0.01]), box("poly", 0.03, 0.02, 0.1, [0, 0.045, -g.stock + 0.06])];
@@ -778,12 +855,21 @@ function AttachmentParts({ weaponId, atts, opacity, view }: { weaponId: string; 
 /** Phụ kiện nằm dưới đất (để nhặt, để làm hình trong cửa hàng): lắp tạm trên một khẩu mẫu rồi dời về gốc. */
 function LooseAttachment({ id }: { id: string }) {
   const host = id === "choke" ? "s686" : id === "cheekpad" ? "kar98k" : "m416";
+  if (id === "dualmag")
+    return (
+      <group rotation-z={Math.PI / 2} position-y={0.03}>
+        <MagModel weaponId="m416" />
+        <group position-x={0.032}>
+          <MagModel weaponId="m416" />
+        </group>
+      </group>
+    );
   const parts = attachmentParts(host, id === "extmag" ? "quickmag" : id);
   const g = GUNS[host]!;
   const center: [number, number, number] =
     id === "suppressor" || id === "comp" || id === "flashhider" || id === "choke"
       ? [0, g.muzzle[1], g.muzzle[2] + 0.05]
-      : id === "vgrip" || id === "agrip" || id === "halfgrip"
+      : id === "vgrip" || id === "agrip" || id === "halfgrip" || id === "bipod"
         ? [0, g.support[1] - 0.04, g.support[2]]
         : id === "tacstock"
           ? [0, 0, -g.stock + 0.04]
