@@ -93,7 +93,9 @@ function ZoneWall({ room }: { room: IslandRoom }) {
     const z = room.state.zone;
     const m = wall.current;
     if (!m) return;
-    const on = room.state.phase === "battle" && z.r > 0.5;
+    // Chiến trường không có vùng bo (server đặt bán kính 2000 m phủ cả bản đồ): không vẽ tường. Trước đây tường
+    // vẫn vẽ, bị ép về mặt phẳng xa nên thành mấy vệt sọc ngang tối ở tầm xa.
+    const on = room.state.phase === "battle" && room.state.battleMode !== "war" && z.r > 0.5 && z.r < 1000;
     m.visible = on;
     m.position.set(z.x, -20, z.z);
     m.scale.set(z.r, 160, z.r);

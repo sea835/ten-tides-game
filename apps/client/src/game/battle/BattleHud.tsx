@@ -563,7 +563,8 @@ function OutsideZone({ room }: { room: IslandRoom }) {
   useFrameTick(4);
   const z = room.state.zone;
   const me = room.state.players.get(myId(room));
-  const out = room.state.phase === "battle" && me?.alive && Math.hypot(localPosition.x - z.x, localPosition.z - z.z) > z.r;
+  // Chiến trường không có vùng bo.
+  const out = room.state.phase === "battle" && room.state.battleMode !== "war" && me?.alive && Math.hypot(localPosition.x - z.x, localPosition.z - z.z) > z.r;
   const was = useRef(false);
   useEffect(() => {
     if (out && z.dps > 0) playZoneTick();

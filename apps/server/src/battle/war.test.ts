@@ -42,6 +42,13 @@ describe("chiến trường 50 vs 50", () => {
     expect(WAR_TICKETS).toBe(300);
   });
 
+  it("không có vùng bo: vùng an toàn phủ cả bản đồ, căn cứ hai phe ở trong vùng", () => {
+    const room = makeWar(1);
+    const z = room.state.zone;
+    expect(z.r).toBeGreaterThan(1000);
+    for (const p of room.state.players.values()) expect(Math.hypot(p.x - z.x, p.z - z.z)).toBeLessThan(z.r);
+  });
+
   it("trừ vé: phe giữ quá 4/7 cứ điểm làm đối phương mất 1 vé mỗi nhịp 3 giây", () => {
     const flags = (b: number, r: number) => Array.from({ length: 7 }, (_, i) => ({ owner: i < b ? "blue" : i < b + r ? "red" : "" }));
     expect(bleedOf(flags(4, 3))).toEqual({ blue: 0, red: 0 });
@@ -112,8 +119,9 @@ describe("chiến trường 50 vs 50", () => {
   it("máy tự chiếm cứ điểm, gục thì hồi sinh, trận kết thúc khi một phe hết vé; mỗi nhịp đủ nhanh", () => {
     const room = makeWar(1);
     const r = room as unknown as { tick: (dt: number) => void };
-    // Vé ít hơn mặc định (300) cho trận thử ngắn lại: chỉ cần kiểm tra trận kết thúc khi một phe hết vé.
-    room.state.ticketsBlue = room.state.ticketsRed = 120;
+    // Vé ít hơn mặc định (300) cho trận thử ngắn lại và chắc chắn kết thúc (hai phe máy ngang sức, trừ vé chỉ khi
+    // một phe giữ hơn 4/7 cứ điểm): chỉ cần kiểm tra trận kết thúc khi một phe hết vé.
+    room.state.ticketsBlue = room.state.ticketsRed = 60;
     let worst = 0;
     const t0 = performance.now();
     let ticks = 0;

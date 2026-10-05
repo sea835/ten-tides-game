@@ -701,10 +701,13 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.bots.warm();
     this.spawnLoot(this.map.loot);
     this.rollSky();
-    // Vùng an toàn phủ cả đảo; vòng kế tiếp chọn khi vào trận.
-    s.zone.x = s.zone.nx = 0;
-    s.zone.z = s.zone.nz = 0;
-    s.zone.r = s.zone.nr = 260;
+    // Vùng an toàn phủ cả đảo; vòng kế tiếp chọn khi vào trận. Chiến trường không có vùng bo: war.start đã đặt
+    // vùng 2000 m phủ cả bản đồ (trước đây bị đặt lại 260 m ở đây, căn cứ hai phe nằm ngoài vùng).
+    if (!war) {
+      s.zone.x = s.zone.nx = 0;
+      s.zone.z = s.zone.nz = 0;
+      s.zone.r = s.zone.nr = 260;
+    }
     s.zone.stage = 0;
     s.zone.shrinking = false;
     s.zone.dps = 0;
