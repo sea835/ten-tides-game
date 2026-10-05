@@ -547,6 +547,24 @@ export const AirdropState = schema(
 );
 export type AirdropState = SchemaType<typeof AirdropState>;
 
+/**
+ * Cài đặt phòng Battleground mà chủ phòng chọn ở sảnh (Trung tâm chỉ huy). Gom vào một schema con vì IslandState đã
+ * chạm trần 63 trường của Colyseus: cài đặt phòng mới thì thêm vào đây.
+ */
+export const RoomSettingsState = schema(
+  {
+    /** Thời tiết, giờ trong ngày cho trận tới ("random" hoặc một kiểu cụ thể). */
+    weatherPick: t.string().default("random"),
+    timePick: t.string().default("random"),
+    /** Chiến trường: vé quân lúc đầu mỗi phe (150–500). */
+    warTickets: t.uint16().default(300),
+    /** Có xe cơ giới (xe tăng, xe jeep, thuyền...) trong trận không; tắt thì server không đặt xe nào. */
+    vehiclesEnabled: t.boolean().default(true),
+  },
+  "RoomSettingsState",
+);
+export type RoomSettingsState = SchemaType<typeof RoomSettingsState>;
+
 export const IslandState = schema(
   {
     /**
@@ -561,9 +579,8 @@ export const IslandState = schema(
      * Thời tiết của trận nằm ở `weather` (sunny, cloudy, rain, fog, storm, snow).
      */
     clock: t.float32().default(0.35),
-    /** Lựa chọn của chủ phòng cho trận tới ("random" hoặc một kiểu cụ thể). */
-    weatherPick: t.string().default("random"),
-    timePick: t.string().default("random"),
+    /** Lựa chọn của chủ phòng cho trận tới: thời tiết, giờ, vé quân, xe cơ giới (RoomSettingsState). */
+    settings: t.ref(RoomSettingsState).default(() => new RoomSettingsState()),
     zone: t.ref(ZoneState).default(() => new ZoneState()),
     feed: t.array(KillState),
     smokes: t.map(SmokeState),
@@ -831,17 +848,29 @@ export const MeleeMessage = z.object({ target: z.string().max(64).optional(), ya
 export const HealMessage = z.object({ kind: z.enum(["bandage", "medkit"]) });
 export const BATTLE_WEATHERS = ["sunny", "cloudy", "rain", "fog", "storm", "snow"] as const;
 export const BATTLE_TIMES = ["dawn", "day", "dusk", "night"] as const;
-/** Chủ phòng chỉnh: số máy, thời tiết và giờ trong ngày của trận ("random" là để máy bốc thăm). */
-/** Số máy (bot) tối đa trong một phòng Battleground. */
-export const MAX_BATTLE_BOTS = 50;
+/** Số máy (bot) trên sân: ít nhất / nhiều nhất (chiến trường tính theo mỗi phe, tối đa 50 mỗi phe = 100 quân). */
+export const MIN_BATTLE_BOTS = 10;
+export const MAX_BATTLE_BOTS = 100;
+export const WAR_MAX_PER_SIDE = 50;
+/** Chiến trường: vé quân lúc đầu mỗi phe (chủ phòng chọn trong khoảng này). */
+export const WAR_TICKETS_MIN = 150;
+export const WAR_TICKETS_MAX = 500;
+export const WAR_TICKETS_DEFAULT = 300;
+/**
+ * Chủ phòng chỉnh (chỉ ở sảnh): số máy (chiến trường: mỗi phe), thời tiết và giờ trong ngày ("random" là để máy bốc
+ * thăm), chế độ, vé quân, bật / tắt xe cơ giới. Khung ở đây chỉ chặn số vô lý; server tự kẹp về khoảng hợp lệ.
+ */
 export const BattleSettingsMessage = z
   .object({
-    bots: z.int().min(0).max(MAX_BATTLE_BOTS),
+    bots: z.int().min(0).max(255),
     weather: z.enum(["random", ...BATTLE_WEATHERS]),
     time: z.enum(["random", ...BATTLE_TIMES]),
     mode: z.enum(["solo", "squad", "war"]),
+    tickets: z.int().min(0).max(5000),
+    vehicles: z.boolean(),
   })
   .partial();
+export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
 /** Lái xe tăng: vị trí, hướng thân, hướng tháp pháo, góc nòng (máy người lái tự tính, server kiểm tra tốc độ). */
 export const VehicleMoveMessage = z.object({ x: finite, y: finite, z: finite, rotY: finite, turret: finite, pitch: z.number().min(-1).max(1), moving: z.boolean() });
 export type VehicleMoveMessage = z.infer<typeof VehicleMoveMessage>;

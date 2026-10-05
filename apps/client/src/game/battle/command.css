@@ -1,0 +1,669 @@
+/* Sảnh Battleground "Trung tâm chỉ huy": nền tối xanh rêu, lưới bản đồ tác chiến mờ, nhấn vàng hổ phách. */
+
+.cc {
+  --cc-bg: rgba(9, 14, 12, 0.94);
+  --cc-card: rgba(255, 255, 255, 0.04);
+  --cc-card-hi: rgba(255, 255, 255, 0.08);
+  --cc-line: rgba(186, 214, 170, 0.16);
+  --cc-line-hi: rgba(186, 214, 170, 0.32);
+  --cc-text: #eef0e6;
+  --cc-muted: #9aa894;
+  --cc-amber: #f2b441;
+  --cc-amber-hi: #ffd27a;
+  --cc-olive: #8fae6a;
+  --cc-blue: #6fa0ff;
+  --cc-red: #ff7a6e;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: auto;
+  background: radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.6));
+  text-shadow: none;
+  color: var(--cc-text);
+  overflow-y: auto;
+}
+
+.cc-panel {
+  position: relative;
+  width: min(1060px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--cc-line);
+  background:
+    linear-gradient(var(--cc-line) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, var(--cc-line) 1px, transparent 1px) 0 0 / 32px 32px,
+    var(--cc-bg);
+  background-blend-mode: soft-light, soft-light, normal;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+}
+/* Bốn góc khung ngắm. */
+.cc-panel::before,
+.cc-panel::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--cc-amber);
+  pointer-events: none;
+  opacity: 0.8;
+}
+.cc-panel::before {
+  left: 8px;
+  top: 8px;
+  border-right: 0;
+  border-bottom: 0;
+  border-top-left-radius: 8px;
+}
+.cc-panel::after {
+  right: 8px;
+  bottom: 8px;
+  border-left: 0;
+  border-top: 0;
+  border-bottom-right-radius: 8px;
+}
+
+.cc button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------- đầu bảng */
+
+.cc-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.cc-brand {
+  flex: 1;
+  min-width: 200px;
+}
+.cc-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--cc-olive);
+}
+.cc-head h2 {
+  margin: 2px 0 0;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cc-code {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--cc-line-hi);
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  text-align: left;
+}
+.cc-code span {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+}
+.cc-code strong {
+  font: 700 26px/1.1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+  letter-spacing: 0.2em;
+  color: var(--cc-amber-hi);
+}
+.cc-code svg {
+  opacity: 0.6;
+}
+.cc-code:hover {
+  border-color: var(--cc-amber);
+}
+.cc-leave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--cc-line-hi);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+.cc-leave:hover {
+  background: rgba(255, 122, 110, 0.12);
+  border-color: rgba(255, 122, 110, 0.5);
+}
+
+/* ---------------------------------------------------------------- ba thẻ chế độ */
+
+.cc-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.cc-mode {
+  --tone: var(--cc-amber);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 14px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--cc-line);
+  background: linear-gradient(160deg, var(--cc-card-hi), var(--cc-card));
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    transform 0.15s,
+    background 0.15s;
+}
+.cc-mode.m-squad {
+  --tone: var(--cc-olive);
+}
+.cc-mode.m-solo {
+  --tone: var(--cc-red);
+}
+.cc-mode::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--tone);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cc-mode:not(:disabled):hover {
+  border-color: var(--cc-line-hi);
+  transform: translateY(-2px);
+}
+.cc-mode.on {
+  border-color: var(--tone);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 22%, transparent), var(--cc-card));
+  box-shadow: 0 0 0 1px var(--tone) inset;
+}
+.cc-mode.on::after {
+  opacity: 1;
+}
+.cc-mode:disabled {
+  cursor: default;
+}
+.cc-mode:disabled:not(.on) {
+  opacity: 0.55;
+}
+.cc-mode-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--tone);
+}
+.cc-mode strong {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.cc-mode em {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--cc-muted);
+}
+.cc-mode-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.cc-mode-facts i {
+  font-style: normal;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--cc-line);
+  color: var(--cc-text);
+}
+
+/* ---------------------------------------------------------------- lệnh tác chiến + cài đặt */
+
+.cc-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 14px;
+}
+.cc-brief,
+.cc-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--cc-line);
+  background: rgba(0, 0, 0, 0.28);
+  min-width: 0;
+}
+.cc h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cc-olive);
+}
+.cc-brief p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #d6dbcf;
+}
+.cc-sides {
+  margin: 0;
+}
+.cc-sides .w-side h4 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.cc-sides .w-side h4 small {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+.cc-roster li.muted {
+  opacity: 0.7;
+  background: transparent;
+  border: 1px dashed var(--cc-line-hi);
+}
+.cc-armory {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(242, 180, 65, 0.5);
+  background: rgba(242, 180, 65, 0.07);
+  text-align: left;
+  cursor: pointer;
+}
+.cc-armory svg {
+  color: var(--cc-amber);
+  flex: none;
+}
+.cc-armory span {
+  display: flex;
+  flex-direction: column;
+}
+.cc-armory strong {
+  font-size: 14px;
+}
+.cc-armory small {
+  font-size: 11.5px;
+  color: var(--cc-muted);
+}
+.cc-armory:hover {
+  background: rgba(242, 180, 65, 0.14);
+}
+
+.cc-lock {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--cc-muted);
+  letter-spacing: 0.06em;
+  font-size: 10.5px;
+}
+.cc-field,
+.cc-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cc-field-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cc-field-head svg {
+  color: var(--cc-olive);
+}
+.cc-field-head b {
+  margin-left: auto;
+  font: 700 16px/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color: var(--cc-amber-hi);
+}
+.cc-field-head b small {
+  font: 500 11px/1 var(--font-ui, system-ui, sans-serif);
+  color: var(--cc-muted);
+}
+.cc-slider input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  margin: 4px 0 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cc-amber) var(--fill, 0%), rgba(255, 255, 255, 0.12) var(--fill, 0%));
+  cursor: pointer;
+}
+.cc-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--cc-amber-hi);
+  border: 2px solid #1b1405;
+  box-shadow: 0 0 0 3px rgba(242, 180, 65, 0.25);
+}
+.cc-slider input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--cc-amber-hi);
+  border: 2px solid #1b1405;
+}
+.cc-slider input[type="range"]:disabled {
+  cursor: default;
+  filter: saturate(0.4);
+}
+.cc-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--cc-muted);
+}
+
+.cc-sky {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.cc-sky button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--cc-line);
+  background: var(--cc-card);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cc-sky button svg {
+  flex: none;
+  color: var(--cc-muted);
+}
+.cc-sky button.on {
+  border-color: var(--cc-amber);
+  background: rgba(242, 180, 65, 0.16);
+}
+.cc-sky button.on svg {
+  color: var(--cc-amber-hi);
+}
+.cc-sky button:disabled {
+  cursor: default;
+}
+.cc-sky button:not(:disabled):hover {
+  border-color: var(--cc-line-hi);
+}
+.cc-time {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12.5px;
+  color: var(--cc-muted);
+}
+.cc-time select {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cc-text);
+  border: 1px solid var(--cc-line-hi);
+  border-radius: 7px;
+  padding: 5px 6px;
+  font: inherit;
+}
+.cc-time option {
+  color: #111;
+}
+.cc-time small {
+  grid-column: 1 / -1;
+  font-size: 11px;
+}
+
+.cc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cc-toggle i {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  transition: background 0.15s;
+}
+.cc-toggle i::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.cc-toggle.on i {
+  background: var(--cc-olive);
+}
+.cc-toggle.on i::after {
+  transform: translateX(18px);
+}
+.cc-toggle:disabled {
+  cursor: default;
+}
+.cc-note {
+  font-size: 11.5px;
+  color: var(--cc-muted);
+}
+.cc-settings.readonly .cc-field,
+.cc-settings.readonly .cc-slider {
+  opacity: 0.85;
+}
+
+/* ---------------------------------------------------------------- chân bảng */
+
+.cc-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.cc-start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 0;
+  background: linear-gradient(180deg, var(--cc-amber-hi), var(--cc-amber));
+  color: #221603 !important;
+  font-size: 18px !important;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(242, 180, 65, 0.25);
+}
+.cc-start small {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  opacity: 0.75;
+}
+.cc-start:hover {
+  filter: brightness(1.06);
+}
+.cc-wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--cc-line-hi);
+  font-size: 14px;
+  color: var(--cc-muted);
+}
+.cc-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--cc-olive);
+  animation: cc-pulse 1.4s ease-in-out infinite;
+}
+@keyframes cc-pulse {
+  50% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+}
+.cc-keys summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--cc-muted);
+  cursor: pointer;
+}
+.cc-keys .b-keys {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--cc-muted);
+}
+
+/* ---------------------------------------------------------------- màn hẹp */
+
+@media (max-width: 820px) {
+  .cc-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .cc {
+    align-items: flex-start;
+    padding: 10px;
+    /* Chừa chỗ cho nút bánh răng cài đặt ở góc trên trái. */
+    padding-top: 58px;
+  }
+  .cc-panel {
+    padding: 16px 14px;
+    gap: 12px;
+  }
+  .cc-modes {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .cc-mode {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    padding: 10px 12px;
+  }
+  .cc-mode-icon {
+    grid-row: span 2;
+    margin: 0;
+  }
+  .cc-mode-facts {
+    grid-column: 1 / -1;
+  }
+  .cc-sky {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cc-code strong {
+    font-size: 20px;
+  }
+}
+
+/* ---------------------------------------------------------------- ghi đè kiểu nút chung (styles.css) */
+
+/* Người xem (không phải chủ phòng): nút bị khoá vẫn đọc rõ, chỉ thẻ chưa chọn mới mờ đi. */
+.cc button:disabled {
+  opacity: 1;
+}
+.cc .cc-mode:disabled:not(.on),
+.cc .cc-sky button:disabled:not(.on) {
+  opacity: 0.55;
+}
+.cc .cc-mode:hover:not(:disabled) {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 12%, transparent), var(--cc-card));
+}
+.cc .cc-mode.on:hover:not(:disabled) {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 22%, transparent), var(--cc-card));
+}
+.cc .cc-start:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffe09a, #f5c05a);
+  border-color: transparent;
+}
+.cc .cc-sky button.on:hover:not(:disabled) {
+  background: rgba(242, 180, 65, 0.22);
+}
+.cc .cc-toggle {
+  justify-content: flex-start;
+  width: 100%;
+  font-size: 13px;
+}
+.cc .cc-toggle:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+}
+.cc .cc-mode,
+.cc .cc-armory,
+.cc .cc-code {
+  justify-content: flex-start;
+}

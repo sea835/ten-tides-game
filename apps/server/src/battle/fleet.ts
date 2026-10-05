@@ -17,7 +17,7 @@ const ISLAND_JEEPS = 3;
  * nên chỉ đọc nếu có, không có thì coi như bật).
  */
 function vehiclesOn(room: BattleRoom): boolean {
-  return (room.state as unknown as { vehiclesEnabled?: boolean }).vehiclesEnabled !== false;
+  return room.state.settings.vehiclesEnabled;
 }
 
 interface Slot {
