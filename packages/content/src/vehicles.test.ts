@@ -73,8 +73,8 @@ describe("thuyền tuần tra (boat)", () => {
     expect(pose.z).toBeGreaterThan(sea.z + 5);
     expect(pose.y).toBe(0);
     expect(speed).toBeLessThanOrEqual(BOAT.forward);
-    // Trên đất liền không đặt được thuyền.
-    expect(boatFits(map, 0, 0, 0)).toBe(false);
+    // Trên đất liền (bờ tây, xa sông giữa bản đồ) không đặt được thuyền.
+    expect(boatFits(map, -200, -20, 0)).toBe(false);
     // Chạy thẳng vào bờ thì mắc lại, không lên cạn.
     let p = { x: 0, y: 0, z: -300, rotY: 0 };
     let v = 0;

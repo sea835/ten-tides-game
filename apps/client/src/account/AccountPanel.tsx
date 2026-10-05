@@ -1,9 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Coins, Gem, LogIn, LogOut, UserPlus, UserRound } from "lucide-react";
+import { Coins, Crosshair, Gem, LogIn, LogOut, Medal, UserPlus, UserRound } from "lucide-react";
+import { openGunsmith } from "../gunsmith/openGunsmith.ts";
+import { RankLine, ServiceRecord } from "../progress/ServiceRecord.tsx";
+import { Emblem } from "../progress/Emblem.tsx";
 import { ApiError, initAccount, login, logout, register, useAccount } from "./account.ts";
 import "./account.css";
 
 // Bảng tài khoản ở sảnh: tab Đăng nhập / Đăng ký, hoặc chơi khách. Đăng nhập rồi thì hiện tên, xu, nút Kho súng.
+// Đăng nhập rồi thì có thêm quân hàm (thanh XP), Hồ sơ quân nhân (thẻ tên, huy hiệu) và Gunsmith.
 // Server không bật tài khoản (không có database) thì bảng tự ẩn.
 
 export function AccountPanel({ onUsername, onOpenGacha }: { onUsername: (name: string) => void; onOpenGacha: () => void }) {
@@ -14,6 +18,7 @@ export function AccountPanel({ onUsername, onOpenGacha }: { onUsername: (name: s
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [record, setRecord] = useState(false);
 
   useEffect(() => initAccount(), []);
 
@@ -25,13 +30,17 @@ export function AccountPanel({ onUsername, onOpenGacha }: { onUsername: (name: s
   if (account.status === "disabled" || account.status === "loading") return null;
 
   if (account.status === "user") {
-    const { user } = account.profile;
+    const { user, progress } = account.profile;
     return (
       <div className="account-panel signed-in">
         <div className="account-who">
-          <span className="account-avatar" aria-hidden>
-            {user.username.slice(0, 1).toUpperCase()}
-          </span>
+          {progress?.emblem ? (
+            <Emblem id={progress.emblem} size={38} />
+          ) : (
+            <span className="account-avatar" aria-hidden>
+              {user.username.slice(0, 1).toUpperCase()}
+            </span>
+          )}
           <div>
             <div className="account-name">{user.username}</div>
             <div className="account-coins">
@@ -42,9 +51,19 @@ export function AccountPanel({ onUsername, onOpenGacha }: { onUsername: (name: s
             <LogOut size={16} aria-hidden /> Đăng xuất
           </button>
         </div>
+        {progress && <RankLine xp={progress.xp} />}
         <button className="big gacha-button" onClick={onOpenGacha}>
           <Gem size={18} aria-hidden /> Kho súng · Gacha
         </button>
+        <div className="account-progress-actions">
+          <button onClick={() => openGunsmith()}>
+            <Crosshair size={15} aria-hidden /> Gunsmith
+          </button>
+          <button onClick={() => setRecord(true)}>
+            <Medal size={15} aria-hidden /> Quân hàm · Thẻ tên
+          </button>
+        </div>
+        {record && <ServiceRecord onClose={() => setRecord(false)} />}
       </div>
     );
   }

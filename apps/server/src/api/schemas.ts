@@ -1,4 +1,4 @@
-import { SKIN_WEAPON_IDS } from "@tentides/content";
+import { GUNSMITH_WEAPON_IDS, SKIN_WEAPON_IDS } from "@tentides/content";
 import { z } from "zod";
 
 // Kiểm tra mọi dữ liệu client gửi lên API tài khoản.
@@ -24,4 +24,19 @@ export const RollBody = z.object({ count: z.union([z.literal(1), z.literal(10)],
 export const EquipBody = z.object({
   weaponId: z.string().refine((w) => SKIN_WEAPON_IDS.includes(w), "Không có khẩu súng này."),
   skinId: z.string().max(64),
+});
+
+const ShortId = z.string().max(64);
+
+/** Lắp thẻ tên và huy hiệu (rỗng là bỏ). Có mở khoá chưa thì database kiểm tra. */
+export const CardBody = z.object({ cardId: ShortId, emblemId: ShortId });
+
+/**
+ * Gunsmith: lưu bộ phụ kiện cho một khẩu (mỗi ô một id, rỗng là trống; lắp vừa không thì validateLoadout kiểm tra),
+ * kèm skin ưa thích (bỏ trống là không đổi skin, chuỗi rỗng là tháo skin).
+ */
+export const LoadoutBody = z.object({
+  weaponId: z.string().refine((w) => GUNSMITH_WEAPON_IDS.includes(w), "Không có khẩu súng này."),
+  loadout: z.object({ muzzle: ShortId, grip: ShortId, mag: ShortId, stock: ShortId, sight: ShortId }).partial().strict(),
+  skinId: ShortId.optional(),
 });

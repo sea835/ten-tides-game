@@ -193,8 +193,201 @@ function drawDamascus(ctx: Ctx, colors: readonly string[], rand: () => number) {
   ctx.putImageData(img, 0, 0);
 }
 
+/** Rằn ri rừng kiểu M81: nền kaki, mảng lá xanh và nâu to, vệt cành đen ngoằn ngoèo vắt qua. */
+function drawWoodland(ctx: Ctx, colors: readonly string[], rand: () => number) {
+  ctx.fillStyle = pick(colors, 0, "#7a6f45");
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  for (const [k, count] of [[1, 11], [2, 8]] as const) {
+    ctx.fillStyle = pick(colors, k, "#3e4f2a");
+    for (let b = 0; b < count; b++) {
+      const cx = rand() * SIZE;
+      const cy = rand() * SIZE;
+      const pieces: [number, number, number, number, number][] = [];
+      const lobes = 4 + Math.floor(rand() * 4);
+      for (let l = 0; l < lobes; l++) pieces.push([cx + (rand() - 0.5) * 70, cy + (rand() - 0.5) * 40, 14 + rand() * 24, 9 + rand() * 14, rand() * Math.PI]);
+      wrapDraw(ctx, (dx, dy) => {
+        for (const [x, y, rx, ry, rot] of pieces) {
+          ctx.beginPath();
+          ctx.ellipse(x + dx, y + dy, rx, ry, rot, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+    }
+  }
+  // Cành đen: đường cong dày mỏng, đâm nhánh ngắn.
+  ctx.strokeStyle = pick(colors, 3, "#16140f");
+  ctx.lineCap = "round";
+  for (let b = 0; b < 9; b++) {
+    const x0 = rand() * SIZE;
+    const y0 = rand() * SIZE;
+    const a = rand() * Math.PI;
+    const len = 40 + rand() * 60;
+    const c1: [number, number] = [x0 + Math.cos(a) * len * 0.4 + (rand() - 0.5) * 30, y0 + Math.sin(a) * len * 0.4 + (rand() - 0.5) * 30];
+    const end: [number, number] = [x0 + Math.cos(a) * len, y0 + Math.sin(a) * len];
+    const width = 4 + rand() * 6;
+    const twig: [number, number] = [c1[0] + (rand() - 0.5) * 36, c1[1] + (rand() - 0.5) * 36];
+    wrapDraw(ctx, (dx, dy) => {
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(x0 + dx, y0 + dy);
+      ctx.quadraticCurveTo(c1[0] + dx, c1[1] + dy, end[0] + dx, end[1] + dy);
+      ctx.stroke();
+      ctx.lineWidth = width * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(c1[0] + dx, c1[1] + dy);
+      ctx.lineTo(twig[0] + dx, twig[1] + dy);
+      ctx.stroke();
+    });
+  }
+}
+
+/** Rằn ri sa mạc "chocolate chip": nền cát, mảng nâu lượn sóng, từng cụm chấm đen kèm chấm trắng. */
+function drawChip(ctx: Ctx, colors: readonly string[], rand: () => number) {
+  ctx.fillStyle = pick(colors, 0, "#d6c29a");
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  for (const k of [1, 2]) {
+    ctx.fillStyle = pick(colors, k, "#9e8257");
+    for (let b = 0; b < 6; b++) {
+      const cx = rand() * SIZE;
+      const cy = rand() * SIZE;
+      const pts: [number, number][] = [];
+      const n = 10;
+      const r0 = 26 + rand() * 26;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const r = r0 * (0.6 + rand() * 0.6);
+        pts.push([cx + Math.cos(a) * r * 1.5, cy + Math.sin(a) * r * 0.7]);
+      }
+      wrapDraw(ctx, (dx, dy) => {
+        ctx.beginPath();
+        pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x + dx, y + dy) : ctx.lineTo(x + dx, y + dy)));
+        ctx.closePath();
+        ctx.fill();
+      });
+    }
+  }
+  // Chấm "chocolate chip": đen, có chấm trắng nhỏ nằm cạnh.
+  for (let c = 0; c < 22; c++) {
+    const cx = rand() * SIZE;
+    const cy = rand() * SIZE;
+    const chips: [number, number, number][] = [];
+    const count = 3 + Math.floor(rand() * 4);
+    for (let i = 0; i < count; i++) chips.push([cx + (rand() - 0.5) * 22, cy + (rand() - 0.5) * 14, 1.8 + rand() * 2.6]);
+    wrapDraw(ctx, (dx, dy) => {
+      for (const [x, y, r] of chips) {
+        ctx.fillStyle = pick(colors, 3, "#1b1712");
+        ctx.beginPath();
+        ctx.ellipse(x + dx, y + dy, r * 1.3, r, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = pick(colors, 4, "#f3eee4");
+        ctx.beginPath();
+        ctx.ellipse(x + dx + r * 1.6, y + dy - r * 0.6, r * 0.7, r * 0.55, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
+}
+
+/** Rằn ri số đô thị: khối điểm ảnh lớn, mép rỗ bằng điểm ảnh nhỏ (hai cỡ như MARPAT). */
+function drawMarpat(ctx: Ctx, colors: readonly string[], rand: () => number) {
+  const cell = 4;
+  const n = SIZE / cell;
+  const grid = new Uint8Array(n * n);
+  const wrap = (v: number) => ((v % n) + n) % n;
+  for (let k = 1; k < Math.max(2, colors.length); k++) {
+    for (let b = 0; b < 16; b++) {
+      const cx = Math.floor(rand() * n);
+      const cy = Math.floor(rand() * n);
+      const bw = 4 * (1 + Math.floor(rand() * 3));
+      const bh = 4 * (1 + Math.floor(rand() * 2));
+      for (let x = -2; x < bw + 2; x++) {
+        for (let y = -2; y < bh + 2; y++) {
+          const edge = x < 0 || y < 0 || x >= bw || y >= bh;
+          if (rand() < (edge ? 0.4 : 0.94)) grid[wrap(cy + y) * n + wrap(cx + x)] = k;
+        }
+      }
+    }
+  }
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      ctx.fillStyle = pick(colors, grid[y * n + x]!, "#777");
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+}
+
+/** Tuyết Bắc Cực: nền trắng, vệt chổi xám xanh mờ chạy xiên, lấm tấm hạt tối. */
+function drawSnow(ctx: Ctx, colors: readonly string[], rand: () => number) {
+  ctx.fillStyle = pick(colors, 0, "#eef2f6");
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  ctx.lineCap = "round";
+  for (let s = 0; s < 26; s++) {
+    const x = rand() * SIZE;
+    const y = rand() * SIZE;
+    const len = 30 + rand() * 70;
+    const w = 6 + rand() * 16;
+    const ang = -0.5 + (rand() - 0.5) * 0.3;
+    const alpha = 0.25 + rand() * 0.45;
+    const color = pick(colors, s % 3 === 0 ? 2 : 1, "#a7b6c6");
+    wrapDraw(ctx, (dx, dy) => {
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y + dy);
+      ctx.lineTo(x + dx + Math.cos(ang) * len, y + dy + Math.sin(ang) * len);
+      ctx.stroke();
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = pick(colors, 2, "#5f7184");
+  for (let i = 0; i < 160; i++) ctx.fillRect(rand() * SIZE, rand() * SIZE, 1 + rand() * 2, 1 + rand() * 2);
+}
+
+/** Mạ vàng chạm khắc: nền vàng, hoa văn xoắn ốc khắc sâu, viền sáng cạnh nét khắc cho cảm giác nổi khối. */
+function drawFiligree(ctx: Ctx, colors: readonly string[], rand: () => number) {
+  ctx.fillStyle = pick(colors, 0, "#e8b83e");
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  const cell = 64;
+  ctx.lineCap = "round";
+  const scroll = (cx: number, cy: number, dir: number, phase: number, off: number) => {
+    ctx.beginPath();
+    for (let t = 0; t <= Math.PI * 3.2; t += 0.12) {
+      const r = 3 + t * 2.9;
+      const x = cx + off + Math.cos(t * dir + phase) * r;
+      const y = cy + off + Math.sin(t * dir + phase) * r * 0.85;
+      if (t === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+  for (let gy = 0; gy < SIZE / cell; gy++) {
+    for (let gx = 0; gx < SIZE / cell; gx++) {
+      const dir = (gx + gy) % 2 ? 1 : -1;
+      const phase = rand() * Math.PI * 2;
+      const cx = gx * cell + cell / 2;
+      const cy = gy * cell + cell / 2;
+      ctx.strokeStyle = pick(colors, 1, "#8a5d12");
+      ctx.lineWidth = 3.2;
+      scroll(cx, cy, dir, phase, 0);
+      ctx.strokeStyle = pick(colors, 2, "#fff1b8");
+      ctx.lineWidth = 1;
+      scroll(cx, cy, dir, phase, -1);
+    }
+  }
+  // Viền khung giữa các ô hoa văn.
+  ctx.strokeStyle = pick(colors, 1, "#8a5d12");
+  ctx.lineWidth = 2;
+  for (let i = 0; i < SIZE; i += cell) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, SIZE);
+    ctx.stroke();
+  }
+}
+
 /** Mặt nạ phát sáng cho skin neon: đường mạch điện trắng trên nền đen (trắng là chỗ sáng). */
-function drawNeonMask(ctx: Ctx, rand: () => number) {
+function drawNeonMask(ctx: Ctx, rand: () => number, twoTone = false) {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, SIZE, SIZE);
   ctx.strokeStyle = "#fff";
@@ -219,7 +412,11 @@ function drawNeonMask(ctx: Ctx, rand: () => number) {
       pts.push([x, y]);
     }
     const width = 1.5 + rand() * 2.5;
+    // Hai màu: kênh đỏ là màu chính, kênh xanh lá là màu phụ (shader tô theo kênh nào sáng hơn).
+    const ink = twoTone ? (i % 2 ? "#00ff00" : "#ff0000") : "#fff";
     wrapDraw(ctx, (dx, dy) => {
+      ctx.strokeStyle = ink;
+      ctx.fillStyle = ink;
       ctx.lineWidth = width;
       ctx.beginPath();
       pts.forEach(([px, py], k) => (k === 0 ? ctx.moveTo(px + dx, py + dy) : ctx.lineTo(px + dx, py + dy)));
@@ -263,13 +460,29 @@ function patternPaint(pattern: SkinPattern, colors: readonly string[]): (ctx: Ct
       return (ctx) => drawCarbon(ctx, colors);
     case "damascus":
       return (ctx, r) => drawDamascus(ctx, colors, r);
+    case "woodland":
+      return (ctx, r) => drawWoodland(ctx, colors, r);
+    case "chip":
+      return (ctx, r) => drawChip(ctx, colors, r);
+    case "marpat":
+      return (ctx, r) => drawMarpat(ctx, colors, r);
+    case "snow":
+      return (ctx, r) => drawSnow(ctx, colors, r);
+    case "filigree":
+      return (ctx, r) => drawFiligree(ctx, colors, r);
   }
 }
 
 /** Số lần lặp vân trên mỗi mét (súng dài chừng 0,2–1,3 m). */
-const PATTERN_SCALE: Record<SkinPattern, number> = { tiger: 2.6, hex: 8, digital: 4, carbon: 16, damascus: 3.2 };
+const PATTERN_SCALE: Record<SkinPattern, number> = { tiger: 2.6, hex: 8, digital: 4, carbon: 16, damascus: 3.2, woodland: 2.2, chip: 2.4, marpat: 3, snow: 2.6, filigree: 5 };
 /** Kim loại, độ nhám của từng kiểu vân. */
-const PATTERN_SURFACE: Record<SkinPattern, [number, number]> = { tiger: [0.2, 0.55], hex: [0.45, 0.4], digital: [0.1, 0.72], carbon: [0.35, 0.32], damascus: [0.85, 0.28] };
+const PATTERN_SURFACE: Record<SkinPattern, [number, number]> = { tiger: [0.2, 0.55], hex: [0.45, 0.4], digital: [0.1, 0.72], carbon: [0.35, 0.32], damascus: [0.85, 0.28],
+  woodland: [0.08, 0.78],
+  chip: [0.06, 0.8],
+  marpat: [0.12, 0.7],
+  snow: [0.05, 0.6],
+  filigree: [1, 0.2],
+};
 
 // ---------------------------------------------------------------------------- vá shader
 
@@ -282,7 +495,7 @@ interface SkinLook {
   /** Độ nhám thay đổi theo độ sáng vân (0 là không): thép damascus, carbon lấp lánh theo lớp. */
   roughVar?: number;
   gradient?: { from: string; to: string };
-  neon?: { color: string; glow: number; mask: Texture | null; scale: number };
+  neon?: { color: string; glow: number; mask: Texture | null; scale: number; accent?: string };
 }
 
 function lookOf(skin: SkinDef): SkinLook {
@@ -302,7 +515,7 @@ function lookOf(skin: SkinDef): SkinLook {
         roughness,
         map: makeTexture(`${f.pattern}:${skin.id}`, patternPaint(f.pattern, f.colors)),
         scale: PATTERN_SCALE[f.pattern],
-        roughVar: f.pattern === "damascus" || f.pattern === "carbon" ? 0.6 : 0,
+        roughVar: f.pattern === "damascus" || f.pattern === "carbon" ? 0.6 : f.pattern === "filigree" ? 0.8 : 0,
       };
     }
     case "gold":
@@ -310,7 +523,12 @@ function lookOf(skin: SkinDef): SkinLook {
     case "chrome":
       return { color: "#eef1f4", metalness: 1, roughness: 0.06 };
     case "neon":
-      return { color: "#0d1117", metalness: 0.55, roughness: 0.35, neon: { color: f.color, glow: f.glow, mask: makeTexture(`neon:${skin.id}`, drawNeonMask, false), scale: 4 } };
+      return {
+        color: "#0d1117",
+        metalness: 0.55,
+        roughness: 0.35,
+        neon: { color: f.color, glow: f.glow, accent: f.accent, mask: makeTexture(`neon:${skin.id}`, (ctx, r) => drawNeonMask(ctx, r, !!f.accent), false), scale: 4 },
+      };
   }
 }
 
@@ -338,6 +556,8 @@ uniform float uSkinRoughVar;
 uniform vec3 uSkinFrom;
 uniform vec3 uSkinTo;
 uniform vec2 uSkinRange;
+uniform vec3 uSkinNeonA;
+uniform vec3 uSkinNeonB;
 vec4 skinTriplanar( sampler2D tex, vec3 p, vec3 n ) {
   vec3 w = pow( abs( normalize( n ) ), vec3( 4.0 ) );
   w /= ( w.x + w.y + w.z + 1e-5 );
@@ -367,7 +587,10 @@ const FRAGMENT_ROUGH = /* glsl */ `
 `;
 
 const FRAGMENT_EMISSIVE = /* glsl */ `
-  #ifdef SKIN_NEON
+  #ifdef SKIN_NEON_ACCENT
+    // Hai màu: emissive chỉ là cường độ (trắng), tô theo kênh đỏ (màu chính) hay xanh lá (màu phụ) của mặt nạ.
+    totalEmissiveRadiance *= mix( uSkinNeonA, uSkinNeonB, step( skinTex.r + 0.001, skinTex.g ) ) * ( 0.08 + max( skinTex.r, skinTex.g ) * 1.4 );
+  #elif defined( SKIN_NEON )
     // Đường mạch sáng rực, phần nền le lói.
     totalEmissiveRadiance *= 0.08 + skinTex.r * 1.4;
   #endif
@@ -385,11 +608,14 @@ function patch(m: MeshStandardMaterial, look: SkinLook, onTop: boolean) {
     uSkinTo: { value: new Color(look.gradient?.to ?? "#ffffff") },
     // Súng: gốc ở tay cầm, nòng theo +z; báng chừng -0,45 m, đầu nòng chừng +0,75 m.
     uSkinRange: { value: new Vector2(-0.45, 0.75) },
+    uSkinNeonA: { value: new Color(look.neon?.color ?? "#ffffff") },
+    uSkinNeonB: { value: new Color(look.neon?.accent ?? "#ffffff") },
   };
   const defines: Record<string, string> = {};
   if (look.map) defines.SKIN_MAP = "";
   if (look.gradient) defines.SKIN_GRADIENT = "";
   if (look.neon?.mask) defines.SKIN_NEON = "";
+  if (look.neon?.mask && look.neon.accent) defines.SKIN_NEON_ACCENT = "";
   m.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     Object.assign(shader.uniforms, uniforms);
     shader.defines = { ...shader.defines, ...defines };
@@ -428,7 +654,8 @@ function build(baseKey: string, skin: SkinDef, opacity: number, onTop: boolean):
   });
   if (alpha < 1) m.depthWrite = false;
   if (look.neon) {
-    m.emissive.set(look.neon.color);
+    // Neon hai màu: màu do shader tô theo mặt nạ, emissive chỉ còn là cường độ.
+    m.emissive.set(look.neon.accent ? "#ffffff" : look.neon.color);
     m.emissiveIntensity = look.neon.glow;
     m.userData.neon = true;
     m.userData.neonGlow = look.neon.glow;

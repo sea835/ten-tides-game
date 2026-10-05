@@ -84,6 +84,19 @@ export const KitState = schema(
 );
 export type KitState = SchemaType<typeof KitState>;
 
+/** Phần trang trí của người chơi có tài khoản, ai cũng thấy. */
+export const BadgeState = schema(
+  {
+    /** Quân hàm 1–30 (RANKS trong content), 0 là khách hay máy (không có quân hàm). Server cập nhật khi được cộng XP. */
+    rank: t.uint8().default(0),
+    /** Thẻ tên và huy hiệu đang lắp (id trong CALLING_CARDS, EMBLEMS), hiện trên băng rôn "Bạn bị hạ bởi". */
+    card: t.string().default(""),
+    emblem: t.string().default(""),
+  },
+  "BadgeState",
+);
+export type BadgeState = SchemaType<typeof BadgeState>;
+
 export const PlayerState = schema(
   {
     name: t.string().default(""),
@@ -157,6 +170,8 @@ export const PlayerState = schema(
     vehicle: t.string().default(""),
     /** Chiến trường: còn bao nhiêu giây nữa được hồi sinh (0 là chọn chỗ được rồi). */
     respawn: t.float32().default(0),
+    /** Quân hàm, thẻ tên, huy hiệu (gom một ref cho đỡ tốn chỗ: schema giới hạn số trường). */
+    badge: t.ref(BadgeState).default(() => new BadgeState()),
   },
   "PlayerState",
 );
@@ -532,6 +547,24 @@ export const AirdropState = schema(
 );
 export type AirdropState = SchemaType<typeof AirdropState>;
 
+/**
+ * Cài đặt phòng Battleground mà chủ phòng chọn ở sảnh (Trung tâm chỉ huy). Gom vào một schema con vì IslandState đã
+ * chạm trần 63 trường của Colyseus: cài đặt phòng mới thì thêm vào đây.
+ */
+export const RoomSettingsState = schema(
+  {
+    /** Thời tiết, giờ trong ngày cho trận tới ("random" hoặc một kiểu cụ thể). */
+    weatherPick: t.string().default("random"),
+    timePick: t.string().default("random"),
+    /** Chiến trường: vé quân lúc đầu mỗi phe (150–500). */
+    warTickets: t.uint16().default(300),
+    /** Có xe cơ giới (xe tăng, xe jeep, thuyền...) trong trận không; tắt thì server không đặt xe nào. */
+    vehiclesEnabled: t.boolean().default(true),
+  },
+  "RoomSettingsState",
+);
+export type RoomSettingsState = SchemaType<typeof RoomSettingsState>;
+
 export const IslandState = schema(
   {
     /**
@@ -546,9 +579,8 @@ export const IslandState = schema(
      * Thời tiết của trận nằm ở `weather` (sunny, cloudy, rain, fog, storm, snow).
      */
     clock: t.float32().default(0.35),
-    /** Lựa chọn của chủ phòng cho trận tới ("random" hoặc một kiểu cụ thể). */
-    weatherPick: t.string().default("random"),
-    timePick: t.string().default("random"),
+    /** Lựa chọn của chủ phòng cho trận tới: thời tiết, giờ, vé quân, xe cơ giới (RoomSettingsState). */
+    settings: t.ref(RoomSettingsState).default(() => new RoomSettingsState()),
     zone: t.ref(ZoneState).default(() => new ZoneState()),
     feed: t.array(KillState),
     smokes: t.map(SmokeState),
@@ -816,17 +848,29 @@ export const MeleeMessage = z.object({ target: z.string().max(64).optional(), ya
 export const HealMessage = z.object({ kind: z.enum(["bandage", "medkit"]) });
 export const BATTLE_WEATHERS = ["sunny", "cloudy", "rain", "fog", "storm", "snow"] as const;
 export const BATTLE_TIMES = ["dawn", "day", "dusk", "night"] as const;
-/** Chủ phòng chỉnh: số máy, thời tiết và giờ trong ngày của trận ("random" là để máy bốc thăm). */
-/** Số máy (bot) tối đa trong một phòng Battleground. */
-export const MAX_BATTLE_BOTS = 50;
+/** Số máy (bot) trên sân: ít nhất / nhiều nhất (chiến trường tính theo mỗi phe, tối đa 50 mỗi phe = 100 quân). */
+export const MIN_BATTLE_BOTS = 10;
+export const MAX_BATTLE_BOTS = 100;
+export const WAR_MAX_PER_SIDE = 50;
+/** Chiến trường: vé quân lúc đầu mỗi phe (chủ phòng chọn trong khoảng này). */
+export const WAR_TICKETS_MIN = 150;
+export const WAR_TICKETS_MAX = 500;
+export const WAR_TICKETS_DEFAULT = 300;
+/**
+ * Chủ phòng chỉnh (chỉ ở sảnh): số máy (chiến trường: mỗi phe), thời tiết và giờ trong ngày ("random" là để máy bốc
+ * thăm), chế độ, vé quân, bật / tắt xe cơ giới. Khung ở đây chỉ chặn số vô lý; server tự kẹp về khoảng hợp lệ.
+ */
 export const BattleSettingsMessage = z
   .object({
-    bots: z.int().min(0).max(MAX_BATTLE_BOTS),
+    bots: z.int().min(0).max(255),
     weather: z.enum(["random", ...BATTLE_WEATHERS]),
     time: z.enum(["random", ...BATTLE_TIMES]),
     mode: z.enum(["solo", "squad", "war"]),
+    tickets: z.int().min(0).max(5000),
+    vehicles: z.boolean(),
   })
   .partial();
+export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
 /** Lái xe tăng: vị trí, hướng thân, hướng tháp pháo, góc nòng (máy người lái tự tính, server kiểm tra tốc độ). */
 export const VehicleMoveMessage = z.object({ x: finite, y: finite, z: finite, rotY: finite, turret: finite, pitch: z.number().min(-1).max(1), moving: z.boolean() });
 export type VehicleMoveMessage = z.infer<typeof VehicleMoveMessage>;
@@ -856,14 +900,53 @@ export interface VehicleFxMessage {
 }
 /** Ra lệnh cho máy trong đội: đi theo mình, giữ chỗ, tới điểm (x, z). */
 export const SquadOrderMessage = z.object({ kind: z.enum(["follow", "hold", "move"]), x: finite.optional(), z: finite.optional() });
+/** Ra lệnh cho máy lái tăng trong đội lên chiếc xe tăng trống (cùng đội) mình đang nhìn. */
+export const SquadBoardMessage = z.object({ vid: id });
+
+// ---------------------------------------------------------------------------- liên lạc trong đội: đánh dấu, bộ đàm
+
+/** Đánh dấu (chuột giữa): chỗ thường, địch (kèm người bị đánh dấu), nguy hiểm (bấm đúp). */
+export const PING_KINDS = ["spot", "enemy", "danger"] as const;
+export type PingKind = (typeof PING_KINDS)[number];
+/** Mỗi người đánh dấu tối đa 1 lần / khoảng này (ms), không xa hơn tầm này (m). */
+export const PING_MIN_INTERVAL_MS = 500;
+export const PING_MAX_DISTANCE = 450;
+/** Dấu tồn tại bao lâu (ms) theo loại. */
+export const PING_TTL_MS: Record<PingKind, number> = { spot: 8000, enemy: 6000, danger: 8000 };
+export const PingMessage = z.object({ kind: z.enum(PING_KINDS), x: finite, y: finite, z: finite, target: id.optional() });
+export type PingMessage = z.infer<typeof PingMessage>;
+/** Server chuyển dấu tới đồng đội (solo thì chỉ mình thấy). Dấu địch: vị trí là chỗ người đó lúc đánh dấu. */
+export interface PingBroadcast {
+  from: string;
+  name: string;
+  kind: PingKind;
+  x: number;
+  y: number;
+  z: number;
+  target: string;
+  ttl: number;
+}
+/** Vòng khẩu lệnh bộ đàm: mã từng câu (chữ hiện trên HUD do client dịch). */
+export const RADIO_LINES = ["help", "ammo", "medic", "attack", "defend", "ack", "retreat", "thanks"] as const;
+export type RadioLine = (typeof RADIO_LINES)[number];
+export const RADIO_MIN_INTERVAL_MS = 1000;
+export const RadioMessage = z.object({ line: z.enum(RADIO_LINES) });
+export type RadioMessage = z.infer<typeof RadioMessage>;
+/** Server chuyển câu bộ đàm tới đồng đội; `flag`: cứ điểm gần người nói (chiến trường, câu tấn công / phòng thủ). */
+export interface RadioBroadcast {
+  from: string;
+  name: string;
+  line: RadioLine;
+  flag: string;
+}
 export type SquadOrderMessage = z.infer<typeof SquadOrderMessage>;
 /** Chiến trường: hồi sinh ở căn cứ ("hq") hay ở cứ điểm phe mình đang giữ (chữ cái), với lớp lính đã chọn. */
 export const RespawnMessage = z.object({ at: z.string().max(8), role: z.enum(["rifle", "sniper", "support", "antitank", "tanker"]) });
 export type RespawnMessage = z.infer<typeof RespawnMessage>;
 /** Chiến trường (ở sảnh): chọn phe. */
 export const PickSideMessage = z.object({ side: z.enum(["blue", "red"]) });
-/** Đã gục: nhập vào một máy còn sống trong đội mình. */
-export const PossessMessage = z.object({ id: id });
+/** Đã gục: nhập vào một máy còn sống trong đội mình (theo id, hay theo ô 1–5 trong đội: xem `squadSlots`). */
+export const PossessMessage = z.object({ id: id.optional(), slot: z.int().min(1).max(5).optional() });
 export type PossessMessage = z.infer<typeof PossessMessage>;
 
 /** Server báo mọi người: một phát bắn (để vẽ vệt đạn, chớp lửa, phát tiếng). `e` là điểm cuối từng tia. */
@@ -982,11 +1065,27 @@ export const Messages = {
   vehicleFx: "vehicleFx",
   squadOrder: "squadOrder",
   possess: "possess",
+  squadBoard: "squadBoard",
+  /** Đánh dấu chuột giữa, câu bộ đàm: gửi lên server, server chuyển cho đồng đội. */
+  ping: "ping",
+  radio: "radio",
   respawn: "respawn",
   pickSide: "pickSide",
   /** Server báo mọi người: một phe vừa chiếm được cứ điểm. */
   flag: "flag",
+  /** Server báo riêng: vừa được cộng XP (XpMessage). */
+  xp: "xp",
 } as const;
+
+/** Vừa được cộng XP: loại sự kiện (XpKind trong content), số XP, tổng XP trận này, quân hàm hiện tại. */
+export interface XpMessage {
+  kind: string;
+  amount: number;
+  match: number;
+  rank: number;
+}
 
 /** Mã đóng kết nối khi bị chủ phòng mời ra. */
 export const KICKED_CLOSE_CODE = 4001;
+
+export * from "./voice.ts";

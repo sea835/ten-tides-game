@@ -2,7 +2,8 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handleApi } from "../api/api.ts";
-import { recordMatch, userFromSession } from "./accounts.ts";
+import { rankOf } from "@tentides/content";
+import { addXp, playerProgress, recordMatch, userFromSession } from "./accounts.ts";
 import { closeDb, db, initDb } from "./pool.ts";
 
 // Chạy thật với PostgreSQL, chỉ khi có DATABASE_URL (vd. sau scripts/db-dev.sh). Không có thì bỏ qua.
@@ -77,6 +78,36 @@ describe.skipIf(!url)("tài khoản với PostgreSQL thật", () => {
 
     await recordMatch("battle", [{ userId: me.json.user.id, kills: 2, placement: 1, coins: 250 }]);
     expect((await call("GET", "/api/me", undefined, token)).json.user.coins).toBe(350);
+
+    // Quân hàm: tài khoản mới là Binh Nhì, XP cộng sau trận và qua addXp.
+    expect(me.json.progress).toEqual({ xp: 0, rank: 1, card: "", emblem: "" });
+    await recordMatch("war", [{ userId: me.json.user.id, kills: 3, placement: 1, coins: 0, xp: 700 }]);
+    await addXp([{ userId: me.json.user.id, xp: 600 }]);
+    const ranked = (await call("GET", "/api/me", undefined, token)).json;
+    expect(ranked.progress.xp).toBe(1300);
+    expect(ranked.progress.rank).toBe(rankOf(1300));
+    expect((await playerProgress(me.json.user.id)).xp).toBe(1300);
+
+    // Thẻ tên, huy hiệu: thẻ có sẵn lắp được, thẻ cấp tướng thì chưa.
+    const card = await call("POST", "/api/profile/card", { cardId: "tide", emblemId: "anchor" }, token);
+    expect(card.status).toBe(200);
+    expect(card.json.progress).toMatchObject({ card: "tide", emblem: "anchor" });
+    expect((await call("POST", "/api/profile/card", { cardId: "marshal", emblemId: "" }, token)).status).toBe(403);
+    expect((await call("POST", "/api/profile/card", { cardId: "tide", emblemId: "crown" }, token)).status).toBe(403);
+
+    // Gunsmith: lưu bộ phụ kiện + skin ưa thích; món không vừa thì bị từ chối.
+    const gs = await call("POST", "/api/gunsmith/save", { weaponId: weapon, loadout: { sight: "reddot" }, skinId: owned }, token);
+    expect(gs.status).toBe(200);
+    expect(gs.json.loadouts[weapon]).toMatchObject({ sight: "reddot", muzzle: "" });
+    expect(gs.json.equipped[weapon]).toBe(owned);
+    expect((await call("POST", "/api/gunsmith/save", { weaponId: weapon, loadout: { sight: "vgrip" } }, token)).status).toBe(400);
+    expect((await call("POST", "/api/gunsmith/save", { weaponId: weapon, loadout: {}, skinId: "not-a-skin" }, token)).status).toBe(400);
+    const after = (await call("GET", "/api/me", undefined, token)).json;
+    expect(after.loadouts[weapon].sight).toBe("reddot");
+    // Bộ toàn ô trống thì xoá.
+    const cleared = await call("POST", "/api/gunsmith/save", { weaponId: weapon, loadout: {} }, token);
+    expect(cleared.json.loadouts[weapon]).toBeUndefined();
+    expect(cleared.json.equipped[weapon]).toBe(owned);
 
     expect((await call("POST", "/api/logout", {}, token)).status).toBe(200);
     expect((await call("GET", "/api/me", undefined, token)).status).toBe(401);

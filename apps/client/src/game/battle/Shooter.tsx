@@ -15,6 +15,7 @@ import { BULLET_GROUPS, physicsProbe } from "./surface.ts";
 import { sprayBlood } from "./Blood.tsx";
 import { wreck } from "./Wreckage.tsx";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
+import { scratchRay, scratchRayFrom } from "../scratch.ts";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
 // R thay đạn, 1–3 đổi súng, 4–6 lựu đạn / bom khói / mìn, 7–8 băng gạc / hộp cứu thương, lăn chuột đổi món,
@@ -150,7 +151,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
   // Cho các phần ngoài Physics mượn tia vật lý (lỗ đạn của người khác, súng người khác chạm tường).
   useEffect(() => {
     physicsProbe.cast = (ox, oy, oz, dx, dy, dz, max) => {
-      const h = physics.castRayAndGetNormal(new rapier.Ray({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }), max, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+      const h = physics.castRayAndGetNormal(scratchRay(rapier, ox, oy, oz, dx, dy, dz), max, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
       return h ? { t: h.timeOfImpact, nx: h.normal.x, ny: h.normal.y, nz: h.normal.z } : null;
     };
     // Dev: xem trạng thái súng, giật, hiệu ứng khi thử (window.__tentides).
@@ -645,7 +646,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const maxRange = Math.min(600, def.range * 3);
     o.copy(camPos).addScaledVector(fwd, skip);
     let aimT = maxRange;
-    const hitCam = physics.castRay(new rapier.Ray(o, fwd), maxRange, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+    const hitCam = physics.castRay(scratchRayFrom(rapier, o, fwd), maxRange, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
     if (hitCam) aimT = hitCam.timeOfImpact;
     const team = room.state.players.get(me)?.team ?? "";
     for (const [id, b] of bodies) {
@@ -673,7 +674,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
       const len = to.length();
       if (len > 1e-3) {
         to.divideScalar(len);
-        const block = physics.castRay(new rapier.Ray(from, to), len, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+        const block = physics.castRay(scratchRayFrom(rapier, from, to), len, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
         if (block) muzzle = from.addScaledVector(to, Math.max(0, block.timeOfImpact - 0.06));
       }
     }
@@ -721,7 +722,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
         cd.divideScalar(len || 1);
         let t = len;
         const cast = (ox: number, oy: number, oz: number, max: number) =>
-          physics.castRayAndGetNormal(new rapier.Ray({ x: ox, y: oy, z: oz }, cd), max, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+          physics.castRayAndGetNormal(scratchRay(rapier, ox, oy, oz, cd.x, cd.y, cd.z), max, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
         let hw = cast(a3.x, a3.y, a3.z, len);
         let offset = 0;
         if (hw && pens < 1) {
@@ -803,7 +804,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
         if (target) sprayBlood(end.x, end.y, end.z, cd.x, cd.y, cd.z, { head: part === "head", strength: def.pellets > 1 ? 0.45 : 1, at: arrive });
         // Trúng người: máu bắn lên tường, sàn phía sau (nếu có gần đó).
         if (target && k < 3) {
-          const behind = physics.castRayAndGetNormal(new rapier.Ray(end, cd), 2.6, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
+          const behind = physics.castRayAndGetNormal(scratchRayFrom(rapier, end, cd), 2.6, true, undefined, BULLET_GROUPS, undefined, localBody.current ?? undefined);
           if (behind) {
             const at = end.clone().addScaledVector(cd, behind.timeOfImpact);
             effects.splats.push({ x: at.x, y: at.y, z: at.z, nx: behind.normal.x, ny: behind.normal.y, nz: behind.normal.z, scale: (part === "head" ? 1.2 : 0.8) * (1 - behind.timeOfImpact / 4) });

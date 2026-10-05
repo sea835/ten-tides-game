@@ -75,6 +75,29 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE users ADD COLUMN pity_legendary integer NOT NULL DEFAULT 0;
     `,
   },
+  {
+    id: "003_progression",
+    sql: `
+      -- Quân hàm: tổng XP (quân hàm suy ra từ XP bằng rankOf), thẻ tên và huy hiệu đang lắp.
+      ALTER TABLE users ADD COLUMN xp bigint NOT NULL DEFAULT 0 CHECK (xp >= 0);
+      ALTER TABLE users ADD COLUMN calling_card text NOT NULL DEFAULT '';
+      ALTER TABLE users ADD COLUMN emblem text NOT NULL DEFAULT '';
+      ALTER TABLE match_results ADD COLUMN xp_earned integer NOT NULL DEFAULT 0;
+
+      -- Gunsmith: bộ phụ kiện ưa thích của mỗi khẩu (skin ưa thích vẫn nằm ở equipped_skins).
+      CREATE TABLE weapon_loadouts (
+        user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        weapon_id  text NOT NULL,
+        muzzle     text NOT NULL DEFAULT '',
+        grip       text NOT NULL DEFAULT '',
+        mag        text NOT NULL DEFAULT '',
+        stock      text NOT NULL DEFAULT '',
+        sight      text NOT NULL DEFAULT '',
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, weapon_id)
+      );
+    `,
+  },
 ];
 
 /** Khoá tư vấn để hai tiến trình server khởi động cùng lúc không chạy migration hai lần. */

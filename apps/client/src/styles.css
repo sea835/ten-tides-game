@@ -557,6 +557,16 @@ kbd {
   position: fixed;
   inset: 0;
 }
+.game-loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #0d1418;
+  color: #cfd8dc;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+}
 .hud {
   position: absolute;
   inset: 0;
@@ -4080,6 +4090,58 @@ details.more > .hint {
   background: linear-gradient(180deg, #a8321f, #6e1f15);
 }
 
+/* Sảnh mở đầu kiểu Frontline: trời chiến trường ám khói, chữ quân sự, nút vàng hổ phách. */
+.lobby.frontline .sea {
+  background: linear-gradient(180deg, #0d1512 0%, #1d2a22 30%, #4a4a33 48%, #b0703a 56%, #e0a25a 58%);
+}
+.lobby.frontline .sea::after {
+  background: linear-gradient(180deg, #2c3a2c 0%, #172219 40%, #090e0b 100%);
+}
+.lobby.frontline .isle {
+  background: #121a14;
+}
+.lobby.frontline h1 {
+  font-family: var(--font-ui);
+  font-size: clamp(38px, 10vw, 58px);
+  font-weight: 900;
+  white-space: nowrap;
+  letter-spacing: 0.1em;
+  color: #eef0e6;
+  text-shadow:
+    0 2px 0 #3c4a2a,
+    0 8px 30px rgba(242, 180, 65, 0.35);
+}
+.lobby.frontline .frontline-sub {
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.7em;
+  color: #f2b441;
+  margin-right: -0.7em;
+}
+.lobby.frontline .kicker {
+  color: #b9cfa0;
+}
+.lobby.frontline .tagline {
+  font-family: var(--font-ui);
+  font-style: normal;
+  font-size: 15px;
+  color: #e6e3d4;
+}
+.lobby.frontline .lobby-card {
+  background: rgba(10, 15, 12, 0.82);
+  border-color: rgba(186, 214, 170, 0.22);
+}
+.lobby.frontline .battle-button {
+  background: linear-gradient(180deg, #ffd27a, #f2b441);
+  border-color: rgba(255, 210, 122, 0.6);
+  color: #221603;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.lobby.frontline .battle-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffe09a, #f5c05a);
+}
+
 /* Bảng số liệu hiệu năng (F3). */
 .perf-overlay {
   position: absolute;
@@ -4100,4 +4162,37 @@ details.more > .hint {
 }
 .perf-overlay span {
   opacity: 0.6;
+}
+
+/* Đang nối lại (F5 giữa trận, rớt mạng thoáng qua). */
+.reconnecting {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--bg-0);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.reconnecting.overlay {
+  background: rgba(4, 10, 15, 0.72);
+}
+.reconnecting .spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--line-strong);
+  border-top-color: var(--accent);
+  animation: reconnect-spin 0.9s linear infinite;
+}
+@keyframes reconnect-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -39,6 +39,7 @@ import { BattleHud, SettingsButton } from "./battle/BattleHud.tsx";
 import { Shooter } from "./battle/Shooter.tsx";
 import { ViewModel, ViewPass } from "./battle/ViewModel.tsx";
 import { Vehicles } from "./battle/Vehicles.tsx";
+import { VoiceHeads } from "./voice/VoiceHeads.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -220,6 +221,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           {!battle && <Trails room={room} world={world} />}
           {battle && <BattleEffects room={room} world={world} />}
           {battle && <ViewModel room={room} />}
+          {battle && <VoiceHeads room={room} />}
           <Soundscape room={room} world={world} />
           <Fx />
           <WaypointTracker />

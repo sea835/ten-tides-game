@@ -36,10 +36,20 @@ import { Casings } from "./Casings.tsx";
 import { Blood, sprayBlood } from "./Blood.tsx";
 import { pulseNeon } from "../skinMaterials.ts";
 import { physicsProbe } from "./surface.ts";
+import { windStrength } from "../nature.ts";
+import { forEachSmoke, SmokeShells } from "./SmokeShell.tsx";
+import { Debris, spawnDebris } from "./Debris.tsx";
+import { MuzzleLights } from "./MuzzleLights.tsx";
 
 // Hiệu ứng của trận đấu: tường vùng an toàn (màn xanh cao vút, vân chạy), vòng kế tiếp vẽ trên mặt đất,
-// bom khói (hàng chục cụm khói mềm che tầm nhìn), vụ nổ (quả cầu lửa, chớp sáng, khói đen, mảnh văng, rung màn hình),
-// vệt đạn, lửa đầu nòng, bụi và tia lửa chỗ đạn găm, lựu đạn đang bay và mìn của mình.
+// bom khói (khối khói đặc hình vòm che kín tầm nhìn — SmokeShell.tsx — cộng hàng chục cụm khói mềm cuộn quanh mép),
+// vụ nổ (cầu lửa nhiều tầng, chớp sáng, cột khói đen cao chừng 20 m trôi theo gió, đất đá văng — Debris.tsx — rung
+// màn hình), vệt đạn, lửa đầu nòng (kèm đèn chớp soi sáng xung quanh — MuzzleLights.tsx), bụi và tia lửa chỗ đạn găm,
+// lựu đạn đang bay và mìn của mình.
+
+/** Hướng gió (đơn vị, trên mặt phẳng ngang) cho khói trôi; độ mạnh lấy theo `windStrength` của thời tiết. */
+const WIND_X = 0.86;
+const WIND_Z = 0.51;
 
 // ---------------------------------------------------------------------------- vùng an toàn
 
@@ -51,6 +61,9 @@ const zoneVertex = /* glsl */ `
     vec4 w = modelMatrix * vec4(position, 1.0);
     vWorld = w.xyz;
     gl_Position = projectionMatrix * viewMatrix * w;
+    // Tường vùng an toàn phải thấy từ xa dù camera chỉ nhìn tới tầm sương mù (camera.far theo sương, DayCycle):
+    // phần xa hơn mặt phẳng xa thì ép về sát mặt phẳng xa thay vì bị cắt mất.
+    gl_Position.z = min(gl_Position.z, gl_Position.w * 0.99999);
   }
 `;
 const zoneFragment = /* glsl */ `
@@ -168,7 +181,8 @@ const puffFragment = /* glsl */ `
   varying vec4 vTint;
   #include <fog_pars_fragment>
   void main() {
-    float a = texture2D(uMap, vUv).a * vTint.a;
+    // Mờ dần về mép tấm (ảnh khói chạm mép thì thấy góc vuông khi đè lên khối khói đặc).
+    float a = texture2D(uMap, vUv).a * vTint.a * (1.0 - smoothstep(0.32, 0.5, length(vUv - 0.5)));
     if (a < 0.01) discard;
     gl_FragColor = vec4(vTint.rgb, a);
     #include <fog_fragment>
@@ -223,6 +237,9 @@ function Puffs() {
     const dt = Math.min(rawDt, 0.05);
     const m = mesh.current;
     if (!m) return;
+    // Gió thổi khói nổ, khói đạn trôi đi (bão thì trôi nhanh). Khói của bom khói đứng yên tại chỗ để khớp với
+    // vùng che tầm nhìn của server.
+    const drift = 0.9 * windStrength.value * dt;
     let n = 0;
     for (let i = puffs.length - 1; i >= 0; i--) {
       const p = puffs[i]!;
@@ -234,6 +251,12 @@ function Puffs() {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
+      if (!p.dense) {
+        // Càng lên cao gió càng mạnh (cột khói nghiêng dần theo chiều gió).
+        const lift = Math.min(2, 0.5 + p.age * 0.3);
+        p.x += WIND_X * drift * lift;
+        p.z += WIND_Z * drift * lift;
+      }
       // Chậm dần theo thời gian (không theo số khung hình).
       const drag = Math.exp(-dt * (p.dense ? 0.55 : 1.2));
       p.vx *= drag;
@@ -266,7 +289,7 @@ function Puffs() {
 function SmokeEmitters({ room }: { room: IslandRoom }) {
   const acc = useRef(new Map<string, number>());
   useFrame((_, dt) => {
-    for (const [key, smoke] of room.state.smokes as unknown as Map<string, SmokeState>) {
+    forEachSmoke(room, (key, smoke) => {
       let a = (acc.current.get(key) ?? 0) + dt;
       // Vừa bị lựu đạn thổi thủng: khoảng trống quanh chỗ nổ, khói bị đẩy ra mép, co dần rồi khói lấp lại.
       if (smoke.clear > 0) {
@@ -307,7 +330,7 @@ function SmokeEmitters({ room }: { room: IslandRoom }) {
         });
       }
       acc.current.set(key, a);
-    }
+    });
   });
   return null;
 }
@@ -330,7 +353,9 @@ const embers: Ember[] = [];
 const MAX_EMBERS = 360;
 /** Mỗi vụ nổ vẽ chừng này cầu lửa con (lệch nhau, nở trễ nhau) cho cầu lửa cuồn cuộn, không tròn trịa. */
 const FIREBALLS = 7;
-const MAX_FIRE = 16 * FIREBALLS;
+/** Tầng lửa thứ hai: vài cuộn lửa đỏ sẫm bốc lên sau (như nấm lửa), nguội dần thành khói đen của cột khói. */
+const RISERS = 4;
+const MAX_FIRE = 16 * (FIREBALLS + RISERS);
 
 /** Số giả ngẫu nhiên cố định theo hạt giống vụ nổ và thứ tự quả cầu (hình dạng mỗi vụ một khác, không nhảy mỗi khung). */
 function rnd(seed: number, i: number): number {
@@ -542,6 +567,24 @@ function Blasts() {
           seedAttr.setX(n, seed + j * 0.37);
           n++;
         }
+        // Tầng hai: cuộn lửa bốc cao, nở trễ, nguội sớm (đỏ cam sẫm), nối cầu lửa với cột khói.
+        for (let j = 0; j < RISERS && n < MAX_FIRE; j++) {
+          const delay = 0.1 + rnd(seed, j + 61) * 0.22;
+          const life = (big ? 1.5 : 1.15) * (0.8 + rnd(seed, j + 67) * 0.4);
+          const t = age - delay;
+          if (t < 0 || t > life) continue;
+          const k = t / life;
+          const a = rnd(seed, j + 71) * Math.PI * 2;
+          const spread = (0.3 + rnd(seed, j + 73) * 0.9) * scale;
+          const rise = 1 - Math.pow(1 - k, 2);
+          dummy.position.set(b.x + Math.cos(a) * spread, b.y + 1.8 * scale + rise * (3.5 + rnd(seed, j + 79) * 3) * scale, b.z + Math.sin(a) * spread);
+          dummy.scale.setScalar((1.6 + rnd(seed, j + 83) * 1.2) * scale * (0.6 + rise * 0.8));
+          dummy.updateMatrix();
+          m.setMatrixAt(n, dummy.matrix);
+          kAttr.setX(n, 0.28 + k * 0.72);
+          seedAttr.setX(n, seed + 3.1 + j * 0.53);
+          n++;
+        }
         // Sóng xung kích: vòng sáng loang trên mặt đất trong 0,4 giây đầu.
         if (rm && age < 0.4 && rn < 16) {
           const k = age / 0.4;
@@ -612,6 +655,64 @@ function Blasts() {
   );
 }
 
+/** Cột khói đen sau vụ nổ: chân cột tiếp tục nhả khói vài giây, khói bốc thẳng lên chừng 20 m rồi nghiêng theo gió. */
+interface Plume {
+  x: number;
+  y: number;
+  z: number;
+  born: number;
+  until: number;
+  acc: number;
+  big: boolean;
+}
+const plumes: Plume[] = [];
+
+function Plumes() {
+  useFrame((_, rawDt) => {
+    const dt = Math.min(rawDt, 0.05);
+    const now = performance.now() / 1000;
+    for (let i = plumes.length - 1; i >= 0; i--) {
+      const p = plumes[i]!;
+      if (now > p.until) {
+        plumes[i] = plumes[plumes.length - 1]!;
+        plumes.pop();
+        continue;
+      }
+      // Nhả dày lúc đầu, thưa dần.
+      const k = (now - p.born) / (p.until - p.born);
+      const rate = (p.big ? 18 : 13) * (1 - k * 0.6);
+      p.acc += dt * rate;
+      while (p.acc >= 1 && puffs.length < 880) {
+        p.acc -= 1;
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * (p.big ? 1.2 : 0.8);
+        const dark = 0.05 + Math.random() * 0.08 + k * 0.08;
+        const rise = (3.6 + Math.random() * 1.4) * (p.big ? 1.1 : 1);
+        puffs.push({
+          x: p.x + Math.cos(a) * r,
+          y: p.y + 1 + Math.random() * 1.5,
+          z: p.z + Math.sin(a) * r,
+          vx: Math.cos(a) * 0.4,
+          vy: rise,
+          vz: Math.sin(a) * 0.4,
+          size: (1.6 + Math.random() * 0.8) * (p.big ? 1.25 : 1),
+          grow: 1.1 + Math.random() * 0.6,
+          // Khói bốc 3,6–5 m/s trong 4,5–5,5 giây: đỉnh cột chừng 20 m.
+          life: 4.5 + Math.random(),
+          age: 0,
+          r: dark,
+          g: dark,
+          b: dark * 0.96,
+          alpha: 0.72,
+          dense: false,
+        });
+      }
+      if (p.acc >= 1) p.acc = 0;
+    }
+  });
+  return null;
+}
+
 /** Nhận tin nổ, khói từ server: thêm hiệu ứng, tiếng, rung màn hình. */
 function useBooms(room: IslandRoom) {
   useEffect(() => {
@@ -646,6 +747,9 @@ function useBooms(room: IslandRoom) {
         p.vy += push * 0.3;
       }
       shake.amount = Math.min(1.4, shake.amount + Math.max(0, 1.3 - d / 30));
+      // Đất đá văng tung toé, cột khói đen tiếp tục bốc lên vài giây sau (cao chừng 20 m, trôi theo gió).
+      spawnDebris(b.x, b.y, b.z, big);
+      if (plumes.length < 12) plumes.push({ x: b.x, y: b.y, z: b.z, born: now, until: now + (big ? 3.6 : 2.4), acc: 0, big });
       // Cột khói đen cuồn cuộn bốc cao (nở to dần), vòng bụi đất toả sát mặt đất, đất đá tung lên.
       const scale = big ? 1.4 : 1;
       for (let k = 0; k < (big ? 44 : 32); k++) {
@@ -694,7 +798,6 @@ const toCam = new Vector3();
 function Tracers() {
   const mesh = useRef<InstancedMesh>(null);
   const flashes = useRef<InstancedMesh>(null);
-  const light = useRef<PointLight>(null);
   const dummy = useMemo(() => new Object3D(), []);
   const material = useMemo(
     () =>
@@ -823,7 +926,6 @@ function Tracers() {
 
     const f = flashes.current;
     let fn = 0;
-    let lit = 0;
     for (let i = effects.flashes.length - 1; i >= 0; i--) {
       const fl = effects.flashes[i]!;
       const age = now - fl.born;
@@ -838,22 +940,17 @@ function Tracers() {
         dummy.updateMatrix();
         f.setMatrixAt(fn++, dummy.matrix);
       }
-      if (light.current && lit === 0) {
-        light.current.position.set(fl.x, fl.y, fl.z);
-        lit = 1;
-      }
     }
     if (f) {
       f.count = fn;
       f.instanceMatrix.needsUpdate = true;
     }
-    if (light.current) light.current.intensity = lit ? 25 : 0;
+    // Đèn chớp đầu nòng: MuzzleLights đọc cùng hàng đợi `effects.flashes`.
   });
   return (
     <>
       <instancedMesh ref={mesh} args={[geometry, material, MAX_TRACERS]} frustumCulled={false} renderOrder={8} />
       <instancedMesh ref={flashes} args={[flashGeo, flashMat, 16]} frustumCulled={false} renderOrder={8} />
-      <pointLight ref={light} color="#ffc070" distance={12} decay={2} intensity={0} />
     </>
   );
 }
@@ -1098,10 +1195,14 @@ export function BattleEffects({ room, world }: { room: IslandRoom; world: World 
     <>
       <ZoneWall room={room} />
       <NextZone room={room} world={world} />
+      <SmokeShells room={room} />
       <Puffs />
       <SmokeEmitters room={room} />
       <Blasts />
+      <Plumes />
+      <Debris world={world} />
       <Tracers />
+      <MuzzleLights />
       <BulletHoles world={world} />
       <Casings world={world} />
       <Blood room={room} world={world} />

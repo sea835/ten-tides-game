@@ -1,6 +1,6 @@
 import { useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Color, Fog, Vector3, type DirectionalLight, type HemisphereLight } from "three";
+import { Color, Fog, Vector3, type DirectionalLight, type HemisphereLight, type PerspectiveCamera } from "three";
 import type { IslandRoom } from "../net.ts";
 import { localEnv, localPosition, sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
@@ -27,6 +27,8 @@ const OVERCAST = new Color("#8f9aa3");
 const STORM_SKY = new Color("#4b5560");
 const MIST = new Color("#c9d3d8");
 const grey = new Color();
+/** Ánh chớp: trắng xanh lạnh, phủ lên nắng và ánh trời trong tích tắc. */
+const LIGHTNING = new Color("#dfe8ff");
 
 const UP = new Vector3(0, 1, 0);
 const MOON_DIR = new Vector3(-30, 45, 20).normalize();
@@ -53,6 +55,18 @@ function aimLight(light: DirectionalLight, dir: Vector3) {
   light.position.copy(center).addScaledVector(dir, 80);
   light.target.position.copy(center);
   light.target.updateMatrixWorld();
+}
+
+/**
+ * Mặt phẳng xa của camera đi theo tầm sương mù: quá `fog.far` mọi vật đã chìm hẳn vào màu sương (trùng màu nền,
+ * chân trời), vẽ thêm chỉ tốn lệnh vẽ và điểm ảnh. Cộng một khoảng đệm, làm tròn theo bậc 10 m để khỏi dựng lại ma
+ * trận chiếu mỗi khung hình khi sương đổi dần. Vòm trời vẽ ở đúng mặt phẳng xa (xyww) nên không bị cắt.
+ */
+const FAR_MARGIN = 15;
+const FAR_MIN = 60;
+
+export function farForFog(fogFar: number): number {
+  return Math.max(FAR_MIN, Math.ceil((fogFar + FAR_MARGIN) / 10) * 10);
 }
 
 /** Mặt trời lặn vào lúc này trong ngày (0–1); phần sau là đêm. */
@@ -95,6 +109,7 @@ export function DayCycle({
 }) {
   const sunScale = ibl ? 1.4 : 1;
   const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const timer = useRef({ timeLeft: -1, at: 0 });
 
   useFrame(() => {
@@ -151,6 +166,13 @@ export function DayCycle({
       }
       if (scene.background instanceof Color) scene.background.copy(horizon);
     }
+    if (scene.fog instanceof Fog) {
+      const far = farForFog(scene.fog.far);
+      if (camera.far !== far) {
+        camera.far = far;
+        camera.updateProjectionMatrix();
+      }
+    }
     // Trong hang, hầm thì nắng và ánh trời lọt vào ít dần theo độ sâu.
     const shade = 1 - 0.82 * localEnv.indoor;
 
@@ -170,6 +192,8 @@ export function DayCycle({
         light.color.copy(MOON);
         aimLight(light, MOON_DIR);
       }
+      // Chớp: cả đảo bừng sáng trắng xanh (cùng nhịp với tia chớp và tiếng sấm trong Weather.tsx).
+      if (w.flash > 0) light.color.lerp(LIGHTNING, Math.min(1, w.flash));
     }
     const h = hemi.current;
     if (h) {
@@ -179,6 +203,10 @@ export function DayCycle({
       h.intensity = (0.75 + 0.25 * dusk + 0.4 * day) * hemiScale * shade * (localEnv.underwater ? 0.7 : 1) * (1 - 0.15 * overcast) + w.flash * 1.5;
       h.color.copy(horizon).lerp(MOON_SKY, night * 0.7).lerp(top, 0.25 * day);
       h.groundColor.copy(GROUND_NIGHT).lerp(GROUND_DAY, 0.3 + 0.7 * day);
+      if (w.flash > 0) {
+        h.color.lerp(LIGHTNING, Math.min(1, w.flash));
+        h.groundColor.lerp(LIGHTNING, Math.min(1, w.flash) * 0.4);
+      }
     }
   });
 

@@ -248,14 +248,25 @@ export interface DetailOptions {
 const VERTEX_HEAD = /* glsl */ `
 varying vec3 vDetailPos;
 varying vec3 vDetailNormal;
+varying float vTenUp;
 #ifdef TEN_SPLAT
   attribute vec4 splat;
   varying vec4 vSplat;
 #endif
 `;
 
+/** Pháp tuyến theo thế giới hướng lên bao nhiêu (cho tuyết đọng), dùng cả khi vân tính theo vật. */
+const VERTEX_UP = /* glsl */ `
+  {
+    vec3 tenN = objectNormal;
+    #ifdef USE_INSTANCING
+      tenN = mat3( instanceMatrix ) * tenN;
+    #endif
+    vTenUp = normalize( mat3( modelMatrix ) * tenN ).y;
+  }`;
+
 function vertexBody(world: boolean) {
-  return /* glsl */ `
+  return /* glsl */ `${VERTEX_UP}
   {
     vec4 dp = vec4( transformed, 1.0 );
     vec3 dn = objectNormal;
@@ -289,6 +300,7 @@ uniform float uDetailStrength;
 uniform float uDetailBump;
 varying vec3 vDetailPos;
 varying vec3 vDetailNormal;
+varying float vTenUp;
 #ifdef TEN_SPLAT
   varying vec4 vSplat;
 #endif
@@ -333,13 +345,36 @@ const FRAGMENT_COLOR = /* glsl */ `
     vec4 tenFine = texture2D( uDetailB, vDetailPos.xz * uDetailScale * 4.3 );
     diffuseColor.rgb *= 1.0 + ( dot( tenFine, vSplat ) / max( dot( vSplat, vec4( 1.0 ) ), 1e-3 ) - 0.5 ) * 0.3 * tenFade;
   #endif
+  // Thời tiết: mưa thì mặt đất, tường sẫm lại (ướt); tuyết phủ trắng các mặt hướng lên (đất, mái tôn, bậu cửa, nắp
+  // xe tăng, lá cây), dày mỏng loang lổ theo vân, mặt dốc đứng thì không đọng. Vật vân theo vật (người lính: mũ,
+  // vai, ba lô) đọng mỏng hơn vì cử động suốt.
   #ifdef TEN_WORLD
-    // Thời tiết: mưa thì mặt đất, tường sẫm lại (ướt); tuyết phủ trắng các mặt hướng lên (đất, mái, bậu cửa, lá cây),
-    // dày mỏng loang lổ theo vân, mặt dốc đứng thì không đọng.
     diffuseColor.rgb *= 1.0 - 0.22 * uWet;
-    float tenUp = normalize( vDetailNormal ).y;
-    float tenSnow = uSnow * smoothstep( 0.45, 0.8, tenUp ) * smoothstep( 0.25, 0.6, tenH + 0.25 * uSnow );
+    float tenSnow = uSnow * smoothstep( 0.45, 0.8, vTenUp ) * smoothstep( 0.25, 0.6, tenH + 0.25 * uSnow );
     diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( tenSnow, 0.0, 0.92 ) );
+  #else
+    diffuseColor.rgb *= 1.0 - 0.14 * uWet;
+    float tenSnow = uSnow * smoothstep( 0.55, 0.9, vTenUp ) * smoothstep( 0.35, 0.65, tenH + 0.2 * uSnow ) * 0.75;
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( tenSnow, 0.0, 0.8 ) );
+  #endif
+`;
+
+/**
+ * Bản nhẹ khi tắt vân (đồ hoạ thấp): không đọc ảnh vân, chỉ còn ướt và tuyết đọng trên mặt hướng lên, để bão tuyết
+ * vẫn phủ trắng mái nhà, nắp xe tăng ở mọi mức đồ hoạ.
+ */
+const LITE_FRAGMENT_HEAD = /* glsl */ `
+uniform float uSnow;
+uniform float uWet;
+varying float vTenUp;
+`;
+const LITE_FRAGMENT_COLOR = /* glsl */ `
+  #ifdef TEN_WORLD
+    diffuseColor.rgb *= 1.0 - 0.22 * uWet;
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( uSnow * smoothstep( 0.5, 0.85, vTenUp ), 0.0, 0.88 ) );
+  #else
+    diffuseColor.rgb *= 1.0 - 0.14 * uWet;
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( uSnow * smoothstep( 0.6, 0.92, vTenUp ) * 0.6, 0.0, 0.7 ) );
   #endif
 `;
 
@@ -386,10 +421,19 @@ export function applyDetail(material: MeshStandardMaterial, options: DetailOptio
   const prevKey = material.customProgramCacheKey === MeshStandardMaterial.prototype.customProgramCacheKey ? "" : material.customProgramCacheKey();
   material.onBeforeCompile = (shader, renderer) => {
     prev?.call(material, shader, renderer);
-    if (!detailSettings.enabled) return;
+    if (world) shader.defines = { ...shader.defines, TEN_WORLD: "" };
+    if (!detailSettings.enabled) {
+      Object.assign(shader.uniforms, weatherUniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying float vTenUp;")
+        .replace("#include <fog_vertex>", `#include <fog_vertex>\n${VERTEX_UP}`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\n${LITE_FRAGMENT_HEAD}`)
+        .replace("#include <color_fragment>", `#include <color_fragment>\n${LITE_FRAGMENT_COLOR}`);
+      return;
+    }
     Object.assign(shader.uniforms, uniforms, weatherUniforms);
     if (options.splat) shader.defines = { ...shader.defines, TEN_SPLAT: "" };
-    if (world) shader.defines = { ...shader.defines, TEN_WORLD: "" };
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
       .replace("#include <fog_vertex>", `#include <fog_vertex>\n${vertexBody(world)}`);
@@ -398,7 +442,7 @@ export function applyDetail(material: MeshStandardMaterial, options: DetailOptio
       .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_COLOR}`)
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${FRAGMENT_NORMAL}`);
   };
-  material.customProgramCacheKey = () => (detailSettings.enabled ? `${prevKey}|detail:${world ? "w" : "o"}:${options.splat ? "s" : ""}` : `${prevKey}|flat`);
+  material.customProgramCacheKey = () => (detailSettings.enabled ? `${prevKey}|detail:${world ? "w" : "o"}:${options.splat ? "s" : ""}` : `${prevKey}|lite:${world ? "w" : "o"}`);
   patched.add(material);
   material.addEventListener("dispose", () => patched.delete(material));
   material.userData.tenDetail = options.kind;

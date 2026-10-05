@@ -1,4 +1,4 @@
-import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, flightTime, insideBox, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
+import { MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -109,6 +109,8 @@ export class Bots {
   private brains = new Map<string, Brain>();
   /** Lệnh của từng đội (theo id đội). */
   orders = new Map<string, SquadOrder>();
+  /** Máy đang chạy tới lên xe tăng theo lệnh đội trưởng: id máy → id xe. */
+  boarding = new Map<string, string>();
   private grid: HeightGrid | null = null;
   private gridMap: object | null = null;
   /** Đội trưởng từng đội, tính lại mỗi nhịp. */
@@ -123,7 +125,8 @@ export class Bots {
       this.grid = new HeightGrid(map.world.heightAt, (map.half ?? 240) - 20);
       this.gridMap = map;
     }
-    return this.grid.at(x, z);
+    // Mặt cầu (khối deck) cao hơn địa hình thì đi trên mặt cầu.
+    return Math.max(this.grid.at(x, z), deckTop(map.index, x, z));
   }
 
   /** Dựng sẵn lưới độ cao (gọi lúc vào trận, khỏi khựng ở nhịp đầu). */
@@ -154,6 +157,7 @@ export class Bots {
     for (const [id, p] of [...s.players]) if (p.bot) s.players.delete(id);
     this.brains.clear();
     this.orders.clear();
+    this.boarding.clear();
     this.nameSeq = 0;
   }
 
@@ -247,6 +251,51 @@ export class Bots {
 
   forget(id: string) {
     this.brains.delete(id);
+    this.boarding.delete(id);
+  }
+
+  /**
+   * Lệnh lên xe tăng: chọn máy còn sống, đang đi bộ trong đội `team` (ưu tiên máy lái tăng, rồi máy gần xe nhất) chạy
+   * tới xe `vid` rồi lên lái. Trả về id máy được giao, hay "" nếu không ai đi được.
+   */
+  orderBoard(team: string, vid: string): string {
+    const s = this.room.state;
+    const v = s.vehicles.get(vid);
+    if (!v || v.hp <= 0 || v.driver) return "";
+    for (const [bid, to] of this.boarding) if (to === vid) this.boarding.delete(bid);
+    let best = "";
+    let bestScore = Infinity;
+    for (const [id, p] of s.players) {
+      if (!p.bot || !p.alive || p.team !== team || p.vehicle) continue;
+      const score = Math.hypot(p.x - v.x, p.z - v.z) + (p.role === "tanker" ? 0 : 10000);
+      if (score < bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+    if (best) this.boarding.set(best, vid);
+    return best;
+  }
+
+  /** Máy đang theo lệnh lên xe: hướng chạy tới xe (null nếu không có lệnh, hay lệnh hết hiệu lực); tới nơi thì lên. */
+  private boardStep(id: string, p: PlayerState): { mx: number; mz: number } | null {
+    const vid = this.boarding.get(id);
+    if (!vid) return null;
+    const v = this.room.state.vehicles.get(vid);
+    if (!v || v.hp <= 0 || v.driver || p.vehicle || (v.team && v.team !== p.team)) {
+      this.boarding.delete(id);
+      return null;
+    }
+    const dx = v.x - p.x;
+    const dz = v.z - p.z;
+    const d = Math.hypot(dx, dz) || 1;
+    if (d < TANK.enter * 0.8) {
+      this.boarding.delete(id);
+      this.room.vehicles.board(id, vid);
+      v.team = p.team;
+      return { mx: 0, mz: 0 };
+    }
+    return { mx: dx / d, mz: dz / d };
   }
 
   onHurt(target: string, attacker: string) {
@@ -422,9 +471,9 @@ export class Bots {
       f = pick[1];
     }
     const r = tank ? f.r + 12 : f.r * 0.8 * b.gr;
-    const x = f.x + Math.cos(b.ga) * r;
-    const z = f.z + Math.sin(b.ga) * r;
-    return { x, z, far: Math.hypot(x - p.x, z - p.z) };
+    // Cứ điểm bên kia sông: vòng qua cầu hay khúc cạn gần nhất.
+    const at = this.room.map.layout === "war" ? warRoute(p.x, p.z, f.x + Math.cos(b.ga) * r, f.z + Math.sin(b.ga) * r) : { x: f.x + Math.cos(b.ga) * r, z: f.z + Math.sin(b.ga) * r };
+    return { x: at.x, z: at.z, far: Math.hypot(at.x - p.x, at.z - p.z) };
   }
 
   /** Chỗ máy này nên đứng theo đội hình (hay theo lệnh), hoặc null nếu tự do (đội trưởng, máy solo). */
@@ -481,7 +530,18 @@ export class Bots {
     let mz = 0;
     let speed = 5;
     const spot = this.formationSpot(id, p, b, false);
-    if (target && target.alive && s.phase === "battle" && !b.sees) {
+    const order = p.team ? this.orders.get(p.team) : undefined;
+    const board = this.boardStep(id, p);
+    if (board) {
+      // Lệnh lên xe tăng: chạy thẳng tới xe, không dừng lại đấu súng.
+      if (p.vehicle) return;
+      mx = board.mx;
+      mz = board.mz;
+      speed = 7.8;
+      p.aiming = p.prone = p.crouching = false;
+      p.aimPitch = 0;
+      if (mx || mz) p.rotY = Math.atan2(mx, mz);
+    } else if (target && target.alive && s.phase === "battle" && !b.sees) {
       // Mất dấu: đi tới chỗ thấy lần cuối (máy trong đội người chơi không đi quá xa đội hình), súng chĩa về đó.
       const dx = b.lx - p.x;
       const dz = b.lz - p.z;
@@ -490,7 +550,8 @@ export class Bots {
       p.aimPitch = 0;
       p.aiming = false;
       p.prone = false;
-      const leash = spot && spot.far > 30;
+      // Giữ chốt: không rời vị trí quá 12 m; tới điểm & tấn công: được truy địch xa hơn (45 m).
+      const leash = spot && spot.far > (order?.kind === "hold" ? 12 : order?.kind === "move" ? 45 : 30);
       if (d > 2.5 && !leash) {
         mx = dx / d;
         mz = dz / d;
@@ -532,7 +593,6 @@ export class Bots {
       const z = s.zone;
       if (spot) {
         // Theo đội hình: tới chỗ của mình, xa thì chạy; tới nơi thì đứng (giữ chỗ thì ngồi xuống canh).
-        const order = this.orders.get(p.team);
         if (spot.far > 2.5) {
           mx = (spot.x - p.x) / spot.far;
           mz = (spot.z - p.z) / spot.far;
@@ -544,6 +604,8 @@ export class Bots {
           // Đứng canh: nhìn ra ngoài đội hình theo hướng chỗ đứng; chiến trường thì đảo mắt quanh cứ điểm.
           const leader = s.players.get(this.leaderOf(p.team));
           if (s.battleMode === "war") p.rotY += dt * 0.35 * (b.slot % 2 ? 1 : -1);
+          // Giữ chốt: mỗi máy canh một hướng, quay lưng vào giữa (phòng thủ vòng tròn quanh điểm giữ).
+          else if (order?.kind === "hold" && Math.hypot(spot.x - order.x, spot.z - order.z) > 1) p.rotY = Math.atan2(spot.x - order.x, spot.z - order.z);
           else if (leader) p.rotY = leader.rotY + ((b.slot % 2 ? 1 : -1) * (0.4 + (b.slot >> 1) * 0.5));
         }
       } else {
@@ -576,7 +638,8 @@ export class Bots {
       const nx = p.x + mx * speed * dt;
       const nz = p.z + mz * speed * dt;
       const ny = this.height(nx, nz);
-      const blocked = ny < 0.3 || ny - p.y > 0.8 || insideBox(room.map.index, nx, ny + 0.9, nz, 0.35);
+      // Lội được khúc cạn (nước tới gối), nước sâu thì không.
+      const blocked = ny < WATER_LEVEL - 0.7 || ny - p.y > 0.8 || insideBox(room.map.index, nx, ny + 0.9, nz, 0.35);
       if (blocked) {
         if (b.detour <= 0) {
           b.detour = 0.8 + Math.random() * 0.8;
@@ -742,14 +805,14 @@ export class Bots {
     const dir: [number, number, number] = [dx / d, dy / d, dz / d];
     // Khói che tầm nhìn.
     for (const smoke of this.room.state.smokes.values()) {
-      const t = (smoke.x - eye[0]) * dir[0] + (smoke.y + 1.5 - eye[1]) * dir[1] + (smoke.z - eye[2]) * dir[2];
+      const t = (smoke.x - eye[0]) * dir[0] + (smoke.y + SMOKE_SIGHT.lift - eye[1]) * dir[1] + (smoke.z - eye[2]) * dir[2];
       if (t < 0 || t > d) continue;
       const px = eye[0] + dir[0] * t - smoke.x;
-      const py = eye[1] + dir[1] * t - smoke.y - 1.5;
+      const py = eye[1] + dir[1] * t - smoke.y - SMOKE_SIGHT.lift;
       const pz = eye[2] + dir[2] * t - smoke.z;
       // Lựu đạn vừa thổi thủng một khoảng trong khói thì nhìn xuyên qua được chỗ đó.
       if (smoke.clear > 0 && Math.hypot(px + smoke.x - smoke.cx, pz + smoke.z - smoke.cz) < SMOKE_CLEAR.radius) continue;
-      if (Math.hypot(px, py, pz) < 6) return false;
+      if (Math.hypot(px, py, pz) < SMOKE_SIGHT.radius) return false;
     }
     // Địa hình: dò thưa từng 2,5 m trên lưới độ cao (rẻ hơn nhiều so với dò từng mét).
     const len = d - 0.5;
