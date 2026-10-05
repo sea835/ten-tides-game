@@ -1,5 +1,19 @@
 import { randomBytes } from "node:crypto";
-import { SKIN, gachaCost, rollSkins, skinFitsWeapon, type RollResult } from "@tentides/content";
+import {
+  CALLING_CARD,
+  EMBLEM,
+  EMPTY_LOADOUT,
+  LOADOUT_SLOTS,
+  SKIN,
+  canUseCard,
+  canUseEmblem,
+  gachaCost,
+  rankOf,
+  rollSkins,
+  skinFitsWeapon,
+  type RollResult,
+  type WeaponLoadout,
+} from "@tentides/content";
 import { accountsEnabled, db, transaction } from "./pool.ts";
 import { SESSION_DAYS, burnPasswordCheck, hashPassword, hashSessionToken, newSessionToken, verifyPassword } from "./password.ts";
 
@@ -16,6 +30,17 @@ export interface Profile {
   skins: { skinId: string; count: number }[];
   equipped: Record<string, string>;
   pity: { sinceEpic: number; sinceLegendary: number };
+  /** Quân hàm: tổng XP, quân hàm 1–30, thẻ tên và huy hiệu đang lắp. */
+  progress: Progress;
+  /** Gunsmith: bộ phụ kiện ưa thích theo từng khẩu. */
+  loadouts: Record<string, WeaponLoadout>;
+}
+
+export interface Progress {
+  xp: number;
+  rank: number;
+  card: string;
+  emblem: string;
 }
 
 /** Lỗi có mã để API trả về đúng mã HTTP và thông báo. */
@@ -96,10 +121,14 @@ export async function equippedSkins(userId: number): Promise<Record<string, stri
 }
 
 export async function profile(userId: number): Promise<Profile> {
-  const [u, skins, equipped] = await Promise.all([
-    db().query<UserRow & { pity_epic: number; pity_legendary: number }>("SELECT id, username, coins, pity_epic, pity_legendary FROM users WHERE id = $1", [userId]),
+  const [u, skins, equipped, loadouts] = await Promise.all([
+    db().query<UserRow & ProgressRow & { pity_epic: number; pity_legendary: number }>(
+      "SELECT id, username, coins, pity_epic, pity_legendary, xp, calling_card, emblem FROM users WHERE id = $1",
+      [userId],
+    ),
     db().query<{ skin_id: string; count: number }>("SELECT skin_id, count FROM user_skins WHERE user_id = $1 AND count > 0 ORDER BY obtained_at", [userId]),
     equippedSkins(userId),
+    weaponLoadouts(userId),
   ]);
   const row = u.rows[0];
   if (!row) throw new AccountError("unauthorized", 401, "Phiên đăng nhập không còn hợp lệ.");
@@ -108,7 +137,82 @@ export async function profile(userId: number): Promise<Profile> {
     skins: skins.rows.filter((r) => SKIN.has(r.skin_id)).map((r) => ({ skinId: r.skin_id, count: r.count })),
     equipped,
     pity: { sinceEpic: row.pity_epic, sinceLegendary: row.pity_legendary },
+    progress: toProgress(row),
+    loadouts,
   };
+}
+
+// ---------------------------------------------------------------------------- quân hàm, thẻ tên, huy hiệu
+
+interface ProgressRow {
+  /** bigint: pg trả về chuỗi. */
+  xp: string | number;
+  calling_card: string;
+  emblem: string;
+}
+
+function toProgress(r: ProgressRow): Progress {
+  const xp = Number(r.xp) || 0;
+  // Thẻ hay huy hiệu đã bị bỏ khỏi danh mục thì coi như chưa lắp.
+  return { xp, rank: rankOf(xp), card: CALLING_CARD.has(r.calling_card) ? r.calling_card : "", emblem: EMBLEM.has(r.emblem) ? r.emblem : "" };
+}
+
+/** XP, quân hàm, thẻ tên, huy hiệu của một tài khoản (để chép vào PlayerState khi vào phòng). */
+export async function playerProgress(userId: number): Promise<Progress> {
+  const { rows } = await db().query<ProgressRow>("SELECT xp, calling_card, emblem FROM users WHERE id = $1", [userId]);
+  return rows[0] ? toProgress(rows[0]) : { xp: 0, rank: 1, card: "", emblem: "" };
+}
+
+/** Lắp thẻ tên và huy hiệu (rỗng là bỏ). Phải đã mở khoá: đạt quân hàm, hay có đủ skin. */
+export async function equipCard(userId: number, cardId: string, emblemId: string): Promise<Progress> {
+  const [p, owned] = await Promise.all([
+    playerProgress(userId),
+    db().query<{ skin_id: string }>("SELECT skin_id FROM user_skins WHERE user_id = $1 AND count > 0", [userId]),
+  ]);
+  const skins = owned.rows.map((r) => r.skin_id);
+  if (!canUseCard(cardId, p.rank, skins)) throw new AccountError("locked", 403, "Thẻ tên này chưa mở khoá.");
+  if (!canUseEmblem(emblemId, p.rank, skins)) throw new AccountError("locked", 403, "Huy hiệu này chưa mở khoá.");
+  await db().query("UPDATE users SET calling_card = $2, emblem = $3 WHERE id = $1", [userId, cardId, emblemId]);
+  return { ...p, card: cardId, emblem: emblemId };
+}
+
+/** Cộng XP (ngoài phần ghi kèm kết quả trận), vd. khi phòng đóng giữa trận. */
+export async function addXp(rows: readonly { userId: number; xp: number }[]): Promise<void> {
+  const list = rows.filter((r) => r.xp > 0);
+  if (!accountsEnabled() || list.length === 0) return;
+  await transaction(async (c) => {
+    for (const r of list) await c.query("UPDATE users SET xp = xp + $2 WHERE id = $1", [r.userId, Math.floor(r.xp)]);
+  });
+}
+
+// ---------------------------------------------------------------------------- Gunsmith
+
+type LoadoutRow = { weapon_id: string } & WeaponLoadout;
+
+export async function weaponLoadouts(userId: number): Promise<Record<string, WeaponLoadout>> {
+  const { rows } = await db().query<LoadoutRow>("SELECT weapon_id, muzzle, grip, mag, stock, sight FROM weapon_loadouts WHERE user_id = $1", [userId]);
+  const out: Record<string, WeaponLoadout> = {};
+  for (const r of rows) {
+    const l: WeaponLoadout = { ...EMPTY_LOADOUT };
+    for (const slot of LOADOUT_SLOTS) l[slot] = r[slot] ?? "";
+    out[r.weapon_id] = l;
+  }
+  return out;
+}
+
+/** Lưu bộ phụ kiện của một khẩu (đã kiểm tra bằng validateLoadout ở API). Bộ toàn ô trống thì xoá dòng. */
+export async function saveLoadout(userId: number, weaponId: string, l: WeaponLoadout): Promise<Record<string, WeaponLoadout>> {
+  if (LOADOUT_SLOTS.every((s) => !l[s])) {
+    await db().query("DELETE FROM weapon_loadouts WHERE user_id = $1 AND weapon_id = $2", [userId, weaponId]);
+  } else {
+    await db().query(
+      `INSERT INTO weapon_loadouts (user_id, weapon_id, muzzle, grip, mag, stock, sight) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (user_id, weapon_id) DO UPDATE SET muzzle = EXCLUDED.muzzle, grip = EXCLUDED.grip, mag = EXCLUDED.mag,
+         stock = EXCLUDED.stock, sight = EXCLUDED.sight, updated_at = now()`,
+      [userId, weaponId, l.muzzle, l.grip, l.mag, l.stock, l.sight],
+    );
+  }
+  return weaponLoadouts(userId);
 }
 
 /** Lắp skin cho một khẩu (skinId rỗng là tháo). Phải có skin trong kho và skin hợp khẩu đó. */
@@ -171,15 +275,25 @@ export interface MatchReward {
   kills: number;
   placement: number;
   coins: number;
+  /** XP kiếm được trong trận (hạ gục, chiếm cứ điểm...). */
+  xp?: number;
 }
 
-/** Cộng xu và ghi kết quả trận. Không có database thì bỏ qua. */
+/** Cộng xu, XP và ghi kết quả trận. Không có database thì bỏ qua. */
 export async function recordMatch(mode: string, rewards: readonly MatchReward[]): Promise<void> {
   if (!accountsEnabled() || rewards.length === 0) return;
   await transaction(async (c) => {
     for (const r of rewards) {
-      await c.query("UPDATE users SET coins = coins + $2 WHERE id = $1", [r.userId, r.coins]);
-      await c.query("INSERT INTO match_results (user_id, mode, kills, placement, coins_earned) VALUES ($1, $2, $3, $4, $5)", [r.userId, mode, r.kills, r.placement, r.coins]);
+      const xp = Math.max(0, Math.floor(r.xp ?? 0));
+      await c.query("UPDATE users SET coins = coins + $2, xp = xp + $3 WHERE id = $1", [r.userId, r.coins, xp]);
+      await c.query("INSERT INTO match_results (user_id, mode, kills, placement, coins_earned, xp_earned) VALUES ($1, $2, $3, $4, $5, $6)", [
+        r.userId,
+        mode,
+        r.kills,
+        r.placement,
+        r.coins,
+        xp,
+      ]);
     }
   });
 }

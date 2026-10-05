@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Lobby } from "./Lobby.tsx";
 import { Game } from "./game/Game.tsx";
 import { canResume, forgetLastRoom, resumeRoom, wasKicked, type IslandRoom } from "./net.ts";
+import { GunsmithHost } from "./gunsmith/GunsmithHost.tsx";
 
 export function App() {
   const [room, setRoom] = useState<IslandRoom | null>(null);
@@ -66,13 +67,17 @@ export function App() {
 
   if (!room) {
     return (
-      <Lobby
-        notice={notice}
-        onJoined={(r) => {
-          setNotice(null);
-          setRoom(r);
-        }}
-      />
+      <>
+        <Lobby
+          notice={notice}
+          onJoined={(r) => {
+            setNotice(null);
+            setRoom(r);
+          }}
+        />
+        {/* Gunsmith mở bằng openGunsmith() từ sảnh hay bảng tài khoản. */}
+        <GunsmithHost />
+      </>
     );
   }
   return (

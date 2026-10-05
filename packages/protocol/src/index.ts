@@ -84,6 +84,19 @@ export const KitState = schema(
 );
 export type KitState = SchemaType<typeof KitState>;
 
+/** Phần trang trí của người chơi có tài khoản, ai cũng thấy. */
+export const BadgeState = schema(
+  {
+    /** Quân hàm 1–30 (RANKS trong content), 0 là khách hay máy (không có quân hàm). Server cập nhật khi được cộng XP. */
+    rank: t.uint8().default(0),
+    /** Thẻ tên và huy hiệu đang lắp (id trong CALLING_CARDS, EMBLEMS), hiện trên băng rôn "Bạn bị hạ bởi". */
+    card: t.string().default(""),
+    emblem: t.string().default(""),
+  },
+  "BadgeState",
+);
+export type BadgeState = SchemaType<typeof BadgeState>;
+
 export const PlayerState = schema(
   {
     name: t.string().default(""),
@@ -157,6 +170,8 @@ export const PlayerState = schema(
     vehicle: t.string().default(""),
     /** Chiến trường: còn bao nhiêu giây nữa được hồi sinh (0 là chọn chỗ được rồi). */
     respawn: t.float32().default(0),
+    /** Quân hàm, thẻ tên, huy hiệu (gom một ref cho đỡ tốn chỗ: schema giới hạn số trường). */
+    badge: t.ref(BadgeState).default(() => new BadgeState()),
   },
   "PlayerState",
 );
@@ -986,7 +1001,17 @@ export const Messages = {
   pickSide: "pickSide",
   /** Server báo mọi người: một phe vừa chiếm được cứ điểm. */
   flag: "flag",
+  /** Server báo riêng: vừa được cộng XP (XpMessage). */
+  xp: "xp",
 } as const;
+
+/** Vừa được cộng XP: loại sự kiện (XpKind trong content), số XP, tổng XP trận này, quân hàm hiện tại. */
+export interface XpMessage {
+  kind: string;
+  amount: number;
+  match: number;
+  rank: number;
+}
 
 /** Mã đóng kết nối khi bị chủ phòng mời ra. */
 export const KICKED_CLOSE_CODE = 4001;

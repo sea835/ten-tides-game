@@ -1,0 +1,382 @@
+/* ---------- Quân hàm, thẻ tên, huy hiệu ---------- */
+
+.rank-badge {
+  display: inline-block;
+  flex: none;
+  vertical-align: -3px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.emblem {
+  display: block;
+  flex: none;
+}
+
+/* Thẻ tên (calling card). */
+.calling-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 10px 10px;
+  border-radius: 10px;
+  overflow: hidden;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  border: 1px solid color-mix(in srgb, var(--card-accent, #fff) 45%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 22px rgba(0, 0, 0, 0.35);
+}
+.calling-card::after {
+  /* Vệt sáng chạy ngang thẻ. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.14) 45%, transparent 60%);
+  transform: translateX(-100%);
+  animation: card-sheen 5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes card-sheen {
+  60%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+.calling-card.lg {
+  padding: 14px 20px 14px 14px;
+  min-height: 82px;
+}
+.calling-card.sm {
+  padding: 6px 12px 6px 6px;
+  gap: 8px;
+}
+.cc-emblem {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.cc-initial {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 20px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--card-accent, #fff);
+}
+.cc-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cc-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--card-accent, #fff);
+}
+.cc-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 800;
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calling-card.lg .cc-name {
+  font-size: 22px;
+}
+.calling-card.sm .cc-name {
+  font-size: 14px;
+}
+.cc-sub {
+  font-size: 12.5px;
+  opacity: 0.9;
+}
+
+/* Dòng quân hàm + thanh XP (bảng tài khoản). */
+.rank-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rank-line-text {
+  flex: 1;
+  min-width: 0;
+}
+.rank-line-name {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.rank-line-name span {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+}
+.xp-track {
+  height: 6px;
+  margin: 4px 0 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.xp-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #c08a1e, #ffd27a);
+}
+.rank-line-xp {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.account-progress-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.account-progress-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 7px 8px;
+}
+
+/* Hồ sơ quân nhân. */
+.service-record .gacha-close {
+  margin-left: auto;
+}
+.ranks-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.xp-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.xp-rules li {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+}
+.xp-rules b {
+  color: var(--accent-hi);
+}
+.rank-ladder {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 4px 10px;
+  max-height: 340px;
+  overflow: auto;
+}
+.rank-ladder li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 8px;
+  opacity: 0.55;
+}
+.rank-ladder li.done {
+  opacity: 0.85;
+}
+.rank-ladder li.current {
+  opacity: 1;
+  background: rgba(242, 180, 65, 0.12);
+  border: 1px solid rgba(242, 180, 65, 0.4);
+}
+.rank-ladder .rank-badge {
+  grid-row: span 2;
+}
+.rl-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+.rl-en {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--faint);
+}
+.rl-xp {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cards-tab h3 {
+  margin: 4px 0 8px;
+  font-size: 14px;
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.card-tile,
+.emblem-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px;
+  text-align: left;
+  border-radius: 10px;
+}
+.card-tile.on,
+.emblem-tile.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.card-tile.locked,
+.emblem-tile.locked {
+  opacity: 0.5;
+}
+.card-tile-art {
+  height: 46px;
+  border-radius: 7px;
+}
+.card-tile-name {
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.card-tile-rule {
+  font-size: 11px;
+  color: var(--faint);
+}
+.tile-lock-icon,
+.tile-check-icon {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: #fff;
+  filter: drop-shadow(0 1px 1px #000);
+}
+.emblem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.emblem-tile {
+  align-items: center;
+  text-align: center;
+}
+.emblem-none {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+}
+.cards-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.saved-note {
+  font-size: 12.5px;
+  color: var(--success);
+}
+
+/* Trong trận: băng rôn "Bạn bị hạ bởi", dòng +XP, lên quân hàm. */
+.b-killer {
+  position: absolute;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 32px));
+  pointer-events: none;
+  animation: killer-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.b-killer.war {
+  top: 118px;
+  bottom: auto;
+}
+.b-killer .cc-kicker {
+  color: #ffb4a8;
+}
+@keyframes killer-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 24px) scale(0.96);
+  }
+}
+.b-xp {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+.b-xp div {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffe08a;
+  animation: xp-pop 1.8s ease-out forwards;
+}
+.b-xp div b {
+  font-size: 15px;
+}
+.b-xp .rankup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(120, 80, 0, 0.75), rgba(200, 140, 20, 0.75));
+  animation: xp-pop 3.2s ease-out forwards;
+}
+@keyframes xp-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  20% {
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+.b-feed .rank-badge,
+.b-score .rank-badge {
+  margin-right: 4px;
+}

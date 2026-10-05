@@ -87,7 +87,7 @@ import {
   type ShotMessage,
   VoiceMessages,
 } from "@tentides/protocol";
-import { applySkins, resolveIdentity } from "../account.ts";
+import { applyProgress, applySkins, resolveIdentity, type Identity } from "../account.ts";
 import { isPlausibleMove } from "../movement.ts";
 import { randomRoomCode } from "../roomCode.ts";
 import { Airdrops } from "./airdrops.ts";
@@ -139,6 +139,8 @@ interface AuthData {
   playerId: string;
   /** Skin súng đang lắp (người có tài khoản). */
   skins: Record<string, string>;
+  /** Quân hàm, thẻ tên (người có tài khoản; khách là null). */
+  progress?: Identity["progress"];
 }
 
 interface Thrown {
@@ -194,7 +196,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private entrants = 0;
   private rand = Math.random;
   /** Thưởng xu sau trận cho người có tài khoản. */
-  private rewards = new MatchRewards();
+  private rewards = new MatchRewards((id, msg) => this.clientOf(id)?.send(Messages.xp, msg));
   bots!: Bots;
   vehicles!: Vehicles;
   war!: War;
@@ -458,11 +460,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   async onAuth(_client: Client, options: unknown): Promise<AuthData> {
     const auth = JoinOptions.parse(options);
     // Có phiên đăng nhập hợp lệ thì gắn với tài khoản (id u<id>, tên tài khoản, skin), không thì là khách như cũ.
-    const { playerId, name, skins } = await resolveIdentity(auth);
+    const { playerId, name, skins, progress } = await resolveIdentity(auth);
     if (this.kicked.has(playerId)) throw new Error("Chủ phòng đã mời bạn ra khỏi phòng này.");
     const humans = [...this.state.players.values()].filter((p) => !p.bot).length;
     if (!this.state.players.has(playerId) && humans >= MAX_PLAYERS) throw new Error("Phòng đã đủ người.");
-    return { name, playerId, skins };
+    return { name, playerId, skins, progress };
   }
 
   onJoin(client: Client, _options: unknown, auth: AuthData) {
@@ -475,6 +477,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       this.sessions.delete(old);
       this.clients.find((c) => c.sessionId === old)?.leave();
       applySkins(existing, auth.skins);
+      applyProgress(existing, auth.progress);
+      this.rewards.xp.track(playerId, existing, auth.progress?.xp ?? 0);
     } else {
       const p = new PlayerState();
       p.name = auth.name;
@@ -482,6 +486,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       p.sessionId = client.sessionId;
       p.created = true;
       applySkins(p, auth.skins);
+      applyProgress(p, auth.progress);
+      this.rewards.xp.track(playerId, p, auth.progress?.xp ?? 0);
       // Vào giữa trận thì xem (đã gục); ở sảnh thì đi lại tự do.
       const midMatch = this.state.phase === "prep" || this.state.phase === "battle";
       this.placeAtSpawn(p);
@@ -519,6 +525,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     p.connected = true;
     this.lastMoveAt.set(id, Date.now());
     this.sendMines(id);
+  }
+
+  onDispose() {
+    // Phòng đóng giữa trận: ghi nốt XP đang chờ.
+    this.rewards.dispose();
   }
 
   onLeave(client: Client) {
@@ -1216,6 +1227,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (k && killer !== id && !(k.team && k.team === p.team)) {
       k.kills += 1;
       k.kit.money += KILL_REWARD;
+      this.rewards.xp.award(killer, headshot ? "headshot" : "kill");
     }
     const entry = new KillState();
     entry.killer = killer;

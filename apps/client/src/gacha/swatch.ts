@@ -39,6 +39,29 @@ export function swatchBackground(f: SkinFinish): string {
           return `repeating-linear-gradient(45deg, ${c(k, 0)} 0 3px, ${c(k, 1)} 3px 5px, ${c(k, 0)} 5px 8px), ${c(k, 0)}`;
         case "damascus":
           return `repeating-radial-gradient(ellipse 140% 60% at 20% 30%, ${c(k, 0)} 0 3px, ${c(k, 1)} 3px 5px, ${c(k, 2, c(k, 0))} 5px 8px)`;
+        case "woodland":
+          return [
+            `linear-gradient(28deg, transparent 46%, ${c(k, 3)} 46% 52%, transparent 52%) 0 0 / 34px 22px`,
+            `radial-gradient(ellipse 34% 26% at 25% 35%, ${c(k, 1)} 0 96%, transparent 100%)`,
+            `radial-gradient(ellipse 30% 30% at 72% 66%, ${c(k, 2)} 0 96%, transparent 100%)`,
+            `radial-gradient(ellipse 26% 20% at 80% 22%, ${c(k, 1)} 0 96%, transparent 100%)`,
+            `radial-gradient(ellipse 22% 26% at 30% 82%, ${c(k, 2)} 0 96%, transparent 100%)`,
+            c(k, 0),
+          ].join(", ");
+        case "chip":
+          return [
+            `radial-gradient(circle at 30% 40%, ${c(k, 3)} 0 1.6px, transparent 2px) 0 0 / 13px 11px`,
+            `radial-gradient(circle at 46% 30%, ${c(k, 4)} 0 1.2px, transparent 1.6px) 0 0 / 13px 11px`,
+            `radial-gradient(ellipse 40% 22% at 30% 40%, ${c(k, 1)} 0 96%, transparent 100%)`,
+            `radial-gradient(ellipse 34% 20% at 70% 72%, ${c(k, 2)} 0 96%, transparent 100%)`,
+            c(k, 0),
+          ].join(", ");
+        case "marpat":
+          return `conic-gradient(${c(k, 1)} 25%, ${c(k, 0)} 0 50%, ${c(k, 2)} 0 75%, ${c(k, 3)} 0) 0 0 / 6px 6px, conic-gradient(${c(k, 0)} 25%, ${c(k, 2)} 0 50%, ${c(k, 1)} 0 75%, ${c(k, 0)} 0) 0 0 / 16px 16px`;
+        case "snow":
+          return `repeating-linear-gradient(-28deg, transparent 0 7px, ${c(k, 1)}88 7px 11px, transparent 11px 19px, ${c(k, 2)}55 19px 21px), ${c(k, 0)}`;
+        case "filigree":
+          return `repeating-radial-gradient(circle at 25% 50%, ${c(k, 0)} 0 3px, ${c(k, 1)} 3px 4px, ${c(k, 2)} 4px 5px) 0 0 / 16px 16px, ${c(k, 0)}`;
       }
       return c(k, 0);
     }
@@ -47,6 +70,8 @@ export function swatchBackground(f: SkinFinish): string {
     case "chrome":
       return "linear-gradient(160deg, #fbfbfc 0%, #8a929c 36%, #eef1f4 52%, #3b4048 76%, #cfd5db 100%)";
     case "neon":
+      if (f.accent)
+        return `radial-gradient(ellipse 60% 50% at 35% 55%, ${f.color}55 0%, transparent 70%), radial-gradient(ellipse 50% 45% at 72% 40%, ${f.accent}44 0%, transparent 70%), repeating-linear-gradient(90deg, transparent 0 10px, ${f.color}33 10px 11px, transparent 11px 20px, ${f.accent}33 20px 21px), #0a0612`;
       return `radial-gradient(ellipse 70% 60% at 50% 55%, ${f.color}55 0%, transparent 70%), repeating-linear-gradient(90deg, transparent 0 10px, ${f.color}33 10px 11px), #0a0e14`;
   }
 }
