@@ -76,6 +76,8 @@ export class Vehicles {
   }
 
   spawn(x: number, z: number, rotY: number, team: string, driver = ""): string {
+    // Chủ phòng tắt xe cơ giới: không đặt xe nào (trả về id rỗng).
+    if (!this.room.state.settings.vehiclesEnabled) return "";
     const id = `v${++this.seq}`;
     const v = new VehicleState();
     v.kind = "tank";

@@ -73,6 +73,7 @@ import {
   TankFireMessage,
   VehicleMoveMessage,
   MAX_BATTLE_BOTS,
+  WAR_MAX_PER_SIDE,
   type BoomMessage,
   type ChatBroadcast,
   type CorrectMessage,
@@ -89,6 +90,7 @@ import { Destruction } from "./destruction.ts";
 import { Bots } from "./bots.ts";
 import { MatchRewards } from "./rewards.ts";
 import { Vehicles } from "./vehicles.ts";
+import { DEFAULT_BOTS, applyBattleSettings, clampBots } from "./settings.ts";
 import { War, type Side } from "./war.ts";
 import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize, priceOf, receive, reloadTime, resetKit, setMag, weaponIn, type GunSlot } from "./kit.ts";
 
@@ -220,6 +222,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.roomId = await this.uniqueRoomCode();
     this.state.mode = "battle";
     this.state.phase = "lobby";
+    this.state.bots = clampBots("solo", DEFAULT_BOTS);
     this.setupMap((crypto.getRandomValues(new Uint32Array(1))[0]! % 0xfffffff) + 1);
     this.bots = new Bots(this);
     this.vehicles = new Vehicles(this);
@@ -261,22 +264,20 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
     this.onMessage(Messages.battleSettings, BattleSettingsMessage, (client, s) => {
       if (!this.hostOnly(client) || this.state.phase !== "lobby") return;
-      if (s.bots !== undefined) this.state.bots = Math.min(MAX_BATTLE_BOTS, s.bots);
-      if (s.mode !== undefined && s.mode !== this.state.battleMode) {
-        this.state.battleMode = s.mode;
+      // Kẹp số máy, vé quân, xe cơ giới, thời tiết (settings.ts).
+      const mode = applyBattleSettings(this.state, s);
+      if (mode) {
         // Chiến trường dùng bản đồ riêng (rộng hơn, có cứ điểm): dựng lại bản đồ, chia phe cho người chơi.
         this.setupMap(this.state.worldSeed);
         for (const [id, p] of this.state.players) {
           if (p.bot) continue;
-          if (s.mode === "war") this.war.assign(id);
+          if (mode === "war") this.war.assign(id);
           else {
             p.team = "";
             p.color = this.pickColor();
           }
         }
       }
-      if (s.weather !== undefined) this.state.weatherPick = s.weather;
-      if (s.time !== undefined) this.state.timePick = s.time;
     });
 
     this.onMessage(Messages.settings, (client, raw: unknown) => {
@@ -568,7 +569,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       resetKit(p.kit, START_MONEY);
       p.kit.outfit = outfit;
     }
-    if (war) this.war.start(Math.max(5, Math.min(MAX_BATTLE_BOTS, s.bots || MAX_BATTLE_BOTS)));
+    if (war) this.war.start(clampBots("war", s.bots || WAR_MAX_PER_SIDE));
     else if (squad) this.placeTeams();
     else for (const p of s.players.values()) this.placeAtSpawn(p);
     for (const id of s.players.keys()) this.sendMines(id);
@@ -638,6 +639,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   /** Xe tăng: Đồng đội thì mỗi đội một chiếc (máy lái tăng ngồi sẵn); solo thì vài chiếc bỏ trống rải trên đảo. */
   private placeTanks(squad: boolean) {
     const s = this.state;
+    // Chủ phòng tắt xe cơ giới: không đặt xe; máy lái tăng đi bộ làm lính súng trường.
+    if (!s.settings.vehiclesEnabled) {
+      for (const p of s.players.values()) if (p.bot && p.role === "tanker") p.role = "rifle";
+      return;
+    }
     if (squad) {
       for (const [id, p] of s.players) {
         if (!p.bot || p.role !== "tanker") continue;
@@ -775,10 +781,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       for (const [v, w] of table) if ((r -= w) <= 0) return v;
       return table[0]![0];
     };
-    s.weather = (BATTLE_WEATHERS as readonly string[]).includes(s.weatherPick)
-      ? s.weatherPick
+    s.weather = (BATTLE_WEATHERS as readonly string[]).includes(s.settings.weatherPick)
+      ? s.settings.weatherPick
       : weighted([["sunny", 3], ["cloudy", 2], ["rain", 2], ["fog", 1.4], ["storm", 1.2], ["snow", 1.4]]);
-    const time = (BATTLE_TIMES as readonly string[]).includes(s.timePick) ? s.timePick : weighted([["day", 5], ["dawn", 1.5], ["dusk", 1.5], ["night", 2]]);
+    const time = (BATTLE_TIMES as readonly string[]).includes(s.settings.timePick) ? s.settings.timePick : weighted([["day", 5], ["dawn", 1.5], ["dusk", 1.5], ["night", 2]]);
     const base = time === "dawn" ? 0.1 : time === "dusk" ? 0.72 : time === "night" ? 0.88 : 0.25 + this.rand() * 0.3;
     s.clock = base + (time === "day" ? 0 : this.rand() * 0.04);
     this.weatherLeft = WEATHER_MIN + this.rand() * WEATHER_MIN;
@@ -788,7 +794,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private tickSky(dt: number) {
     const s = this.state;
     s.clock = (s.clock + dt / DAY_SECONDS) % 1;
-    if (s.weatherPick !== "random") return;
+    if (s.settings.weatherPick !== "random") return;
     this.weatherLeft -= dt;
     if (this.weatherLeft > 0) return;
     this.weatherLeft = WEATHER_MIN + this.rand() * WEATHER_MIN;

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { CalendarDays, Crosshair, DoorOpen, Drama, Plus, RotateCcw, Users } from "lucide-react";
+import { Crosshair, DoorOpen, Flag, Plus, RotateCcw, Users } from "lucide-react";
 import { ROOM_CODE_LENGTH } from "@tentides/protocol";
 import { createBattleRoom, createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
 import { AccountPanel } from "./account/AccountPanel.tsx";
@@ -7,6 +7,12 @@ import { useAccount } from "./account/account.ts";
 import { GachaScreen } from "./gacha/GachaScreen.tsx";
 
 const NAME_KEY = "tentides.name";
+
+/**
+ * Chế độ Sinh tồn (cốt truyện co-op 10 ngày) đã được cất vào kho lưu trữ: sảnh không mời tạo phòng sinh tồn nữa.
+ * Mở lại bằng tham số ?survival=1 trên địa chỉ (mã nguồn IslandRoom, packages/story vẫn giữ nguyên).
+ */
+const SURVIVAL_ENABLED = new URLSearchParams(location.search).get("survival") === "1";
 
 function loadName(): string {
   try {
@@ -57,7 +63,7 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
   }
 
   return (
-    <main className="lobby">
+    <main className="lobby frontline">
       <div className="sea" aria-hidden>
         <div className="sun" />
         <div className="isle" />
@@ -68,18 +74,19 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
 
       <div className="lobby-inner">
         <header className="lobby-hero">
-          <div className="kicker">Sinh tồn · hợp tác · phản bội</div>
+          <div className="kicker">Chiến trường web 3D · không cần cài đặt</div>
           <h1>TEN TIDES</h1>
-          <p className="tagline">Chúng ta mang theo gì, và ai trong chúng ta thật sự đáng tin?</p>
+          <div className="frontline-sub">FRONTLINE</div>
+          <p className="tagline">Bảy cứ điểm, hai phe, một trăm khẩu súng. Bạn dẫn quân thế nào?</p>
           <ul className="facts">
             <li>
-              <Users size={15} aria-hidden /> 2–6 người
+              <Flag size={15} aria-hidden /> Đại Chiến 50v50
             </li>
             <li>
-              <CalendarDays size={15} aria-hidden /> 10 ngày trên đảo
+              <Users size={15} aria-hidden /> Chỉ Huy Tiểu Đội
             </li>
             <li>
-              <Drama size={15} aria-hidden /> Có thể có kẻ phản bội
+              <Crosshair size={15} aria-hidden /> Sinh Tồn Sa Trường
             </li>
           </ul>
         </header>
@@ -100,13 +107,15 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
             </button>
           )}
 
-          <button className={previous ? "big" : "primary big"} disabled={busy} onClick={() => void run(() => createRoom(name))}>
-            <Plus size={18} aria-hidden /> Tạo phòng mới
+          <button className={previous ? "big battle-button" : "primary big battle-button"} disabled={busy} onClick={() => void run(() => createBattleRoom(name))}>
+            <Crosshair size={18} aria-hidden /> Vào Trung tâm chỉ huy
           </button>
 
-          <button className="big battle-button" disabled={busy} onClick={() => void run(() => createBattleRoom(name))}>
-            <Crosshair size={18} aria-hidden /> Tạo phòng Battleground
-          </button>
+          {SURVIVAL_ENABLED && (
+            <button className="big" disabled={busy} onClick={() => void run(() => createRoom(name))}>
+              <Plus size={18} aria-hidden /> Tạo phòng Sinh tồn (lưu trữ)
+            </button>
+          )}
 
           <div className="divider">
             <span>hoặc vào phòng của bạn bè</span>

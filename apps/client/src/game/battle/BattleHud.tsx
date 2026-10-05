@@ -25,7 +25,7 @@ import {
   type AmmoId,
   type WeaponClass,
 } from "@tentides/content";
-import { BATTLE_TIMES, BATTLE_WEATHERS, MAX_BATTLE_BOTS, Messages } from "@tentides/protocol";
+import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { look } from "../input.ts";
 import { localPosition } from "../shared.ts";
@@ -41,6 +41,7 @@ import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.t
 import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
+import { CommandCenter } from "./CommandCenter.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -482,7 +483,6 @@ function Vitals({ room }: { room: IslandRoom }) {
 // ---------------------------------------------------------------------------- trên cùng: còn sống, hạ gục, vùng
 
 const WEATHER_LABEL: Record<string, string> = { sunny: "☀ Nắng", cloudy: "☁ Nhiều mây", rain: "🌧 Mưa", fog: "🌫 Sương mù", storm: "⛈ Bão", snow: "❄ Tuyết" };
-const TIME_LABEL: Record<string, string> = { dawn: "Bình minh", day: "Ban ngày", dusk: "Hoàng hôn", night: "Ban đêm" };
 
 /** Giờ trong ngày (0–1) ra chữ: 0 là rạng đông (5 giờ), 0,82 là lúc mặt trời lặn (19 giờ). */
 function clockLabel(clock: number): string {
@@ -726,126 +726,6 @@ function BuyMenu({ room }: { room: IslandRoom }) {
 }
 
 // ---------------------------------------------------------------------------- sảnh, bảng điểm, gục, thắng
-
-function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
-  const s = useRoomSnapshot(room, (st) => ({
-    phase: st.phase,
-    host: st.hostId,
-    bots: st.bots,
-    mode: st.battleMode,
-    weather: st.weatherPick,
-    time: st.timePick,
-    players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color, team: p.team })),
-  }));
-  const war = s.mode === "war";
-  const perSide = Math.max(5, s.bots || 50);
-  const me = myId(room);
-  const isHost = s.host === me;
-  if (s.phase !== "lobby") return null;
-  return (
-    <div className="b-lobby">
-      <div className="b-lobby-code">
-        <span>MÃ PHÒNG</span>
-        <strong>{room.roomId}</strong>
-      </div>
-      <h2>Battleground</h2>
-      <div className="b-mode-pick">
-        <button className={s.mode === "solo" ? "on" : ""} disabled={!isHost} onClick={() => room.send(Messages.battleSettings, { mode: "solo" })}>
-          <strong>Sinh tồn</strong>
-          <span>Một mình, người cuối cùng còn sống thắng</span>
-        </button>
-        <button className={s.mode === "squad" ? "on" : ""} disabled={!isHost} onClick={() => room.send(Messages.battleSettings, { mode: "squad" })}>
-          <strong>Đồng đội</strong>
-          <span>Mỗi người dẫn 5 máy (bắn tỉa, súng trường, súng máy, chống tăng, lái tăng), đội cuối cùng còn người thắng</span>
-        </button>
-        <button className={s.mode === "war" ? "on" : ""} disabled={!isHost} onClick={() => room.send(Messages.battleSettings, { mode: "war", ...(s.bots < 5 ? { bots: 50 } : {}) })}>
-          <strong>Chiến trường</strong>
-          <span>50 vs 50: phe Xanh đấu phe Đỏ, chiếm 7 cứ điểm trên bản đồ rộng, xe tăng, hồi sinh</span>
-        </button>
-      </div>
-      <p>
-        {war
-          ? "Bản đồ riêng rộng gần 700 m, hai căn cứ hai đầu, 7 cứ điểm A–G có công sự. Đứng trong vùng cứ điểm để chiếm; phe giữ ít cứ điểm hơn bị trừ vé dần, mỗi lần gục mất một vé; hết vé là thua. Gục thì chọn lớp lính và chỗ hồi sinh. Mỗi phe 3 xe tăng ở căn cứ."
-          : s.mode === "squad"
-          ? "Mỗi đội xuất phát cùng một chỗ, có xe tăng riêng · Y/G/H ra lệnh cho đội · gục thì nhập vào máy còn sống · Z nằm bắn · F lên xe tăng."
-          : "Xuất phát ngẫu nhiên khắp đảo · bấm B mua vũ khí · vùng an toàn thu hẹp dần · người cuối cùng còn sống thắng."}
-      </p>
-      {war && (
-        <div className="w-sides">
-          {(["blue", "red"] as const).map((side) => (
-            <div key={side} className={`w-side ${side}`}>
-              <h4>{SIDE_NAME[side]}</h4>
-              <ul>
-                {s.players
-                  .filter((p) => p.team === side)
-                  .map((p) => (
-                    <li key={p.id}>
-                      {p.name}
-                      {p.id === s.host && " 👑"}
-                      {p.id === me && " (bạn)"}
-                    </li>
-                  ))}
-                <li className="muted">+ {Math.max(0, perSide - s.players.filter((p) => p.team === side).length)} máy</li>
-              </ul>
-              {s.players.find((p) => p.id === me)?.team !== side && <button onClick={() => room.send(Messages.pickSide, { side })}>Vào {SIDE_NAME[side]}</button>}
-            </div>
-          ))}
-        </div>
-      )}
-      <ul className="b-lobby-players" style={war ? { display: "none" } : undefined}>
-        {s.players.map((p) => (
-          <li key={p.id}>
-            <i style={{ background: p.color }} /> {p.name}
-            {p.id === s.host && " 👑"}
-            {p.id === me && " (bạn)"}
-          </li>
-        ))}
-      </ul>
-      <label className="b-bots">
-        {war ? "Số người mỗi phe (người chơi + máy)" : s.mode === "squad" ? "Tổng số máy (gồm 5 máy theo mỗi người, còn lại chia thành đội máy)" : "Máy (bot) cùng chơi"}:{" "}
-        <strong>{war ? perSide : s.mode === "squad" ? Math.max(s.bots, s.players.length * 5) : s.bots}</strong>
-        <input type="range" min={war ? 5 : 0} max={MAX_BATTLE_BOTS} value={war ? perSide : s.bots} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { bots: Number(e.target.value) })} />
-      </label>
-      <div className="b-sky-pick">
-        <label>
-          Thời tiết
-          <select value={s.weather} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { weather: e.target.value as "random" })}>
-            <option value="random">Ngẫu nhiên (đổi dần giữa trận)</option>
-            {BATTLE_WEATHERS.map((w) => (
-              <option key={w} value={w}>
-                {WEATHER_LABEL[w]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Giờ
-          <select value={s.time} disabled={!isHost} onChange={(e) => room.send(Messages.battleSettings, { time: e.target.value as "random" })}>
-            <option value="random">Ngẫu nhiên</option>
-            {BATTLE_TIMES.map((t) => (
-              <option key={t} value={t}>
-                {TIME_LABEL[t]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {isHost ? (
-        <button className="primary big" onClick={() => room.send(Messages.start)}>
-          <CrossIcon size={18} /> Bắt đầu trận ({war ? `${perSide} vs ${perSide}` : `${s.players.length + (s.mode === "squad" ? Math.max(s.bots, s.players.length * 5) : s.bots)} người`})
-        </button>
-      ) : (
-        <p className="muted">Chờ chủ phòng bắt đầu…</p>
-      )}
-      <button className="ghost" onClick={onLeave}>
-        <LogOut size={16} /> Rời phòng
-      </button>
-      <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: Y tới điểm, G giữ chỗ, H theo sau
-      </p>
-    </div>
-  );
-}
 
 function Scoreboard({ room }: { room: IslandRoom }) {
   const hud = useBattleHud();
@@ -1154,7 +1034,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       <Pickup />
       <BuyMenu room={room} />
       <Scoreboard room={room} />
-      <Lobby room={room} onLeave={onLeave} />
+      <CommandCenter room={room} onLeave={onLeave} />
       <DeathAndWin room={room} onLeave={onLeave} />
       <SettingsButton />
     </div>

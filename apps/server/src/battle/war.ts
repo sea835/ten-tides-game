@@ -1,5 +1,5 @@
 import { MAX_HP, ROLES, WAR_BASES, WEAPON, insideBox, type SquadRole } from "@tentides/content";
-import { FlagState, Messages, type CorrectMessage, type PlayerState } from "@tentides/protocol";
+import { FlagState, Messages, WAR_TICKETS_DEFAULT, type CorrectMessage, type PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, receive, resetKit } from "./kit.ts";
 
@@ -11,8 +11,8 @@ import { addAmmo, receive, resetKit } from "./kit.ts";
 
 export type Side = "blue" | "red";
 export const SIDES: readonly Side[] = ["blue", "red"];
-/** Vé quân lúc đầu mỗi phe, thời gian chờ hồi sinh, nhịp trừ vé theo cứ điểm (giây). */
-export const WAR_TICKETS = 250;
+/** Vé quân lúc đầu mỗi phe (mặc định; chủ phòng chỉnh qua `state.warTickets`), thời gian chờ hồi sinh, nhịp trừ vé theo cứ điểm (giây). */
+export const WAR_TICKETS = WAR_TICKETS_DEFAULT;
 export const RESPAWN_SECONDS = 8;
 const BLEED_EVERY = 3;
 /** Chờ quá chừng này giây (sau khi được hồi sinh) mà chưa chọn chỗ thì tự hồi sinh ở căn cứ. */
@@ -64,7 +64,9 @@ export class War {
     const humans = [...s.players.entries()].filter(([, p]) => !p.bot);
     for (const [id] of humans) this.assign(id);
     const c = this.sideCounts();
-    this.room.bots.buildWar(Math.max(0, perSide - c.blue), Math.max(0, perSide - c.red), BOT_ROLES, TANKS_PER_SIDE);
+    // Tắt xe cơ giới: không có máy lái tăng, không đặt xe.
+    const tanks = s.settings.vehiclesEnabled ? TANKS_PER_SIDE : 0;
+    this.room.bots.buildWar(Math.max(0, perSide - c.blue), Math.max(0, perSide - c.red), BOT_ROLES, tanks);
     for (const p of s.players.values()) {
       if (p.team !== "blue" && p.team !== "red") continue;
       p.color = SIDE_COLOR[p.team];
@@ -79,8 +81,8 @@ export class War {
       fs.r = f.r;
       s.flags.set(f.id, fs);
     }
-    s.ticketsBlue = WAR_TICKETS;
-    s.ticketsRed = WAR_TICKETS;
+    s.ticketsBlue = s.settings.warTickets || WAR_TICKETS;
+    s.ticketsRed = s.settings.warTickets || WAR_TICKETS;
     this.bleed = 0;
     this.tankTimer = { blue: 0, red: 0 };
     // Vùng an toàn không dùng: phủ cả bản đồ.
@@ -89,7 +91,7 @@ export class War {
     s.zone.r = s.zone.nr = 2000;
     s.zone.dps = 0;
     // Xe tăng đậu ở căn cứ; máy lái tăng ngồi sẵn.
-    for (const side of SIDES) for (let k = 0; k < TANKS_PER_SIDE; k++) this.spawnTank(side);
+    for (const side of SIDES) for (let k = 0; k < tanks; k++) this.spawnTank(side);
     for (const [id, p] of s.players) {
       p.respawn = 0;
       this.place(id, p, "hq");
@@ -299,7 +301,7 @@ export class War {
       if (red > blue) s.ticketsBlue = Math.max(0, s.ticketsBlue - (red - blue));
     }
     // Xe tăng: thiếu xe thì một lúc sau có xe mới ở căn cứ (dọn bớt xác xe).
-    for (const side of SIDES) {
+    for (const side of s.settings.vehiclesEnabled ? SIDES : []) {
       const alive = [...s.vehicles.values()].filter((v) => v.team === side && v.hp > 0).length;
       if (alive >= TANKS_PER_SIDE) {
         this.tankTimer[side] = 0;
