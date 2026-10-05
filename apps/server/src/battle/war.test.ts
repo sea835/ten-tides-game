@@ -33,7 +33,7 @@ describe("chiến trường 50 vs 50", () => {
     expect(players.filter((p) => p.team === "blue").length).toBe(50);
     expect(players.filter((p) => p.team === "red").length).toBe(50);
     expect(room.state.flags.size).toBe(7);
-    const tanks = [...room.state.vehicles.values()];
+    const tanks = [...room.state.vehicles.values()].filter((v) => v.kind === "tank");
     expect(tanks.filter((v) => v.team === "blue").length).toBe(3);
     expect(tanks.filter((v) => v.team === "red").length).toBe(3);
     expect(tanks.every((v) => v.driver)).toBe(true);

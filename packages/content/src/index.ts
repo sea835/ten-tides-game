@@ -12,3 +12,4 @@ export * from "./squad.ts";
 export * from "./war.ts";
 export * from "./skins.ts";
 export * from "./airdrop.ts";
+export * from "./vehicles.ts";
