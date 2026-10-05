@@ -1,4 +1,4 @@
-import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
+import { MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -805,14 +805,14 @@ export class Bots {
     const dir: [number, number, number] = [dx / d, dy / d, dz / d];
     // Khói che tầm nhìn.
     for (const smoke of this.room.state.smokes.values()) {
-      const t = (smoke.x - eye[0]) * dir[0] + (smoke.y + 1.5 - eye[1]) * dir[1] + (smoke.z - eye[2]) * dir[2];
+      const t = (smoke.x - eye[0]) * dir[0] + (smoke.y + SMOKE_SIGHT.lift - eye[1]) * dir[1] + (smoke.z - eye[2]) * dir[2];
       if (t < 0 || t > d) continue;
       const px = eye[0] + dir[0] * t - smoke.x;
-      const py = eye[1] + dir[1] * t - smoke.y - 1.5;
+      const py = eye[1] + dir[1] * t - smoke.y - SMOKE_SIGHT.lift;
       const pz = eye[2] + dir[2] * t - smoke.z;
       // Lựu đạn vừa thổi thủng một khoảng trong khói thì nhìn xuyên qua được chỗ đó.
       if (smoke.clear > 0 && Math.hypot(px + smoke.x - smoke.cx, pz + smoke.z - smoke.cz) < SMOKE_CLEAR.radius) continue;
-      if (Math.hypot(px, py, pz) < 6) return false;
+      if (Math.hypot(px, py, pz) < SMOKE_SIGHT.radius) return false;
     }
     // Địa hình: dò thưa từng 2,5 m trên lưới độ cao (rẻ hơn nhiều so với dò từng mét).
     const len = d - 0.5;

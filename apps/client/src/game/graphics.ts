@@ -41,16 +41,16 @@ export interface Profile {
   ibl: boolean;
   /** Vân chất liệu phủ lên mọi vật. */
   detail: boolean;
-  /** Số ô lưới mỗi cạnh của mặt biển. */
+  /** Số ô lưới mỗi cạnh của mặt biển (đỉnh dồn về gần camera; 180 ô ≈ 65 nghìn tam giác, trước đây 300–360). */
   water: number;
   rain: number;
   snow: number;
 }
 
 export const PROFILES: Record<Quality, Profile> = {
-  high: { dpr: 1.35, shadowMap: 2048, shadowExtent: 55, shadowHz: 0, shadowRadius: 4, post: "full", grass: 100000, vegetation: 1, drawDistance: 1, ibl: true, detail: true, water: 300, rain: 1600, snow: 2400 },
-  medium: { dpr: 1, shadowMap: 2048, shadowExtent: 45, shadowHz: 30, shadowRadius: 3, post: "lite", grass: 50000, vegetation: 0.65, drawDistance: 0.8, ibl: true, detail: true, water: 220, rain: 1000, snow: 1500 },
-  low: { dpr: 0.85, shadowMap: 1024, shadowExtent: 35, shadowHz: 20, shadowRadius: 1, post: "none", grass: 0, vegetation: 0.35, drawDistance: 0.65, ibl: false, detail: false, water: 160, rain: 600, snow: 900 },
+  high: { dpr: 1.35, shadowMap: 2048, shadowExtent: 55, shadowHz: 0, shadowRadius: 4, post: "full", grass: 100000, vegetation: 1, drawDistance: 1, ibl: true, detail: true, water: 180, rain: 1600, snow: 2400 },
+  medium: { dpr: 1, shadowMap: 2048, shadowExtent: 45, shadowHz: 30, shadowRadius: 3, post: "lite", grass: 50000, vegetation: 0.65, drawDistance: 0.8, ibl: true, detail: true, water: 160, rain: 1000, snow: 1500 },
+  low: { dpr: 0.85, shadowMap: 1024, shadowExtent: 35, shadowHz: 20, shadowRadius: 1, post: "none", grass: 0, vegetation: 0.35, drawDistance: 0.65, ibl: false, detail: false, water: 120, rain: 600, snow: 900 },
 };
 
 export const QUALITY_LABEL: Record<Quality, string> = { high: "Cao", medium: "Trung bình", low: "Thấp" };

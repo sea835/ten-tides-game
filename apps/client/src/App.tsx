@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Lobby } from "./Lobby.tsx";
-import { Game } from "./game/Game.tsx";
 import { canResume, forgetLastRoom, resumeRoom, wasKicked, type IslandRoom } from "./net.ts";
 import { GunsmithHost } from "./gunsmith/GunsmithHost.tsx";
+
+// Phần chơi (three.js, vật lý Rapier, hậu kỳ, toàn bộ cảnh và HUD trận) tải riêng: sảnh chờ mở ngay không phải đợi
+// mấy MB mã 3D. Tải trước ngầm khi sảnh rảnh, nên lúc vào phòng gần như không phải chờ.
+const loadGame = () => import("./game/Game.tsx");
+const Game = lazy(() => loadGame().then((m) => ({ default: m.Game })));
 
 export function App() {
   const [room, setRoom] = useState<IslandRoom | null>(null);
@@ -27,6 +31,11 @@ export function App() {
       live = false;
     };
   }, [resuming]);
+
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
+    idle(() => void loadGame());
+  }, []);
 
   useEffect(() => {
     if (!room) return;
@@ -81,7 +90,7 @@ export function App() {
     );
   }
   return (
-    <>
+    <Suspense fallback={<div className="game-loading">Đang tải chiến trường…</div>}>
       <Game
         room={room}
         onLeave={() => {
@@ -96,6 +105,6 @@ export function App() {
           Mất kết nối, đang nối lại…
         </div>
       )}
-    </>
+    </Suspense>
   );
 }
