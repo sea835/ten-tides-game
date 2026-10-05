@@ -287,7 +287,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (e.button === 2) input.current.aimHeld = false;
     };
     const onWheel = (e: WheelEvent) => {
-      if (!locked() || menuOpen()) return;
+      // Ngồi xe, vũ khí cố định: lăn chuột không đổi súng (cối dùng để chỉnh góc ngẩng).
+      if (!locked() || menuOpen() || seat.id) return;
       cycle(Math.sign(e.deltaY));
     };
     const onMenu = (e: MouseEvent) => {

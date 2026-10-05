@@ -1,4 +1,4 @@
-import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, flightTime, insideBox, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
+import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -383,6 +383,8 @@ export class Bots {
       if (tank && tank.hp > 0) {
         // Máy chỉ lái xe tăng; ngồi xe khác (xe trinh sát, thuyền) thì ngồi yên theo xe.
         if (tank.kind === "tank") this.tickTanker(id, p, b, tank, alive, dt);
+        // Vũ khí cố định: ngồi ổ đại liên canh, quét đạn vào địch (emplacements.ts).
+        else if (isEmplacement(tank.kind)) this.room.vehicles.emplacements.tickBot(id, p, tank, dt);
         continue;
       }
       this.tickSoldier(id, p, b, alive, dt);
@@ -404,7 +406,8 @@ export class Bots {
       if (cone && d > 5 && (dx * fx + dz * fz) / (d || 1) < 0.35) return false;
       return this.visible(eye, o.x, o.y + (o.vehicle ? 1.6 : o.prone ? 0.3 : o.crouching ? 0.8 : 1.2), o.z);
     };
-    const usable = (o: PlayerState) => o.alive && this.hostile(p, o) && (tanks || !o.vehicle);
+    // Xạ thủ vũ khí cố định lộ người ra ngoài: bắn được như lính đi bộ.
+    const usable = (o: PlayerState) => o.alive && this.hostile(p, o) && (tanks || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
     const cur = b.target ? s.players.get(b.target) : undefined;
     b.sees = !!cur && usable(cur) && canSee(cur, range * 1.3);
     if (!b.sees) {

@@ -1427,6 +1427,83 @@
   font-weight: 700;
 }
 
+/* Vũ khí cố định: báo giá súng xoay hết cỡ (ổ đại liên); số liệu bắn, bản đồ nhỏ có điểm rơi (cối). */
+.bm-emplace circle {
+  stroke: #000;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.b-emplace-edge {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(220, 120, 40, 0.75);
+  font-size: 12px;
+  font-weight: 700;
+}
+.b-emplace-info {
+  display: block;
+  margin: 4px 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.b-emplace-map {
+  position: absolute;
+  right: 16px;
+  bottom: 18px;
+  width: min(220px, 38vw);
+  height: min(220px, 38vw);
+  border-radius: 10px;
+  background: rgba(20, 32, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.b-emplace-map .rng {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+.b-emplace-map .rng.min {
+  stroke: rgba(255, 120, 90, 0.5);
+}
+.b-emplace-map .flag {
+  fill-opacity: 0.35;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.b-emplace-map text {
+  fill: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+.b-emplace-map .dir {
+  stroke: rgba(255, 210, 58, 0.8);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+.b-emplace-map .hit {
+  fill: rgba(255, 90, 60, 0.25);
+  stroke: #ff5a3c;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.b-emplace-map .me {
+  fill: #ffd23a;
+  stroke: #000;
+  vector-effect: non-scaling-stroke;
+}
+@media (max-width: 640px) {
+  .b-emplace-map {
+    bottom: 150px;
+  }
+}
+
 /* ---------------------------------------------------------------- chế độ Chiến trường (50 vs 50) */
 
 /* Trên cùng: vé quân hai phe, dãy cứ điểm. */

@@ -7,7 +7,11 @@ import {
   armorFactor,
   bulletAt,
   bulletSteps,
+  clampElevation,
+  clampTraverse,
   flightTime,
+  inTraverse,
+  isEmplacement,
   projectileAt,
   type Boost,
   cannonMuzzle,
@@ -30,6 +34,7 @@ import {
 } from "@tentides/content";
 import { Messages, VehicleState, type BoomMessage, type CorrectMessage, type HitMessage, type ShotMessage, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
+import { Emplacements } from "./emplacements.ts";
 import { Fleet } from "./fleet.ts";
 
 // Xe tăng: server giữ máu, người lái, hướng tháp pháo; người lái là người chơi thì máy họ tự lái (server kiểm tra tốc
@@ -78,9 +83,12 @@ export class Vehicles {
   private gunReadyAt = new Map<string, number>();
   /** Xe trinh sát, thuyền tuần tra đặt sẵn trên bản đồ (và xe mới thay xe đã nổ ở chiến trường). */
   readonly fleet: Fleet;
+  /** Vũ khí cố định (ổ đại liên, cối): cũng là VehicleState, dùng chung ghế; xem emplacements.ts. */
+  readonly emplacements: Emplacements;
 
   constructor(private readonly room: BattleRoom) {
     this.fleet = new Fleet(room, this);
+    this.emplacements = new Emplacements(room, this);
   }
 
   clear() {
@@ -92,6 +100,7 @@ export class Vehicles {
     this.wreckLeft.clear();
     this.gunReadyAt.clear();
     this.fleet.clear();
+    this.emplacements.clear();
   }
 
   /** Mọi người đang ngồi trên xe (ghế lái trước). */
@@ -363,7 +372,8 @@ export class Vehicles {
     const s = this.room.state;
     const p = s.players.get(pid);
     const v = p?.vehicle ? s.vehicles.get(p.vehicle) : undefined;
-    if (!p || !v || !p.alive || v.driver !== pid || v.hp <= 0) return;
+    // Vũ khí cố định không chạy được.
+    if (!p || !v || !p.alive || v.driver !== pid || v.hp <= 0 || isEmplacement(v.kind)) return;
     const now = Date.now();
     const elapsed = Math.max(100, now - (this.lastMoveAt.get(pid) ?? now - 100));
     const dist = Math.hypot(m.x - v.x, m.z - v.z);
@@ -398,9 +408,10 @@ export class Vehicles {
     const p = s.players.get(pid);
     const v = p?.vehicle ? s.vehicles.get(p.vehicle) : undefined;
     if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || this.seatOf(v, pid) !== gunnerSeat(v.kind)) return;
-    v.turret = turret;
-    v.pitch = Math.max(MOUNT.pitchDown, Math.min(MOUNT.pitchUp, pitch));
-    p.rotY = turret;
+    // Ổ đại liên chỉ xoay trong cung trước mặt; cối: `pitch` là góc ngẩng ống cối (45°–85°).
+    v.turret = clampTraverse(v.kind, v.rotY, turret);
+    v.pitch = v.kind === "mortar" ? clampElevation(pitch) : Math.max(MOUNT.pitchDown, Math.min(MOUNT.pitchUp, pitch));
+    p.rotY = v.turret;
   }
 
   /**
@@ -412,7 +423,7 @@ export class Vehicles {
     const p = s.players.get(pid);
     const vid = p?.vehicle ?? "";
     const v = vid ? s.vehicles.get(vid) : undefined;
-    if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || !this.room.fighting()) return;
+    if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || v.kind === "mortar" || !this.room.fighting()) return;
     if (this.seatOf(v, pid) !== gunnerSeat(v.kind)) return;
     const now = Date.now();
     if (now < (this.gunReadyAt.get(vid) ?? 0)) return;
@@ -424,8 +435,10 @@ export class Vehicles {
     if (Math.hypot(m.o[0] - pivot[0], m.o[1] - pivot[1], m.o[2] - pivot[2]) > MOUNT.barrel + 3.5) return;
     const pitch = Math.asin(Math.max(-1, Math.min(1, d[1])));
     if (pitch > MOUNT.pitchUp + 0.15 || pitch < MOUNT.pitchDown - 0.15) return;
+    // Ổ đại liên: ngoài cung xoay của giá súng (nới chút cho tản đạn, trễ mạng) thì không nhận.
+    if (!inTraverse(v.kind, v.rotY, Math.atan2(d[0], d[2]), 0.1)) return;
     this.gunReadyAt.set(vid, now + (60000 / HMG.rpm) * 0.8);
-    v.turret = Math.atan2(d[0], d[2]);
+    v.turret = clampTraverse(v.kind, v.rotY, Math.atan2(d[0], d[2]));
     v.pitch = Math.max(MOUNT.pitchDown, Math.min(MOUNT.pitchUp, pitch));
     p.rotY = v.turret;
     this.room.shootRays(pid, HMG, [m.o[0], m.o[1], m.o[2]], [d], m.hits, false, vid);
@@ -662,6 +675,7 @@ export class Vehicles {
       s.vehicles.delete(vid);
     }
     this.fleet.tick(dt);
+    this.emplacements.tick(dt);
     if (!this.shells.length) return;
     const keep: Shell[] = [];
     for (const sh of this.shells) {

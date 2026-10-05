@@ -80,6 +80,7 @@ import {
   VehicleSeatMessage,
   VehicleAimMessage,
   VehicleGunMessage,
+  MortarFireMessage,
   MAX_BATTLE_BOTS,
   WAR_MAX_PER_SIDE,
   type BoomMessage,
@@ -401,6 +402,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const id = this.playerOf(client);
       if (id) this.vehicles.gun(id, m);
     });
+    // Vũ khí cố định: pháo thủ cối bắn (emplacements.ts).
+    this.onMessage(Messages.mortarFire, MortarFireMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.emplacements.fire(id, m.turret, m.elev);
+    });
 
     this.onMessage(Messages.squadOrder, SquadOrderMessage, (client, m) => {
       const id = this.playerOf(client);
@@ -644,6 +650,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       resetKit(p.kit, START_MONEY);
       p.kit.outfit = outfit;
     }
+    // Vũ khí cố định (ổ đại liên, cối) đặt trước xe cộ để xe tránh chỗ; luôn có, không theo công tắc xe cơ giới.
+    this.vehicles.emplacements.setup();
     if (war) this.war.start(clampBots("war", s.bots || WAR_MAX_PER_SIDE));
     else if (squad) this.placeTeams();
     else for (const p of s.players.values()) this.placeAtSpawn(p);
@@ -1081,7 +1089,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     for (const h of hits) {
       const d = dirs[h.ray];
       const target = this.state.players.get(h.target);
-      if (!d || !target || !target.alive || target.vehicle || h.target === id || hitRay.has(h.ray)) continue;
+      if (!d || !target || !target.alive || (target.vehicle && !this.vehicles.emplacements.exposed(target)) || h.target === id || hitRay.has(h.ray)) continue;
       // Không bắn trúng đồng đội.
       if (p.team && target.team === p.team) continue;
       if (h.d > maxRange) continue;
@@ -1215,7 +1223,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return null;
     // Ngồi trong xe tăng: đạn, mảnh nổ không tới (xe chịu thay); chỉ vùng độc vẫn làm mất máu.
-    if (p.vehicle && part !== "zone") return null;
+    // Xạ thủ vũ khí cố định thì lộ người ra ngoài, trúng như đi bộ.
+    if (p.vehicle && part !== "zone" && !this.vehicles.emplacements.exposed(p)) return null;
     const kit = p.kit;
     let amount = raw;
     let armor = false;
@@ -1555,7 +1564,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Sức nổ làm hư, thủng tường gần đó, gãy cây; nổ đủ nhiều thì sập nhà.
     this.destruction.blast(x, y, z, radius, maxDamage, owner);
     for (const [id, p] of this.state.players) {
-      if (!p.alive || p.vehicle) continue;
+      if (!p.alive || (p.vehicle && !this.vehicles.emplacements.exposed(p))) continue;
       const cx = p.x;
       const cy = p.y + (p.prone ? 0.25 : p.crouching ? 0.7 : 1.1);
       const cz = p.z;

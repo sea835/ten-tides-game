@@ -880,8 +880,8 @@ export type TankFireMessage = z.infer<typeof TankFireMessage>;
 /** Đổi ghế trên xe đang ngồi (0 là ghế lái). */
 export const VehicleSeatMessage = z.object({ seat: z.int().min(0).max(4) });
 export type VehicleSeatMessage = z.infer<typeof VehicleSeatMessage>;
-/** Xạ thủ đại liên xoay súng (hướng thế giới, góc ngẩng). */
-export const VehicleAimMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1) });
+/** Xạ thủ đại liên xoay súng (hướng thế giới, góc ngẩng; cối ngẩng tới 85° nên cho tới 1,6 rad). */
+export const VehicleAimMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1.6) });
 export type VehicleAimMessage = z.infer<typeof VehicleAimMessage>;
 /** Xạ thủ đại liên bắn một phát: đầu nòng, hướng tia, người máy mình thấy trúng (server kiểm tra lại như súng cầm tay). */
 export const VehicleGunMessage = z.object({
@@ -890,6 +890,24 @@ export const VehicleGunMessage = z.object({
   hits: z.array(z.object({ target: id, part: z.enum(["head", "body"]), d: z.number().min(0).max(1000), ray: z.int().min(0).max(0) })).max(1),
 });
 export type VehicleGunMessage = z.infer<typeof VehicleGunMessage>;
+/** Pháo thủ cối bắn một phát: phương vị (thế giới) và góc ngẩng (server kẹp về 45°–85°). */
+export const MortarFireMessage = z.object({ turret: finite, elev: z.number().min(0).max(1.6) });
+export type MortarFireMessage = z.infer<typeof MortarFireMessage>;
+/**
+ * Server báo mọi người: cối vừa bắn ("fire": đầu nòng, vận tốc ban đầu — máy khác tự vẽ quả đạn bay cầu vồng) hay
+ * đạn cối sắp rơi ("whistle": chỗ rơi dự đoán, còn `t` giây — tiếng rít cho người quanh đó).
+ */
+export interface MortarFxMessage {
+  kind: "fire" | "whistle";
+  vid: string;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  t: number;
+}
 /** Server báo mọi người: đạn nảy khỏi giáp trước, xe tăng đứt xích (để vẽ tia lửa, khói, phát tiếng). */
 export interface VehicleFxMessage {
   kind: "ricochet" | "tracks";
@@ -1063,6 +1081,9 @@ export const Messages = {
   vehicleAim: "vehicleAim",
   vehicleGun: "vehicleGun",
   vehicleFx: "vehicleFx",
+  /** Vũ khí cố định: pháo thủ cối bắn; server báo hiệu ứng đạn cối. */
+  mortarFire: "mortarFire",
+  mortarFx: "mortarFx",
   squadOrder: "squadOrder",
   possess: "possess",
   squadBoard: "squadBoard",
