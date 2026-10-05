@@ -80,6 +80,7 @@ import {
   type HurtMessage,
   type KnockMessage,
   type ShotMessage,
+  VoiceMessages,
 } from "@tentides/protocol";
 import { applySkins, resolveIdentity } from "../account.ts";
 import { isPlausibleMove } from "../movement.ts";
@@ -90,6 +91,7 @@ import { Bots } from "./bots.ts";
 import { MatchRewards } from "./rewards.ts";
 import { Vehicles } from "./vehicles.ts";
 import { War, type Side } from "./war.ts";
+import { VoiceRelay } from "./voice.ts";
 import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize, priceOf, receive, reloadTime, resetKit, setMag, weaponIn, type GunSlot } from "./kit.ts";
 
 // Phòng Battleground: ai cũng xuất phát ở một chỗ ngẫu nhiên trên đảo, bấm B mua súng, giáp, lựu đạn bằng tiền
@@ -97,7 +99,11 @@ import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize,
 // Client tự dò trúng (nhanh, khớp với những gì mình thấy); server kiểm tra lại mọi phát bắn: tốc độ bắn, còn đạn,
 // đứng đúng chỗ, mục tiêu có thật ở đó, không có tường hay đồi chắn giữa, rồi mới tính sát thương.
 
-const RECONNECT_SECONDS = 30;
+/**
+ * Rớt mạng hay lỡ tay F5: giữ chỗ (đội, đồ, vé, súng đang cầm) chừng này giây, nhân vật vẫn đứng đó. Dư hơn 30 giây
+ * một chút cho trình duyệt tải lại trang và client tự nối lại theo nhịp lùi dần.
+ */
+export const RECONNECT_SECONDS = 45;
 const TICK_MS = 50;
 /** Co giãn thời gian (vùng, pha chuẩn bị) khi dev, vd. BATTLE_SCALE=0.3. */
 const SCALE = Number(process.env.BATTLE_SCALE ?? 1);
@@ -215,6 +221,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       },
     }))(this);
   private weatherLeft = WEATHER_MIN;
+  /** Giọng nói: chuyển gói bắt tay WebRTC giữa những người thật trong phòng. */
+  voice = new VoiceRelay(this);
 
   async onCreate() {
     this.roomId = await this.uniqueRoomCode();
@@ -403,6 +411,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       this.broadcast(Messages.chat, { from: id, name: p.name, text, channel: "room" } satisfies ChatBroadcast);
     });
 
+    this.onMessage(VoiceMessages.signal, (client, raw: unknown) => void this.voice.signal(client, raw));
+    this.onMessage(VoiceMessages.talk, (client, raw: unknown) => void this.voice.talk(client, raw));
+
     // Chỉ khi thử nghiệm (BATTLE_DEV=1): dịch chuyển tức thời tới (x, z) để kiểm tra nhanh xe tăng, bot.
     if (process.env.BATTLE_DEV === "1")
       this.onMessage("devTeleport", (client, raw: unknown) => {
@@ -474,7 +485,12 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (!id || this.kicked.has(id)) return;
     const p = this.state.players.get(id);
     if (p && p.sessionId === client.sessionId) p.connected = false;
-    await this.allowReconnection(client, RECONNECT_SECONDS);
+    this.voice.drop(id);
+    try {
+      await this.allowReconnection(client, RECONNECT_SECONDS);
+    } catch {
+      // Hết giờ chờ: Colyseus gọi tiếp onLeave (gục tại chỗ, rời phòng).
+    }
   }
 
   onReconnect(client: Client) {
@@ -491,6 +507,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.sessions.delete(client.sessionId);
     const p = id && this.state.players.get(id);
     if (!id || !p || p.sessionId !== client.sessionId) return;
+    this.voice.drop(id);
     if (p.vehicle) this.vehicles.exit(id);
     this.bots.orders.delete(id);
     if (this.state.phase === "lobby" || this.state.phase === "ended" || !p.alive) {
