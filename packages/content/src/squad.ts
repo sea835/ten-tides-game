@@ -249,6 +249,29 @@ export const ROLES: Record<SquadRole, { name: string; guns: readonly string[]; s
 /** Thứ tự vai trò của 5 máy đi theo một người (hay đội máy: máy đầu tiên làm đội trưởng). */
 export const SQUAD_ROLES: readonly SquadRole[] = ["rifle", "sniper", "tanker", "support", "antitank"];
 
+/**
+ * Ô 1–5 của các máy trong đội (nhập xác bằng phím số): máy nằm đúng ô theo vai (thứ tự `SQUAD_ROLES`), máy trùng vai
+ * (vd. lái tăng không có xe nên thành tay súng trường) lấp vào ô trống còn lại theo số hiệu. Ô trống là null.
+ * Máy đã gục vẫn giữ ô của nó, để phím số không đổi nghĩa giữa trận.
+ */
+export function squadSlots(mates: readonly { id: string; role: string }[]): (string | null)[] {
+  const slots: (string | null)[] = SQUAD_ROLES.map(() => null);
+  const num = (id: string) => Number(id.replace(/\D/g, "")) || 0;
+  const sorted = [...mates].sort((a, b) => num(a.id) - num(b.id));
+  const rest: string[] = [];
+  for (const m of sorted) {
+    const k = SQUAD_ROLES.indexOf(m.role as SquadRole);
+    if (k >= 0 && slots[k] === null) slots[k] = m.id;
+    else rest.push(m.id);
+  }
+  for (const id of rest) {
+    const k = slots.indexOf(null);
+    if (k < 0) break;
+    slots[k] = id;
+  }
+  return slots;
+}
+
 /** Màu đội (tên, màu vẽ trên HUD, trên xe tăng). */
 export const TEAM_COLORS = ["#3d8bff", "#ff5a4a", "#ffc233", "#3fcf6a", "#c46bff", "#ff8a2a", "#35d6d0", "#ff5fb0", "#a0a0a0", "#8fd14f"] as const;
 

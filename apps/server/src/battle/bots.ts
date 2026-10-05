@@ -109,6 +109,8 @@ export class Bots {
   private brains = new Map<string, Brain>();
   /** Lệnh của từng đội (theo id đội). */
   orders = new Map<string, SquadOrder>();
+  /** Máy đang chạy tới lên xe tăng theo lệnh đội trưởng: id máy → id xe. */
+  boarding = new Map<string, string>();
   private grid: HeightGrid | null = null;
   private gridMap: object | null = null;
   /** Đội trưởng từng đội, tính lại mỗi nhịp. */
@@ -154,6 +156,7 @@ export class Bots {
     for (const [id, p] of [...s.players]) if (p.bot) s.players.delete(id);
     this.brains.clear();
     this.orders.clear();
+    this.boarding.clear();
     this.nameSeq = 0;
   }
 
@@ -247,6 +250,51 @@ export class Bots {
 
   forget(id: string) {
     this.brains.delete(id);
+    this.boarding.delete(id);
+  }
+
+  /**
+   * Lệnh lên xe tăng: chọn máy còn sống, đang đi bộ trong đội `team` (ưu tiên máy lái tăng, rồi máy gần xe nhất) chạy
+   * tới xe `vid` rồi lên lái. Trả về id máy được giao, hay "" nếu không ai đi được.
+   */
+  orderBoard(team: string, vid: string): string {
+    const s = this.room.state;
+    const v = s.vehicles.get(vid);
+    if (!v || v.hp <= 0 || v.driver) return "";
+    for (const [bid, to] of this.boarding) if (to === vid) this.boarding.delete(bid);
+    let best = "";
+    let bestScore = Infinity;
+    for (const [id, p] of s.players) {
+      if (!p.bot || !p.alive || p.team !== team || p.vehicle) continue;
+      const score = Math.hypot(p.x - v.x, p.z - v.z) + (p.role === "tanker" ? 0 : 10000);
+      if (score < bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+    if (best) this.boarding.set(best, vid);
+    return best;
+  }
+
+  /** Máy đang theo lệnh lên xe: hướng chạy tới xe (null nếu không có lệnh, hay lệnh hết hiệu lực); tới nơi thì lên. */
+  private boardStep(id: string, p: PlayerState): { mx: number; mz: number } | null {
+    const vid = this.boarding.get(id);
+    if (!vid) return null;
+    const v = this.room.state.vehicles.get(vid);
+    if (!v || v.hp <= 0 || v.driver || p.vehicle || (v.team && v.team !== p.team)) {
+      this.boarding.delete(id);
+      return null;
+    }
+    const dx = v.x - p.x;
+    const dz = v.z - p.z;
+    const d = Math.hypot(dx, dz) || 1;
+    if (d < TANK.enter * 0.8) {
+      this.boarding.delete(id);
+      this.room.vehicles.board(id, vid);
+      v.team = p.team;
+      return { mx: 0, mz: 0 };
+    }
+    return { mx: dx / d, mz: dz / d };
   }
 
   onHurt(target: string, attacker: string) {
@@ -481,7 +529,18 @@ export class Bots {
     let mz = 0;
     let speed = 5;
     const spot = this.formationSpot(id, p, b, false);
-    if (target && target.alive && s.phase === "battle" && !b.sees) {
+    const order = p.team ? this.orders.get(p.team) : undefined;
+    const board = this.boardStep(id, p);
+    if (board) {
+      // Lệnh lên xe tăng: chạy thẳng tới xe, không dừng lại đấu súng.
+      if (p.vehicle) return;
+      mx = board.mx;
+      mz = board.mz;
+      speed = 7.8;
+      p.aiming = p.prone = p.crouching = false;
+      p.aimPitch = 0;
+      if (mx || mz) p.rotY = Math.atan2(mx, mz);
+    } else if (target && target.alive && s.phase === "battle" && !b.sees) {
       // Mất dấu: đi tới chỗ thấy lần cuối (máy trong đội người chơi không đi quá xa đội hình), súng chĩa về đó.
       const dx = b.lx - p.x;
       const dz = b.lz - p.z;
@@ -490,7 +549,8 @@ export class Bots {
       p.aimPitch = 0;
       p.aiming = false;
       p.prone = false;
-      const leash = spot && spot.far > 30;
+      // Giữ chốt: không rời vị trí quá 12 m; tới điểm & tấn công: được truy địch xa hơn (45 m).
+      const leash = spot && spot.far > (order?.kind === "hold" ? 12 : order?.kind === "move" ? 45 : 30);
       if (d > 2.5 && !leash) {
         mx = dx / d;
         mz = dz / d;
@@ -532,7 +592,6 @@ export class Bots {
       const z = s.zone;
       if (spot) {
         // Theo đội hình: tới chỗ của mình, xa thì chạy; tới nơi thì đứng (giữ chỗ thì ngồi xuống canh).
-        const order = this.orders.get(p.team);
         if (spot.far > 2.5) {
           mx = (spot.x - p.x) / spot.far;
           mz = (spot.z - p.z) / spot.far;
@@ -544,6 +603,8 @@ export class Bots {
           // Đứng canh: nhìn ra ngoài đội hình theo hướng chỗ đứng; chiến trường thì đảo mắt quanh cứ điểm.
           const leader = s.players.get(this.leaderOf(p.team));
           if (s.battleMode === "war") p.rotY += dt * 0.35 * (b.slot % 2 ? 1 : -1);
+          // Giữ chốt: mỗi máy canh một hướng, quay lưng vào giữa (phòng thủ vòng tròn quanh điểm giữ).
+          else if (order?.kind === "hold" && Math.hypot(spot.x - order.x, spot.z - order.z) > 1) p.rotY = Math.atan2(spot.x - order.x, spot.z - order.z);
           else if (leader) p.rotY = leader.rotY + ((b.slot % 2 ? 1 : -1) * (0.4 + (b.slot >> 1) * 0.5));
         }
       } else {

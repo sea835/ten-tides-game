@@ -45,6 +45,7 @@ import { Suppression } from "./Suppression.tsx";
 import { SpeakingMark, VoiceChat, VoiceSettingsSection } from "../voice/VoiceChat.tsx";
 import { KillerBanner, XpFeed } from "../../progress/BattleProgress.tsx";
 import { RankBadge } from "../../progress/RankBadge.tsx";
+import { CommsHud, PingMarks } from "./CommsHud.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -407,6 +408,7 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
           <path d="M-6,-6 L6,6 M6,-6 L-6,6" className="bm-order" />
         </g>
       )}
+      {phase === "battle" || phase === "prep" ? <PingMarks u={u} /> : null}
       {me && (
         <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180}) scale(${u})`}>
           <path d="M0,-10 L7,7 L0,3.5 L-7,7 Z" className="bm-me" />
@@ -862,7 +864,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <LogOut size={16} /> Rời phòng
       </button>
       <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · ` (giữ) nói · U (giữ) bộ đàm · Đồng đội: Y tới điểm, G giữ chỗ, H theo sau
+        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · L (giữ) nói · U (giữ) bộ đàm · ` (giữ) vòng khẩu lệnh · chuột giữa đánh dấu (bấm đúp: nguy hiểm) · Đồng đội: Y tới điểm, G giữ chỗ, H theo sau
       </p>
     </div>
   );
@@ -1174,6 +1176,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       {fighting && <AirdropNotice room={room} />}
       {fighting && <SquadHud room={room} />}
       {fighting && <TankHud />}
+      {fighting && <CommsHud room={room} />}
       <Toast />
       <TankPrompt />
       <Pickup />

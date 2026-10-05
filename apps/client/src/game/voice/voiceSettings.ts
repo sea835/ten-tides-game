@@ -20,7 +20,7 @@ export interface VoiceSettings {
 
 const KEY = "tentides.voice";
 // T là đổi góc nhìn, B là cửa hàng, V đâm dao: dùng ` (dưới Esc) để nói và U cho bộ đàm, đều chưa phím nào dùng.
-export const DEFAULT_VOICE: VoiceSettings = { enabled: true, openMic: false, pttKey: "Backquote", radioKey: "KeyU", volume: 1, muted: [] };
+export const DEFAULT_VOICE: VoiceSettings = { enabled: true, openMic: false, pttKey: "KeyL", radioKey: "KeyU", volume: 1, muted: [] };
 
 function load(): VoiceSettings {
   try {
