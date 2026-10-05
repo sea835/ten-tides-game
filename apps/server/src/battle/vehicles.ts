@@ -1,25 +1,42 @@
 import {
+  HMG,
+  MOUNT,
   TANK,
+  TRACKS_SECONDS,
+  WRECK_SECONDS,
+  armorFactor,
   bulletAt,
   bulletSteps,
   cannonMuzzle,
   cannonPitch,
+  gunnerSeat,
   insideBox,
+  mountMuzzle,
   rayBody,
-  rayTank,
+  rayVehicle,
   raycastBoxes,
   raycastTerrain,
   raycastTrunks,
-  tankFits,
-  tankStep,
+  seatPos,
+  trackHit,
+  vehicleFits,
+  vehicleSpec,
+  vehicleStep,
+  vehicleY,
+  type ArmorFace,
 } from "@tentides/content";
-import { Messages, VehicleState, type BoomMessage, type CorrectMessage, type HitMessage, type ShotMessage, type VehicleMoveMessage } from "@tentides/protocol";
+import { Messages, VehicleState, type BoomMessage, type CorrectMessage, type HitMessage, type ShotMessage, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
+import { Fleet } from "./fleet.ts";
 
 // Xe tăng: server giữ máu, người lái, hướng tháp pháo; người lái là người chơi thì máy họ tự lái (server kiểm tra tốc
 // độ), là máy thì server lái (theo đội hình, tránh nhà cửa, lùi ra khi kẹt). Pháo bắn đạn nổ bay theo đường cong: server
 // dò đường đạn một lần lúc bắn (đồi, nhà, xe khác, người), hẹn giờ nổ đúng lúc đạn tới nơi. Người ngồi trong xe không
 // trúng đạn thường; nổ (lựu đạn, mìn, pháo) làm mất máu xe; xe nổ tung thì người lái chết theo, xác xe nằm lại làm chỗ nấp.
+// Giáp xe tăng tính theo mặt trúng (trước dày, đuôi yếu); lựu đạn, mìn nổ sát dải xích thì đứt xích vài giây. Xác xe
+// cháy âm ỉ chừng một phút rưỡi (vẫn chặn đạn, chặn đường) rồi mới dọn đi.
+// Xe trinh sát (4 ghế, đại liên trên thùng) và thuyền tuần tra (5 ghế, súng máy mũi): ghế 0 là ghế lái (`driver`),
+// ghế khác ở `seats`; xạ thủ xoay đại liên (`turret`, `pitch`), mỗi phát server dò lại như súng cầm tay.
 
 /** Đạn pháo đang bay: nổ ở (x, y, z) sau `left` giây; `direct` là xe bị bắn trúng thẳng (mất thêm máu). */
 interface Shell {
@@ -34,6 +51,9 @@ interface Shell {
   z: number;
   owner: string;
   direct: string;
+  /** Mặt vỏ xe trúng thẳng và cos góc tới (giáp nghiêng). */
+  face: ArmorFace;
+  cos: number;
 }
 
 /** Não máy lái xe (dùng chung với Brain của bots). */
@@ -48,18 +68,75 @@ export class Vehicles {
   private shells: Shell[] = [];
   private readyAt = new Map<string, number>();
   private lastMoveAt = new Map<string, number>();
+  /** Xích đứt còn bao nhiêu giây, xác xe còn cháy bao lâu (theo id xe). */
+  private tracksLeft = new Map<string, number>();
+  private wreckLeft = new Map<string, number>();
+  /** Đại liên: lúc được bắn phát kế (theo id xe). */
+  private gunReadyAt = new Map<string, number>();
+  /** Xe trinh sát, thuyền tuần tra đặt sẵn trên bản đồ (và xe mới thay xe đã nổ ở chiến trường). */
+  readonly fleet: Fleet;
 
-  constructor(private readonly room: BattleRoom) {}
+  constructor(private readonly room: BattleRoom) {
+    this.fleet = new Fleet(room, this);
+  }
 
   clear() {
     this.room.state.vehicles.clear();
     this.shells = [];
     this.readyAt.clear();
     this.lastMoveAt.clear();
+    this.tracksLeft.clear();
+    this.wreckLeft.clear();
+    this.gunReadyAt.clear();
+    this.fleet.clear();
   }
 
-  /** Tìm chỗ đặt xe quanh (x, z) trong khoảng bán kính [r0, r1] (đất bằng, không vướng nhà). */
-  findSpot(x: number, z: number, r0: number, r1: number, rand: () => number): { x: number; z: number; rotY: number } | null {
+  /** Mọi người đang ngồi trên xe (ghế lái trước). */
+  occupants(v: VehicleState): string[] {
+    const out: string[] = [];
+    if (v.driver) out.push(v.driver);
+    for (const pid of v.seats.values()) if (pid) out.push(pid);
+    return out;
+  }
+
+  /** Người `pid` ngồi ghế nào trên xe (−1: không ngồi xe này). */
+  seatOf(v: VehicleState, pid: string): number {
+    if (v.driver === pid) return 0;
+    for (const [k, q] of v.seats) if (q === pid) return Number(k);
+    return -1;
+  }
+
+  private seatTaken(v: VehicleState, seat: number): string {
+    return seat === 0 ? v.driver : (v.seats.get(String(seat)) ?? "");
+  }
+
+  private setSeat(v: VehicleState, seat: number, pid: string) {
+    if (seat === 0) v.driver = pid;
+    else if (pid) v.seats.set(String(seat), pid);
+    else v.seats.delete(String(seat));
+  }
+
+  /** Ghế trống đầu tiên (ghế lái trước), −1 nếu đầy. */
+  private freeSeat(v: VehicleState): number {
+    const n = vehicleSpec(v.kind).seats;
+    for (let k = 0; k < n; k++) if (!this.seatTaken(v, k)) return k;
+    return -1;
+  }
+
+  /** Rời ghế trên xe đang ngồi mà không dời chỗ đứng (gục trên xe, rời phòng). */
+  leave(pid: string) {
+    const p = this.room.state.players.get(pid);
+    const v = p?.vehicle ? this.room.state.vehicles.get(p.vehicle) : undefined;
+    if (v) {
+      const k = this.seatOf(v, pid);
+      if (k >= 0) this.setSeat(v, k, "");
+      if (k === 0) v.moving = false;
+    }
+    if (p) p.vehicle = "";
+  }
+
+  /** Tìm chỗ đặt xe (theo loại) quanh (x, z) trong khoảng bán kính [r0, r1] (đất bằng / mặt nước, không vướng nhà). */
+  findSpot(x: number, z: number, r0: number, r1: number, rand: () => number, kind = "tank"): { x: number; z: number; rotY: number } | null {
     const map = this.room.map;
     for (let tries = 0; tries < 60; tries++) {
       const a = rand() * Math.PI * 2;
@@ -67,24 +144,26 @@ export class Vehicles {
       const px = x + Math.cos(a) * r;
       const pz = z + Math.sin(a) * r;
       const rotY = rand() * Math.PI * 2;
-      if (Math.hypot(px, pz) > (map.half ?? 240) * 0.8) continue;
-      if (!tankFits(map, px, pz, rotY) || !tankFits(map, px, pz, rotY + Math.PI / 2)) continue;
+      if (kind !== "boat" && Math.hypot(px, pz) > (map.half ?? 240) * 0.8) continue;
+      // Xe trinh sát đậu trên đất khô (lội nước được nhưng không đặt sẵn dưới nước).
+      if (kind === "jeep" && map.world.heightAt(px, pz) < 0.6) continue;
+      if (!vehicleFits(kind, map, px, pz, rotY) || !vehicleFits(kind, map, px, pz, rotY + Math.PI / 2)) continue;
       if ([...this.room.state.vehicles.values()].some((v) => Math.hypot(v.x - px, v.z - pz) < 9)) continue;
       return { x: px, z: pz, rotY };
     }
     return null;
   }
 
-  spawn(x: number, z: number, rotY: number, team: string, driver = ""): string {
+  spawn(x: number, z: number, rotY: number, team: string, driver = "", kind = "tank"): string {
     const id = `v${++this.seq}`;
     const v = new VehicleState();
-    v.kind = "tank";
+    v.kind = kind;
     v.x = x;
     v.z = z;
-    v.y = this.room.map.world.heightAt(x, z);
+    v.y = vehicleY(kind, this.room.map, x, z);
     v.rotY = rotY;
     v.turret = rotY;
-    v.hp = TANK.hp;
+    v.hp = vehicleSpec(kind).hp;
     v.team = team;
     this.room.state.vehicles.set(id, v);
     if (driver) this.seat(driver, id);
@@ -96,52 +175,97 @@ export class Vehicles {
     this.seat(pid, vid);
   }
 
-  /** Cho người `pid` ngồi vào ghế lái xe `vid`. */
-  private seat(pid: string, vid: string) {
+  /** Cho người `pid` ngồi vào ghế `seat` (0 là ghế lái) của xe `vid`. */
+  private seat(pid: string, vid: string, seat = 0) {
     const p = this.room.state.players.get(pid);
     const v = this.room.state.vehicles.get(vid);
     if (!p || !v) return;
     p.vehicle = vid;
-    v.driver = pid;
+    this.setSeat(v, seat, pid);
     if (!v.team) v.team = p.team;
     p.crouching = p.prone = p.aiming = false;
     p.moving = false;
     p.kit.reloading = false;
     p.kit.healing = "";
-    this.syncOccupant(p, v);
+    this.syncOccupant(p, v, seat);
     this.room.clientOf(pid)?.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
   }
 
-  private syncOccupant(p: { x: number; y: number; z: number; rotY: number }, v: VehicleState) {
-    p.x = v.x;
-    p.y = v.y;
-    p.z = v.z;
-    p.rotY = v.turret;
+  private syncOccupant(p: { x: number; y: number; z: number; rotY: number }, v: VehicleState, seat = 0) {
+    if (v.kind === "tank") {
+      p.x = v.x;
+      p.y = v.y;
+      p.z = v.z;
+      p.rotY = v.turret;
+      return;
+    }
+    // Xe trinh sát, thuyền: người ngồi đúng ghế (chân thấp hơn chỗ ngồi chừng nửa mét), xạ thủ quay theo đại liên.
+    const at = seatPos(v.kind, v, seat);
+    p.x = at[0];
+    p.y = at[1] - 0.5;
+    p.z = at[2];
+    p.rotY = seat === gunnerSeat(v.kind) ? v.turret : v.rotY;
   }
 
-  /** Chỗ xuống xe: bên hông xe, chỗ trống trên mặt đất. */
+  /** Mọi người trên xe đi theo xe. */
+  private syncCrew(v: VehicleState) {
+    const s = this.room.state;
+    if (v.driver) {
+      const d = s.players.get(v.driver);
+      if (d) this.syncOccupant(d, v, 0);
+    }
+    for (const [k, pid] of v.seats) {
+      const q = s.players.get(pid);
+      if (q) this.syncOccupant(q, v, Number(k));
+    }
+  }
+
+  /**
+   * Chỗ xuống xe: bên hông xe, chỗ trống trên mặt đất. Xe tăng chỉ cho xuống chỗ khô ráo; xe trinh sát xuống được
+   * nước nông; thuyền ủi bãi thì lính nhảy xuống nước nông, bờ cát (mũi thuyền trước, rồi hai bên mạn).
+   */
   private exitSpot(v: VehicleState): { x: number; y: number; z: number } {
     const map = this.room.map;
     const c = Math.cos(v.rotY);
     const s = Math.sin(v.rotY);
-    for (const [u, w] of [
-      [-2.8, 0],
-      [2.8, 0],
-      [0, -4.4],
-      [0, 4.4],
-      [-3, -3],
-      [3, -3],
-    ] as const) {
+    const [hw, hh, hl] = vehicleSpec(v.kind).half;
+    const shallow = v.kind === "tank" ? 0.3 : -1.3;
+    const spots: readonly (readonly [number, number])[] =
+      v.kind === "boat"
+        ? [
+            [0, hl + 1.6],
+            [-1.2, hl + 1.2],
+            [1.2, hl + 1.2],
+            [0, hl + 3.5],
+            [-hw - 1.3, 1.5],
+            [hw + 1.3, 1.5],
+            [-hw - 1.3, -1.5],
+            [hw + 1.3, -1.5],
+          ]
+        : [
+            [-hw - 1.1, 0],
+            [hw + 1.1, 0],
+            [0, -hl - 1.3],
+            [0, hl + 1.3],
+            [-hw - 1.3, -hl + 0.1],
+            [hw + 1.3, -hl + 0.1],
+          ];
+    for (const [u, w] of spots) {
       const x = v.x + c * u + s * w;
       const z = v.z - s * u + c * w;
       const h = map.world.heightAt(x, z);
-      if (h < 0.3 || insideBox(map.index, x, h + 0.9, z, 0.4)) continue;
+      if (h < shallow || insideBox(map.index, x, Math.max(h, 0) + 0.9, z, 0.4)) continue;
       return { x, y: h + 0.05, z };
     }
-    return { x: v.x, y: v.y + TANK.half[1] * 2 + 0.1, z: v.z };
+    // Thuyền ngoài khơi: nhảy xuống nước bên mạn (bơi vào bờ).
+    if (v.kind === "boat") {
+      const u = -hw - 1.4;
+      return { x: v.x + c * u, y: -0.9, z: v.z - s * u };
+    }
+    return { x: v.x, y: v.y + hh * 2 + 0.1, z: v.z };
   }
 
-  /** Xuống xe (người chơi bấm E, hay máy nhường ghế cho người chơi cùng đội). */
+  /** Xuống xe (người chơi bấm F, hay máy nhường ghế cho người chơi cùng đội). */
   exit(pid: string) {
     const p = this.room.state.players.get(pid);
     const v = p?.vehicle ? this.room.state.vehicles.get(p.vehicle) : undefined;
@@ -150,42 +274,86 @@ export class Vehicles {
       return;
     }
     const at = this.exitSpot(v);
+    const k = this.seatOf(v, pid);
     p.vehicle = "";
-    if (v.driver === pid) v.driver = "";
-    v.moving = false;
+    if (k >= 0) this.setSeat(v, k, "");
+    if (k === 0) v.moving = false;
     p.x = at.x;
     p.y = at.y;
     p.z = at.z;
     this.room.clientOf(pid)?.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
   }
 
-  /** Bấm E cạnh xe: xe trống (hay máy cùng đội đang lái) thì lên ghế lái. Đang ngồi xe thì xuống. */
+  /**
+   * Bấm F cạnh xe: xe tăng trống (hay máy cùng đội đang lái) thì lên ghế lái; xe trinh sát, thuyền thì lên ghế lái
+   * nếu trống, không thì ghế trống đầu tiên. Đang ngồi xe thì xuống.
+   */
   enter(pid: string) {
     const s = this.room.state;
     const p = s.players.get(pid);
     if (!p || !p.alive || !this.room.fighting()) return;
     if (p.vehicle) return this.exit(pid);
-    let best = "";
-    let bestD: number = TANK.enter;
-    for (const [vid, v] of s.vehicles) {
-      if (v.hp <= 0) continue;
-      const d = Math.hypot(v.x - p.x, v.z - p.z);
-      if (d > bestD || Math.abs(v.y - p.y) > 4) continue;
-      const driver = v.driver ? s.players.get(v.driver) : undefined;
-      // Xe có người lái: chỉ đổi chỗ được với máy cùng đội.
-      if (driver && !(driver.bot && p.team && driver.team === p.team)) continue;
-      if (!driver && v.team && p.team && v.team !== p.team && s.battleMode !== "solo") continue;
-      best = vid;
-      bestD = d;
-    }
+    const best = this.nearestEnterable(pid);
     if (!best) return;
     const v = s.vehicles.get(best)!;
-    if (v.driver) this.exit(v.driver);
-    this.seat(pid, best);
+    if (v.kind === "tank") {
+      if (v.driver) this.exit(v.driver);
+      this.seat(pid, best);
+    } else {
+      const k = this.freeSeat(v);
+      if (k < 0) return;
+      this.seat(pid, best, k);
+    }
     v.team = p.team;
   }
 
-  /** Người chơi lái: nhận vị trí mới nếu hợp lý (không vượt tốc độ xe). */
+  /** Xe gần nhất người `pid` lên được (trong tầm với theo loại xe), rỗng nếu không có. */
+  nearestEnterable(pid: string): string {
+    const s = this.room.state;
+    const p = s.players.get(pid);
+    if (!p) return "";
+    let best = "";
+    let bestD = Infinity;
+    for (const [vid, v] of s.vehicles) {
+      if (v.hp <= 0) continue;
+      const d = Math.hypot(v.x - p.x, v.z - p.z);
+      if (d > vehicleSpec(v.kind).enter || d > bestD || Math.abs(v.y - p.y) > 4) continue;
+      if (v.kind === "tank") {
+        const driver = v.driver ? s.players.get(v.driver) : undefined;
+        // Xe có người lái: chỉ đổi chỗ được với máy cùng đội.
+        if (driver && !(driver.bot && p.team && driver.team === p.team)) continue;
+        if (!driver && v.team && p.team && v.team !== p.team && s.battleMode !== "solo") continue;
+      } else {
+        const crew = this.occupants(v);
+        if (this.freeSeat(v) < 0) continue;
+        // Có người ngồi: chỉ lên cùng đồng đội (đấu đơn thì ai cũng là địch).
+        if (crew.length && (s.battleMode === "solo" || !p.team || crew.some((q) => s.players.get(q)?.team !== p.team))) continue;
+        if (!crew.length && v.team && p.team && v.team !== p.team && s.battleMode !== "solo") continue;
+      }
+      best = vid;
+      bestD = d;
+    }
+    return best;
+  }
+
+  /** Đổi sang ghế `seat` (đang trống) trên xe đang ngồi. */
+  switchSeat(pid: string, seat: number) {
+    const s = this.room.state;
+    const p = s.players.get(pid);
+    const vid = p?.vehicle ?? "";
+    const v = vid ? s.vehicles.get(vid) : undefined;
+    if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank") return;
+    if (seat >= vehicleSpec(v.kind).seats || this.seatTaken(v, seat)) return;
+    const from = this.seatOf(v, pid);
+    if (from < 0 || from === seat) return;
+    this.setSeat(v, from, "");
+    if (from === 0) v.moving = false;
+    this.setSeat(v, seat, pid);
+    this.syncOccupant(p, v, seat);
+    this.lastMoveAt.delete(pid);
+  }
+
+  /** Người chơi lái: nhận vị trí mới nếu hợp lý (không vượt tốc độ xe, đúng mặt đất / mặt nước, xích còn lành). */
   move(pid: string, m: VehicleMoveMessage) {
     const s = this.room.state;
     const p = s.players.get(pid);
@@ -194,19 +362,76 @@ export class Vehicles {
     const now = Date.now();
     const elapsed = Math.max(100, now - (this.lastMoveAt.get(pid) ?? now - 100));
     const dist = Math.hypot(m.x - v.x, m.z - v.z);
-    if (dist > TANK.forward * 1.8 * (elapsed / 1000) + 0.5 || Math.hypot(m.x, m.z) > (this.room.map.half ?? 240) * 1.2) {
+    const map = this.room.map;
+    // Xe tăng nới 1,8 lần tốc độ tối đa (bù trễ mạng); xe trinh sát, thuyền chạy nhanh nên nới ít hơn. Đứt xích thì
+    // không được rời chỗ (chỉ quay tại chỗ). Thuyền không lên cạn, xe trinh sát không xuống nước sâu.
+    const spec = vehicleSpec(v.kind);
+    const limit = v.kind === "tank" ? spec.forward * 1.8 : spec.forward * 1.45;
+    const h = map.world.heightAt(m.x, m.z);
+    const wrongGround = v.kind === "boat" ? h > 0.2 : v.kind === "jeep" ? h < -1.4 : false;
+    if (dist > limit * (elapsed / 1000) + 0.5 || Math.hypot(m.x, m.z) > (map.half ?? 240) * 1.2 || wrongGround || (v.tracks > 0 && dist > 0.6)) {
       this.room.clientOf(pid)?.send(Messages.correct, { x: v.x, y: v.y, z: v.z } satisfies CorrectMessage);
       return;
     }
     this.lastMoveAt.set(pid, now);
     v.x = m.x;
-    v.y = this.room.map.world.heightAt(m.x, m.z);
+    v.y = vehicleY(v.kind, map, m.x, m.z);
     v.z = m.z;
     v.rotY = m.rotY;
-    v.turret = m.turret;
-    v.pitch = Math.max(TANK.pitchDown, Math.min(TANK.pitchUp, m.pitch));
+    // Xe có đại liên: súng do xạ thủ xoay, người lái không đụng tới.
+    if (v.kind === "tank") {
+      v.turret = m.turret;
+      v.pitch = Math.max(TANK.pitchDown, Math.min(TANK.pitchUp, m.pitch));
+    }
     v.moving = m.moving;
-    this.syncOccupant(p, v);
+    this.syncCrew(v);
+  }
+
+  /** Xạ thủ đại liên xoay súng. */
+  aim(pid: string, turret: number, pitch: number) {
+    const s = this.room.state;
+    const p = s.players.get(pid);
+    const v = p?.vehicle ? s.vehicles.get(p.vehicle) : undefined;
+    if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || this.seatOf(v, pid) !== gunnerSeat(v.kind)) return;
+    v.turret = turret;
+    v.pitch = Math.max(MOUNT.pitchDown, Math.min(MOUNT.pitchUp, pitch));
+    p.rotY = turret;
+  }
+
+  /**
+   * Xạ thủ bắn đại liên một phát: kiểm tra ghế, nhịp bắn, đầu nòng sát trụ súng, rồi dò đường đạn như súng cầm tay
+   * (tường, đồi, xe, người máy mình báo trúng), bỏ qua chính xe mình.
+   */
+  gun(pid: string, m: VehicleGunMessage) {
+    const s = this.room.state;
+    const p = s.players.get(pid);
+    const vid = p?.vehicle ?? "";
+    const v = vid ? s.vehicles.get(vid) : undefined;
+    if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || !this.room.fighting()) return;
+    if (this.seatOf(v, pid) !== gunnerSeat(v.kind)) return;
+    const now = Date.now();
+    if (now < (this.gunReadyAt.get(vid) ?? 0)) return;
+    const l = Math.hypot(m.d[0], m.d[1], m.d[2]);
+    if (l < 1e-6) return;
+    const d: [number, number, number] = [m.d[0] / l, m.d[1] / l, m.d[2] / l];
+    // Đầu nòng phải ở sát trụ súng (nới cho xe đang chạy, trễ mạng); góc ngẩng trong tầm xoay của giá súng.
+    const { pivot } = mountMuzzle(v.kind, v, 0, 0);
+    if (Math.hypot(m.o[0] - pivot[0], m.o[1] - pivot[1], m.o[2] - pivot[2]) > MOUNT.barrel + 3.5) return;
+    const pitch = Math.asin(Math.max(-1, Math.min(1, d[1])));
+    if (pitch > MOUNT.pitchUp + 0.15 || pitch < MOUNT.pitchDown - 0.15) return;
+    this.gunReadyAt.set(vid, now + (60000 / HMG.rpm) * 0.8);
+    v.turret = Math.atan2(d[0], d[2]);
+    v.pitch = Math.max(MOUNT.pitchDown, Math.min(MOUNT.pitchUp, pitch));
+    p.rotY = v.turret;
+    this.room.shootRays(pid, HMG, [m.o[0], m.o[1], m.o[2]], [d], m.hits, false, vid);
+  }
+
+  /** Đạn thường găm vào vỏ xe: sát thương nhỏ với xe tăng (theo mặt giáp), đáng kể với xe trinh sát, thuyền. */
+  bulletHit(vid: string, raw: number, attacker: string, weapon: string, face: ArmorFace, cos: number) {
+    const v = this.room.state.vehicles.get(vid);
+    if (!v || v.hp <= 0) return;
+    const k = armorFactor(v.kind, face, cos, 1).mult;
+    this.damage(vid, raw * vehicleSpec(v.kind).bulletFactor * k, attacker, weapon);
   }
 
   /** Bắn pháo theo hướng tháp pháo, góc nòng: dò đường đạn một lần, hẹn giờ nổ. */
@@ -215,7 +440,7 @@ export class Vehicles {
     const p = s.players.get(pid);
     const vid = p?.vehicle ?? "";
     const v = vid ? s.vehicles.get(vid) : undefined;
-    if (!p || !v || !p.alive || v.driver !== pid || v.hp <= 0 || !this.room.fighting()) return;
+    if (!p || !v || !p.alive || v.kind !== "tank" || v.driver !== pid || v.hp <= 0 || !this.room.fighting()) return;
     const now = Date.now();
     if (now < (this.readyAt.get(vid) ?? 0)) return;
     this.readyAt.set(vid, now + TANK.reload * 1000);
@@ -238,6 +463,8 @@ export class Vehicles {
     const steps = bulletSteps(velocity, max);
     let hitS = max;
     let direct = "";
+    let face: ArmorFace = "side";
+    let cos = 1;
     for (let i = 1; i < steps.length; i++) {
       const a = bulletAt(o, d, velocity, steps[i - 1]!);
       const b = bulletAt(o, d, velocity, steps[i]!);
@@ -245,12 +472,16 @@ export class Vehicles {
       const cd: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
       let t = Math.min(raycastBoxes(this.room.map.index, a, cd, len, true), raycastTerrain(this.room.map.world, a, cd, len), raycastTrunks(this.room.map.world, a, cd, len, this.room.map.treeDead));
       let hitTank = "";
+      let hitFace: ArmorFace = "side";
+      let hitCos = 1;
       for (const [oid, other] of s.vehicles) {
         if (oid === skip) continue;
-        const tt = rayTank(other, a, cd, len);
-        if (tt < t) {
-          t = tt;
+        const hv = rayVehicle(other, a, cd, len);
+        if (hv && hv.t < t) {
+          t = hv.t;
           hitTank = oid;
+          hitFace = hv.face;
+          hitCos = hv.cos;
         }
       }
       for (const q of s.players.values()) {
@@ -264,55 +495,71 @@ export class Vehicles {
       if (t < len) {
         hitS = steps[i - 1]! + (t / len) * (steps[i]! - steps[i - 1]!);
         direct = hitTank;
+        face = hitFace;
+        cos = hitCos;
         break;
       }
     }
     const e = bulletAt(o, d, velocity, hitS);
-    this.shells.push({ left: hitS / velocity, x: e[0], y: e[1], z: e[2], owner, direct, ...spec, weapon });
+    this.shells.push({ left: hitS / velocity, x: e[0], y: e[1], z: e[2], owner, direct, face, cos, ...spec, weapon });
     this.room.broadcast(Messages.shot, { id: owner, w: weapon, o, e: [e] } satisfies ShotMessage);
   }
 
-  /** Mất máu xe; hết máu thì nổ tung, người lái chết theo. */
+  /** Mất máu xe; hết máu thì nổ tung, mọi người trên xe chết theo, xác xe cháy một lúc. */
   damage(vid: string, amount: number, attacker: string, weapon = "tank") {
     const s = this.room.state;
     const v = s.vehicles.get(vid);
     if (!v || v.hp <= 0 || this.room.state.phase !== "battle") return;
     const a = attacker ? s.players.get(attacker) : undefined;
+    const crew = this.occupants(v);
+    const own = crew.includes(attacker);
     // Không bắn hỏng xe của đội mình.
-    if (a && a.team && a.team === v.team && s.battleMode !== "solo" && attacker !== v.driver) return;
+    if (a && a.team && a.team === v.team && s.battleMode !== "solo" && !own) return;
     v.hp = Math.max(0, Math.round(v.hp - amount));
-    if (attacker && attacker !== v.driver) this.room.clientOf(attacker)?.send(Messages.hit, { kind: v.hp <= 0 ? "kill" : "body", armor: true, amount: Math.round(amount) } satisfies HitMessage);
+    if (attacker && !own) this.room.clientOf(attacker)?.send(Messages.hit, { kind: v.hp <= 0 ? "kill" : "body", armor: true, amount: Math.round(amount) } satisfies HitMessage);
     if (v.driver) this.room.bots.onHurt(v.driver, attacker);
     if (v.hp > 0) return;
-    // Nổ tung: người lái chết, xác xe nằm lại.
+    // Nổ tung: người trên xe chết, xác xe nằm lại cháy âm ỉ.
     v.moving = false;
+    v.tracks = 0;
+    this.tracksLeft.delete(vid);
+    this.wreckLeft.set(vid, WRECK_SECONDS);
     this.room.broadcast(Messages.boom, { kind: "shell", x: v.x, y: v.y + 1.5, z: v.z } satisfies BoomMessage);
-    const driver = v.driver;
     v.driver = "";
-    if (driver) {
-      const p = s.players.get(driver);
-      if (p) {
-        p.vehicle = "";
-        this.room.kill(driver, attacker, weapon, false);
-      }
+    v.seats.clear();
+    for (const pid of crew) {
+      const p = s.players.get(pid);
+      if (!p) continue;
+      p.vehicle = "";
+      this.room.kill(pid, attacker, weapon, false);
     }
   }
 
-  /** Nổ gần xe (lựu đạn, mìn, pháo): xe mất máu theo khoảng cách. */
+  /** Nổ gần xe (lựu đạn, mìn, pháo): xe mất máu theo khoảng cách; lựu đạn, mìn sát dải xích thì đứt xích. */
   blast(x: number, y: number, z: number, radius: number, maxDamage: number, owner: string, weapon: string, skip = "") {
     for (const [vid, v] of this.room.state.vehicles) {
       if (v.hp <= 0 || vid === skip) continue;
       const d = Math.max(0, Math.hypot(v.x - x, v.y + 1.2 - y, v.z - z) - 2);
       if (d > radius) continue;
       const k = Math.pow(1 - d / radius, 1.2);
-      this.damage(vid, maxDamage * k * TANK.blastFactor, owner, weapon);
+      this.damage(vid, maxDamage * k * vehicleSpec(v.kind).blastFactor, owner, weapon);
+      if (v.hp > 0 && trackHit(v, x, y, z, weapon)) this.breakTracks(vid);
     }
+  }
+
+  /** Đứt xích xe tăng `vid` trong TRACKS_SECONDS giây: không tiến lùi được, chỉ quay tại chỗ. */
+  breakTracks(vid: string) {
+    const v = this.room.state.vehicles.get(vid);
+    if (!v || v.hp <= 0 || v.kind !== "tank") return;
+    this.tracksLeft.set(vid, TRACKS_SECONDS);
+    v.tracks = TRACKS_SECONDS;
+    this.room.broadcast(Messages.vehicleFx, { kind: "tracks", vid, x: v.x, y: v.y + 0.5, z: v.z } satisfies VehicleFxMessage);
   }
 
   /** Máy lái xe: đi tới `goal` (nếu có), quay tháp pháo về `target`, ngắm xong thì bắn. */
   driveAI(vid: string, pid: string, brain: Driver, goal: { x: number; z: number } | null, target: { x: number; y: number; z: number; vehicle: string; prone: boolean; crouching: boolean } | null, dt: number) {
     const v = this.room.state.vehicles.get(vid);
-    if (!v || v.hp <= 0 || v.driver !== pid) return;
+    if (!v || v.hp <= 0 || v.driver !== pid || v.kind !== "tank") return;
     const map = this.room.map;
     let throttle = 0;
     let steer = 0;
@@ -331,9 +578,10 @@ export class Vehicles {
       steer = Math.max(-1, Math.min(1, -diff * 2));
       throttle = Math.abs(diff) > 1.1 ? 0.1 : dist > 25 ? 1 : 0.55;
     }
-    const step = tankStep(map, v, throttle, steer, brain.tankSpeed, dt);
+    // Đứt xích: không tiến lùi được, chỉ quay tại chỗ.
+    const step = vehicleStep("tank", map, v, throttle, steer, brain.tankSpeed, dt, v.tracks <= 0);
     brain.tankSpeed = step.speed;
-    if (step.blocked && throttle > 0) {
+    if (step.blocked && throttle > 0 && v.tracks <= 0) {
       brain.stuck += dt;
       if (brain.stuck > 1.2) {
         brain.stuck = 0;
@@ -371,16 +619,43 @@ export class Vehicles {
   tick(dt: number) {
     const s = this.room.state;
     // Người trong xe đi theo xe (máy khác vẽ xe; vị trí người dùng cho bản đồ, vùng độc).
-    for (const v of s.vehicles.values()) {
-      if (!v.driver) continue;
-      const p = s.players.get(v.driver);
-      if (!p || !p.alive || p.vehicle === "") {
-        v.driver = "";
-        v.moving = false;
+    for (const [vid, v] of s.vehicles) {
+      if (v.driver) {
+        const p = s.players.get(v.driver);
+        if (!p || !p.alive || p.vehicle === "") {
+          v.driver = "";
+          v.moving = false;
+        } else if (!p.bot) this.syncOccupant(p, v, 0);
+      }
+      for (const [k, pid] of v.seats) {
+        const q = s.players.get(pid);
+        if (!q || !q.alive || q.vehicle !== vid) v.seats.delete(k);
+        else this.syncOccupant(q, v, Number(k));
+      }
+    }
+    // Xích đứt nối lại dần; xác xe cháy hết thì dọn đi.
+    for (const [vid, left] of this.tracksLeft) {
+      const v = s.vehicles.get(vid);
+      const now = left - dt;
+      if (!v || now <= 0) {
+        this.tracksLeft.delete(vid);
+        if (v) v.tracks = 0;
         continue;
       }
-      if (!p.bot) this.syncOccupant(p, v);
+      this.tracksLeft.set(vid, now);
+      const shown = Math.ceil(now);
+      if (v.tracks !== shown) v.tracks = shown;
     }
+    for (const [vid, left] of this.wreckLeft) {
+      const now = left - dt;
+      if (now > 0 && s.vehicles.has(vid)) {
+        this.wreckLeft.set(vid, now);
+        continue;
+      }
+      this.wreckLeft.delete(vid);
+      s.vehicles.delete(vid);
+    }
+    this.fleet.tick(dt);
     if (!this.shells.length) return;
     const keep: Shell[] = [];
     for (const sh of this.shells) {
@@ -389,9 +664,22 @@ export class Vehicles {
         keep.push(sh);
         continue;
       }
-      if (sh.direct) this.damage(sh.direct, sh.armor, sh.owner, sh.weapon);
+      if (sh.direct) this.hitArmor(sh);
       this.room.explode(sh.x, sh.y, sh.z, "shell", sh.owner, sh.radius, sh.damage, sh.weapon, sh.direct);
     }
     this.shells = keep;
+  }
+
+  /** Đạn nổ trúng thẳng vỏ xe: tính giáp theo mặt trúng; giáp trước ở góc sượt thì có thể nảy đi. */
+  private hitArmor(sh: Shell) {
+    const v = this.room.state.vehicles.get(sh.direct);
+    if (!v || v.hp <= 0) return;
+    const a = armorFactor(v.kind, sh.face, sh.cos);
+    if (a.ricochet) {
+      this.room.broadcast(Messages.vehicleFx, { kind: "ricochet", vid: sh.direct, x: sh.x, y: sh.y, z: sh.z } satisfies VehicleFxMessage);
+      if (sh.owner) this.room.clientOf(sh.owner)?.send(Messages.hit, { kind: "body", armor: true, amount: 0 } satisfies HitMessage);
+      return;
+    }
+    this.damage(sh.direct, sh.armor * a.mult, sh.owner, sh.weapon);
   }
 }

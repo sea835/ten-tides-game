@@ -90,6 +90,8 @@ export class War {
     s.zone.dps = 0;
     // Xe tăng đậu ở căn cứ; máy lái tăng ngồi sẵn.
     for (const side of SIDES) for (let k = 0; k < TANKS_PER_SIDE; k++) this.spawnTank(side);
+    // Xe trinh sát ở căn cứ, thuyền tuần tra neo ngoài bờ biển.
+    this.room.vehicles.fleet.setup();
     for (const [id, p] of s.players) {
       p.respawn = 0;
       this.place(id, p, "hq");
@@ -227,7 +229,7 @@ export class War {
 
   private seatIn(id: string, p: PlayerState) {
     for (const [vid, v] of this.room.state.vehicles) {
-      if (v.hp <= 0 || v.driver || v.team !== p.team) continue;
+      if (v.hp <= 0 || v.driver || v.team !== p.team || v.kind !== "tank") continue;
       if (Math.hypot(v.x - p.x, v.z - p.z) > 90) continue;
       this.room.vehicles.board(id, vid);
       return;
@@ -300,7 +302,7 @@ export class War {
     }
     // Xe tăng: thiếu xe thì một lúc sau có xe mới ở căn cứ (dọn bớt xác xe).
     for (const side of SIDES) {
-      const alive = [...s.vehicles.values()].filter((v) => v.team === side && v.hp > 0).length;
+      const alive = [...s.vehicles.values()].filter((v) => v.kind === "tank" && v.team === side && v.hp > 0).length;
       if (alive >= TANKS_PER_SIDE) {
         this.tankTimer[side] = 0;
         continue;
@@ -308,7 +310,7 @@ export class War {
       this.tankTimer[side] += dt;
       if (this.tankTimer[side] < TANK_RESPAWN) continue;
       this.tankTimer[side] = 0;
-      for (const [vid, v] of s.vehicles) if (v.team === side && v.hp <= 0) s.vehicles.delete(vid);
+      // Xác xe cũ cháy một lúc rồi tự được dọn (vehicles.ts).
       this.spawnTank(side);
       this.seatTankers();
     }

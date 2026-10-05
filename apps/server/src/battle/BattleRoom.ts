@@ -23,9 +23,9 @@ import {
   battleSpawn,
   checkBodyPoint,
   falloff,
-  rayTank,
+  rayVehicle,
+  type WeaponDef,
   SQUAD_BOTS,
-  TANK,
   floorBelow,
   HITBOX,
   insideBox,
@@ -72,6 +72,9 @@ import {
   SquadOrderMessage,
   TankFireMessage,
   VehicleMoveMessage,
+  VehicleSeatMessage,
+  VehicleAimMessage,
+  VehicleGunMessage,
   MAX_BATTLE_BOTS,
   type BoomMessage,
   type ChatBroadcast,
@@ -367,6 +370,20 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (id) this.vehicles.fire(id, m.turret, m.pitch);
     });
 
+    // Xe trinh sát, thuyền: đổi ghế, xạ thủ xoay và bắn đại liên.
+    this.onMessage(Messages.vehicleSeat, VehicleSeatMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.switchSeat(id, m.seat);
+    });
+    this.onMessage(Messages.vehicleAim, VehicleAimMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.aim(id, m.turret, m.pitch);
+    });
+    this.onMessage(Messages.vehicleGun, VehicleGunMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.gun(id, m);
+    });
+
     this.onMessage(Messages.squadOrder, SquadOrderMessage, (client, m) => {
       const id = this.playerOf(client);
       const p = id && this.state.players.get(id);
@@ -575,6 +592,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (!war) this.bots.equipAll();
     // Xe tăng: chỉ chế độ Đồng đội (chiến trường tự đặt xe ở căn cứ; sinh tồn không có xe tăng).
     if (squad) this.placeTanks(true);
+    // Xe trinh sát, thuyền tuần tra bỏ trống trên đảo (chiến trường tự đặt ở căn cứ, bờ biển).
+    if (!war) this.vehicles.fleet.setup();
     this.bots.warm();
     this.spawnLoot(this.map.loot);
     this.rollSky();
@@ -907,6 +926,26 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     setMag(kit, slot, mag - 1);
     p.shots = (p.shots + 1) % 65536;
     this.cancelHeal(id);
+    // Súng phóng đạn nổ (RPG): không dò trúng người, phóng quả đạn nổ theo hướng tia đầu tiên.
+    if (def.explosive) {
+      const r0 = rays[0]!;
+      const l = Math.hypot(r0[0], r0[1], r0[2]) || 1;
+      this.vehicles.launch(id, o, [r0[0] / l, r0[1] / l, r0[2] / l], def.velocity, def.explosive, def.id);
+      this.bots.onShot(id, p.x, p.z, 120);
+      return;
+    }
+    this.shootRays(id, def, o, rays, hits, attOf(kit, slot).split(",").includes("suppressor"));
+  }
+
+  /**
+   * Dò đường đạn thường đã qua kiểm tra (súng cầm tay, đại liên gắn trên xe): tường, đồi, cây, vỏ xe, rồi kiểm tra
+   * lại những người máy người bắn báo trúng; trừ máu, làm hư tường, báo mọi người vẽ vệt đạn. `skipVehicle` là xe
+   * của chính người bắn (đại liên trên xe không tự găm vào xe mình).
+   */
+  shootRays(id: string, def: WeaponDef, o: [number, number, number], rays: [number, number, number][], hits: { target: string; part: "head" | "body"; d: number; ray: number }[], suppressed: boolean, skipVehicle = "") {
+    const p = this.state.players.get(id);
+    if (!p) return;
+    const weaponId = def.id;
     const maxRange = Math.min(600, def.range * 3);
     const dirs = rays.slice(0, def.pellets).map((r) => {
       const l = Math.hypot(r[0], r[1], r[2]) || 1;
@@ -915,15 +954,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const ends: [number, number, number][] = [];
     // Đạn bay theo đường cong (rơi dần do trọng lực): dò tường từng đoạn dây cung; `walls` là quãng đường `s` tới chỗ găm.
     const steps = bulletSteps(def.velocity, maxRange);
-    // Súng phóng đạn nổ (RPG): không dò trúng người, phóng quả đạn nổ theo hướng tia đầu tiên.
-    if (def.explosive) {
-      const d0 = dirs[0];
-      if (d0) this.vehicles.launch(id, o, d0, def.velocity, def.explosive, def.id);
-      this.bots.onShot(id, p.x, p.z, 120);
-      return;
-    }
-    // Tia nào găm vào thân xe tăng (id xe), để tính chút sát thương lên xe.
-    const tankOf = new Map<number, string>();
+    // Tia nào găm vào vỏ xe (id xe, mặt trúng, góc tới), để tính sát thương lên xe theo giáp.
+    const tankOf = new Map<number, { vid: string; face: "front" | "side" | "rear" | "top"; cos: number }>();
     // Mỗi tia: găm vào khối nào / cây nào (để làm hư), đã xuyên qua vách mỏng nào (ở quãng `s` bao nhiêu).
     const stops = dirs.map(() => ({ box: -1, tree: -1, yaw: 0, pens: [] as { s: number; box: number }[] }));
     const walls = dirs.map((d, ray) => {
@@ -941,14 +973,14 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         let t = Math.min(wall.t, raycastTerrain(this.map.world, a, cd, len), trunk.t);
         const box = t === wall.t ? wall.i : -1;
         const tree = t === trunk.t && t < Infinity ? trunk.i : -1;
-        // Xe tăng chặn đạn (thép dày, đạn thường không xuyên).
-        let tank = "";
+        // Xe chặn đạn (kể cả xác xe đang cháy; thép dày, đạn thường không xuyên).
+        let tank: { vid: string; face: "front" | "side" | "rear" | "top"; cos: number } | null = null;
         for (const [vid, v] of this.state.vehicles) {
-          if (Math.abs(v.x - a[0]) + Math.abs(v.z - a[2]) > len + 8) continue;
-          const tt = rayTank(v, a, cd, len);
-          if (tt < t) {
-            t = tt;
-            tank = vid;
+          if (vid === skipVehicle || Math.abs(v.x - a[0]) + Math.abs(v.z - a[2]) > len + 10) continue;
+          const hv = rayVehicle(v, a, cd, len);
+          if (hv && hv.t < t) {
+            t = hv.t;
+            tank = { vid, face: hv.face, cos: hv.cos };
           }
         }
         if (t < len) {
@@ -988,17 +1020,16 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       ends.push(bulletAt(o, d, def.velocity, t));
     });
     // Máy ở gần nghe tiếng súng (súng to nghe xa hơn, giảm thanh thì chỉ nghe rất gần) thì đi dò về hướng đó.
-    const suppressed = attOf(kit, slot).split(",").includes("suppressor");
     const loud = def.class === "sniper" || def.class === "dmr" ? 140 : def.class === "pistol" || def.class === "smg" ? 60 : 90;
     this.bots.onShot(id, p.x, p.z, suppressed ? loud * 0.25 : loud);
     const shot: ShotMessage = { id, w: weaponId, o, e: ends, ...(suppressed ? { s: 1 as const } : {}) };
     this.broadcast(Messages.shot, shot, { except: this.clientOf(id) });
     if (this.state.phase !== "battle") return;
-    // Đạn găm vào vỏ xe tăng: sát thương nhỏ (thép dày), súng to, bắn tỉa thì nhiều hơn.
-    for (const [ray, vid] of tankOf) {
+    // Đạn găm vào vỏ xe: xe tăng gần như không xi nhê (thép dày), xe trinh sát, thuyền thì hư dần.
+    for (const [ray, hv] of tankOf) {
       if (hitRay.has(ray)) continue;
       const dist = walls[ray]!;
-      this.vehicles.damage(vid, def.damage * falloff(def, dist) * TANK.bulletFactor, id, def.id);
+      this.vehicles.bulletHit(hv.vid, def.damage * falloff(def, dist), id, def.id, hv.face, hv.cos);
     }
     // Đạn làm hư tường nó găm vào, vách nó xuyên qua, và thân cây trúng đạn.
     stops.forEach((st, ray) => {
@@ -1108,14 +1139,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   kill(id: string, killer: string, weapon: string, headshot: boolean) {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return;
-    if (p.vehicle) {
-      const v = this.state.vehicles.get(p.vehicle);
-      if (v && v.driver === id) {
-        v.driver = "";
-        v.moving = false;
-      }
-      p.vehicle = "";
-    }
+    if (p.vehicle) this.vehicles.leave(id);
     // Chiến trường có hồi sinh: hạng tính theo phe thắng thua, không theo lúc gục.
     if (this.fighting() && this.state.battleMode !== "war") this.rewards.onDeath(id, this.state.players);
     p.alive = false;

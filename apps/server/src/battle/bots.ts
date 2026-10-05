@@ -333,7 +333,8 @@ export class Bots {
       }
       const tank = p.vehicle ? s.vehicles.get(p.vehicle) : undefined;
       if (tank && tank.hp > 0) {
-        this.tickTanker(id, p, b, tank, alive, dt);
+        // Máy chỉ lái xe tăng; ngồi xe khác (xe trinh sát, thuyền) thì ngồi yên theo xe.
+        if (tank.kind === "tank") this.tickTanker(id, p, b, tank, alive, dt);
         continue;
       }
       this.tickSoldier(id, p, b, alive, dt);
