@@ -380,3 +380,132 @@
 .b-score .rank-badge {
   margin-right: 4px;
 }
+
+/* Bảng vinh danh sau trận: ba thẻ MVP trên bục, bảng điểm đầy đủ. */
+.mvp-show {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mvp-podium {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mvp-card {
+  position: relative;
+  width: min(250px, calc(100vw - 64px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 34px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  text-align: left;
+  animation: mvp-rise 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+.mvp-card.p1 {
+  padding-bottom: 58px;
+  border-color: rgba(255, 210, 60, 0.6);
+  box-shadow: 0 0 28px rgba(255, 200, 40, 0.18);
+}
+.mvp-card.p2 {
+  padding-bottom: 44px;
+}
+.mvp-card.empty {
+  opacity: 0.55;
+}
+.mvp-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffd27a;
+}
+.mvp-value {
+  font-size: 13px;
+}
+.mvp-value b {
+  font-size: 22px;
+  color: #fff;
+}
+.mvp-line,
+.mvp-none {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.mvp-step {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 0 0 12px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 800;
+}
+.mvp-card.p1 .mvp-step {
+  height: 48px;
+  background: linear-gradient(180deg, rgba(255, 210, 60, 0.35), rgba(255, 210, 60, 0.12));
+  font-size: 22px;
+}
+.mvp-card.p2 .mvp-step {
+  height: 36px;
+}
+.mvp-table {
+  width: 100%;
+  overflow-x: auto;
+}
+.mvp-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.mvp-table th {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  text-align: left;
+  padding: 4px 6px;
+}
+.mvp-table td {
+  padding: 4px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  white-space: nowrap;
+}
+.mvp-table tr.me td {
+  color: #ffd27a;
+}
+.mvp-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mvp-tag {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #ffd23a;
+  color: #1a1400;
+}
+.mvp-more {
+  margin-top: 8px;
+}
+@keyframes mvp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}

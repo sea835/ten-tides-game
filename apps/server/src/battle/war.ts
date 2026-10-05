@@ -247,7 +247,9 @@ export class War {
   /** Chiếm xong cứ điểm: ai phe mình còn sống đứng trong vùng đều được XP chiếm cứ điểm. */
   private creditCapture(f: FlagState, side: Side) {
     for (const [id, p] of this.room.state.players) {
-      if (p.alive && p.team === side && inFlag(f, p)) awardXp(id, "capture");
+      if (!p.alive || p.team !== side || !inFlag(f, p)) continue;
+      awardXp(id, "capture");
+      this.room.stats.noteCapture(id);
     }
   }
 

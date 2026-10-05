@@ -1075,7 +1075,40 @@ export const Messages = {
   flag: "flag",
   /** Server báo riêng: vừa được cộng XP (XpMessage). */
   xp: "xp",
+  /** Server báo mọi người lúc hết trận: bảng vinh danh MVP và bảng điểm đầy đủ (MatchSummaryMessage). */
+  matchSummary: "matchSummary",
 } as const;
+
+/** Một dòng bảng điểm cuối trận. `support` là tiếp tế, sửa xe, hồi sinh đồng đội; `score` để xếp hạng. */
+export interface MatchSummaryRow {
+  id: string;
+  name: string;
+  team: string;
+  bot: boolean;
+  rank: number;
+  card: string;
+  emblem: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  captures: number;
+  support: number;
+  score: number;
+}
+/** MVP Hạ gục, MVP Chiếm cứ điểm, MVP Hỗ trợ (hỗ trợ = trợ giúp hạ gục + tiếp tế, sửa xe...). */
+export type MvpKind = "kills" | "captures" | "support";
+export interface MvpEntry {
+  kind: MvpKind;
+  id: string;
+  value: number;
+}
+/** Hết trận: chế độ, bên thắng (id người, id đội hay phe), MVP từng hạng mục (thiếu là không ai đạt), bảng điểm đã xếp. */
+export interface MatchSummaryMessage {
+  mode: string;
+  winner: string;
+  mvp: MvpEntry[];
+  rows: MatchSummaryRow[];
+}
 
 /** Vừa được cộng XP: loại sự kiện (XpKind trong content), số XP, tổng XP trận này, quân hàm hiện tại. */
 export interface XpMessage {

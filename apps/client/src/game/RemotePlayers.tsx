@@ -11,6 +11,7 @@ import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { WEAPON, withAttachments } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
+import { replay, replayPose } from "./battle/replay.ts";
 import { physicsProbe } from "./battle/surface.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { localPosition } from "./shared.ts";
@@ -57,15 +58,20 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
     const g = root.current;
     if (!g) return;
     // Nội suy về vị trí mới nhất từ server để chuyển động mượt dù chỉ nhận 15 gói/giây.
-    const t = Math.min(1, dt * 12);
-    g.position.x += (player.x - g.position.x) * t;
-    g.position.y += (player.y - g.position.y) * t;
-    g.position.z += (player.z - g.position.z) * t;
+    // Killcam đang chiếu: đứng đúng chỗ, đúng tư thế trong băng ghi (xem battle/replay.ts).
+    const rp = battle ? replayPose(id) : null;
+    const src = rp ?? player;
+    const t = replay.snap ? 1 : Math.min(1, dt * 12);
+    g.position.x += (src.x - g.position.x) * t;
+    g.position.y += (src.y - g.position.y) * t;
+    g.position.z += (src.z - g.position.z) * t;
     if (avatar.current) {
       const current = avatar.current.rotation.y;
-      const diff = Math.atan2(Math.sin(player.rotY - current), Math.cos(player.rotY - current));
+      const diff = Math.atan2(Math.sin(src.rotY - current), Math.cos(src.rotY - current));
       avatar.current.rotation.y = current + diff * t;
     }
+    if (rp) g.visible = rp.alive;
+    else if (battle && replay.snap) g.visible = player.alive && !player.vehicle;
     if (player.connected !== connected) setConnected(player.connected);
     if (player.alive !== alive) setAlive(player.alive);
     if (player.held !== held) setHeld(player.held);
@@ -164,6 +170,7 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       }
       m.wall = w.value;
       m.speed = speedNow.current;
+      const src = replayPose(id) ?? player;
       const an = anim.current;
       const k = player.kit;
       const def = WEAPON.get(look.weapon);
@@ -178,19 +185,19 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       }
       const sk = Math.min(1, (now - an.swapAt) / 500);
       m.swap = 1 - sk * sk * (3 - 2 * sk);
-      m.moving = player.moving;
+      m.moving = src.moving;
       m.swimming = player.swimming;
-      m.crouching = player.crouching;
-      m.prone = player.prone;
-      m.aiming = player.aiming;
-      m.aimPitch = player.aimPitch;
-      m.lean = player.lean;
-      m.firing = player.shots;
+      m.crouching = src.crouching;
+      m.prone = src.prone;
+      m.aiming = src.aiming;
+      m.aimPitch = src.aimPitch;
+      m.lean = src.lean;
+      m.firing = src.shots;
       m.act = player.act;
       m.actN = player.actN;
       return m;
     };
-  }, [player, look.weapon]);
+  }, [player, look.weapon, id]);
   // Tiếng bước chân: nhịp theo tốc độ đi thật (đo từ vị trí), mặt đất bê tông hay cỏ; ngồi xổm thì rón rén.
   const steps = useRef({ acc: 0, x: player.x, z: player.z });
   // Tốc độ thật (đo từ vị trí đang vẽ, làm mượt) để chân bước khớp tốc độ, không lướt.

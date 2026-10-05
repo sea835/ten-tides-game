@@ -1,6 +1,7 @@
 import { XP_AWARD, rankOf, type XpKind } from "@tentides/content";
 import type { PlayerState, XpMessage } from "@tentides/protocol";
 import { userIdOfPlayer } from "../account.ts";
+import { noteSupport } from "./mvp.ts";
 
 // Sổ XP của một phòng: cộng XP theo sự kiện trong trận (hạ gục, chiếm cứ điểm, tiếp tế, sửa xe, hồi sinh đồng đội)
 // cho người có tài khoản, cập nhật quân hàm trong PlayerState ngay (người khác thấy huy hiệu lên cấp), báo riêng
@@ -87,5 +88,7 @@ export class XpLedger {
  * (hồi sinh đồng đội: "revive", tiếp tế đạn: "resupply", sửa xe tăng: "repair"...). Trả về số XP đã cộng.
  */
 export function awardXp(playerId: string, kind: XpKind, times = 1): number {
+  // Việc hỗ trợ (cả của máy, khách: không có XP) tính luôn vào bảng vinh danh MVP Hỗ trợ.
+  if (kind === "resupply" || kind === "repair" || kind === "revive") noteSupport(playerId, times);
   return ROUTE.get(playerId)?.award(playerId, kind, times) ?? 0;
 }
