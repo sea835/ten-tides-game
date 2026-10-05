@@ -14,5 +14,6 @@ export * from "./war.ts";
 export * from "./skins.ts";
 export * from "./airdrop.ts";
 export * from "./vehicles.ts";
+export * from "./emplacements.ts";
 export * from "./progression.ts";
 export * from "./loadout.ts";

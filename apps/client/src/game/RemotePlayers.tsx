@@ -9,7 +9,7 @@ import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { WEAPON, gadgetIn, withAttachments } from "@tentides/content";
+import { WEAPON, gadgetIn, isEmplacement, withAttachments } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
 import { replay, replayPose } from "./battle/replay.ts";
 import { physicsProbe } from "./battle/surface.ts";
@@ -39,6 +39,13 @@ function useBubble(playerId: string): string | null {
     return () => clearTimeout(timer);
   }, [last?.id, age]);
   return age < BUBBLE_MS ? last!.text : null;
+}
+
+/** Ngồi trong xe (không thấy thân, không bắn trúng được); xạ thủ vũ khí cố định (ổ đại liên, cối) thì lộ người ra ngoài. */
+function hiddenInVehicle(room: IslandRoom, player: PlayerState): boolean {
+  if (!player.vehicle) return false;
+  const v = room.state.vehicles.get(player.vehicle);
+  return !v || !isEmplacement(v.kind);
 }
 
 function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: string; player: PlayerState; carrying: boolean }) {
@@ -91,7 +98,7 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
       b.prone = player.prone;
       b.lean = player.lean;
       b.rotY = avatar.current ? avatar.current.rotation.y : player.rotY;
-      b.alive = player.alive && !player.vehicle;
+      b.alive = player.alive && !hiddenInVehicle(room, player);
       b.team = player.team;
     }
     if (nextPose !== pose) setPose(nextPose);
@@ -129,7 +136,7 @@ const DETAIL_FAR = 16;
 function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandRoom; id: string; player: PlayerState; root: RefObject<Group | null>; avatar: RefObject<Group | null>; alive: boolean }) {
   // Ở xa: hình người rút gọn; ngồi trong xe tăng: không vẽ người.
   const [far, setFar] = useState(false);
-  const [inTank, setInTank] = useState(!!player.vehicle);
+  const [inTank, setInTank] = useState(hiddenInVehicle(room, player));
   const [pose, setPose] = useState<"stand" | "crouch" | "prone">("stand");
   const shadow = useRef({ on: true, detail: true, at: 0 });
   const war = useRoomSnapshot(room, (s) => s.battleMode === "war");
@@ -235,7 +242,8 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
         }
       }
     }
-    if (!!player.vehicle !== inTank) setInTank(!!player.vehicle);
+    const hidden = hiddenInVehicle(room, player);
+    if (hidden !== inTank) setInTank(hidden);
     const nextPose = player.prone ? "prone" : player.crouching ? "crouch" : "stand";
     if (nextPose !== pose) setPose(nextPose);
     if (r && dt > 0) {

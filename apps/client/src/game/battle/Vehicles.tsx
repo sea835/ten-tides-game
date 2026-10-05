@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Callbacks } from "@colyseus/sdk";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
-import { TANK, TEAM_COLORS, mapForMode, cannonMuzzle, cannonPitch, tankGround, vehicleSpec, vehicleStep, type TankPose } from "@tentides/content";
+import { TANK, TEAM_COLORS, isEmplacement, mapForMode, cannonMuzzle, cannonPitch, tankGround, vehicleSpec, vehicleStep, type TankPose } from "@tentides/content";
 import { Messages, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -12,6 +12,7 @@ import { localPosition, shake } from "../shared.ts";
 import { playCannon, playCannonReady, tankEngine } from "../sound/guns.ts";
 import { effects, getBattleHud, menuOpen, seat, setBattleHud } from "./runtime.ts";
 import { Carrier, CarrierSeat, useVehicleFx } from "./Carriers.tsx";
+import { Emplacement, EmplacementSeat, MortarShells } from "./Emplacements.tsx";
 import { nearInfo, seatOwner, WreckFire } from "./vehicleParts.tsx";
 
 // Xe tăng: vẽ thân, xích, tháp pháo quay độc lập, nòng pháo ngẩng hạ; hộp va chạm để người, đạn không xuyên qua.
@@ -487,9 +488,11 @@ export function Vehicles({ room }: { room: IslandRoom }) {
   useVehicleFx(room);
   return (
     <>
-      {list.map(([id, v]) => (v.kind === "tank" ? <Tank key={id} room={room} id={id} v={v} /> : <Carrier key={id} room={room} id={id} v={v} teamColor={teamColor} />))}
+      {list.map(([id, v]) => (v.kind === "tank" ? <Tank key={id} room={room} id={id} v={v} /> : isEmplacement(v.kind) ? <Emplacement key={id} id={id} v={v} /> : <Carrier key={id} room={room} id={id} v={v} teamColor={teamColor} />))}
       <TankDriver room={room} />
       <CarrierSeat room={room} />
+      <EmplacementSeat room={room} teamColor={teamColor} />
+      <MortarShells room={room} />
     </>
   );
 }

@@ -6,8 +6,11 @@ import { WRECK_SECONDS } from "@tentides/content";
 // Phần dùng chung giữa xe tăng (Vehicles.tsx) và xe trinh sát, thuyền (Carriers.tsx): ai đang giữ camera khi ngồi
 // xe, bảng điều khiển xe chở quân, xe gần nhất lên được (cho dòng nhắc), và xác xe cháy (khói đen, lửa).
 
-/** Bộ điều khiển nào đang giữ `seat` (camera, thân nhân vật theo xe): "tank" (lái xe tăng), "carrier" (xe chở quân). */
-export const seatOwner = { kind: "" as "" | "tank" | "carrier" };
+/**
+ * Bộ điều khiển nào đang giữ `seat` (camera, thân nhân vật theo xe): "tank" (lái xe tăng), "carrier" (xe chở quân),
+ * "emplacement" (vũ khí cố định: ổ đại liên, cối — Emplacements.tsx).
+ */
+export const seatOwner = { kind: "" as "" | "tank" | "carrier" | "emplacement" };
 
 /** Xe gần nhất lên được: loại xe và ghế sẽ ngồi (cho dòng nhắc "F lên xe"). */
 export const nearInfo = { kind: "", seat: "" };
@@ -30,6 +33,33 @@ export const carrierHud = {
   aimOn: false,
   /** Đổi khi danh sách ghế đổi (HUD vẽ lại phần chữ). */
   seatsKey: "",
+};
+
+/** Bảng điều khiển vũ khí cố định (ổ đại liên, cối) cho HUD đọc mỗi khung hình. */
+export const emplacementHud = {
+  active: false,
+  kind: "" as "" | "hmg_nest" | "mortar",
+  hp: 0,
+  maxHp: 1,
+  zoom: false,
+  /** Đại liên: đầu nòng đang chĩa tới đâu trên màn hình; súng đã chạm mép cung xoay chưa. */
+  aimX: 0.5,
+  aimY: 0.5,
+  aimOn: false,
+  clamped: false,
+  /** Cối: chỗ đặt, phương vị (rad, thế giới), góc ngẩng (rad), tầm (m), điểm rơi dự đoán, thời gian bay, nạp đạn (0–1). */
+  x: 0,
+  z: 0,
+  az: 0,
+  elev: 0,
+  range: 0,
+  impactX: 0,
+  impactZ: 0,
+  flight: 0,
+  reload: 1,
+  /** Cứ điểm (vẽ trên bản đồ nhỏ của cối) và khoá đổi danh sách. */
+  flags: [] as { id: string; x: number; z: number; color: string }[],
+  flagsKey: "",
 };
 
 // ---------------------------------------------------------------------------- xác xe cháy

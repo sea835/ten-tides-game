@@ -6,10 +6,11 @@
 import { boxAt, boxesNear, type BattleMap } from "./battle.ts";
 import { WEAPON, type WeaponDef } from "./battleItems.ts";
 import { TANK, tankFits, tankGround, tankStep, type TankPose } from "./squad.ts";
+import { MORTAR, NEST, emplacementSpec, isEmplacement } from "./emplacements.ts";
 
 type V3 = readonly [number, number, number];
 
-export const VEHICLE_KINDS = ["tank", "jeep", "boat"] as const;
+export const VEHICLE_KINDS = ["tank", "jeep", "boat", "hmg_nest", "mortar"] as const;
 export type VehicleKind = (typeof VEHICLE_KINDS)[number];
 
 /**
@@ -109,12 +110,16 @@ export const SEATS: Record<VehicleKind, { seats: readonly V3[]; names: readonly 
     gunner: 1,
     mount: [0, 1.75, 3.25],
   },
+  // Vũ khí cố định (emplacements.ts): một ghế, cũng là ghế xạ thủ.
+  hmg_nest: { seats: [NEST.seat], names: ["Xạ thủ đại liên"], gunner: 0, mount: NEST.mount },
+  mortar: { seats: [MORTAR.seat], names: ["Pháo thủ cối"], gunner: 0, mount: MORTAR.mount },
 };
 
 /** Thông số chung theo loại xe: máu, nửa kích thước, bán kính bấm lên xe, hệ số đạn / nổ, tốc độ tối đa. */
 export function vehicleSpec(kind: string): { hp: number; half: readonly [number, number, number]; enter: number; bulletFactor: number; blastFactor: number; forward: number; seats: number } {
   if (kind === "jeep") return { hp: JEEP.hp, half: JEEP.half, enter: JEEP.enter, bulletFactor: JEEP.bulletFactor, blastFactor: JEEP.blastFactor, forward: JEEP.forward, seats: SEATS.jeep.seats.length };
   if (kind === "boat") return { hp: BOAT.hp, half: BOAT.half, enter: BOAT.enter, bulletFactor: BOAT.bulletFactor, blastFactor: BOAT.blastFactor, forward: BOAT.forward, seats: SEATS.boat.seats.length };
+  if (isEmplacement(kind)) return emplacementSpec(kind);
   return { hp: TANK.hp, half: TANK.half, enter: TANK.enter, bulletFactor: TANK.bulletFactor, blastFactor: TANK.blastFactor, forward: TANK.forward, seats: 1 };
 }
 

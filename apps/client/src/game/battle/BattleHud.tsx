@@ -17,6 +17,7 @@ import {
   THROWABLES,
   WEAPON,
   WEAPONS,
+  isEmplacement,
   mapForMode,
   bulletDrop,
   lootLabel,
@@ -396,9 +397,18 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
       {[...room.state.vehicles.values()]
         .filter((v) => v.hp > 0 && ((!v.driver && !v.seats.size) || (me?.team && v.team === me.team) || v.driver === myId(room)))
         .map((v, i) => {
-          // Xe tăng ô vuông to, xe trinh sát ô vuông nhỏ bo góc, thuyền hình thoi.
-          const r = (v.kind === "tank" ? 6 : 4.5) * u;
+          // Xe tăng ô vuông to, xe trinh sát ô vuông nhỏ bo góc, thuyền hình thoi; vũ khí cố định: ổ đại liên tròn
+          // (có vạch hướng đặt), cối tam giác.
+          const r = (v.kind === "tank" ? 6 : isEmplacement(v.kind) ? 3.5 : 4.5) * u;
           const fill = v.driver || v.seats.size ? teamColor(v.team) : "#bbb";
+          if (v.kind === "hmg_nest")
+            return (
+              <g key={`v${i}`} transform={`translate(${v.x} ${v.z})`} className="bm-emplace">
+                <circle r={r} style={{ fill }} />
+                <line x2={Math.sin(v.rotY) * r * 1.9} y2={Math.cos(v.rotY) * r * 1.9} style={{ stroke: fill, strokeWidth: r * 0.45 }} />
+              </g>
+            );
+          if (v.kind === "mortar") return <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.3} L${v.x + r * 1.15},${v.z + r} L${v.x - r * 1.15},${v.z + r} Z`} className="bm-tank bm-emplace" style={{ fill }} />;
           return v.kind === "boat" ? (
             <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.4} L${v.x + r},${v.z} L${v.x},${v.z + r * 1.4} L${v.x - r},${v.z} Z`} className="bm-tank" style={{ fill }} />
           ) : (
