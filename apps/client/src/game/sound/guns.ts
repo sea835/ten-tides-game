@@ -918,14 +918,42 @@ function boltCycle(v: Voice, dt: number, rate = 1) {
   v.osc(dt + 0.4 * rate, { freq: 210, freqEnd: 100, decay: 0.05, peak: 0.35 });
 }
 
-/** Thay đạn cho khẩu này, trải trong `seconds` giây. Trả về hàm hủy (khi đổi súng giữa chừng). */
-export function playReload(weaponId: string, seconds: number): () => void {
+/** Kéo bơm shotgun (S1897): ốp lót tay lùi về (vỏ đạn văng), đẩy tới đóng khoá. */
+function pumpCycle(v: Voice, dt: number) {
+  slide(v, dt, 900, 1700, 0.08, 0.5);
+  clack(v, dt + 0.08, 1500, 0.9);
+  v.osc(dt + 0.08, { freq: 200, freqEnd: 95, decay: 0.05, peak: 0.4 });
+  slide(v, dt + 0.15, 1600, 900, 0.07, 0.45);
+  clack(v, dt + 0.22, 1250, 1);
+  v.osc(dt + 0.22, { freq: 170, freqEnd: 80, decay: 0.06, peak: 0.45 });
+}
+
+/**
+ * Thay đạn cho khẩu này, trải trong `seconds` giây. Trả về hàm hủy (khi đổi súng giữa chừng, hay bắn ngắt lần nạp từng
+ * viên). `shells`: súng nạp từng viên thì số viên sẽ nhét; `flip`: hộp đạn kép, chỉ lật băng.
+ */
+export function playReload(weaponId: string, seconds: number, opts: { shells?: number; flip?: boolean } = {}): () => void {
   try {
-    const cls: WeaponClass = WEAPON.get(weaponId)?.class ?? "ar";
+    const def = WEAPON.get(weaponId);
+    const cls: WeaponClass = def?.class ?? "ar";
     const s = clamp(Number.isFinite(seconds) ? seconds : 2, 0.5, 8);
     const v = voice("local", 0.5);
     if (!v) return noop;
-    if (cls === "shotgun") {
+    if (def?.shell && opts.shells) {
+      // Shotgun bơm: lật súng, nhét từng viên vào ống tiếp đạn (tiếng nhựa trượt + lò xo bật), mỗi viên một nhịp.
+      clack(v, 0.05, 1300, 0.4);
+      for (let i = 0; i < opts.shells; i++) {
+        const t = def.reload + i * def.shell + def.shell * 0.45;
+        slide(v, t, 650, 1300, 0.08, 0.32);
+        clack(v, t + 0.08, rand(1150, 1350), 0.55);
+        v.osc(t + 0.08, { type: "triangle", freq: rand(2300, 2700), decay: 0.04, peak: 0.12 });
+      }
+    } else if (opts.flip) {
+      // Hộp đạn kép: rút băng, lật sang băng kia, đẩy vào, kéo khoá.
+      magOut(v, s * 0.1);
+      magIn(v, s * 0.45);
+      charge(v, s * 0.78);
+    } else if (cls === "shotgun") {
       // Bẻ nòng, nạp hai viên, đóng nòng.
       clack(v, 0.05, 1500, 0.8);
       slide(v, 0.08, 1100, 600, 0.12, 0.3);
@@ -964,6 +992,32 @@ export function playReload(weaponId: string, seconds: number): () => void {
     return noop;
   }
 }
+
+/** Kéo bơm sau phát bắn shotgun bơm (S1897). */
+export const playPump = safe(() => {
+  const v = voice("local", 0.5);
+  if (!v) return;
+  pumpCycle(v, 0);
+  v.done();
+});
+
+/**
+ * Đạn nảy khỏi kim loại / bê tông: tiếng "keng" chát rồi tiếng rít kim loại trượt cao độ xuống (viên đạn méo xoáy
+ * bay đi). `delay`: lúc đạn tới chỗ nảy.
+ */
+export const playRicochet = safe((at: Place, delay: number) => {
+  const sp = spatial(at, 90, 6);
+  if (!sp) return;
+  sp.delay = Math.min(0.8, sp.delay + Math.max(0, delay));
+  const v = voice("fx", 0.5 * sp.gain, { sp, reverb: 0.2 });
+  if (!v) return;
+  const f = rand(2400, 3400);
+  v.noise(0, { type: "highpass", freq: 3200, decay: 0.015, peak: 0.9, attack: 0.0005 });
+  v.osc(0, { type: "triangle", freq: f * 1.4, decay: 0.08, peak: 0.3 });
+  v.noise(0.01, { type: "bandpass", freq: f * 1.6, freqEnd: f * 0.45, q: 9, attack: 0.03, decay: 0.45, peak: 0.6 });
+  v.osc(0.012, { type: "sine", freq: f, freqEnd: f * 0.4, attack: 0.02, decay: 0.42, peak: 0.22 });
+  v.done();
+});
 
 /** Chu trình khóa nòng sau phát bắn tỉa (Kar98k, AWM). */
 export const playBolt = safe(() => {

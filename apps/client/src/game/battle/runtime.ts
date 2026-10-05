@@ -80,6 +80,8 @@ export interface Tracer {
   speed?: number;
   /** Đạn nổ: RPG (lửa đuôi to, vệt khói dài), pháo xe tăng (vệt sáng to, khói mỏng). */
   trail?: "rocket" | "shell";
+  /** Rocket có động cơ: tăng tốc từ `speed` lên `boost.vmax` (vệt bay theo flightTime). */
+  boost?: import("@tentides/content").Boost;
   /** Khói đuôi đã nhả tới quãng nào (m). */
   smoked?: number;
 }
@@ -98,6 +100,8 @@ export interface Impact {
   size?: number;
   /** Không rõ mặt găm (pháp tuyến đoán): chỉ phụt bụi, không để lỗ. */
   noHole?: boolean;
+  /** Đạn nảy khỏi mặt này theo hướng đó: tóe chùm tia lửa theo hướng nảy, tiếng rít kim loại. */
+  ricochet?: [number, number, number];
   /** Đạn tới nơi lúc này (giây, theo performance.now): bắn xa thì bụi, lỗ đạn hiện muộn hơn một chút. */
   at?: number;
 }
@@ -175,6 +179,13 @@ export const gun = {
   flashless: false,
   reloadUntil: 0,
   cancelReload: null as null | (() => void),
+  /** Nạp từng viên (S1897): số viên của lần nạp đang chạy (ViewModel diễn từng viên). 0 là thay cả băng. */
+  shells: 0,
+  /** Lúc bắn ngắt lần nạp từng viên (chờ server báo thôi nạp). */
+  reloadBreakAt: 0,
+  /** Hộp đạn kép: "ô|súng" có lần thay kế là lật băng nhanh; lần thay đang chạy sẽ đổi lượt khi xong. */
+  dualFlip: "",
+  dualPending: "",
   healUntil: 0,
   cancelHeal: null as null | (() => void),
 };

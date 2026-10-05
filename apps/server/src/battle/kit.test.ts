@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { KitState } from "@tentides/protocol";
-import { everything, giveWeapon, magSize, priceOf, receive, reloadTime, resetKit } from "./kit.ts";
-import { WEAPON } from "@tentides/content";
+import { everything, giveWeapon, magSize, priceOf, receive, reloadStep, reloadTime, resetKit } from "./kit.ts";
+import { DUAL_MAG_RELOAD, WEAPON } from "@tentides/content";
 
 function kit() {
   const k = new KitState();
@@ -105,8 +105,8 @@ describe("hành trang Battleground", () => {
     expect(dropped).toContain("att:comp");
     k.mag1 = 30;
     receive(k, "att:extmag", dropped);
-    expect(magSize(k, "primary1")).toBe(41);
-    k.mag1 = 41;
+    expect(magSize(k, "primary1")).toBe(40);
+    k.mag1 = 40;
     // Khẩu đang cầm đã có băng: băng thay nhanh sang khẩu còn trống chỗ (súng lục).
     receive(k, "att:quickmag", dropped);
     expect(k.attP.split(",")).toContain("quickmag");
@@ -114,8 +114,48 @@ describe("hành trang Battleground", () => {
     receive(k, "att:quickmag", dropped);
     expect(k.att1.split(",")).toContain("quickmag");
     expect(k.mag1).toBe(30);
-    expect(k.ammo.get("556")).toBe(11);
+    expect(k.ammo.get("556")).toBe(10);
     expect(reloadTime(k, "primary1")).toBeCloseTo(WEAPON.get("m416")!.reload * 0.7);
     expect(everything(k)).toEqual(expect.arrayContaining(["att:quickmag", "att:vgrip", "att:suppressor"]));
+  });
+
+  it("S1897 nạp từng viên: mỗi chặng một viên, tới khi đầy băng hoặc hết đạn dự trữ", () => {
+    const k = kit();
+    receive(k, "s1897", []);
+    const def = WEAPON.get("s1897")!;
+    k.mag1 = 2;
+    k.ammo.set("12g", 2);
+    expect(reloadTime(k, "primary1")).toBeCloseTo(def.reload + def.shell!);
+    expect(reloadStep(k, "primary1")).toBeCloseTo(def.shell!);
+    expect(k.mag1).toBe(3);
+    // Viên cuối cùng trong dự trữ: xong luôn dù băng chưa đầy.
+    expect(reloadStep(k, "primary1")).toBe(0);
+    expect(k.mag1).toBe(4);
+    expect(k.ammo.get("12g")).toBe(0);
+  });
+
+  it("hộp đạn kép: cứ cách một lần thay thì nhanh (lật băng), đổi súng thì về lần thường", () => {
+    const k = kit();
+    receive(k, "m416", []);
+    receive(k, "att:dualmag", []);
+    const base = WEAPON.get("m416")!.reload;
+    k.ammo.set("556", 200);
+    const times: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      k.mag1 = 0;
+      times.push(reloadTime(k, "primary1"));
+      expect(reloadStep(k, "primary1")).toBe(0);
+      expect(k.mag1).toBe(30);
+    }
+    expect(times.map((t) => t / base)).toEqual([1, DUAL_MAG_RELOAD, 1, DUAL_MAG_RELOAD]);
+    k.mag1 = 0;
+    reloadStep(k, "primary1");
+    expect(reloadTime(k, "primary1")).toBeCloseTo(base * DUAL_MAG_RELOAD);
+    // Thay khẩu ở ô này (hộp đạn kép vẫn lắp vừa SCAR): lần thay đầu là lần thường.
+    receive(k, "akm", []);
+    k.active = "primary1";
+    giveWeapon(k, WEAPON.get("scar")!);
+    expect(k.att1).toBe("dualmag");
+    expect(reloadTime(k, "primary1")).toBeCloseTo(WEAPON.get("scar")!.reload);
   });
 });

@@ -370,6 +370,24 @@ export function BulletHoles({ world }: { world: World }) {
         spark: true,
         color: bitColor,
       });
+    // Đạn nảy: chùm tia lửa vọt theo hướng nảy.
+    if (imp.ricochet)
+      for (let k = 0; k < 7; k++) {
+        const sp = rand(9, 18);
+        addBit({
+          x: imp.x,
+          y: imp.y,
+          z: imp.z,
+          vx: imp.ricochet[0] * sp + rand(-1.5, 1.5),
+          vy: imp.ricochet[1] * sp + rand(-0.5, 1.5),
+          vz: imp.ricochet[2] * sp + rand(-1.5, 1.5),
+          life: rand(0.1, 0.25),
+          size: rand(0.014, 0.024),
+          spin: 0,
+          spark: true,
+          color: bitColor,
+        });
+      }
     if (surface !== "flesh") playImpact(imp, surface);
   };
 

@@ -19,7 +19,7 @@ import {
   type Mesh,
   type PointLight,
 } from "three";
-import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, type World } from "@tentides/content";
+import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, flightDistance, flightTime, type World } from "@tentides/content";
 import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -768,7 +768,8 @@ function Tracers() {
       // Viên đạn bay đúng sơ tốc của súng, theo đường cong rơi dần (parabol qua nòng và chỗ găm):
       // vệt sáng dài vài mét lướt đi, bắn xa thì thấy rõ đạn võng lên rồi cắm xuống.
       const speed = t.speed ?? 900;
-      const flight = len / speed;
+      // Rocket có động cơ (RPG-7): rời ống chậm rồi tăng tốc, cùng công thức với server (flightTime).
+      const flight = t.boost ? flightTime(speed, len, t.boost) : len / speed;
       const streak = Math.min(len, Math.max(4, Math.min(14, speed * 0.016)));
       const lag = streak / speed;
       if (age > flight + lag || age > 3) {
@@ -777,19 +778,19 @@ function Tracers() {
       }
       if (n >= MAX_TRACERS) continue;
       const at = (tau: number, out: Vector3) => {
-        const k = Math.max(0, Math.min(1, tau / flight));
         const tt = Math.max(0, Math.min(flight, tau));
+        const k = t.boost ? Math.min(1, flightDistance(speed, tt, t.boost) / len) : Math.max(0, Math.min(1, tau / flight));
         return out.set(t.ox + dx * k, t.oy + dy * k + 0.5 * BULLET_GRAVITY * tt * (flight - tt), t.oz + dz * k);
       };
       at(age, headV);
       at(age - lag, tailV);
       // Đạn nổ nhả khói dọc đường bay (RPG dày, pháo mỏng).
       if (t.trail && age < flight) {
-        const flown = Math.min(len, age * speed);
+        const flown = Math.min(len, t.boost ? flightDistance(speed, age, t.boost) : age * speed);
         const gap = t.trail === "rocket" ? 0.9 : 3;
         let sd = t.smoked ?? 0;
         for (; sd < flown && puffs.length < 880; sd += gap) {
-          at(sd / speed, sideV);
+          at(t.boost ? flightTime(speed, sd, t.boost) : sd / speed, sideV);
           const grey = t.trail === "rocket" ? 0.72 + Math.random() * 0.1 : 0.8;
           puffs.push({ x: sideV.x, y: sideV.y, z: sideV.z, vx: (Math.random() - 0.5) * 0.4, vy: 0.2 + Math.random() * 0.3, vz: (Math.random() - 0.5) * 0.4, size: t.trail === "rocket" ? 0.45 : 0.3, grow: t.trail === "rocket" ? 0.9 : 0.5, life: t.trail === "rocket" ? 2.5 + Math.random() : 1.2, age: 0, r: grey, g: grey, b: grey, alpha: t.trail === "rocket" ? 0.55 : 0.25, dense: false });
         }
@@ -924,7 +925,7 @@ function useShots(room: IslandRoom) {
       if (launcher?.explosive) {
         // RPG: quả đạn có lửa đuôi và vệt khói dài; khói phụt ngược ra sau ống phóng.
         const [ex, ey, ez] = m.e[0] ?? m.o;
-        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: launcher.velocity, trail: "rocket" });
+        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: launcher.velocity, boost: launcher.boost, trail: "rocket" });
         effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
         const l = Math.hypot(ex - ox, ez - oz) || 1;
         for (let k = 0; k < 10; k++)
