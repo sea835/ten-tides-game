@@ -240,10 +240,10 @@ export type SquadRole = "leader" | "rifle" | "sniper" | "tanker" | "support" | "
 export const ROLES: Record<SquadRole, { name: string; guns: readonly string[]; sight: string; outfit?: string; extras: readonly string[] }> = {
   leader: { name: "Đội trưởng", guns: ["m416", "scar"], sight: "x2", extras: ["frag", "smoke", "bandage", "bandage"] },
   rifle: { name: "Tay súng trường", guns: ["m416", "akm", "scar"], sight: "reddot", extras: ["frag", "bandage", "bandage"] },
-  sniper: { name: "Bắn tỉa", guns: ["kar98k", "sks"], sight: "x8", outfit: "ghillie", extras: ["smoke", "bandage"] },
-  support: { name: "Súng máy", guns: ["m249"], sight: "holo", extras: ["smoke", "bandage", "bandage"] },
+  sniper: { name: "Bắn tỉa", guns: ["kar98k", "sks", "awm"], sight: "x8", outfit: "ghillie", extras: ["smoke", "bandage"] },
+  support: { name: "Súng máy", guns: ["m249", "dp28"], sight: "holo", extras: ["smoke", "bandage", "bandage"] },
   tanker: { name: "Lái xe tăng", guns: ["ump45", "vector"], sight: "reddot", extras: ["bandage"] },
-  antitank: { name: "Chống tăng", guns: ["ump45", "m416"], sight: "reddot", extras: ["rpg7", "ammo:rocket:6", "bandage", "bandage"] },
+  antitank: { name: "Chống tăng", guns: ["ump45", "vector"], sight: "reddot", extras: ["rpg7", "ammo:rocket:6", "bandage", "bandage"] },
 };
 
 /** Thứ tự vai trò của 5 máy đi theo một người (hay đội máy: máy đầu tiên làm đội trưởng). */

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { PingBroadcast, PingKind, RadioBroadcast, RadioLine } from "@tentides/protocol";
+import type { PingBroadcast, PingShownKind, RadioBroadcast, RadioLine } from "@tentides/protocol";
 import type { IslandRoom } from "../../net.ts";
 import { bodies } from "./runtime.ts";
 
@@ -11,7 +11,7 @@ export interface Ping {
   key: number;
   from: string;
   name: string;
-  kind: PingKind;
+  kind: PingShownKind;
   x: number;
   y: number;
   z: number;
@@ -30,12 +30,14 @@ export const pings: Ping[] = [];
 export const MARKER_POOL = 16;
 export const markerPool: { els: (HTMLDivElement | null)[] } = { els: [] };
 
-export const PING_LABEL: Record<PingKind, string> = { spot: "Đánh dấu", enemy: "Địch", danger: "Nguy hiểm" };
+export const PING_LABEL: Record<PingShownKind, string> = { spot: "Đánh dấu", enemy: "Địch", danger: "Nguy hiểm", spotted: "Trinh sát" };
 
 let pingSeq = 0;
 
 export function addPing(b: PingBroadcast, me: string) {
-  const i = pings.findIndex((p) => p.from === b.from);
+  // Mỗi người một dấu tự đánh; dấu trinh sát (ống nhòm) thì mỗi mục tiêu một dấu, người trinh sát đánh dấu được nhiều.
+  const spotted = b.kind === "spotted";
+  const i = pings.findIndex((p) => (spotted ? p.kind === "spotted" && (b.target ? p.target === b.target : Math.hypot(p.x - b.x, p.z - b.z) < 4) : p.from === b.from && p.kind !== "spotted"));
   if (i >= 0) pings.splice(i, 1);
   if (pings.length >= MAX_PINGS) pings.shift();
   pings.push({ key: ++pingSeq, from: b.from, name: b.name, kind: b.kind, x: b.x, y: b.y, z: b.z, target: b.target, until: performance.now() + b.ttl, mine: b.from === me });

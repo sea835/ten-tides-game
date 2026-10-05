@@ -47,6 +47,7 @@ import { KillerBanner, XpFeed } from "../../progress/BattleProgress.tsx";
 import { RankBadge } from "../../progress/RankBadge.tsx";
 import { CommsHud, PingMarks } from "./CommsHud.tsx";
 import { CommandCenter } from "./CommandCenter.tsx";
+import { ClassIcon, GadgetHud, GadgetSlots } from "./GadgetHud.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -470,6 +471,7 @@ function Vitals({ room }: { room: IslandRoom }) {
             <span>{s.label || "—"}</span>
           </div>
         ))}
+        <GadgetSlots room={room} />
         {active && (
           <div className="b-ammo">
             <strong className={mag === 0 ? "empty" : ""}>{mag}</strong>
@@ -754,7 +756,7 @@ function Scoreboard({ room }: { room: IslandRoom }) {
   const hud = useBattleHud();
   const rows = useRoomSnapshot(room, (s) =>
     [...s.players.entries()]
-      .map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot, team: p.team, rank: p.badge.rank }))
+      .map(([id, p]) => ({ id, name: p.name, kills: p.kills, alive: p.alive, bot: p.bot, team: p.team, rank: p.badge.rank, cls: s.battleMode === "solo" ? "" : p.gear.cls }))
       .sort((a, b) => (a.team < b.team ? -1 : a.team > b.team ? 1 : 0) || Number(b.alive) - Number(a.alive) || b.kills - a.kills),
   );
   const phase = useRoomSnapshot(room, (s) => s.phase);
@@ -769,6 +771,7 @@ function Scoreboard({ room }: { room: IslandRoom }) {
               <td>
                 {r.team && <i className="b-team-dot" style={{ background: teamColor(r.team) }} title={teamName(room, r.team)} />}
                 <RankBadge rank={r.rank} size={16} />
+                <ClassIcon cls={r.cls} />
                 {r.name}
                 {!r.bot && <SpeakingMark id={r.id} />}
               </td>
@@ -1052,6 +1055,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
         </div>
       )}
       {fighting && <Vitals room={room} />}
+      {fighting && <GadgetHud room={room} />}
       {fighting && <OutsideZone room={room} />}
       {fighting && <AirdropNotice room={room} />}
       {fighting && <SquadHud room={room} />}

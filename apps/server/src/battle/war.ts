@@ -1,4 +1,4 @@
-import { MAX_HP, ROLES, WAR_BASES, WEAPON, insideBox, type SquadRole } from "@tentides/content";
+import { CLASSES, MAX_HP, ROLES, WAR_BASES, WEAPON, classOfRole, insideBox, isSoldierClass, type SquadRole } from "@tentides/content";
 import { FlagState, Messages, WAR_TICKETS_DEFAULT, type CorrectMessage, type PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, receive, resetKit } from "./kit.ts";
@@ -103,7 +103,9 @@ export class War {
     for (const [id, p] of s.players) {
       p.respawn = 0;
       this.place(id, p, "hq");
-      this.equip(p, (p.bot ? (p.role as SquadRole) : this.lastRole.get(id)) || "rifle");
+      // Người chơi: lớp đã chọn lần trước, không thì lớp chọn ở sảnh.
+      const picked = isSoldierClass(p.gear.cls) ? CLASSES[p.gear.cls].role : "rifle";
+      this.equip(p, (p.bot ? (p.role as SquadRole) : this.lastRole.get(id)) || picked);
     }
     this.seatTankers();
   }
@@ -152,7 +154,10 @@ export class War {
     this.room.clientOf(id)?.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
   }
 
-  /** Đồ theo lớp lính: súng chính, ống ngắm, súng lục, giáp mũ cấp 2, lựu đạn, băng gạc (tiền giữ nguyên). */
+  /**
+   * Đồ theo lớp lính: súng chính, ống ngắm, súng lục, giáp mũ cấp 2, lựu đạn, băng gạc (tiền giữ nguyên), khí tài của
+   * lớp (súng trường → Đột Kích, bắn tỉa → Bắn Tỉa, súng máy → Quân Nhu, chống tăng, lái tăng → Kỹ Thuật).
+   */
   equip(p: PlayerState, role: SquadRole) {
     const money = p.kit.money;
     const outfit = p.kit.outfit;
@@ -163,7 +168,8 @@ export class War {
     const def = WEAPON.get(gun)!;
     receive(p.kit, gun, []);
     addAmmo(p.kit, def.ammo, def.mag * (def.class === "lmg" ? 2 : 4));
-    if (spec.sight) receive(p.kit, `sight:${spec.sight}`, []);
+    // SKS mang ống 4x, Kar98k / AWM ống 8x.
+    if (spec.sight) receive(p.kit, `sight:${gun === "sks" ? "x4" : spec.sight}`, []);
     receive(p.kit, "p92", []);
     addAmmo(p.kit, "9mm", 30);
     receive(p.kit, "armor:2", []);
@@ -171,6 +177,7 @@ export class War {
     for (const extra of spec.extras) receive(p.kit, extra, []);
     p.kit.active = "primary1";
     p.role = role;
+    this.room.gadgets.equip(p, classOfRole(role));
     p.hp = MAX_HP;
     p.maxHp = MAX_HP;
     p.alive = true;

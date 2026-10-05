@@ -659,6 +659,8 @@ export interface BoxIndex {
   stamp: number;
   /** Khối đã vỡ / sập (1): mọi tia, mọi phép dò bỏ qua. Mỗi phòng (server) một bản riêng, xem `withDestruction`. */
   dead?: Uint8Array;
+  /** Khối từ số này trở đi là chỗ trống cho công sự dựng giữa trận (bao cát), xem `withDynamicSlots`. */
+  dynamicFrom?: number;
 }
 
 /** Ma trận quay (YXZ) của khối, dùng để đổi điểm và hướng về toạ độ riêng của khối. */
@@ -863,6 +865,67 @@ export function withDestruction(map: BattleMap): BattleMap {
     index: { ...map.index, seen: new Uint32Array(n), stamp: 0, dead: new Uint8Array(n) },
     treeDead: new Uint8Array(map.world.trees.length),
   };
+}
+
+/** Chỗ trống cho công sự dựng giữa trận: không đặc, không nằm trong lưới, xa tít dưới đất. */
+const EMPTY_SLOT: BattleBox = { x: 0, y: -1000, z: 0, w: 0.01, h: 0.01, d: 0.01, rot: 0, pitch: 0, mat: "sandbag", solid: false };
+
+/**
+ * Bản đồ của phòng có thêm `n` chỗ trống cuối danh sách khối, để dựng công sự giữa trận (bờ bao cát của lính Quân
+ * Nhu). Khối dựng vào chỗ trống nằm trong lưới như mọi khối khác: đạn, tầm nhìn của máy, sức nổ, lựu đạn nảy đều tính
+ * tới nó; độ bền, vỡ do `Destruction` lo như tường thường. Lưới, mảng khối được chép riêng (bản gốc dùng chung giữa
+ * các phòng không đổi).
+ */
+export function withDynamicSlots(map: BattleMap, n: number): BattleMap {
+  const base = map.index;
+  const from = base.boxes.length;
+  const boxes: BattleBox[] = [...base.boxes];
+  for (let k = 0; k < n; k++) boxes.push(EMPTY_SLOT);
+  const axes = new Float64Array(boxes.length * 9);
+  axes.set(base.axes);
+  const dead = new Uint8Array(boxes.length);
+  if (base.dead) dead.set(base.dead);
+  dead.fill(1, from);
+  const grid = new Map<number, number[]>();
+  for (const [k, list] of base.grid) grid.set(k, list.slice());
+  return { ...map, index: { ...base, boxes, axes, grid, dead, seen: new Uint32Array(boxes.length), stamp: 0, dynamicFrom: from } };
+}
+
+/** Các ô lưới mà khối `b` chạm. */
+function cellsOf(b: BattleBox, cell: number): number[] {
+  const r = boxRadius(b);
+  const out: number[] = [];
+  for (let gx = Math.floor((b.x - r) / cell); gx <= Math.floor((b.x + r) / cell); gx++) for (let gz = Math.floor((b.z - r) / cell); gz <= Math.floor((b.z + r) / cell); gz++) out.push(cellKey(gx, gz));
+  return out;
+}
+
+/**
+ * Dựng (`box`) hay dỡ (null) công sự ở chỗ trống `i` (≥ `index.dynamicFrom`): cập nhật trục, lưới, cờ vỡ. Trả về
+ * false nếu `i` không phải chỗ trống của bản đồ này.
+ */
+export function setDynamicBox(index: BoxIndex, i: number, box: BattleBox | null): boolean {
+  const from = index.dynamicFrom;
+  if (from === undefined || i < from || i >= index.boxes.length) return false;
+  const boxes = index.boxes as BattleBox[];
+  const old = boxes[i]!;
+  if (old.solid)
+    for (const key of cellsOf(old, index.cell)) {
+      const list = index.grid.get(key);
+      const at = list ? list.indexOf(i) : -1;
+      if (list && at >= 0) list.splice(at, 1);
+    }
+  const b = box ?? EMPTY_SLOT;
+  boxes[i] = b;
+  const { ux, uy, uz } = basis(b);
+  index.axes.set([...ux, ...uy, ...uz], i * 9);
+  if (index.dead) index.dead[i] = box ? 0 : 1;
+  if (box?.solid)
+    for (const key of cellsOf(box, index.cell)) {
+      const list = index.grid.get(key);
+      if (list) list.push(i);
+      else index.grid.set(key, [i]);
+    }
+  return true;
 }
 
 /** Tia cắt khối thứ `i` của chỉ mục (slab test trong toạ độ riêng của khối, trục tính sẵn). */

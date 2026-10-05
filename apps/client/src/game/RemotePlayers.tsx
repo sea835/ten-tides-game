@@ -9,7 +9,7 @@ import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { WEAPON, withAttachments } from "@tentides/content";
+import { WEAPON, gadgetIn, withAttachments } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
 import { physicsProbe } from "./battle/surface.ts";
 import { muzzleOffset } from "./GunModel.tsx";
@@ -133,13 +133,18 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
   });
   const look = useRoomSnapshot(room, () => {
     const k = player.kit;
-    const slot = k.active;
+    // Khí tài lớp lính: M203 thì cầm súng trường chính; khí tài khác cầm trên tay phải như đồ ném.
+    const gadget = room.state.battleMode !== "solo" && (k.active === "gadget1" || k.active === "gadget2") ? gadgetIn(player.gear.cls, k.active) : "";
+    const slot = gadget === "m203" ? "primary1" : k.active;
     const weapon = slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "";
+    let atts = slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "";
+    // Lính Đột Kích: ống phóng lựu M203 dưới nòng súng trường.
+    if (player.gear.cls === "assault" && room.state.battleMode !== "solo" && WEAPON.get(weapon)?.class === "ar") atts = atts ? `${atts},m203` : "m203";
     return {
       weapon,
-      atts: slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "",
+      atts,
       skin: weapon ? (player.skins.get(weapon) ?? "") : "",
-      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : gadget && gadget !== "m203" ? gadget : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
   // Súng người khác chạm tường: dò tia từ ngực theo hướng họ ngắm (vài lần mỗi giây, chỉ khi ở gần).
   const wall = useRef({ value: 0, at: 0 });

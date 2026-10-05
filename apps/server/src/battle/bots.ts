@@ -398,8 +398,8 @@ export class Bots {
       const dx = o.x - p.x;
       const dz = o.z - p.z;
       const d = Math.hypot(dx, dz);
-      // Ngồi xổm, nằm sấp, đứng yên, mặc ghillie thì khó phát hiện hơn.
-      const stealth = (o.prone ? 0.45 : o.crouching ? 0.7 : 1) * (o.moving ? 1 : 0.8) * (o.kit.outfit === "ghillie" ? 0.6 : 1);
+      // Ngồi xổm, nằm sấp, đứng yên thì khó phát hiện hơn; áo ghillie (lính Bắn Tỉa) giảm 70% tầm bị phát hiện.
+      const stealth = (o.prone ? 0.45 : o.crouching ? 0.7 : 1) * (o.moving ? 1 : 0.8) * (o.kit.outfit === "ghillie" ? 0.3 : 1);
       if (d > r * (o.vehicle ? 1.6 : stealth)) return false;
       if (cone && d > 5 && (dx * fx + dz * fz) / (d || 1) < 0.35) return false;
       return this.visible(eye, o.x, o.y + (o.vehicle ? 1.6 : o.prone ? 0.3 : o.crouching ? 0.8 : 1.2), o.z);

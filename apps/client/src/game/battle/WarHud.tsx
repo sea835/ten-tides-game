@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CLASSES, isSoldierClass } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping } from "../input.ts";
@@ -7,15 +8,17 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { setBattleHud } from "./runtime.ts";
 
 // Giao diện chiến trường 50 vs 50: vé quân hai phe và dãy cứ điểm A–G trên cùng, thanh chiếm khi đứng trong vùng
-// một cứ điểm, thông báo cứ điểm đổi chủ, và màn hồi sinh (chọn lớp lính, chọn căn cứ hay cứ điểm phe mình giữ).
+// một cứ điểm, thông báo cứ điểm đổi chủ, và màn hồi sinh (chọn lớp lính Đột Kích / Bắn Tỉa / Quân Nhu / Kỹ Thuật
+// hay lái tăng, chọn căn cứ hay cứ điểm phe mình giữ).
 
 export const SIDE_NAME: Record<string, string> = { blue: "Phe Xanh", red: "Phe Đỏ" };
+/** Bốn lớp lính (CLASSES) theo vai trò server dùng khi hồi sinh, cộng lái tăng (mang khí tài Kỹ Thuật). */
 const ROLE_LIST = [
-  { id: "rifle", name: "Súng trường", icon: "▲", info: "M416 / AKM / SCAR, lựu đạn" },
-  { id: "support", name: "Súng máy", icon: "■", info: "M249 100 viên, bom khói" },
-  { id: "sniper", name: "Bắn tỉa", icon: "◎", info: "Kar98k / SKS ống 8x, ghillie" },
-  { id: "antitank", name: "Chống tăng", icon: "✹", info: "RPG-7 + 6 quả, tiểu liên" },
-  { id: "tanker", name: "Lái tăng", icon: "⛟", info: "Lên xe tăng trống ở căn cứ" },
+  { id: "rifle", cls: "assault", name: CLASSES.assault.name, icon: CLASSES.assault.icon, info: CLASSES.assault.info },
+  { id: "sniper", cls: "recon", name: CLASSES.recon.name, icon: CLASSES.recon.icon, info: CLASSES.recon.info },
+  { id: "support", cls: "support", name: CLASSES.support.name, icon: CLASSES.support.icon, info: CLASSES.support.info },
+  { id: "antitank", cls: "engineer", name: CLASSES.engineer.name, icon: CLASSES.engineer.icon, info: CLASSES.engineer.info },
+  { id: "tanker", cls: "engineer", name: "Lái tăng", icon: "⛟", info: "Lên xe tăng trống ở căn cứ · mỏ lết, mìn chống tăng" },
 ] as const;
 type RoleId = (typeof ROLE_LIST)[number]["id"];
 
@@ -115,7 +118,11 @@ export function Deploy({ room }: { room: IslandRoom }) {
       flags: [...st.flags.entries()].filter(([, f]) => f.owner && f.owner === p?.team).map(([id, f]) => ({ id, name: f.name, enemy: p?.team === "blue" ? f.red : f.blue })).sort((a, b) => a.id.localeCompare(b.id)),
     };
   });
-  const [role, setRole] = useState<RoleId>("rifle");
+  // Mặc định: lớp đã chọn ở sảnh (hay lần hồi sinh trước).
+  const [role, setRole] = useState<RoleId>(() => {
+    const cls = room.state.players.get(me)?.gear.cls ?? "";
+    return isSoldierClass(cls) ? (ROLE_LIST.find((r) => r.cls === cls)?.id ?? "rifle") : "rifle";
+  });
   const [at, setAt] = useState("hq");
   const was = useRef(true);
   // Vừa gục: thả chuột để bấm chọn được.

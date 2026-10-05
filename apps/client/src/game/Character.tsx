@@ -820,7 +820,8 @@ export function Character({
               </group>
             )}
             {right && throwable && !gunId && (
-              <group position={[0, -0.085, 0.02]}>
+              // Khí tài to (hộp tiếp đạn, mìn chống tăng) cầm thu nhỏ cho khỏi che cả người.
+              <group position={[0, -0.085, 0.02]} scale={throwable === "ammobox" ? 0.55 : throwable === "atmine" ? 0.7 : 1}>
                 <ThrowableModel id={throwable} />
               </group>
             )}

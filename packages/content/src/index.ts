@@ -9,6 +9,7 @@ export * from "./battleItems.ts";
 export * from "./battle.ts";
 export * from "./ballistics.ts";
 export * from "./squad.ts";
+export * from "./classes.ts";
 export * from "./war.ts";
 export * from "./skins.ts";
 export * from "./airdrop.ts";
