@@ -11,6 +11,7 @@ import {
   raycastTerrain,
   raycastTrunks,
   tankFits,
+  tankGround,
   tankStep,
 } from "@tentides/content";
 import { Messages, VehicleState, type BoomMessage, type CorrectMessage, type HitMessage, type ShotMessage, type VehicleMoveMessage } from "@tentides/protocol";
@@ -81,7 +82,7 @@ export class Vehicles {
     v.kind = "tank";
     v.x = x;
     v.z = z;
-    v.y = this.room.map.world.heightAt(x, z);
+    v.y = tankGround(this.room.map, x, z);
     v.rotY = rotY;
     v.turret = rotY;
     v.hp = TANK.hp;
@@ -134,8 +135,9 @@ export class Vehicles {
     ] as const) {
       const x = v.x + c * u + s * w;
       const z = v.z - s * u + c * w;
-      const h = map.world.heightAt(x, z);
-      if (h < 0.3 || insideBox(map.index, x, h + 0.9, z, 0.4)) continue;
+      // Mặt đất hay mặt cầu (xe đang trên cầu thì xuống ngay trên mặt cầu).
+      const h = tankGround(map, x, z);
+      if (h < -0.7 || Math.abs(h - v.y) > 2.5 || insideBox(map.index, x, h + 0.9, z, 0.4)) continue;
       return { x, y: h + 0.05, z };
     }
     return { x: v.x, y: v.y + TANK.half[1] * 2 + 0.1, z: v.z };
@@ -200,7 +202,7 @@ export class Vehicles {
     }
     this.lastMoveAt.set(pid, now);
     v.x = m.x;
-    v.y = this.room.map.world.heightAt(m.x, m.z);
+    v.y = tankGround(this.room.map, m.x, m.z);
     v.z = m.z;
     v.rotY = m.rotY;
     v.turret = m.turret;

@@ -43,6 +43,8 @@ export interface BattleBox {
   building?: number;
   /** Vai trò trong toà nhà: móng, tường, sàn (kể cả cầu thang), mái, đồ đạc. */
   part?: BoxPart;
+  /** Mặt cầu, cầu tàu: xe tăng chạy trên mặt trên của khối này (như mặt đất), xem `deckTop`. */
+  deck?: boolean;
 }
 
 export type BoxPart = "base" | "wall" | "floor" | "roof" | "prop";
@@ -80,6 +82,8 @@ export interface LootSpot {
   y: number;
   z: number;
   tier: 1 | 2 | 3;
+  /** Đồ riêng: "heavy" là vũ khí hạng nặng (súng máy, RPG, bắn tỉa hiếm) kèm nhiều đạn. */
+  kind?: "heavy";
 }
 
 export interface BattleMap {
@@ -98,6 +102,8 @@ export interface BattleMap {
   index: BoxIndex;
   /** Cây đã đổ (1) theo thứ tự `world.trees`: đạn, tầm nhìn đi qua chỗ đó. */
   treeDead?: Uint8Array;
+  /** Hòm đạn dã chiến (chiến trường): đứng cạnh thì được tiếp đạn. */
+  supplies?: readonly { x: number; y: number; z: number }[];
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -291,6 +297,7 @@ function towerBody(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts
 
   for (let f = 0; f <= floors; f++) {
     const y = f * FLOOR_H + 0.05;
+    const first = b.boxes.length;
     if (f > 0) {
       // Sàn tầng f, chừa lỗ cầu thang cho vế đi lên tới tầng này.
       const holeU = (f - 1) % 2 === 0 ? sA : sB;
@@ -364,8 +371,24 @@ function towerBody(b: Builder, u0: number, v0: number, rot: number, o: TowerOpts
       add(cu, y + s / 2, cv, s, s, s, "wood", { part: "prop" });
     }
     if (o.tier) {
-      const lu = stairEnd + 1 + b.rand() * (W / 2 - stairEnd - 2);
-      const lv = -D / 2 + 1 + b.rand() * (D - 2);
+      let lu = stairEnd + 1 + b.rand() * (W / 2 - stairEnd - 2);
+      let lv = -D / 2 + 1 + b.rand() * (D - 2);
+      // Đồ không rơi lọt vào thùng gỗ, vách ngăn vừa dựng ở tầng này: xê dịch dọc phòng tới chỗ trống.
+      const c = Math.cos(rot);
+      const sn = Math.sin(rot);
+      const blocked = (u: number, v: number) => {
+        const p = toWorld(b.site, u0 + u * c + v * sn, v0 - u * sn + v * c);
+        for (let i = first; i < b.boxes.length; i++) if (pointInBox(b.boxes[i]!, p.x, b.site.h + y + 0.3, p.z, 0.3)) return true;
+        return false;
+      };
+      for (const [du, dv] of [[0, 0], [0, 1.5], [0, -1.5], [0, 3], [0, -3], [-1.5, 0], [1.5, 0], [-1.5, 2], [-1.5, -2]] as const) {
+        const nu = Math.min(W / 2 - 0.8, Math.max(stairEnd + 0.6, lu + du));
+        const nv = Math.min(D / 2 - 0.8, Math.max(-D / 2 + 0.8, lv + dv));
+        if (blocked(nu, nv)) continue;
+        lu = nu;
+        lv = nv;
+        break;
+      }
       b.lootLocal(u0, v0, rot, lu, y, lv, f >= 3 && o.tier < 3 ? ((o.tier + 1) as 2 | 3) : o.tier);
     }
   }
@@ -949,6 +972,23 @@ export function boxesNear(index: BoxIndex, x: number, z: number, r: number): Bat
 /** Điểm có nằm trong khối đặc nào không (dùng để chọn chỗ xuất phát, chỗ rơi đồ). */
 export function insideBox(index: BoxIndex, x: number, y: number, z: number, pad = 0): boolean {
   return boxAt(index, x, y, z, pad) !== null;
+}
+
+/** Mặt trên cao nhất của mặt cầu (khối `deck`) phủ điểm (x, z) trên mặt bằng, hoặc −Infinity nếu không có. */
+export function deckTop(index: BoxIndex, x: number, z: number): number {
+  const list = index.grid.get(cellKey(Math.floor(x / index.cell), Math.floor(z / index.cell)));
+  let top = -Infinity;
+  if (!list) return top;
+  for (const i of list) {
+    const b = index.boxes[i]!;
+    if (!b.deck || index.dead?.[i]) continue;
+    const rx = x - b.x;
+    const rz = z - b.z;
+    const c = Math.cos(b.rot);
+    const s = Math.sin(b.rot);
+    if (Math.abs(rx * c - rz * s) < b.w / 2 && Math.abs(rx * s + rz * c) < b.d / 2) top = Math.max(top, b.y + b.h / 2);
+  }
+  return top;
 }
 
 /** Mặt sàn cao nhất (khối đặc) ngay dưới điểm (x, yTop, z), hoặc địa hình. */

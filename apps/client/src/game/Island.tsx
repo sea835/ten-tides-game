@@ -400,7 +400,8 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   const chunks = useMemo(() => buildTerrain(world), [world]);
   const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
   // 100 ô vẽ (mỗi ô một draw call, cắt bớt phần ngoài tầm nhìn) nhưng chỉ ~16 collider.
-  const colliders = useMemo(() => buildTerrainColliders(chunks, (MAP_HALF_SIZE * 2) / CHUNK), [chunks]);
+  // Số ô mỗi chiều theo kích thước bản đồ (chiến trường rộng hơn đảo), khớp với buildTerrain.
+  const colliders = useMemo(() => buildTerrainColliders(chunks, Math.round(((world.half ?? MAP_HALF_SIZE) * 2) / CHUNK)), [chunks, world]);
   // Số lá cỏ do mức chất lượng quyết định (0 ở "low"): mỗi bụi là một vòng lặp 32 phép tính trên
   // vertex, 100 000 bụi là khoảng 22 triệu phép tính mỗi khung hình.
   const grass = useProfile().grass;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { mapForMode, warSquadLeader } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping } from "../input.ts";
@@ -7,7 +8,8 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { setBattleHud } from "./runtime.ts";
 
 // Giao diện chiến trường 50 vs 50: vé quân hai phe và dãy cứ điểm A–G trên cùng, thanh chiếm khi đứng trong vùng
-// một cứ điểm, thông báo cứ điểm đổi chủ, và màn hồi sinh (chọn lớp lính, chọn căn cứ hay cứ điểm phe mình giữ).
+// một cứ điểm, gợi ý tiếp đạn cạnh hòm đạn dã chiến, thông báo cứ điểm đổi chủ, và màn hồi sinh (chọn lớp lính, chọn
+// căn cứ, cứ điểm phe mình giữ hay cạnh đội trưởng tổ mình).
 
 export const SIDE_NAME: Record<string, string> = { blue: "Phe Xanh", red: "Phe Đỏ" };
 const ROLE_LIST = [
@@ -27,7 +29,7 @@ export function WarTop({ room }: { room: IslandRoom }) {
     side: st.players.get(myId(room))?.team ?? "",
     flags: [...st.flags.entries()].map(([id, f]) => ({ id, owner: f.owner, p: Math.round(f.progress * 20) / 20 })).sort((a, b) => a.id.localeCompare(b.id)),
   }));
-  const max = Math.max(250, s.blue, s.red);
+  const max = Math.max(300, s.blue, s.red);
   return (
     <div className="w-top">
       <div className={`w-tickets blue ${s.side === "blue" ? "mine" : ""}`}>
@@ -65,11 +67,15 @@ export function CaptureBar({ room }: { room: IslandRoom }) {
   }, []);
   const me = room.state.players.get(myId(room));
   if (!me?.alive) return null;
+  // Cạnh hòm đạn dã chiến (Kho Quân Nhu, căn cứ): server tự tiếp đạn.
+  const supplies = mapForMode(room.state.battleMode, room.state.worldSeed).supplies ?? [];
+  const supply = !me.vehicle && supplies.some((c) => Math.hypot(c.x - localPosition.x, c.z - localPosition.z) < 3.5 && Math.abs(c.y - localPosition.y) < 3);
+  const hint = supply ? <div className="w-capture"><div className="w-capture-title">▣ Hòm đạn dã chiến · đang tiếp đạn</div></div> : null;
   let inside: { id: string; name: string; owner: string; progress: number; blue: number; red: number } | null = null;
   for (const [id, f] of room.state.flags) {
     if (Math.hypot(localPosition.x - f.x, localPosition.z - f.z) <= f.r) inside = { id, name: f.name, owner: f.owner, progress: f.progress, blue: f.blue, red: f.red };
   }
-  if (!inside) return null;
+  if (!inside) return hint;
   const contested = inside.blue > 0 && inside.red > 0;
   const mine = me.team;
   const ours = inside.owner === mine;
@@ -102,6 +108,13 @@ export function useFlagToasts(room: IslandRoom) {
   );
 }
 
+/** Tên đội trưởng tổ mình nếu còn sống (và không phải chính mình), không thì rỗng. */
+function leaderName(players: IslandRoom["state"]["players"], me: string): string {
+  const id = warSquadLeader(players.entries(), me);
+  const lead = id && id !== me ? players.get(id) : undefined;
+  return lead && lead.alive && lead.team === players.get(me)?.team ? lead.name : "";
+}
+
 /** Gục trên chiến trường: đếm ngược, chọn lớp lính và chỗ hồi sinh. */
 export function Deploy({ room }: { room: IslandRoom }) {
   const me = myId(room);
@@ -113,6 +126,7 @@ export function Deploy({ room }: { room: IslandRoom }) {
       side: p?.team ?? "",
       wait: Math.ceil(p?.respawn ?? 0),
       flags: [...st.flags.entries()].filter(([, f]) => f.owner && f.owner === p?.team).map(([id, f]) => ({ id, name: f.name, enemy: p?.team === "blue" ? f.red : f.blue })).sort((a, b) => a.id.localeCompare(b.id)),
+      lead: leaderName(st.players, me),
     };
   });
   const [role, setRole] = useState<RoleId>("rifle");
@@ -161,6 +175,11 @@ export function Deploy({ room }: { room: IslandRoom }) {
         <button className={at === "hq" ? "on" : ""} onClick={() => setAt("hq")}>
           🏠 Căn cứ
         </button>
+        {s.lead && (
+          <button className={at === "lead" ? "on" : ""} onClick={() => setAt("lead")} title="Hồi sinh ngay cạnh đội trưởng tổ mình">
+            ★ Cạnh đội trưởng {s.lead}
+          </button>
+        )}
         {s.flags.map((f) => (
           <button key={f.id} className={at === f.id ? "on" : ""} onClick={() => setAt(f.id)} title={f.enemy ? "Đang bị địch tấn công" : ""}>
             <b>{f.id}</b> {f.name}

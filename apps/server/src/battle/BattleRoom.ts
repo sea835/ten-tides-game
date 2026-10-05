@@ -1232,7 +1232,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     for (const spot of spots) {
       const extras: string[] = [];
       const roll = this.rand();
-      if (roll < 0.55 || spot.tier === 3) {
+      if (spot.kind === "heavy") {
+        // Vũ khí hạng nặng (Kho Quân Nhu chiến trường): súng máy, RPG, súng bắn tỉa hiếm, kèm nhiều đạn.
+        const w = pick(WEAPONS.filter((x) => x.id === "m249" || x.id === "rpg7" || x.id === "awm"));
+        extras.push(w.id, `ammo:${w.ammo}`, `ammo:${w.ammo}`);
+      } else if (roll < 0.55 || spot.tier === 3) {
         const w = pick(byTier[spot.tier]);
         extras.push(w.id, `ammo:${w.ammo}`);
       }

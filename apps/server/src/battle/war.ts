@@ -1,20 +1,26 @@
-import { MAX_HP, ROLES, WAR_BASES, WEAPON, insideBox, type SquadRole } from "@tentides/content";
+import { MAX_HP, ROLES, WAR_BASES, WATER_LEVEL, WEAPON, floorBelow, insideBox, warSquadLeader, type SquadRole } from "@tentides/content";
 import { FlagState, Messages, type CorrectMessage, type PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
-import { addAmmo, receive, resetKit } from "./kit.ts";
+import { addAmmo, ammoOf, receive, resetKit, weaponIn } from "./kit.ts";
 
 // Chiến trường 50 vs 50: phe Xanh (căn cứ phía tây) đấu phe Đỏ (phía đông). Mỗi phe có số vé quân; mỗi người gục
-// mất một vé, phe giữ ít cứ điểm hơn bị trừ vé dần. Đứng trong vùng một cứ điểm mà không có địch thì chiếm dần
-// (đông người chiếm nhanh hơn), có cả hai phe thì giằng co. Gục rồi thì chờ vài giây, chọn lớp lính và chỗ hồi sinh
-// (căn cứ hay cứ điểm phe mình giữ). Mỗi phe ba xe tăng ở căn cứ, xe nổ thì một lúc sau có xe mới.
+// mất một vé; phe giữ quá 4/7 cứ điểm thì cứ 3 giây đối phương mất thêm một vé. Đứng trong vùng một cứ điểm mà không
+// có địch thì chiếm dần (đông người chiếm nhanh hơn), có cả hai phe thì giằng co. Gục rồi thì chờ vài giây, chọn lớp
+// lính và chỗ hồi sinh (căn cứ, cứ điểm phe mình giữ, hay cạnh đội trưởng tổ mình). Đứng cạnh hòm đạn dã chiến (Kho
+// Quân Nhu, căn cứ) thì được tiếp đạn. Mỗi phe ba xe tăng ở căn cứ, xe nổ thì một lúc sau có xe mới.
 // Hết vé là thua.
 
 export type Side = "blue" | "red";
 export const SIDES: readonly Side[] = ["blue", "red"];
-/** Vé quân lúc đầu mỗi phe, thời gian chờ hồi sinh, nhịp trừ vé theo cứ điểm (giây). */
-export const WAR_TICKETS = 250;
+/** Vé quân lúc đầu mỗi phe (mặc định), thời gian chờ hồi sinh, nhịp trừ vé theo cứ điểm (giây). */
+export const WAR_TICKETS = 300;
 export const RESPAWN_SECONDS = 8;
 const BLEED_EVERY = 3;
+/** Giữ quá phần này số cứ điểm (4/7) thì đối phương bị trừ vé dần. */
+const BLEED_SHARE = 4 / 7;
+/** Hòm đạn dã chiến: bán kính đứng cạnh, thời gian chờ giữa hai lần tiếp đạn (giây). */
+const SUPPLY_RADIUS = 3.5;
+const SUPPLY_COOLDOWN = 15;
 /** Chờ quá chừng này giây (sau khi được hồi sinh) mà chưa chọn chỗ thì tự hồi sinh ở căn cứ. */
 const AUTO_RESPAWN = 10;
 /** Tốc độ chiếm cứ điểm: phần tiến độ mỗi giây cho mỗi người (tối đa 4 người tính). */
@@ -32,6 +38,10 @@ export class War {
   private tankTimer: Record<Side, number> = { blue: 0, red: 0 };
   /** Người chơi đã tự chọn lớp lính gần nhất (để tự hồi sinh). */
   private lastRole = new Map<string, SquadRole>();
+  /** Lần tiếp đạn kế tiếp được phép của từng người (giây theo đồng hồ trận), nhịp dò hòm đạn. */
+  private supplyAt = new Map<string, number>();
+  private clock = 0;
+  private supplyScan = 0;
 
   constructor(private readonly room: BattleRoom) {}
 
@@ -82,6 +92,8 @@ export class War {
     s.ticketsBlue = WAR_TICKETS;
     s.ticketsRed = WAR_TICKETS;
     this.bleed = 0;
+    this.clock = 0;
+    this.supplyAt.clear();
     this.tankTimer = { blue: 0, red: 0 };
     // Vùng an toàn không dùng: phủ cả bản đồ.
     s.zone.x = s.zone.nx = 0;
@@ -126,18 +138,45 @@ export class War {
       const x = cx + Math.cos(a) * r;
       const z = cz + Math.sin(a) * r;
       const h = map.world.heightAt(x, z);
-      if (h < 0.8 || insideBox(map.index, x, h + 1, z, 0.5)) continue;
+      if (h < WATER_LEVEL + 0.8 || insideBox(map.index, x, h + 1, z, 0.5)) continue;
       return { x, z };
     }
     return { x: cx, z: cz };
   }
 
+  /** Đội trưởng tổ của người này (cùng phe, còn sống, không phải chính mình), hay undefined. */
+  leaderOf(id: string): PlayerState | undefined {
+    const s = this.room.state;
+    const p = s.players.get(id);
+    const lid = warSquadLeader(s.players.entries(), id);
+    const leader = lid && lid !== id ? s.players.get(lid) : undefined;
+    return p && leader && leader.alive && leader.team === p.team ? leader : undefined;
+  }
+
+  /** Chỗ hồi sinh cạnh đội trưởng: cùng tầng với đội trưởng (trên sàn nhà, mặt cầu…), không kẹt tường, không dưới nước. */
+  private besideLeader(id: string): { x: number; y: number; z: number } | null {
+    const leader = this.leaderOf(id);
+    if (!leader) return null;
+    const map = this.room.map;
+    for (let tries = 0; tries < 24; tries++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = (leader.vehicle ? 4.5 : 1.8) + Math.random() * 3;
+      const x = leader.x + Math.cos(a) * r;
+      const z = leader.z + Math.sin(a) * r;
+      const y = floorBelow(map, x, leader.y + 1.2, z);
+      if (Math.abs(y - leader.y) > 1.5 || y < WATER_LEVEL + 0.3 || insideBox(map.index, x, y + 1, z, 0.4)) continue;
+      return { x, y, z };
+    }
+    return null;
+  }
+
   private place(id: string, p: PlayerState, at: string) {
     const side = p.team as Side;
-    const pt = this.spawnPoint(side, at);
+    const lead = at === "lead" ? this.besideLeader(id) : null;
+    const pt = lead ?? this.spawnPoint(side, at === "lead" ? "hq" : at);
     p.x = pt.x;
     p.z = pt.z;
-    p.y = this.room.map.world.heightAt(pt.x, pt.z) + 0.05;
+    p.y = lead ? lead.y + 0.05 : this.room.map.world.heightAt(pt.x, pt.z) + 0.05;
     p.rotY = side === "blue" ? Math.PI / 2 : -Math.PI / 2;
     this.room.clientOf(id)?.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
   }
@@ -188,7 +227,8 @@ export class War {
     p.respawn = 0;
     const flag = at !== "hq" ? s.flags.get(at) : undefined;
     this.equip(p, role);
-    this.place(id, p, flag && flag.owner === p.team ? at : "hq");
+    // Cạnh đội trưởng (đội trưởng gục rồi thì về căn cứ), cứ điểm phe mình đang giữ, hay căn cứ.
+    this.place(id, p, at === "lead" ? "lead" : flag && flag.owner === p.team ? at : "hq");
     // Lớp lái tăng: có xe trống ở căn cứ thì ngồi luôn.
     if (role === "tanker") this.seatIn(id, p);
     this.room.updateAliveCount();
@@ -210,6 +250,27 @@ export class War {
       }
     }
     return best;
+  }
+
+  /** Đứng cạnh hòm đạn dã chiến: nạp lại đạn dự trữ cho súng chính (tối đa vài băng), mỗi người cách nhau ít giây. */
+  private resupply() {
+    const supplies = this.room.map.supplies ?? [];
+    if (!supplies.length) return;
+    for (const [id, p] of this.room.state.players) {
+      if (!p.alive || p.vehicle || (this.supplyAt.get(id) ?? 0) > this.clock) continue;
+      if (!supplies.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < SUPPLY_RADIUS && Math.abs(c.y - p.y) < 3)) continue;
+      let gave = false;
+      for (const slot of ["primary1", "primary2"] as const) {
+        const def = weaponIn(p.kit, slot);
+        if (!def) continue;
+        const want = def.mag * (def.class === "lmg" ? 2 : 4);
+        const have = ammoOf(p.kit, def.ammo);
+        if (have >= want) continue;
+        addAmmo(p.kit, def.ammo, want - have);
+        gave = true;
+      }
+      if (gave) this.supplyAt.set(id, this.clock + SUPPLY_COOLDOWN);
+    }
   }
 
   private spawnTank(side: Side) {
@@ -285,18 +346,19 @@ export class War {
         this.room.broadcastFlag(f.name, "red");
       }
     }
-    // Phe giữ ít cứ điểm hơn bị trừ vé dần.
+    // Phe giữ quá 4/7 cứ điểm: cứ 3 giây đối phương mất một vé.
     this.bleed += dt;
     if (this.bleed >= BLEED_EVERY) {
       this.bleed -= BLEED_EVERY;
-      let blue = 0;
-      let red = 0;
-      for (const f of s.flags.values()) {
-        if (f.owner === "blue") blue++;
-        else if (f.owner === "red") red++;
-      }
-      if (blue > red) s.ticketsRed = Math.max(0, s.ticketsRed - (blue - red));
-      if (red > blue) s.ticketsBlue = Math.max(0, s.ticketsBlue - (red - blue));
+      const drain = bleedOf(s.flags.values());
+      s.ticketsRed = Math.max(0, s.ticketsRed - drain.red);
+      s.ticketsBlue = Math.max(0, s.ticketsBlue - drain.blue);
+    }
+    this.clock += dt;
+    this.supplyScan -= dt;
+    if (this.supplyScan <= 0) {
+      this.supplyScan = 1;
+      this.resupply();
     }
     // Xe tăng: thiếu xe thì một lúc sau có xe mới ở căn cứ (dọn bớt xác xe).
     for (const side of SIDES) {
@@ -315,4 +377,17 @@ export class War {
     // Hết vé: thua.
     if (s.ticketsBlue <= 0 || s.ticketsRed <= 0) this.room.endWar(s.ticketsBlue > 0 ? "blue" : "red");
   }
+}
+
+/** Số vé mỗi phe bị trừ trong một nhịp trừ vé: phe giữ quá 4/7 số cứ điểm làm đối phương mất một vé. */
+export function bleedOf(flags: Iterable<{ owner: string }>): { blue: number; red: number } {
+  let blue = 0;
+  let red = 0;
+  let total = 0;
+  for (const f of flags) {
+    total++;
+    if (f.owner === "blue") blue++;
+    else if (f.owner === "red") red++;
+  }
+  return { red: total && blue > total * BLEED_SHARE ? 1 : 0, blue: total && red > total * BLEED_SHARE ? 1 : 0 };
 }

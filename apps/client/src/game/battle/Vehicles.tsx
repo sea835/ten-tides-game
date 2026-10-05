@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Callbacks } from "@colyseus/sdk";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
-import { TANK, TEAM_COLORS, mapForMode, cannonMuzzle, cannonPitch, tankStep, type TankPose } from "@tentides/content";
+import { TANK, TEAM_COLORS, mapForMode, cannonMuzzle, cannonPitch, tankGround, tankStep, type TankPose } from "@tentides/content";
 import { Messages, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -168,13 +168,14 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
     const c = teamColor(v.team);
     if (c !== color) setColor(c);
     // Nghiêng theo mặt đất (dốc trước sau, trái phải).
-    const world = mapForMode(room.state.battleMode, room.state.worldSeed).world;
+    // Mặt đất hay mặt cầu dưới bốn phía xe.
+    const bmap = mapForMode(room.state.battleMode, room.state.worldSeed);
     const s = Math.sin(a.rotY);
     const co = Math.cos(a.rotY);
-    const hf = world.heightAt(a.x + s * 2.6, a.z + co * 2.6);
-    const hb = world.heightAt(a.x - s * 2.6, a.z - co * 2.6);
-    const hr = world.heightAt(a.x + co * 1.4, a.z - s * 1.4);
-    const hl = world.heightAt(a.x - co * 1.4, a.z + s * 1.4);
+    const hf = tankGround(bmap, a.x + s * 2.6, a.z + co * 2.6);
+    const hb = tankGround(bmap, a.x - s * 2.6, a.z - co * 2.6);
+    const hr = tankGround(bmap, a.x + co * 1.4, a.z - s * 1.4);
+    const hl = tankGround(bmap, a.x - co * 1.4, a.z + s * 1.4);
     a.tiltX += (Math.atan2(hb - hf, 5.2) - a.tiltX) * Math.min(1, dt * 6);
     a.tiltZ += (Math.atan2(hr - hl, 2.8) - a.tiltZ) * Math.min(1, dt * 6);
     const g = root.current;
