@@ -41,6 +41,7 @@ import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.t
 import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
+import { Suppression } from "./Suppression.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -1128,6 +1129,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
     <div className="hud battle-hud">
       {fighting && <Reticle room={room} />}
       {fighting && <Flashed room={room} />}
+      {fighting && <Suppression />}
       <Compass />
       {fighting && (war ? <WarTop room={room} /> : <TopBar room={room} />)}
       {fighting && war && <CaptureBar room={room} />}

@@ -2,6 +2,8 @@
 // không cần tải file nào. Tiếng có vị trí thì nhỏ dần theo khoảng cách và lệch trái phải theo hướng camera.
 // Trình duyệt chỉ cho phát tiếng sau lần bấm chuột hay phím đầu tiên, nên bộ máy tự bật khi đó.
 
+import { duckAt, type Duck } from "./acoustics.ts";
+
 export type Bus = "sfx" | "ambience" | "music" | "ui";
 
 export interface Place {
@@ -46,6 +48,13 @@ class AudioEngine {
   /** Bộ lọc trên toàn bộ âm thanh: dưới nước thì mọi thứ nghe ù ù. */
   private muffle!: BiquadFilterNode;
   private buses = new Map<Bus, GainNode>();
+  /**
+   * Nút giảm tiếng riêng sau bus sfx và ambience (ù tai, bị áp chế): tách khỏi âm lượng người chơi chọn nên chỉnh
+   * âm lượng giữa lúc ù tai không bị ghi đè, hết ù thì về đúng mức đã chỉnh.
+   */
+  private duckNodes: GainNode[] = [];
+  private ducks = new Set<Duck>();
+  private duckTimer: ReturnType<typeof setInterval> | null = null;
   white!: AudioBuffer;
   brown!: AudioBuffer;
   /** Vị trí và hướng nhìn của người nghe (camera), Soundscape ghi mỗi khung hình. */
@@ -88,7 +97,12 @@ class AudioEngine {
       const g = ctx.createGain();
       g.gain.value = this.busLevel(bus);
       // Giao diện không bị nước làm ù.
-      g.connect(bus === "ui" ? this.master : this.muffle);
+      if (bus === "ui") g.connect(this.master);
+      else if (bus === "sfx" || bus === "ambience") {
+        const duck = ctx.createGain();
+        g.connect(duck).connect(this.muffle);
+        this.duckNodes.push(duck);
+      } else g.connect(this.muffle);
       this.buses.set(bus, g);
     }
     this.white = this.makeNoise(ctx, false);
@@ -171,6 +185,42 @@ class AudioEngine {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
     } catch {
       // Không lưu được thì lần sau về mặc định.
+    }
+  }
+
+  /**
+   * Giảm tiếng trò chơi (sfx, ambience) xuống còn `1 − depth` trong `seconds` giây (giữ một lúc rồi hồi dần), bắt đầu
+   * sau `delay` giây. Nhiều lần chồng nhau thì lấy mức nặng nhất. Trả về hàm hủy sớm.
+   */
+  duck(depth: number, seconds: number, delay = 0, attack = 0.08): () => void {
+    const me: Duck = { start: performance.now() / 1000 + Math.max(0, delay), seconds: Math.max(0.1, seconds), depth: Math.max(0, Math.min(1, depth)), attack: Math.max(0.01, attack) };
+    this.ducks.add(me);
+    if (!this.duckTimer) this.duckTimer = setInterval(() => this.duckTick(), 40);
+    this.duckTick();
+    return () => {
+      this.ducks.delete(me);
+      this.duckTick();
+    };
+  }
+
+  /** Độ giảm tiếng hiện tại (0–1), để giao diện đọc nếu cần. */
+  ducking = 0;
+
+  private duckTick() {
+    const now = performance.now() / 1000;
+    let depth = 0;
+    for (const x of this.ducks) {
+      if (now - x.start >= x.seconds) this.ducks.delete(x);
+      else depth = Math.max(depth, duckAt(x, now));
+    }
+    this.ducking = depth;
+    if (this.ctx) {
+      const t = this.ctx.currentTime;
+      for (const n of this.duckNodes) n.gain.setTargetAtTime(1 - depth * 0.985, t, this.ducks.size ? 0.03 : 0.2);
+    }
+    if (!this.ducks.size && this.duckTimer) {
+      clearInterval(this.duckTimer);
+      this.duckTimer = null;
     }
   }
 

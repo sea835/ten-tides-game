@@ -23,9 +23,12 @@ import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, type World }
 import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
-import { localPosition, shake } from "../shared.ts";
+import { localPosition, shake, suppression } from "../shared.ts";
 import { audio } from "../sound/engine.ts";
-import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt, playCannon } from "../sound/guns.ts";
+import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt, playCannon, playSuppressed } from "../sound/guns.ts";
+import { closestApproach, flybyTiming, type Approach } from "../sound/acoustics.ts";
+import { setAcousticMap } from "../sound/environment.ts";
+import { mapForMode } from "@tentides/content";
 import { WEAPON } from "@tentides/content";
 import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
@@ -899,9 +902,14 @@ function remoteImpact(ox: number, oy: number, oz: number, ex: number, ey: number
 }
 
 /** Phát bắn của người khác: vệt đạn, lửa đầu nòng, tiếng súng, tiếng đạn rít qua đầu nếu sượt gần mình. */
+/** Dùng lại cho mỗi phát (khỏi tạo đối tượng mới). */
+const approach: Approach = { t: 0, miss: 0, x: 0, y: 0, z: 0, len: 0 };
+
 function useShots(room: IslandRoom) {
   useEffect(() => {
-    return room.onMessage(Messages.shot, (m: ShotMessage) => {
+    // Âm thanh dò môi trường (phố, đồi, rừng, trong nhà) trên bản đồ trận đang chơi.
+    setAcousticMap(() => mapForMode(room.state.battleMode, room.state.worldSeed));
+    const off = room.onMessage(Messages.shot, (m: ShotMessage) => {
       const now = performance.now() / 1000;
       const [ox, oy, oz] = m.o;
       const alive = room.state.players.get(myId(room))?.alive ?? false;
@@ -964,25 +972,34 @@ function useShots(room: IslandRoom) {
         effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: false, speed: def?.velocity });
         remoteImpact(ox, oy, oz, ex, ey, ez, now, def?.velocity ?? 900);
         if (whizzed || m.id === myId(room)) continue;
-        const dx = ex - ox;
-        const dy = ey - oy;
-        const dz = ez - oz;
-        const len = Math.hypot(dx, dy, dz) || 1;
-        const t = Math.max(0, Math.min(len, ((lx - ox) * dx + (ly - oy) * dy + (lz - oz) * dz) / len));
-        const cx = ox + (dx / len) * t;
-        const cy = oy + (dy / len) * t;
-        const cz = oz + (dz / len) * t;
-        const miss = Math.hypot(cx - lx, cy - ly, cz - lz);
+        const a = closestApproach(ox, oy, oz, ex, ey, ez, lx, ly, lz, approach);
         // Đạn găm vào chính mình (điểm cuối sát người) thì đã có tiếng trúng đạn.
         const intoMe = Math.hypot(ex - lx, ey - ly, ez - lz) < 0.9;
-        if (t > 4 && miss < 7 && !intoMe) {
-          playBulletWhiz({ x: cx, y: cy, z: cz }, miss, t / (def?.velocity ?? 900), def?.velocity ?? 900);
-          whizzed = true;
-          // Đạn sượt sát đầu: giật mình (rung nhẹ màn hình).
-          if (miss < 1.5 && alive) shake.amount = Math.min(0.4, shake.amount + 0.08);
-        }
+        if (intoMe) continue;
+        // Đạn siêu thanh: tiếng nứt "CHÁT!" tới lúc đạn bay ngang, tiếng nổ đầu nòng (playGunshot ở trên) tới sau theo
+        // khoảng cách / 343. Đạn cận âm hay giảm thanh: chỉ rít khi sượt gần.
+        const velocity = def?.velocity ?? 900;
+        const fb = flybyTiming(a.t, a.miss, a.t < a.len - 0.5, Math.hypot(ox - lx, oy - ly, oz - lz), velocity, !!m.s);
+        if (fb.zone === "none") continue;
+        playBulletWhiz({ x: a.x, y: a.y, z: a.z }, a.miss, fb.crackDelay, velocity, fb.supersonic);
+        whizzed = true;
+        if (!alive) continue;
+        if (fb.zone === "snap") {
+          // Đạn sượt sát đầu (dưới 1 m): giật thót, rung nhẹ màn hình, bị áp chế một thoáng (tối mép, tiếng hụt đi).
+          const hit = () => {
+            shake.amount = Math.min(0.5, shake.amount + 0.16);
+            suppression.amount = Math.min(1, suppression.amount + 0.55);
+            playSuppressed(0.8);
+          };
+          if (fb.crackDelay > 0.03) setTimeout(hit, fb.crackDelay * 1000);
+          else hit();
+        } else if (fb.zone === "whiz" && a.miss < 2) shake.amount = Math.min(0.4, shake.amount + 0.04);
       }
     });
+    return () => {
+      off();
+      setAcousticMap(null);
+    };
   }, [room]);
 }
 

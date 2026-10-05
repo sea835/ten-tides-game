@@ -53,6 +53,12 @@ export const debugCam = { enabled: false, position: new Vector3(0, 120, 160), ta
 /** Rung màn hình: cường độ giảm dần theo thời gian (bị đánh, cây đổ gần, nổ). */
 export const shake = { amount: 0 };
 
+/**
+ * Bị áp chế (đạn sượt sát đầu, 0–1): Effects cộng vào khi có đạn bay dưới 1 m, lớp phủ Suppression đọc để tối mép
+ * màn hình và mờ nhẹ rồi tự giảm dần.
+ */
+export const suppression = { amount: 0 };
+
 /** Đẩy lùi khi bị đánh trúng: vận tốc ngang giảm dần, LocalPlayer cộng vào chuyển động. */
 export const knock = { vx: 0, vz: 0 };
 
