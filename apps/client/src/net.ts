@@ -13,6 +13,8 @@ const client = new Client(SERVER_URL);
 
 const TOKEN_KEY = "tentides.token";
 const LAST_ROOM_KEY = "tentides.lastRoom";
+/** reconnectionToken của Colyseus ("mãPhòng:token"): tải lại trang (F5) thì nối lại thẳng vào phiên cũ. */
+const RESUME_KEY = "tentides.resume";
 
 function storage(): Storage | null {
   try {
@@ -49,6 +51,38 @@ export function lastRoom(): string | null {
 
 export function forgetLastRoom() {
   storage()?.removeItem(LAST_ROOM_KEY);
+  storage()?.removeItem(RESUME_KEY);
+}
+
+/** Tab này có phiên đang dở (vừa F5 hay rớt mạng) để thử nối lại không. */
+export function canResume(): boolean {
+  return !!storage()?.getItem(RESUME_KEY);
+}
+
+/**
+ * Nối lại phiên cũ bằng reconnectionToken đã lưu (server giữ chỗ RECONNECT_SECONDS giây sau khi rớt): về đúng nhân vật,
+ * đội, đồ, súng. Hết hạn hay phòng đã đóng thì quên token và trả về null để hiện sảnh như thường.
+ */
+export function resumeRoom(): Promise<IslandRoom | null> {
+  // Một lần thử mỗi lúc (React StrictMode gọi effect hai lần): token chỉ dùng được cho một kết nối.
+  inFlight ??= tryResume().finally(() => (inFlight = null));
+  return inFlight;
+}
+let inFlight: Promise<IslandRoom | null> | null = null;
+
+async function tryResume(): Promise<IslandRoom | null> {
+  const token = storage()?.getItem(RESUME_KEY);
+  if (!token) return null;
+  const pending = client.reconnect(token, IslandState);
+  try {
+    const room = await Promise.race([pending, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000))]);
+    return await whenReady(room);
+  } catch {
+    // Nối được nhưng quá muộn: thả ra như rớt mạng (server vẫn giữ chỗ), để vào lại bằng nút "Vào lại phòng".
+    pending.then((late) => void late.leave(false), () => {});
+    storage()?.removeItem(RESUME_KEY);
+    return null;
+  }
 }
 
 /** Id người chơi của mình trong phòng: người có phiên kết nối trùng với phiên của tab này. */
@@ -60,6 +94,10 @@ export function myId(room: IslandRoom): string {
 /** Chờ tới khi state có nhân vật của mình, để biết điểm xuất phát. */
 function whenReady(room: IslandRoom): Promise<IslandRoom> {
   storage()?.setItem(LAST_ROOM_KEY, room.roomId);
+  rememberResume(room);
+  // Rớt mạng thoáng qua: SDK tự nối lại (lùi dần, chừng một phút), token có thể đổi sau mỗi lần nối lại.
+  room.reconnection.maxRetries = 15;
+  room.onReconnect(() => rememberResume(room));
   // Nghe thông tin riêng ngay từ lúc vào phòng: server gửi vai ngay khi mình vừa vào, trước khi HUD kịp hiện.
   listenPrivate(room);
   return new Promise((resolve) => {
@@ -85,6 +123,10 @@ export async function createBattleRoom(name: string): Promise<IslandRoom> {
 
 export async function joinRoom(code: string, name: string): Promise<IslandRoom> {
   return whenReady(await client.joinById(code.trim().toUpperCase(), joinOptions(name), IslandState));
+}
+
+function rememberResume(room: IslandRoom) {
+  if (room.reconnectionToken) storage()?.setItem(RESUME_KEY, room.reconnectionToken);
 }
 
 export function wasKicked(code: number): boolean {

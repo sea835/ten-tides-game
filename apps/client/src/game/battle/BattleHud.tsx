@@ -42,6 +42,7 @@ import { teamColor } from "./Vehicles.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
 import { Suppression } from "./Suppression.tsx";
+import { SpeakingMark, VoiceChat, VoiceSettingsSection } from "../voice/VoiceChat.tsx";
 import "./battle.css";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
@@ -849,7 +850,7 @@ function Lobby({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
         <LogOut size={16} /> Rời phòng
       </button>
       <p className="b-keys">
-        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · Đồng đội: Y tới điểm, G giữ chỗ, H theo sau
+        WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe tăng · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · ` (giữ) nói · U (giữ) bộ đàm · Đồng đội: Y tới điểm, G giữ chỗ, H theo sau
       </p>
     </div>
   );
@@ -874,6 +875,7 @@ function Scoreboard({ room }: { room: IslandRoom }) {
               <td>
                 {r.team && <i className="b-team-dot" style={{ background: teamColor(r.team) }} title={teamName(room, r.team)} />}
                 {r.name}
+                {!r.bot && <SpeakingMark id={r.id} />}
               </td>
               <td>{r.kills} hạ gục</td>
               <td>{r.alive ? "còn sống" : "đã gục"}</td>
@@ -1081,6 +1083,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
         <input type="checkbox" checked={s.toggleAim} onChange={(e) => setSettings({ toggleAim: e.target.checked })} /> Bấm chuột phải một lần để ngắm (không cần giữ)
       </label>
       <SoundSettings />
+      <VoiceSettingsSection />
       <GraphicsSettings />
       <button
         className="ghost"
@@ -1163,6 +1166,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       <Pickup />
       <BuyMenu room={room} />
       <Scoreboard room={room} />
+      <VoiceChat room={room} />
       <Lobby room={room} onLeave={onLeave} />
       <DeathAndWin room={room} onLeave={onLeave} />
       <SettingsButton />

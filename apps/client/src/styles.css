@@ -4101,3 +4101,36 @@ details.more > .hint {
 .perf-overlay span {
   opacity: 0.6;
 }
+
+/* Đang nối lại (F5 giữa trận, rớt mạng thoáng qua). */
+.reconnecting {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--bg-0);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.reconnecting.overlay {
+  background: rgba(4, 10, 15, 0.72);
+}
+.reconnecting .spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--line-strong);
+  border-top-color: var(--accent);
+  animation: reconnect-spin 0.9s linear infinite;
+}
+@keyframes reconnect-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
