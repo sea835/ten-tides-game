@@ -27,6 +27,9 @@ import {
   vehicleStep,
   vehicleY,
   type ArmorFace,
+  tankFits,
+  tankGround,
+  tankStep,
 } from "@tentides/content";
 import { Messages, VehicleState, type BoomMessage, type CorrectMessage, type HitMessage, type ShotMessage, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
@@ -258,8 +261,9 @@ export class Vehicles {
     for (const [u, w] of spots) {
       const x = v.x + c * u + s * w;
       const z = v.z - s * u + c * w;
-      const h = map.world.heightAt(x, z);
-      if (h < shallow || insideBox(map.index, x, Math.max(h, 0) + 0.9, z, 0.4)) continue;
+      // Mặt đất hay mặt cầu (xe đang trên cầu thì xuống ngay trên mặt cầu).
+      const h = tankGround(map, x, z);
+      if (h < shallow || Math.abs(Math.max(h, 0) - Math.max(v.y, 0)) > 2.5 || insideBox(map.index, x, Math.max(h, 0) + 0.9, z, 0.4)) continue;
       return { x, y: h + 0.05, z };
     }
     // Thuyền ngoài khơi: nhảy xuống nước bên mạn (bơi vào bờ).

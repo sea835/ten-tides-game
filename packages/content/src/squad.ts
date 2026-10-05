@@ -1,7 +1,8 @@
 // Chế độ Đồng đội (Battleground kiểu Arma) và những thứ dùng chung giữa server và client: thân người khi đứng, ngồi
 // xổm, nằm sấp (để dò đạn trúng khớp nhau), vai trò trong đội, xe tăng.
 
-import { boxAt, boxesNear, type BattleMap } from "./battle.ts";
+import { boxAt, boxesNear, deckTop, type BattleMap } from "./battle.ts";
+import { WATER_LEVEL } from "./island.ts";
 
 type V3 = readonly [number, number, number];
 
@@ -305,7 +306,14 @@ export const TANK = {
   /** Súng, nổ gây bao nhiêu phần sát thương lên xe (thép dày): đạn thường gần như không xi nhê. */
   bulletFactor: 0.07,
   blastFactor: 1.4,
+  /** Lội nước sâu tối đa (m dưới mặt nước): khúc sông cạn, bãi đổ bộ thì qua được, sông sâu, biển thì không. */
+  ford: 0.9,
 } as const;
+
+/** Mặt xe tăng đứng ở (x, z): địa hình, hay mặt cầu / cầu tàu (khối `deck`) nếu cao hơn. */
+export function tankGround(map: BattleMap, x: number, z: number): number {
+  return Math.max(map.world.heightAt(x, z), deckTop(map.index, x, z));
+}
 
 /** Điểm nằm trong thân xe (hộp xoay theo hướng xe) không, nới thêm `pad`. */
 export function insideTank(t: { x: number; y: number; z: number; rotY: number }, x: number, y: number, z: number, pad = 0): boolean {
@@ -359,8 +367,8 @@ export interface TankPose {
  * tường nhà, container, bao cát (khối đặc cao hơn gầm xe).
  */
 export function tankFits(map: BattleMap, x: number, z: number, rotY: number): boolean {
-  const h = map.world.heightAt(x, z);
-  if (h < 0.4) return false;
+  const h = tankGround(map, x, z);
+  if (h < WATER_LEVEL - TANK.ford) return false;
   const s = Math.sin(rotY);
   const c = Math.cos(rotY);
   const [hw, , hl] = TANK.half;
@@ -376,8 +384,8 @@ export function tankFits(map: BattleMap, x: number, z: number, rotY: number): bo
   ] as const) {
     const px = x + c * u + s * v;
     const pz = z - s * u + c * v;
-    const ph = map.world.heightAt(px, pz);
-    if (ph < 0.2 || Math.abs(ph - h) > 3.2) return false;
+    const ph = tankGround(map, px, pz);
+    if (ph < WATER_LEVEL - TANK.ford || Math.abs(ph - h) > 3.2) return false;
     // Rào thép gai, biển báo, bao cát thấp thì xe cán qua; tường, nhà, container thì chặn.
     const box = boxAt(map.index, px, ph + 0.9, pz, 0.15) ?? boxAt(map.index, px, ph + 1.6, pz, 0.15);
     if (box && box.mat !== "fence" && box.mat !== "sign" && box.mat !== "sandbag" && box.h > 1.3) return false;
@@ -385,7 +393,7 @@ export function tankFits(map: BattleMap, x: number, z: number, rotY: number): bo
   // Tám điểm mẫu cách nhau cả mét: góc tường mỏng, cột, mép container lọt vào giữa hai điểm thì xe lấn vào tường
   // và kẹt ở góc. Xét thêm chồng lấn hình chữ nhật (SAT trên mặt bằng) giữa thân xe và từng khối chặn ở gần.
   for (const b of boxesNear(map.index, x, z, Math.hypot(hw, hl) + 1)) {
-    if (b.mat === "fence" || b.mat === "sign" || b.mat === "sandbag" || b.h <= 1.3 || Math.abs(b.pitch) > 0.2) continue;
+    if (b.deck || b.mat === "fence" || b.mat === "sign" || b.mat === "sandbag" || b.h <= 1.3 || Math.abs(b.pitch) > 0.2) continue;
     // Chỉ khối chắn ngang thân xe (từ gầm tới nóc); mái, sàn tầng trên thì xe chui qua được.
     if (b.y - b.h / 2 > h + 2.4 || b.y + b.h / 2 < h + 0.5) continue;
     if (rectsOverlap(x, z, rotY, hw, hl, b.x, b.z, b.rot, b.w / 2, b.d / 2)) return false;
@@ -463,7 +471,7 @@ export function tankStep(map: BattleMap, t: TankPose, throttle: number, steer: n
   }
   const x = p.x;
   const z = p.z;
-  return { pose: { x, y: map.world.heightAt(x, z), z, rotY: turn }, speed: v, blocked };
+  return { pose: { x, y: tankGround(map, x, z), z, rotY: turn }, speed: v, blocked };
 }
 
 /** Góc nòng pháo cần ngẩng để đạn pháo (bay theo đường cong) rơi đúng mục tiêu cách `d` mét, cao hơn nòng `dy` mét. */

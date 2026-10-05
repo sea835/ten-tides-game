@@ -5,7 +5,7 @@
 
 import { boxAt, boxesNear, type BattleMap } from "./battle.ts";
 import { WEAPON, type WeaponDef } from "./battleItems.ts";
-import { TANK, tankFits, tankStep, type TankPose } from "./squad.ts";
+import { TANK, tankFits, tankGround, tankStep, type TankPose } from "./squad.ts";
 
 type V3 = readonly [number, number, number];
 
@@ -195,7 +195,7 @@ function inBounds(map: BattleMap, x: number, z: number, pad: number): boolean {
  */
 export function jeepFits(map: BattleMap, x: number, z: number, rotY: number): boolean {
   if (!inBounds(map, x, z, 3)) return false;
-  const h = map.world.heightAt(x, z);
+  const h = tankGround(map, x, z);
   if (h < JEEP.ford) return false;
   const s = Math.sin(rotY);
   const c = Math.cos(rotY);
@@ -203,7 +203,7 @@ export function jeepFits(map: BattleMap, x: number, z: number, rotY: number): bo
   for (const [u, v] of samples(hw, hl)) {
     const px = x + c * u + s * v;
     const pz = z - s * u + c * v;
-    const ph = map.world.heightAt(px, pz);
+    const ph = tankGround(map, px, pz);
     if (ph < JEEP.ford - 0.15 || Math.abs(ph - h) > 2.4) return false;
     const box = boxAt(map.index, px, ph + 0.6, pz, 0.1) ?? boxAt(map.index, px, ph + 1.3, pz, 0.1);
     if (box && box.mat !== "sign" && box.h > 0.75) return false;
@@ -288,7 +288,7 @@ function advance(fits: (x: number, z: number, r: number) => boolean, t: TankPose
  * không quay), chạy nhanh thì bẻ ít lại; lội nước thì chậm. Trả tư thế mới (y bám mặt đất), vận tốc, có đâm không.
  */
 export function jeepStep(map: BattleMap, t: TankPose, throttle: number, steer: number, speed: number, dt: number): { pose: TankPose; speed: number; blocked: boolean } {
-  const h = map.world.heightAt(t.x, t.z);
+  const h = tankGround(map, t.x, t.z);
   const cap = h < 0 ? JEEP.waterSpeed : 1;
   const want = (throttle > 0 ? throttle * JEEP.forward : throttle * JEEP.reverse) * cap;
   let v = approach(speed, want, JEEP.accel, JEEP.brake, JEEP.coast, dt);
@@ -297,7 +297,7 @@ export function jeepStep(map: BattleMap, t: TankPose, throttle: number, steer: n
   const yawRate = (v / JEEP.wheelbase) * Math.tan(steer * JEEP.steer * authority);
   const rotY = t.rotY - yawRate * dt;
   const r = advance((x, z, ry) => jeepFits(map, x, z, ry), t, rotY, v, dt);
-  return { pose: { x: r.x, y: map.world.heightAt(r.x, r.z), z: r.z, rotY: r.rotY }, speed: r.v, blocked: r.blocked };
+  return { pose: { x: r.x, y: tankGround(map, r.x, r.z), z: r.z, rotY: r.rotY }, speed: r.v, blocked: r.blocked };
 }
 
 /**
@@ -322,7 +322,7 @@ export function vehicleStep(kind: string, map: BattleMap, t: TankPose, throttle:
 
 /** Độ cao đặt xe ở (x, z): thuyền nổi trên mực nước, xe chạy bám đất. */
 export function vehicleY(kind: string, map: BattleMap, x: number, z: number): number {
-  return kind === "boat" ? 0 : map.world.heightAt(x, z);
+  return kind === "boat" ? 0 : tankGround(map, x, z);
 }
 
 // ---------------------------------------------------------------------------- giáp, dò trúng vỏ xe

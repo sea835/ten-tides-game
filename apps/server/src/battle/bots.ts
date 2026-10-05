@@ -1,4 +1,4 @@
-import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WEAPON, flightTime, insideBox, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
+import { MAX_HP, ROLES, SMOKE_CLEAR, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -125,7 +125,8 @@ export class Bots {
       this.grid = new HeightGrid(map.world.heightAt, (map.half ?? 240) - 20);
       this.gridMap = map;
     }
-    return this.grid.at(x, z);
+    // Mặt cầu (khối deck) cao hơn địa hình thì đi trên mặt cầu.
+    return Math.max(this.grid.at(x, z), deckTop(map.index, x, z));
   }
 
   /** Dựng sẵn lưới độ cao (gọi lúc vào trận, khỏi khựng ở nhịp đầu). */
@@ -470,9 +471,9 @@ export class Bots {
       f = pick[1];
     }
     const r = tank ? f.r + 12 : f.r * 0.8 * b.gr;
-    const x = f.x + Math.cos(b.ga) * r;
-    const z = f.z + Math.sin(b.ga) * r;
-    return { x, z, far: Math.hypot(x - p.x, z - p.z) };
+    // Cứ điểm bên kia sông: vòng qua cầu hay khúc cạn gần nhất.
+    const at = this.room.map.layout === "war" ? warRoute(p.x, p.z, f.x + Math.cos(b.ga) * r, f.z + Math.sin(b.ga) * r) : { x: f.x + Math.cos(b.ga) * r, z: f.z + Math.sin(b.ga) * r };
+    return { x: at.x, z: at.z, far: Math.hypot(at.x - p.x, at.z - p.z) };
   }
 
   /** Chỗ máy này nên đứng theo đội hình (hay theo lệnh), hoặc null nếu tự do (đội trưởng, máy solo). */
@@ -637,7 +638,8 @@ export class Bots {
       const nx = p.x + mx * speed * dt;
       const nz = p.z + mz * speed * dt;
       const ny = this.height(nx, nz);
-      const blocked = ny < 0.3 || ny - p.y > 0.8 || insideBox(room.map.index, nx, ny + 0.9, nz, 0.35);
+      // Lội được khúc cạn (nước tới gối), nước sâu thì không.
+      const blocked = ny < WATER_LEVEL - 0.7 || ny - p.y > 0.8 || insideBox(room.map.index, nx, ny + 0.9, nz, 0.35);
       if (blocked) {
         if (b.detour <= 0) {
           b.detour = 0.8 + Math.random() * 0.8;
