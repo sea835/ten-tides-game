@@ -371,6 +371,12 @@ export function falloff(def: WeaponDef, distance: number): number {
 export const FRAG = { fuse: 3.5, radius: 8, damage: 120 };
 export const MINE = { trigger: 1.2, arm: 2, radius: 5, damage: 150 };
 export const SMOKE = { fuse: 2, seconds: 20, radius: 7 };
+/**
+ * Khối khói che tầm nhìn: quả cầu bán kính `radius` m, tâm cao hơn chỗ bom khói `lift` m (nửa dưới chìm trong đất nên
+ * nhìn như vòm bán cầu). Khớp với phép thử tầm nhìn của bot trên server (bots.ts `visible`); client vẽ khối khói đặc
+ * đúng cỡ này để người chơi cũng không nhìn xuyên qua được.
+ */
+export const SMOKE_SIGHT = { radius: 6, lift: 1.5 };
 /** Bom choáng: nổ sau `fuse` giây, loá mắt ai nhìn thấy trong `radius` m (nhìn thẳng vào thì lâu nhất `seconds` giây). */
 export const FLASH = { fuse: 1.6, radius: 28, seconds: 5 };
 /** Lựu đạn nổ trong đám khói thì thổi tan một khoảng bán kính `radius` m trong `seconds` giây rồi khói mới lấp lại. */

@@ -30,9 +30,10 @@ import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { LEAN, PRONE_SPEED, PRONE_TIME, WEAPON } from "@tentides/content";
 import { bodies, getBattleHud, hitStopScale, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
-import { gun, gun as shooterGun } from "./battle/Shooter.tsx";
+import { gun, gun as shooterGun } from "./battle/runtime.ts";
 import { playLand } from "./sound/guns.ts";
 import { aimZoom, getSettings } from "./settings.ts";
+import { scratchRay, scratchRayFrom } from "./scratch.ts";
 
 const WALK_SPEED = 8;
 const GRAVITY = 25;
@@ -359,7 +360,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const fx = -Math.sin(look.yaw);
     const fz = -Math.cos(look.yaw);
     const ray = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, len: number) =>
-      physics.castRay(new rapier.Ray({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }), len, true, undefined, undefined, col);
+      physics.castRay(scratchRay(rapier, ox, oy, oz, dx, dy, dz), len, true, undefined, undefined, col);
     const front = ray(pos.x, feet + 0.55, pos.z, fx, 0, fz, 1.1);
     if (!front) return null;
     const d = front.timeOfImpact;
@@ -742,7 +743,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       if (s.prone) {
         const fx = -Math.sin(view.yaw);
         const fz = -Math.cos(view.yaw);
-        const ahead = physics.castRay(new rapier.Ray({ x: pos.x, y: feetNow + 0.3, z: pos.z }, { x: fx, y: 0, z: fz }), 1.05, true, undefined, undefined, col);
+        const ahead = physics.castRay(scratchRay(rapier, pos.x, feetNow + 0.3, pos.z, fx, 0, fz), 1.05, true, undefined, undefined, col);
         if (ahead) {
           const push = (1.05 - ahead.timeOfImpact) * Math.min(1, dt * 10);
           mx -= fx * push;
@@ -818,7 +819,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       _leanO.set(next.x, next.y - FEET_OFFSET + (s.crouching ? EYE_HEIGHT_CROUCH : EYE_HEIGHT), next.z);
       _leanD.set(Math.cos(view.yaw) * sign, 0, -Math.sin(view.yaw) * sign);
       const reach = LEAN.side + LEAN_CLEARANCE;
-      const hit = physics.castRay(new rapier.Ray(_leanO, _leanD), reach, true, undefined, undefined, col);
+      const hit = physics.castRay(scratchRayFrom(rapier, _leanO, _leanD), reach, true, undefined, undefined, col);
       if (hit) leanRoom = Math.max(0, (hit.timeOfImpact - LEAN_CLEARANCE) / LEAN.side);
     }
     // Co lại ngay khi vướng, nới ra từ từ.
@@ -934,7 +935,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       );
       // Có vật cản (thân cây, vách hang, sườn đồi) giữa nhân vật và camera thì kéo camera lại gần.
       camDir.subVectors(camPos, camTarget).normalize();
-      const hit = physics.castRay(new rapier.Ray(camTarget, camDir), camDistance, true, undefined, undefined, col);
+      const hit = physics.castRay(scratchRayFrom(rapier, camTarget, camDir), camDistance, true, undefined, undefined, col);
       // Chỉ làm mượt độ dài cần camera (co lại ngay khi vướng, dãn ra từ từ); vị trí camera bám đúng nhân vật
       // từng khung hình, không trễ theo sau nên chạy nhanh không rung.
       const wantDist = hit ? Math.max(battle ? 0.6 : CAMERA_MIN_DISTANCE, hit.timeOfImpact - 0.3) : camDistance;
@@ -1011,7 +1012,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       if (firstPerson) camTarget.copy(state.camera.position);
       else if (s.prone) camTarget.set(next.x - Math.sin(view.yaw) * 0.6, feetY + 0.36, next.z - Math.cos(view.yaw) * 0.6);
       else camTarget.set(next.x + Math.cos(view.yaw) * 0.18, feetY + (s.crouching ? 1.05 : 1.42), next.z - Math.sin(view.yaw) * 0.18);
-      const block = physics.castRayAndGetNormal(new rapier.Ray(camTarget, camDir), reach + 0.15, true, undefined, undefined, col);
+      const block = physics.castRayAndGetNormal(scratchRayFrom(rapier, camTarget, camDir), reach + 0.15, true, undefined, undefined, col);
       // Nhìn xuống sàn, lên trần thì không tính (chỉ mặt đứng như tường, cột, thân cây).
       if (block && Math.abs(block.normal.y) < 0.6) wallTarget = Math.min(1, Math.max(0, (reach + 0.15 - block.timeOfImpact) / (reach * 0.55)));
     }
