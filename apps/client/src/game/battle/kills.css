@@ -1,0 +1,155 @@
+/* Phản hồi hạ gục: dãy đầu lâu kim loại dưới tâm ngắm, thông báo chuỗi hạ phía trên. */
+
+.b-skull-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Ngay dưới tâm ngắm, trên dòng điểm kinh nghiệm (.b-xp ở 58%). Cả dãy mờ dần sau lần hạ cuối (key đổi thì chạy lại). */
+.b-skulls {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 22px);
+  display: flex;
+  gap: 4px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: skulls-out 1600ms linear forwards;
+}
+.b-skulls span {
+  display: block;
+  width: 30px;
+  height: 30px;
+  animation: skull-pop 260ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.b-skulls svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.b-skulls .sk-bone {
+  stroke-width: 3.2;
+  stroke-linejoin: round;
+}
+.b-skulls .body svg {
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 5px rgba(224, 50, 46, 0.65));
+}
+/* Trúng đầu: viền vàng kim, sáng lóe lên rồi dịu xuống. */
+.b-skulls .head svg {
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 7px rgba(255, 200, 40, 0.9));
+  animation: skull-glint 700ms ease-out both;
+}
+@keyframes skull-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.22);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes skull-glint {
+  0% {
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 14px rgba(255, 230, 120, 1)) brightness(1.6);
+  }
+  100% {
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 7px rgba(255, 200, 40, 0.9));
+  }
+}
+@keyframes skulls-out {
+  0%,
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Thông báo chuỗi hạ: chữ đậm nghiêng đập vào rồi mờ, phía trên tâm ngắm (dưới thanh cờ của chế độ Đại chiến). */
+.b-streak {
+  position: absolute;
+  left: 50%;
+  top: 27%;
+  transform: translateX(-50%);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: streak-in 2300ms ease-out forwards;
+}
+.b-streak b {
+  display: block;
+  font: italic 900 30px/1.05 var(--font-ui, "Be Vietnam Pro", system-ui, sans-serif);
+  letter-spacing: 0.06em;
+  color: #f3f1ea;
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.55),
+    0 0 10px rgba(0, 0, 0, 0.6);
+}
+.b-streak small {
+  display: block;
+  margin-top: 3px;
+  font: 700 12px/1.2 var(--font-ui, "Be Vietnam Pro", system-ui, sans-serif);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(243, 241, 234, 0.85);
+}
+.b-streak.t2 b {
+  color: #ffd27a;
+}
+.b-streak.t3 b {
+  color: #ffa14a;
+}
+.b-streak.t4 b {
+  font-size: 36px;
+  color: #ff5a3c;
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.55),
+    0 0 16px rgba(255, 70, 40, 0.55);
+}
+.b-streak.t5 b {
+  font-size: 40px;
+  background: linear-gradient(180deg, #fff6c2 0%, #f5c02a 50%, #b07510 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.6)) drop-shadow(0 0 12px rgba(255, 190, 40, 0.6));
+}
+@keyframes streak-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.7);
+  }
+  9% {
+    opacity: 1;
+    transform: translateX(-50%) scale(0.96);
+  }
+  14% {
+    transform: translateX(-50%) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .b-skulls span {
+    animation: none;
+  }
+  .b-streak {
+    animation: skulls-out 2300ms linear forwards;
+  }
+}

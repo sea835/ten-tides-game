@@ -55,6 +55,7 @@ import { MatchShowcase, useMatchSummary } from "../../progress/MatchShowcase.tsx
 import type { MatchSummaryMessage } from "@tentides/protocol";
 import { ClassIcon, GadgetHud, GadgetSlots } from "./GadgetHud.tsx";
 import "./battle.css";
+import { KillSkulls } from "./KillSkulls.tsx";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
 // bản đồ nhỏ, la bàn, tâm ngắm co giãn theo độ toả, dấu trúng, hướng bị bắn, ống ngắm, cửa hàng (B),
@@ -1075,6 +1076,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
   return (
     <div className="hud battle-hud">
       {fighting && <Reticle room={room} />}
+      {fighting && <KillSkulls room={room} />}
       {fighting && <Flashed room={room} />}
       {fighting && <Suppression />}
       <Compass />

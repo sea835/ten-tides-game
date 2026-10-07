@@ -1059,6 +1059,65 @@ export const playHitMarker = safe((kind: "body" | "head" | "kill") => {
   v.done();
 });
 
+/**
+ * Xác nhận hạ gục (thay tiếng "kill" của dấu trúng khi server báo hạ). Trúng đầu: chuông kim loại trong, sáng, ngân
+ * dài như BF1 — các họa âm không hòa âm của chuông nhỏ (1 : 2.76 : 5.4 : 8.93), một cặp lệch nhau vài Hz cho tiếng
+ * ngân "rung" óng ánh, cú gõ tiếng ồn cao ở đầu, chút hồi âm. Hạ thân: tiếng "cạch" kim loại mờ, ngắn hơn hẳn, vẫn có
+ * cú thụp trầm để biết là hạ chứ không chỉ trúng.
+ */
+export const playKillConfirm = safe((head: boolean) => {
+  const v = voice("ui", head ? 0.7 : 0.55, { bus: "ui", reverb: head ? 0.18 : 0.06 });
+  if (!v) return;
+  // Thụp trầm chung: "đòn đã kết thúc".
+  v.osc(0, { freq: 150, freqEnd: 48, decay: 0.22, peak: 0.85 });
+  v.noise(0, { brown: true, type: "lowpass", freq: 500, decay: 0.12, peak: 0.45 });
+  if (head) {
+    const f = 1975 * rand(0.99, 1.01);
+    v.noise(0.004, { type: "highpass", freq: 6500, decay: 0.012, peak: 0.55, attack: 0.001 });
+    v.osc(0.004, { freq: f, decay: 1.25, peak: 0.5, attack: 0.002 });
+    v.osc(0.004, { freq: f + 4.5, decay: 1.05, peak: 0.28, attack: 0.002 });
+    v.osc(0.004, { freq: f * 2.76, decay: 0.55, peak: 0.22, attack: 0.001 });
+    v.osc(0.004, { freq: f * 5.4, decay: 0.22, peak: 0.1, attack: 0.001 });
+    v.osc(0.004, { freq: f * 8.93, decay: 0.09, peak: 0.05, attack: 0.001 });
+    // Tiếng "tinh" thứ hai nhỏ, cao hơn một quãng năm: chuông nảy lần nữa, nghe giòn.
+    v.osc(0.07, { freq: f * 1.5, decay: 0.6, peak: 0.16, attack: 0.002 });
+  } else {
+    v.noise(0.004, { type: "bandpass", freq: 3200, q: 2, decay: 0.02, peak: 0.35, attack: 0.001 });
+    v.osc(0.01, { type: "triangle", freq: 1046, decay: 0.16, peak: 0.28 });
+    v.osc(0.01, { freq: 1046 * 2.4, decay: 0.07, peak: 0.08 });
+    v.osc(0.07, { type: "triangle", freq: 1397, decay: 0.2, peak: 0.18 });
+  }
+  v.done();
+});
+
+/**
+ * Tiếng nhấn cho thông báo chuỗi hạ (DOUBLE KILL...): chuỗi nốt chuông đi lên, bậc càng cao càng nhiều nốt, càng
+ * cao; bậc 4–5 thêm tiếng trống trầm và hợp âm ngân. Phát trễ một nhịp sau tiếng xác nhận hạ để không đè nhau.
+ */
+export const playStreakStinger = safe((tier: number) => {
+  const v = voice("ui", 0.6, { bus: "ui", reverb: 0.22, delay: 0.16 });
+  if (!v) return;
+  // Âm giai ngũ cung (C D E G A) lên dần: nghe "thắng", không chói.
+  const scale = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5];
+  const notes = clamp(tier + 1, 2, 6);
+  const base = clamp(tier - 1, 0, 2);
+  for (let i = 0; i < notes; i++) {
+    const f = scale[base + i]!;
+    const at = i * 0.065;
+    v.osc(at, { type: "triangle", freq: f, decay: 0.28, peak: 0.3 });
+    v.osc(at, { freq: f * 2.76, decay: 0.12, peak: 0.07 });
+  }
+  const end = notes * 0.065;
+  if (tier >= 4) {
+    v.osc(0, { freq: 110, freqEnd: 42, decay: 0.45, peak: 0.9 });
+    v.noise(0, { brown: true, type: "lowpass", freq: 380, decay: 0.3, peak: 0.5 });
+    // Hợp âm ngân cuối (nốt cuối + quãng ba + quãng năm).
+    const top = scale[base + notes - 1]!;
+    for (const k of [1, 1.26, 1.5]) v.osc(end, { type: "triangle", freq: top * k, decay: 0.9, peak: 0.12 });
+  }
+  v.done();
+});
+
 /** Mình trúng đạn: va chạm đục vào người và tiếng thụp trầm ngắn. */
 export const playHurt = safe(() => {
   const v = voice("local", 0.6);

@@ -1023,6 +1023,10 @@ export interface HitMessage {
   kind: "body" | "head" | "kill";
   armor: boolean;
   amount: number;
+  /** Chỉ có khi `kind` là "kill": phát hạ gục trúng đầu (tiếng chuông kim loại, đầu lâu viền vàng). */
+  head?: 1;
+  /** Chỉ có khi `kind` là "kill" do phá nổ xe: số người trên xe chết theo (0 = xe trống, không tính mạng). */
+  crew?: number;
 }
 /** Server báo riêng người bị trúng: từ hướng nào, mất bao nhiêu. */
 export interface HurtMessage {

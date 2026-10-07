@@ -31,7 +31,7 @@ import { setAcousticMap } from "../sound/environment.ts";
 import { mapForMode } from "@tentides/content";
 import { M203, WEAPON } from "@tentides/content";
 import { playLauncher } from "../sound/gadgets.ts";
-import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
+import { bodies, effects, getBattleHud, hitStopScale, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
 import { Casings } from "./Casings.tsx";
 import { Blood, sprayBlood } from "./Blood.tsx";
@@ -238,7 +238,7 @@ function Puffs() {
     [],
   );
   useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const m = mesh.current;
     if (!m) return;
     // Gió thổi khói nổ, khói đạn trôi đi (bão thì trôi nhanh). Khói của bom khói đứng yên tại chỗ để khớp với
@@ -511,7 +511,7 @@ function Blasts() {
   const sparkGeo = useMemo(() => new PlaneGeometry(1, 1), []);
   const seen = useRef(new WeakSet<object>());
   useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const now = performance.now() / 1000;
     let brightest = 0;
     let n = 0;
@@ -673,7 +673,7 @@ const plumes: Plume[] = [];
 
 function Plumes() {
   useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const now = performance.now() / 1000;
     for (let i = plumes.length - 1; i >= 0; i--) {
       const p = plumes[i]!;

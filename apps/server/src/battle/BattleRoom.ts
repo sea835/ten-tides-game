@@ -1200,7 +1200,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     });
     for (const [target, hit] of dealt) {
       const result = this.damage(target, hit.amount, hit.head ? "head" : "body", id, weaponId, [p.x, p.z]);
-      if (result) this.clientOf(id)?.send(Messages.hit, { kind: result.killed ? "kill" : hit.head ? "head" : "body", armor: result.armor, amount: Math.round(result.amount) } satisfies HitMessage);
+      if (result) this.clientOf(id)?.send(Messages.hit, { kind: result.killed ? "kill" : hit.head ? "head" : "body", armor: result.armor, amount: Math.round(result.amount), ...(result.killed && hit.head ? { head: 1 as const } : {}) } satisfies HitMessage);
       this.bots.onHurt(target, id);
     }
   }

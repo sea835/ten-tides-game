@@ -17,6 +17,7 @@ import { wreck } from "./Wreckage.tsx";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 import { scratchRay, scratchRayFrom } from "../scratch.ts";
 import { gadgetFrame, gadgetSlots, heldGadget } from "./gadgets.ts";
+import { confirmKill } from "./killConfirm.ts";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
 // R thay đạn, 1–3 đổi súng, 4–6 lựu đạn / bom khói / mìn, 7–8 băng gạc / hộp cứu thương, lăn chuột đổi món,
@@ -335,7 +336,11 @@ export function Shooter({ room }: { room: IslandRoom }) {
       while (localMarks.length && at - localMarks[0]! > 1000) localMarks.shift();
       const confirmed = localMarks.length > 0;
       if (confirmed) localMarks.shift();
-      if (h.kind === "kill" || (!confirmed && at - lastMarkerAt > HITMARKER_COOLDOWN)) {
+      // Hạ gục: tiếng xác nhận riêng (chuông kim loại nếu trúng đầu), đầu lâu, chuỗi hạ, khựng hình súng tỉa (killConfirm.ts).
+      if (h.kind === "kill") {
+        lastMarkerAt = at;
+        confirmKill(h);
+      } else if (!confirmed && at - lastMarkerAt > HITMARKER_COOLDOWN) {
         playHitMarker(h.kind);
         lastMarkerAt = at;
       }

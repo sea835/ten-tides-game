@@ -24,7 +24,7 @@ import { view } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun } from "./Shooter.tsx";
 import { getSettings } from "../settings.ts";
-import { effects, eject, muzzle, recoil, stance } from "./runtime.ts";
+import { effects, eject, hitStopScale, muzzle, recoil, stance } from "./runtime.ts";
 
 // Súng trước mặt khi nhìn bằng mắt (góc thứ nhất): cầm thấp bên phải, lắc theo bước chân, trễ theo cú xoay chuột,
 // giật như lò xo khi bắn (báng lùi vào vai, nòng hất lên, lệch ngang, nghiêng), nhún khi đáp đất; ngắm thì nâng
@@ -178,7 +178,8 @@ export function ViewModel({ room }: { room: IslandRoom }) {
   useFrame(({ camera }, rawDt) => {
     const m = g.current;
     if (!m) return;
-    const dt = Math.min(rawDt, 0.05);
+    // Hitstop (phát hạ bằng súng khóa nòng): súng trên tay khựng lại một nhịp; camera vẫn theo chuột như thường.
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const st = s.current;
     const now = performance.now();
     const scoped = stance.aiming && stance.scoped;

@@ -539,7 +539,7 @@ export class Vehicles {
     // Không bắn hỏng xe của đội mình.
     if (a && a.team && a.team === v.team && s.battleMode !== "solo" && !own) return;
     v.hp = Math.max(0, Math.round(v.hp - amount));
-    if (attacker && !own) this.room.clientOf(attacker)?.send(Messages.hit, { kind: v.hp <= 0 ? "kill" : "body", armor: true, amount: Math.round(amount) } satisfies HitMessage);
+    if (attacker && !own) this.room.clientOf(attacker)?.send(Messages.hit, { kind: v.hp <= 0 ? "kill" : "body", armor: true, amount: Math.round(amount), ...(v.hp <= 0 ? { crew: crew.length } : {}) } satisfies HitMessage);
     if (v.driver) this.room.bots.onHurt(v.driver, attacker);
     if (v.hp > 0) return;
     // Nổ tung: người trên xe chết, xác xe nằm lại cháy âm ỉ.

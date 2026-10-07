@@ -28,7 +28,7 @@ import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake 
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { ADRENALINE, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
-import { bodies, getBattleHud, hitStopScale, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
+import { bodies, getBattleHud, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { gun, gun as shooterGun } from "./battle/runtime.ts";
 import { playLand } from "./sound/guns.ts";
@@ -425,7 +425,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const col = collider.current;
     const controller = controllerRef.current;
     if (!rb || !col || !controller) return;
-    const dt = Math.min(rawDt, 0.05) * hitStopScale();
+    // Không nhân hitstop: khựng hình chỉ áp cho hình ảnh, di chuyển của mình mà khựng thì giống lag.
+    const dt = Math.min(rawDt, 0.05);
     const s = sim.current;
     // Đang lái xe tăng: thân đi theo xe, ẩn nhân vật; camera, điều khiển do Vehicles lo.
     if (seat.id) {
