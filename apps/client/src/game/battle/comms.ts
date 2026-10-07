@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import type { PingBroadcast, PingShownKind, RadioBroadcast, RadioLine } from "@tentides/protocol";
+import { lootLabel } from "@tentides/content";
+import type { PingBroadcast, PingKind, PingShownKind, RadioBroadcast, RadioLine } from "@tentides/protocol";
 import type { IslandRoom } from "../../net.ts";
 import { bodies } from "./runtime.ts";
 
@@ -20,6 +21,8 @@ export interface Ping {
   /** Hết hạn lúc nào (performance.now, ms). */
   until: number;
   mine: boolean;
+  /** Dấu đồ dưới đất: id món đồ. */
+  item: string;
 }
 
 /** Tối đa chừng này dấu cùng lúc (mỗi người một dấu: dấu mới thay dấu cũ của cùng người). */
@@ -30,7 +33,28 @@ export const pings: Ping[] = [];
 export const MARKER_POOL = 16;
 export const markerPool: { els: (HTMLDivElement | null)[] } = { els: [] };
 
-export const PING_LABEL: Record<PingShownKind, string> = { spot: "Đánh dấu", enemy: "Địch", danger: "Nguy hiểm", spotted: "Trinh sát" };
+/** Chữ trên ô dấu (dấu đồ thì ghép tên món: xem pingText). */
+export const PING_LABEL: Record<PingShownKind, string> = {
+  spot: "Di chuyển tới đây!",
+  enemy: "Phát hiện địch!",
+  danger: "Nguy hiểm!",
+  spotted: "Trinh sát",
+  loot: "Ở đây có đồ!",
+  attack: "Tấn công",
+  defend: "Phòng thủ",
+  coming: "Đang tới",
+  armor: "Cần giáp",
+  seen: "Nhìn thấy địch",
+  careful: "Cẩn thận",
+};
+
+/** Biểu tượng từng ô trên vòng chọn (giữ chuột giữa). */
+export const PING_ICON: Partial<Record<PingKind, string>> = { attack: "⚔", defend: "⛨", coming: "➜", armor: "🦺", seen: "👁", careful: "⚠" };
+
+/** Chữ của một dấu: dấu đồ dưới đất thì "Ở đây có Giáp cấp 3!". */
+export function pingText(kind: PingShownKind, item: string): string {
+  return kind === "loot" && item ? `Ở đây có ${lootLabel(item)}!` : PING_LABEL[kind];
+}
 
 let pingSeq = 0;
 
@@ -40,7 +64,7 @@ export function addPing(b: PingBroadcast, me: string) {
   const i = pings.findIndex((p) => (spotted ? p.kind === "spotted" && (b.target ? p.target === b.target : Math.hypot(p.x - b.x, p.z - b.z) < 4) : p.from === b.from && p.kind !== "spotted"));
   if (i >= 0) pings.splice(i, 1);
   if (pings.length >= MAX_PINGS) pings.shift();
-  pings.push({ key: ++pingSeq, from: b.from, name: b.name, kind: b.kind, x: b.x, y: b.y, z: b.z, target: b.target, until: performance.now() + b.ttl, mine: b.from === me });
+  pings.push({ key: ++pingSeq, from: b.from, name: b.name, kind: b.kind, x: b.x, y: b.y, z: b.z, target: b.target, until: performance.now() + b.ttl, mine: b.from === me, item: b.item ?? "" });
 }
 
 /** Bỏ dấu hết hạn; dấu địch bám theo vị trí đang vẽ của người bị đánh dấu (gục thì thôi bám). */
@@ -59,6 +83,42 @@ export function updatePings(now: number) {
       p.z = b.z;
     } else p.target = "";
   }
+}
+
+// ---------------------------------------------------------------------------- vòng chọn dấu (giữ chuột giữa)
+
+/** Giữ chuột giữa lâu hơn chừng này (ms) thì mở vòng chọn; thả sớm hơn là dấu theo ngữ cảnh. */
+export const PING_HOLD_MS = 220;
+
+/** Vòng chọn dấu đang mở không, ô nào đang chọn (CommsWorld ghi, CommsHud vẽ). */
+let wheelState = { open: false, pick: -1 };
+const wheelListeners = new Set<() => void>();
+
+export function setPingWheel(open: boolean, pick: number) {
+  if (wheelState.open === open && wheelState.pick === pick) return;
+  wheelState = { open, pick };
+  wheelListeners.forEach((l) => l());
+}
+
+export function pingWheelOpen(): boolean {
+  return wheelState.open;
+}
+
+export function usePingWheel(): { open: boolean; pick: number } {
+  return useSyncExternalStore(
+    (l) => {
+      wheelListeners.add(l);
+      return () => wheelListeners.delete(l);
+    },
+    () => wheelState,
+  );
+}
+
+/** Ô vòng (n ô, ô 0 ở trên cùng, theo chiều kim đồng hồ) theo chuột đã đi (dx, dy); trong vùng chết thì -1. */
+export function wheelSlice(dx: number, dy: number, n: number, dead: number): number {
+  if (Math.hypot(dx, dy) <= dead) return -1;
+  const a = Math.atan2(dx, -dy);
+  return ((Math.round(a / ((Math.PI * 2) / n)) % n) + n) % n;
 }
 
 // ---------------------------------------------------------------------------- bộ đàm
@@ -155,6 +215,30 @@ export function enemyAlong(room: IslandRoom, me: string, ox: number, oy: number,
     const t = test(v.x, v.y + 1.3, v.z, 3);
     if (t > 0) {
       best = v.driver;
+      bestT = t;
+    }
+  }
+  return best;
+}
+
+/**
+ * Đồ dưới đất nằm dọc tia nhìn (trong `maxT` mét, không xa quá 60 m): khoá trong groundItems của món gần nhất, hay "".
+ */
+export function lootAlong(room: IslandRoom, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): string {
+  let best = "";
+  let bestT = Math.min(maxT, 60);
+  for (const [key, g] of room.state.groundItems) {
+    const cx = g.x - ox;
+    const cy = g.y + 0.15 - oy;
+    const cz = g.z - oz;
+    const t = cx * dx + cy * dy + cz * dz;
+    if (t <= 0 || t >= bestT) continue;
+    const px = dx * t - cx;
+    const py = dy * t - cy;
+    const pz = dz * t - cz;
+    const r = 0.7 + t * 0.012;
+    if (px * px + py * py + pz * pz < r * r) {
+      best = key;
       bestT = t;
     }
   }

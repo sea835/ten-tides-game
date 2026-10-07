@@ -395,7 +395,7 @@ export function Character({
   const gunId = weapon || "";
   const pistol = gunId === "p92" || gunId === "deagle";
   // Súng chống tăng luôn vác trên vai phải (cầm ngang hông thì thân người che mất ống phóng).
-  const shoulder = gunId === "rpg7";
+  const shoulder = gunId === "rpg7" || gunId === "tow";
   const itemInHand = gunId ? "" : held;
 
   // Tiết kiệm: người ở sau lưng camera thì thôi tính dáng (đứng yên tư thế cũ), ở xa thì tính cách một khung hình;

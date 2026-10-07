@@ -542,6 +542,8 @@ export class Vehicles {
     if (attacker && !own) this.room.clientOf(attacker)?.send(Messages.hit, { kind: v.hp <= 0 ? "kill" : "body", armor: true, amount: Math.round(amount), ...(v.hp <= 0 ? { crew: crew.length } : {}) } satisfies HitMessage);
     if (v.driver) this.room.bots.onHurt(v.driver, attacker);
     if (v.hp > 0) return;
+    // Phá huỷ xe địch (xe có người, hay xe của phe kia): điểm chi viện chiến thuật.
+    if (attacker && !own && (crew.length || (v.team && a?.team !== v.team))) this.room.streaks.earn(attacker, "vehicle");
     // Nổ tung: người trên xe chết, xác xe nằm lại cháy âm ỉ.
     v.moving = false;
     v.tracks = 0;

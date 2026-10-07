@@ -20,3 +20,4 @@ export * from "./loadout.ts";
 export * from "./tide.ts";
 export * from "./volcano.ts";
 export * from "./snap.ts";
+export * from "./streaks.ts";

@@ -115,6 +115,10 @@ export const GearState = schema(
     n2: t.uint8().default(0),
     /** Bơm Adrenaline: còn bao nhiêu giây chạy nhanh (server cho phép tốc độ cao hơn trong lúc này). */
     boost: t.float32().default(0),
+    /** Điểm chiến thuật (chi viện: UAV, mưa pháo, thùng chi viện), giữ qua các lần gục trong trận. */
+    tp: t.uint16().default(0),
+    /** Đang mặc giáp Juggernaut (chịu đòn gấp ba, đi chậm, vác Minigun); gục là mất. */
+    jugg: t.boolean().default(false),
   },
   "GearState",
 );
@@ -972,8 +976,16 @@ export const SquadBoardMessage = z.object({ vid: id });
 
 // ---------------------------------------------------------------------------- liên lạc trong đội: đánh dấu, bộ đàm
 
-/** Đánh dấu (chuột giữa): chỗ thường, địch (kèm người bị đánh dấu), nguy hiểm (bấm đúp). */
-export const PING_KINDS = ["spot", "enemy", "danger"] as const;
+/**
+ * Đánh dấu (chuột giữa): bấm nhanh là dấu theo ngữ cảnh: chỗ trống ("spot": di chuyển tới đây), địch (kèm người bị
+ * đánh dấu), đồ dưới đất ("loot", kèm khoá món đồ), bấm đúp là nguy hiểm. Giữ chuột giữa mở vòng chọn: tấn công,
+ * phòng thủ, đang tới, cần giáp, nhìn thấy địch, cẩn thận.
+ */
+export const PING_KINDS = ["spot", "enemy", "danger", "loot", "attack", "defend", "coming", "armor", "seen", "careful"] as const;
+/** Các ô trên vòng chọn (giữ chuột giữa), theo chiều kim đồng hồ từ trên cùng. */
+export const PING_WHEEL = ["attack", "defend", "coming", "armor", "seen", "careful"] as const;
+/** Dấu đồ dưới đất: món đồ phải ở gần chỗ đánh dấu chừng này mét. */
+export const PING_LOOT_SLACK = 3;
 export type PingKind = (typeof PING_KINDS)[number];
 /** Dấu hiện trên HUD: ba loại người chơi tự đánh, cộng dấu "spotted" do ống nhòm trinh sát (server tạo, thoi đỏ 15 s). */
 export type PingShownKind = PingKind | "spotted";
@@ -981,8 +993,8 @@ export type PingShownKind = PingKind | "spotted";
 export const PING_MIN_INTERVAL_MS = 500;
 export const PING_MAX_DISTANCE = 450;
 /** Dấu tồn tại bao lâu (ms) theo loại. */
-export const PING_TTL_MS: Record<PingShownKind, number> = { spot: 8000, enemy: 6000, danger: 8000, spotted: 15000 };
-export const PingMessage = z.object({ kind: z.enum(PING_KINDS), x: finite, y: finite, z: finite, target: id.optional() });
+export const PING_TTL_MS: Record<PingShownKind, number> = { spot: 8000, enemy: 6000, danger: 8000, spotted: 15000, loot: 12000, attack: 10000, defend: 10000, coming: 8000, armor: 10000, seen: 8000, careful: 8000 };
+export const PingMessage = z.object({ kind: z.enum(PING_KINDS), x: finite, y: finite, z: finite, target: id.optional(), item: id.optional() });
 export type PingMessage = z.infer<typeof PingMessage>;
 /** Server chuyển dấu tới đồng đội (solo thì chỉ mình thấy). Dấu địch: vị trí là chỗ người đó lúc đánh dấu. */
 export interface PingBroadcast {
@@ -994,6 +1006,8 @@ export interface PingBroadcast {
   z: number;
   target: string;
   ttl: number;
+  /** Dấu đồ dưới đất: id món đồ (vd. "armor:3"), để hiện "Ở đây có Giáp cấp 3!". */
+  item?: string;
 }
 /** Vòng khẩu lệnh bộ đàm: mã từng câu (chữ hiện trên HUD do client dịch). */
 export const RADIO_LINES = ["help", "ammo", "medic", "attack", "defend", "ack", "retreat", "thanks"] as const;
@@ -1009,6 +1023,35 @@ export interface RadioBroadcast {
   flag: string;
 }
 export type SquadOrderMessage = z.infer<typeof SquadOrderMessage>;
+
+// ---------------------------------------------------------------------------- điểm chi viện chiến thuật
+
+/** Gọi chi viện (phím K): UAV, mưa pháo (toạ độ x, z), thùng chi viện (toạ độ, chọn giáp Juggernaut hay TOW). */
+export const StreakMessage = z.object({ kind: z.enum(["uav", "artillery", "airdrop"]), x: finite.optional(), z: finite.optional(), pick: z.enum(["jugg", "tow"]).optional() });
+export type StreakMessage = z.infer<typeof StreakMessage>;
+/** Đang giữ chuột lái tên lửa TOW: mắt (camera) và hướng ngắm, gửi đều đặn trong lúc tên lửa còn bay. */
+export const TowSteerMessage = z.object({ o: z.tuple([finite, finite, finite]), d: z.tuple([finite, finite, finite]) });
+export type TowSteerMessage = z.infer<typeof TowSteerMessage>;
+/**
+ * Server báo mọi người một chi viện vừa được gọi: UAV (phe `team` thấy địch trong `t` giây), mưa pháo (chỗ chấm, còn
+ * `t` giây tới loạt đầu), loạt pháo sắp rơi ("salvo": các điểm rơi `pts`, còn `t` giây — tiếng rít), thùng chi viện.
+ */
+export interface StreakFxMessage {
+  kind: "uav" | "artillery" | "salvo" | "airdrop";
+  team: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  t: number;
+  pts?: [number, number, number][];
+}
+/** Server báo riêng: vừa được (hay vừa tiêu, `amount` âm) điểm chiến thuật; `total` là số điểm hiện có. */
+export interface PointsMessage {
+  kind: string;
+  amount: number;
+  total: number;
+}
 /** Chiến trường: hồi sinh ở căn cứ ("hq") hay ở cứ điểm phe mình đang giữ (chữ cái), với lớp lính đã chọn. */
 export const RespawnMessage = z.object({ at: z.string().max(8), role: z.enum(["rifle", "sniper", "support", "antitank", "tanker"]) });
 export type RespawnMessage = z.infer<typeof RespawnMessage>;
@@ -1156,6 +1199,11 @@ export const Messages = {
   /** Dùng khí tài lớp lính (GadgetMessage); chọn lớp lính ở sảnh (PickClassMessage). */
   gadget: "gadget",
   pickClass: "pickClass",
+  /** Điểm chi viện: gọi chi viện (StreakMessage), lái tên lửa TOW (TowSteerMessage), hiệu ứng chi viện, điểm. */
+  streak: "streak",
+  towSteer: "towSteer",
+  streakFx: "streakFx",
+  points: "points",
 } as const;
 
 /** Một dòng bảng điểm cuối trận. `support` là tiếp tế, sửa xe, hồi sinh đồng đội; `score` để xếp hạng. */

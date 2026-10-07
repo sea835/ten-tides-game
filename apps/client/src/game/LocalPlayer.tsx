@@ -28,7 +28,7 @@ import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { ADRENALINE, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
+import { ADRENALINE, JUGGERNAUT, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
 import { bodies, getBattleHud, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { gun, gun as shooterGun } from "./battle/runtime.ts";
@@ -545,7 +545,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (battle) s.hop = Math.min(s.hop, 0.3);
     // Bơm Adrenaline (lính Đột Kích): chạy nhanh hơn một phần tư trong lúc thuốc còn tác dụng (server nới mức kiểm tra).
     const adrenaline = battle && !s.swimming && (sheet?.gear?.boost ?? 0) > 0 ? ADRENALINE.speed : 1;
-    const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * adrenaline * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
+    // Giáp Juggernaut (thùng chi viện) nặng: đi chậm hẳn.
+    const heavy = battle && sheet?.gear?.jugg ? JUGGERNAUT.speed : 1;
+    const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * adrenaline * heavy * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
     // Chóng mặt thì đi loạng choạng: hướng đi bị lệch qua lệch lại.
@@ -1298,8 +1300,9 @@ function BattleLook({ room, children }: { room: IslandRoom; children: (look: { w
       throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : gadget && gadget !== "m203" ? gadget : "",
       knife: slot === "",
       outfit: k.outfit,
-      armor: k.armor,
-      helmet: k.helmet,
+      // Giáp Juggernaut: vẽ bộ giáp, mũ nặng nhất.
+      armor: me?.gear.jugg ? 3 : k.armor,
+      helmet: me?.gear.jugg ? 3 : k.helmet,
     };
   });
   return <>{children(look)}</>;

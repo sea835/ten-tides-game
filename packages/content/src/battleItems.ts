@@ -77,7 +77,7 @@ export interface Boost {
 }
 
 /** Sơ tốc đầu nòng (m/s), gần với súng thật. */
-const VELOCITY: Record<string, number> = { rpg7: 115, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, dp28: 840, s686: 380, s1897: 360, sks: 800, kar98k: 760, awm: 945 };
+const VELOCITY: Record<string, number> = { rpg7: 115, tow: 90, minigun: 850, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, dp28: 840, s686: 380, s1897: 360, sks: 800, kar98k: 760, awm: 945 };
 
 /** Hệ số trúng đầu từ bảng sát thương thân / đầu (bảng 5.1 trong kế hoạch): damage × headshot = sát thương đầu. */
 const head = (body: number, headDamage: number) => headDamage / body;
@@ -113,7 +113,19 @@ export const WEAPONS: readonly WeaponDef[] = [
   w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, extMag: 7, rpm: 40, damage: 105, headshot: head(105, 250), range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, rare: true }),
 ];
 
-export const WEAPON: ReadonlyMap<string, WeaponDef> = new Map(WEAPONS.map((d) => [d.id, d]));
+/**
+ * Vũ khí chi viện (thả dù bằng điểm chiến thuật, xem streaks.ts): không bán ở cửa hàng, không rơi trong kho vũ khí hay
+ * thùng thính thường, nên để ngoài WEAPONS (danh sách đồ) mà chỉ có trong bảng tra WEAPON.
+ * - Minigun 6 nòng: đi kèm bộ giáp Juggernaut (không mặc giáp thì không vác nổi), phải quay nòng một nhịp mới nhả đạn,
+ *   tốc độ bắn tăng dần theo vòng quay (MINIGUN trong streaks.ts).
+ * - TOW: tên lửa chống tăng dẫn đường bằng dây: giữ chuột thì tên lửa bám theo tâm ngắm (server lái, TOW trong streaks.ts).
+ */
+export const STREAK_WEAPONS: readonly WeaponDef[] = [
+  w({ id: "minigun", name: "Minigun", class: "lmg", ammo: "556", mag: 200, rpm: 1500, damage: 30, headshot: 1.8, range: 90, hipSpread: 0.042, adsSpread: 0.03, recoil: 0.004, recoilSide: 0.006, auto: true, reload: 6, zoom: 1.15, price: 0, speed: 0.72 }),
+  w({ id: "tow", name: "TOW", class: "launcher", ammo: "rocket", mag: 1, rpm: 30, damage: 0, range: 320, hipSpread: 0.03, adsSpread: 0.002, recoil: 0.04, recoilSide: 0.008, auto: false, reload: 4, zoom: 2, price: 0, speed: 0.8, headshot: 1, explosive: { radius: 4.5, damage: 120, armor: 560 } }),
+];
+
+export const WEAPON: ReadonlyMap<string, WeaponDef> = new Map([...WEAPONS, ...STREAK_WEAPONS].map((d) => [d.id, d]));
 
 // ---------------------------------------------------------------------------- đường đạn
 
@@ -419,6 +431,7 @@ export type BattleLootId = string;
 export function lootLabel(id: BattleLootId): string {
   const weapon = WEAPON.get(id);
   if (weapon) return weapon.name;
+  if (id === "jugg") return "Giáp Juggernaut";
   const [kind, arg] = id.split(":");
   if (kind === "ammo") return AMMO[arg as AmmoId]?.name ?? id;
   if (kind === "armor") return ARMOR[Number(arg) - 1]?.name ?? id;

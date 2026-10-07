@@ -18,6 +18,7 @@ function weaponLabel(w: string): string {
   if (w === "frag") return "lựu đạn";
   if (w === "knife") return "dao";
   if (w === "tank") return "pháo xe tăng";
+  if (w === "artillery") return "mưa pháo";
   return WEAPON.get(w)?.name ?? "";
 }
 

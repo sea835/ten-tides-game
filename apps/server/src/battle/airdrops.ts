@@ -24,20 +24,24 @@ export class Airdrops {
   /** Đã thả bao nhiêu thùng trong trận này. */
   count = 0;
   private seq = 0;
+  /** Thùng chi viện đặc biệt (điểm chiến thuật, streaks.ts): đồ định sẵn thay cho đồ thùng thính thường. */
+  private special = new Map<AirdropState, string[]>();
 
   constructor(private host: AirdropHost) {}
 
   /** Trận mới (hay về sảnh): dọn thùng cũ, đếm lại từ đầu. */
   clear() {
     this.host.state.airdrops.clear();
+    this.special.clear();
     this.next = sec(AIRDROP.first);
     this.count = 0;
   }
 
   tick(dt: number) {
     const s = this.host.state;
-    if (s.phase !== "battle" || s.battleMode === "war") return;
-    this.next -= dt;
+    if (s.phase !== "battle") return;
+    // Chiến trường không có thùng thính định kỳ, chỉ có thùng chi viện gọi bằng điểm chiến thuật.
+    if (s.battleMode !== "war") this.next -= dt;
     if (this.next <= 0) {
       const [lo, hi] = AIRDROP.every;
       this.next = sec(lo + this.host.random() * (hi - lo));
@@ -71,13 +75,33 @@ export class Airdrops {
     return a;
   }
 
+  /**
+   * Thùng chi viện (điểm chiến thuật): thả dù xuống đúng chỗ (x, z), mặt đất `y` (đã kiểm tra trống), chứa đúng các
+   * món `items`. Rơi nhanh hơn thùng thính thường (người gọi đang chờ).
+   */
+  dropAt(x: number, y: number, z: number, items: string[]): AirdropState | null {
+    if (this.host.state.phase !== "battle" || !items.length) return null;
+    const a = new AirdropState();
+    a.x = x;
+    a.z = z;
+    a.ground = y;
+    // Bung dù thấp hơn (đi tiếp đường rơi của thùng thường từ chỗ 40%), chạm đất sau 60% thời gian.
+    a.fallLeft = sec(AIRDROP.fall * 0.6);
+    a.y = y + airdropAltitude(1 - a.fallLeft / sec(AIRDROP.fall));
+    this.special.set(a, items);
+    this.host.state.airdrops.set(`d${++this.seq}`, a);
+    return a;
+  }
+
   /** Chạm đất: đổ đồ ra thành vòng quanh thùng (nhặt như đồ thường), bung khói đỏ. */
   private land(a: AirdropState) {
     a.landed = true;
     a.y = a.ground;
     a.fallLeft = 0;
     a.smoke = sec(AIRDROP.smoke);
-    const items = airdropLoot(() => this.host.random());
+    const preset = this.special.get(a);
+    this.special.delete(a);
+    const items = preset ?? airdropLoot(() => this.host.random());
     const map = this.host.map;
     items.forEach((itemId, i) => {
       const ang = (i / items.length) * Math.PI * 2 + this.host.random() * 0.2;
