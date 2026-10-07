@@ -129,7 +129,11 @@ export const PlayerState = schema(
     x: t.float32().default(0),
     y: t.float32().default(0),
     z: t.float32().default(0),
-    rotY: t.float32().default(0),
+    /**
+     * Hướng quay (radian). Nén 16 bit trên đường truyền (~0,0055°/bước, 2 byte thay vì 4): đọc ra luôn nằm trong
+     * [0, 2π) — so góc thì dùng hiệu đã gói vòng (atan2(sin, cos)), đừng trừ thẳng.
+     */
+    rotY: t.angle().default(0),
     moving: t.boolean().default(false),
     /** Đang ngồi (nghỉ, hoặc nấp trong cỏ cao). */
     sitting: t.boolean().default(false),
@@ -174,8 +178,8 @@ export const PlayerState = schema(
     /** Đang nằm sấp (bắn nằm): thấp nhất, khó thấy, khó trúng, đi bò rất chậm. */
     prone: t.boolean().default(false),
     aiming: t.boolean().default(false),
-    /** Góc ngắm lên xuống (radian, dương là ngẩng lên), để máy khác thấy nòng súng chĩa đúng hướng. */
-    aimPitch: t.float32().default(0),
+    /** Góc ngắm lên xuống (radian, dương là ngẩng lên), để máy khác thấy nòng súng chĩa đúng hướng. Nén 16 bit trong [−2, 2]. */
+    aimPitch: t.quantized({ min: -2, max: 2 }).default(0),
     /** Nghiêng người (Q/E): −1 trái … 1 phải, lượng tử hoá theo 1/8 (thân trên, đầu lệch sang bên; dò đạn trúng theo đó). */
     lean: t.float32().default(0),
     /** Bộ đếm phát bắn, để máy khác diễn giật súng, chớp lửa đầu nòng. */
@@ -520,9 +524,11 @@ export const VehicleState = schema(
     x: t.float32().default(0),
     y: t.float32().default(0),
     z: t.float32().default(0),
-    rotY: t.float32().default(0),
-    turret: t.float32().default(0),
-    pitch: t.float32().default(0),
+    /** Hướng thân, hướng tháp pháo / súng (radian, nén 16 bit, đọc ra trong [0, 2π) như PlayerState.rotY). */
+    rotY: t.angle().default(0),
+    turret: t.angle().default(0),
+    /** Góc nòng (radian, nén 16 bit trong [−1,6; 1,6]: đủ cho cối ngẩng 85°, số 0 giữ đúng 0). */
+    pitch: t.quantized({ min: -1.6, max: 1.6 }).default(0),
     hp: t.int16().default(0),
     team: t.string().default(""),
     /** Người đang lái (và bắn); rỗng là xe bỏ trống. */

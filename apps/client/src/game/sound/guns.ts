@@ -2,6 +2,7 @@ import { WEAPON, type WeaponClass } from "@tentides/content";
 import { audio, noiseBurst, tone, type Bus, type Place } from "./engine.ts";
 import { CRACK_RANGE, ENV_SHAPE, MAX_SOUND_DELAY, SNAP_RANGE, SPEED_OF_SOUND, WHIZ_RANGE, echoTaps } from "./acoustics.ts";
 import { acousticAt } from "./environment.ts";
+import { DISTANT_GUNFIRE, voices, type VoicePriority, type VoiceSlot } from "./voices.ts";
 
 // Âm thanh đấu súng (chế độ Battleground): tiếng nổ từng loại súng, thay đạn, lựu đạn, trúng đích, bước chân...
 // Tất cả tổng hợp tại chỗ như sfx.ts. Tiếng nổ súng và lựu đạn được dựng sẵn thành buffer (tính từng mẫu, xem
@@ -135,7 +136,7 @@ const pools: Record<Pool, Voice[]> = { gun: [], fx: [], local: [], ui: [] };
  * Các lớp tiếng nối vào `input` (giữa) hoặc `side` (lệch một bên, cho độ rộng tiếng súng của chính mình).
  * Tự tháo nút khi hết tiếng.
  */
-class Voice {
+class Voice implements VoiceSlot {
   readonly ctx: AudioContext;
   readonly input: GainNode;
   side: AudioNode;
@@ -154,6 +155,7 @@ class Voice {
     ctx: AudioContext,
     readonly pool: Pool,
     readonly level: number,
+    readonly prio: VoicePriority,
     opts: { bus: Bus; sp?: Spatial | null; reverb?: number; wide?: number; delay?: number; gain?: number },
   ) {
     this.ctx = ctx;
@@ -296,6 +298,7 @@ class Voice {
 
   private remove() {
     this.dead = true;
+    voices.remove(this);
     const list = pools[this.pool];
     const i = list.indexOf(this);
     if (i >= 0) list.splice(i, 1);
@@ -317,13 +320,21 @@ class Voice {
 }
 
 /** Mở một tiếng mới trong nhóm; đầy thì cướp tiếng ít quan trọng nhất (nếu tiếng mới quan trọng hơn). */
-function voice(pool: Pool, level: number, opts: { bus?: Bus; sp?: Spatial | null; reverb?: number; wide?: number; delay?: number; gain?: number } = {}): Voice | null {
+function voice(
+  pool: Pool,
+  level: number,
+  opts: { bus?: Bus; sp?: Spatial | null; reverb?: number; wide?: number; delay?: number; gain?: number; prio?: VoicePriority } = {},
+): Voice | null {
   const ctx = live();
   if (!ctx || level < 0.004) return null;
   const list = pools[pool];
   const now = ctx.currentTime;
   // Dọn các tiếng đã hết mà hẹn giờ chưa kịp chạy.
   for (let i = list.length - 1; i >= 0; i--) if (list[i]!.end + 0.1 < now) list[i]!.kill();
+  // Xin chỗ ở bộ giới hạn toàn cục trước (chưa cướp gì): tiếng của mình mức 0; tiếng có vị trí mức 2, xa quá 150 m mức 3.
+  const prio = opts.prio ?? (pool === "local" || pool === "ui" ? 0 : !opts.sp ? (pool === "gun" ? 0 : 1) : opts.sp.d > DISTANT_GUNFIRE ? 3 : 2);
+  const global = pool === "ui" ? null : voices.admit(prio, level, now);
+  if (global && !global.ok) return null;
   if (list.length >= POOL_CAP[pool]) {
     let worst: Voice | null = null;
     let worstScore = Infinity;
@@ -338,8 +349,9 @@ function voice(pool: Pool, level: number, opts: { bus?: Bus; sp?: Spatial | null
     if (!worst || worstScore > level * 1.5) return null;
     worst.kill();
   }
-  const v = new Voice(ctx, pool, level, { ...opts, bus: opts.bus ?? "sfx" });
+  const v = new Voice(ctx, pool, level, prio, { ...opts, bus: opts.bus ?? "sfx" });
   list.push(v);
+  if (global) voices.add(v, global.victim && !(global.victim as Voice).dead ? global.victim : null);
   return v;
 }
 
@@ -1160,7 +1172,7 @@ export const playBulletWhiz = safe((at: Place, miss: number, delay: number, velo
   const whizzes = miss < WHIZ_RANGE;
   if (!supersonic && !whizzes) return;
   const level = (supersonic ? 0.3 + 0.9 * crackNear * crackNear : 0.35 + 0.75 * near * near) * clamp(sp.gain * 1.6, 0.3, 1) * (snap ? 1.25 : 1);
-  const v = voice("fx", level, { sp, gain: level });
+  const v = voice("fx", level, { sp, gain: level, prio: 1 });
   if (!v) return;
   if (supersonic) {
     // Sóng xung kích: cú "chát" cực ngắn dải rộng, rồi tiếng tách cộng hưởng cao. Đạn càng nhanh càng gắt;
@@ -1375,7 +1387,7 @@ export const playFootstep = safe((at: Place, surface: "grass" | "concrete" | "me
   const sp = spatial(at, run ? 45 : 25, 4);
   if (!sp) return;
   sp.delay = 0;
-  const v = voice("fx", (run ? 0.42 : 0.24) * sp.gain, { sp });
+  const v = voice("fx", (run ? 0.42 : 0.24) * sp.gain, { sp, prio: 1 });
   if (!v) return;
   const p = rand(0.9, 1.1);
   switch (surface) {

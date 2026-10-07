@@ -91,7 +91,7 @@ describe("ổ đại liên: cung xoay 120°", () => {
     addPlayer(room, "g", "blue", v.x, v.z);
     room.vehicles.enter("g");
     room.vehicles.aim("g", v.rotY + 2.5, 0);
-    expect(Math.abs(Math.atan2(Math.sin(v.turret - v.rotY), Math.cos(v.turret - v.rotY)))).toBeCloseTo(NEST.arc / 2, 5);
+    expect(Math.abs(Math.atan2(Math.sin(v.turret - v.rotY), Math.cos(v.turret - v.rotY)))).toBeCloseTo(NEST.arc / 2, 3);
     const shots: string[] = [];
     const orig = room.shootRays.bind(room);
     room.shootRays = ((...args: Parameters<typeof room.shootRays>) => {
@@ -152,12 +152,12 @@ describe("cối 82mm: server kiểm tra phát bắn, mô phỏng đạn bay", ()
     room.vehicles.gun("w", { o: [v.x, v.y + 1, v.z], d: [0, 0.5, 0.86], hits: [] });
     e.fire("w", v.rotY, 0.2);
     expect(e.inFlight()).toBe(1);
-    expect(v.pitch).toBeCloseTo(MORTAR.elevMin, 5);
+    expect(v.pitch).toBeCloseTo(MORTAR.elevMin, 3);
     // Bắn liền phát nữa: chưa nạp xong.
     e.fire("w", v.rotY, 1.2);
     expect(e.inFlight()).toBe(1);
     room.vehicles.aim("w", v.rotY, 1.55);
-    expect(v.pitch).toBeCloseTo(MORTAR.elevMax, 5);
+    expect(v.pitch).toBeCloseTo(MORTAR.elevMax, 3);
     expect(room.state.vehicles.get(vid)).toBe(v);
   });
 

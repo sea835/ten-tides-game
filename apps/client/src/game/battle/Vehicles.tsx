@@ -14,6 +14,7 @@ import { effects, getBattleHud, menuOpen, seat, setBattleHud } from "./runtime.t
 import { Carrier, CarrierSeat, useVehicleFx } from "./Carriers.tsx";
 import { Emplacement, EmplacementSeat, MortarShells } from "./Emplacements.tsx";
 import { nearInfo, seatOwner, WreckFire } from "./vehicleParts.tsx";
+import { sampleTrack, trackRoom, vehicleTracks } from "../netInterp.ts";
 
 // Xe tăng: vẽ thân, xích, tháp pháo quay độc lập, nòng pháo ngẩng hạ; hộp va chạm để người, đạn không xuyên qua.
 // Xe mình lái: W/S tiến lùi, A/D bẻ lái (quay tại chỗ được), chuột xoay tháp pháo theo hướng nhìn, chuột trái bắn
@@ -125,6 +126,7 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
   const [wreck, setWreck] = useState(v.hp <= 0);
   const [color, setColor] = useState(teamColor(v.team));
   const anim = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY, turret: v.turret, pitch: v.pitch, shots: v.shots, kick: 0, tiltX: 0, tiltZ: 0 });
+  const interp = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY });
   const engine = useRef<ReturnType<typeof tankEngine> | null>(null);
 
   // Hộp va chạm: người đi bộ không xuyên qua xe, đạn găm vào vỏ thép.
@@ -152,9 +154,11 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
     const dt = Math.min(rawDt, 0.05);
     const a = anim.current;
     const mine = seat.id === id;
-    // Xe mình: lấy đúng tư thế máy mình đang lái; xe khác: nội suy theo server.
-    const src = mine ? drive.pose : v;
-    const k = mine ? 1 : Math.min(1, dt * 10);
+    // Xe mình: lấy đúng tư thế máy mình đang lái; xe khác: nội suy Hermite giữa các gói server (netInterp.ts),
+    // chưa có băng thì kéo dần về trạng thái mới nhất.
+    const smooth = !mine && sampleTrack(vehicleTracks, id, interp.current);
+    const src = mine ? drive.pose : smooth ? interp.current : v;
+    const k = mine || smooth ? 1 : Math.min(1, dt * 10);
     a.x += (src.x - a.x) * k;
     a.y += (src.y - a.y) * k;
     a.z += (src.z - a.z) * k;
@@ -486,6 +490,8 @@ export function Vehicles({ room }: { room: IslandRoom }) {
   }, [room]);
   useTankCorrections(room);
   useVehicleFx(room);
+  // Ghi băng vị trí xe từng gói server để nội suy (netInterp.ts).
+  useEffect(() => trackRoom(room), [room]);
   return (
     <>
       {list.map(([id, v]) => (v.kind === "tank" ? <Tank key={id} room={room} id={id} v={v} /> : isEmplacement(v.kind) ? <Emplacement key={id} id={id} v={v} /> : <Carrier key={id} room={room} id={id} v={v} teamColor={teamColor} />))}

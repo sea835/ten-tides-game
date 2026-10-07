@@ -57,14 +57,23 @@ function WeatherState({ room }: { room: IslandRoom }) {
 
 // ---------------------------------------------------------------------------- mưa
 
+/**
+ * Chỉ vẽ `n` hạt đầu và chỉ tải lên GPU đúng phần ma trận của chúng: trước đây vẽ đủ cả nghìn hạt (hạt ẩn thì
+ * co về 0) và tải lại cả bộ đệm mỗi khung hình dù mưa rất nhẹ. Trời quang thì component ẩn hẳn, không gọi tới đây.
+ */
+function drawFirst(m: InstancedMesh, n: number) {
+  m.count = n;
+  const attr = m.instanceMatrix;
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(0, n * 16);
+  attr.needsUpdate = true;
+}
+
 const RAIN_AREA = 26;
 const RAIN_HEIGHT = 22;
 
 function Rain({ count }: { count: number }) {
   const mesh = useRef<InstancedMesh>(null);
-  // Số hạt đã vẽ ở khung hình trước. Khai báo ở thân component, không gọi `useRef` bên trong
-  // `useFrame` — React sẽ báo "Invalid hook call".
-  const shown = useRef(0);
   const drops = useMemo(() => {
     const rand = mulberry32(5);
     return Array.from({ length: count }, () => ({ x: (rand() - 0.5) * 2 * RAIN_AREA, y: rand() * RAIN_HEIGHT, z: (rand() - 0.5) * 2 * RAIN_AREA, speed: 24 + rand() * 10 }));
@@ -84,9 +93,7 @@ function Rain({ count }: { count: number }) {
     const cx = camera.position.x;
     const cy = camera.position.y;
     const cz = camera.position.z;
-    // Chỉ vẽ tới `visible` thay vì toàn bộ `count`: trước đây vòng lặp chạy hết 1600 hạt rồi mới
-    // scale 0 phần bị ẩn, tức vẫn tốn 1600 lần updateMatrix mỗi khung hình dù mưa rất nhẹ.
-    // Đuôi bị ẩn mới tẩy đúng một lần khi lượng mưa giảm (xem `shown`).
+    // Chỉ tính và vẽ `visible` hạt đầu (xem `drawFirst`): trời quang thì không đụng tới hạt nào, không tải gì lên GPU.
     for (let i = 0; i < visible; i++) {
       const d = drops[i]!;
       d.y -= d.speed * dt;
@@ -112,14 +119,7 @@ function Rain({ count }: { count: number }) {
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
-    // Tẩy phần vừa bị ẩn đi, thay vì tẩy lại toàn bộ mỗi khung hình.
-    for (let i = visible; i < shown.current; i++) {
-      dummy.scale.setScalar(0);
-      dummy.updateMatrix();
-      m.setMatrixAt(i, dummy.matrix);
-    }
-    shown.current = visible;
-    m.instanceMatrix.needsUpdate = true;
+    drawFirst(m, visible);
   });
   return (
     <instancedMesh ref={mesh} args={[undefined, undefined, count]} frustumCulled={false}>
@@ -137,8 +137,6 @@ const SNOW_HEIGHT = 16;
 /** Bông tuyết: rơi chậm, lượn ngang theo gió, bay theo camera trong một hộp quanh người nhìn. */
 function Snow({ count }: { count: number }) {
   const mesh = useRef<InstancedMesh>(null);
-  // Xem giải thích ở `Rain`.
-  const shown = useRef(0);
   const flakes = useMemo(() => {
     const rand = mulberry32(11);
     return Array.from({ length: count }, () => ({
@@ -162,7 +160,7 @@ function Snow({ count }: { count: number }) {
     const t = clock.elapsedTime;
     const wind = 0.6 + weatherFx.storm;
     const wrap = (v: number, c: number, half: number) => c + ((((v - c) % (2 * half)) + 3 * half) % (2 * half)) - half;
-    // Chỉ vẽ tới `visible`, tẩy đuôi khi giảm — xem giải thích ở Rain.
+    // Chỉ tính và vẽ `visible` bông đầu — xem `drawFirst`.
     for (let i = 0; i < visible; i++) {
       const f = flakes[i]!;
       f.y -= f.speed * dt;
@@ -175,13 +173,7 @@ function Snow({ count }: { count: number }) {
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
-    for (let i = visible; i < shown.current; i++) {
-      dummy.scale.setScalar(0);
-      dummy.updateMatrix();
-      m.setMatrixAt(i, dummy.matrix);
-    }
-    shown.current = visible;
-    m.instanceMatrix.needsUpdate = true;
+    drawFirst(m, visible);
   });
   return (
     <instancedMesh ref={mesh} args={[undefined, undefined, count]} frustumCulled={false}>
