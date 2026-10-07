@@ -17,3 +17,6 @@ export * from "./vehicles.ts";
 export * from "./emplacements.ts";
 export * from "./progression.ts";
 export * from "./loadout.ts";
+export * from "./tide.ts";
+export * from "./volcano.ts";
+export * from "./snap.ts";

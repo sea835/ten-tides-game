@@ -12,6 +12,8 @@ import {
   storyLibrary,
   spawnPoint,
   subSeed,
+  tidalOpen,
+  tidalSites,
   worldCatalog,
   worldFor,
   type World,
@@ -36,6 +38,7 @@ import {
   IslandState,
   TrapState,
   StoryLineState,
+  SurvivalMessages,
   JoinOptions,
   KICKED_CLOSE_CODE,
   KickMessage,
@@ -85,6 +88,7 @@ import { randomRoomCode } from "./roomCode.ts";
 import { syncState } from "./sync.ts";
 import { Wildlife, type Bite } from "./wildlife.ts";
 import { PlayController, type PlayHost } from "./playRoom.ts";
+import { Survival, type SurvivalEvent } from "./survival.ts";
 
 const RECONNECT_SECONDS = 60;
 /** Nhịp của mặt phẳng thời gian thực: sinh vật đi lại, hơi thở khi lặn, bẫy. */
@@ -141,6 +145,8 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   private realtimeTicks = 0;
   /** Cầm đồ, đánh, ném, cây cối, trại và nhà cửa. */
   private playCtl!: PlayController;
+  /** Thủy triều và núi lửa leo thang. */
+  private survival!: Survival;
 
   get actions(): readonly GameAction[] {
     return this.logFile.actions;
@@ -356,6 +362,15 @@ export class IslandRoom extends Room<{ state: IslandState }> {
         }
         return;
       }
+      // Cổ vật trong xác tàu đắm, rương trong hang ngầm, trên rạn san hô: chỉ với tới khi triều rút.
+      const tidal = tidalSites(this.world).find((s) => s.id === targetId);
+      if (tidal) {
+        if (!near(tidal.x, tidal.y, tidal.z, 4)) return this.reject(client, "Hãy lại gần hơn.");
+        if (!tidalOpen(tidal, this.survival.sea)) return this.reject(client, "Nước còn ngập sâu quá, chờ triều rút đã.");
+        if (this.game.discovered.includes(tidal.id)) return this.reject(client, "Đã có người lấy mất rồi.");
+        this.encounter(id, "egg", tidal.id, `tidal_${tidal.kind}`, tidal.effects, { once: true }, { title: tidal.name, text: tidal.text }, client);
+        return;
+      }
       const creature = this.wildlife.active(this.game.day).find((c) => c.id === targetId);
       if (creature?.def.interact) {
         if (!near(creature.x, creature.y, creature.z, 4)) return this.reject(client, "Hãy lại gần hơn.");
@@ -387,6 +402,11 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       this.logFile.chat.push({ day: this.game.day, from: id, channel: route.channel, text });
       const message: ChatBroadcast = { from: id, name, text, channel: route.channel };
       for (const listener of route.to) this.clientOf(listener)?.send(Messages.chat, message);
+    });
+
+    // Cảnh núi lửa vừa dựng xong (vào giữa chừng, tải lại trang) thì xin lại bom đang bay, hố lửa còn cháy.
+    this.onMessage(SurvivalMessages.volcano, (client) => {
+      for (const message of this.survival.snapshot()) client.send(SurvivalMessages.volcano, message);
     });
 
     this.clock.setInterval(() => this.tick(), 1000);
@@ -490,6 +510,8 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     this.hazards = new Hazards(this.world, generateTraps(this.world, secret), secret);
     if (this.playCtl) this.playCtl.reset(this.world, worldSeed);
     else this.playCtl = new PlayController(this.playHost(), this.world, worldSeed);
+    if (this.survival) this.survival.reset(this.world, secret);
+    else this.survival = new Survival(this.world, secret);
     this.wildlife = new Wildlife(
       this.world,
       worldSeed,
@@ -528,6 +550,11 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     const people = [...this.state.players.entries()]
       .map(([id, p]) => ({ id, p, sheet: this.game.players[id] }))
       .filter((e) => e.sheet && e.p.connected);
+    // Thủy triều: mọi hệ thống dưới đây đọc cùng một mực nước.
+    this.survival.updateSea(this.state);
+    const sea = this.survival.sea;
+    this.wildlife.seaLevel = sea;
+    this.playCtl.play.seaLevel = sea;
 
     const bites = this.wildlife.step(
       dt,
@@ -549,7 +576,16 @@ export class IslandRoom extends Room<{ state: IslandState }> {
       })),
       active,
       { x: this.playCtl.play.camp.x, z: this.playCtl.play.camp.z, lit: !this.playCtl.play.camp.packed },
+      sea,
     );
+    const survival = this.survival.step(
+      dt,
+      this.state,
+      people.map(({ id, p, sheet }) => ({ id, x: p.x, y: p.y, z: p.z, alive: sheet!.alive })),
+      active,
+      this.playCtl.play.camp,
+    );
+    for (const event of survival) this.onSurvival(event);
     if (active) {
       for (const bite of bites) this.onBite(bite);
       for (const event of hazards) this.onHazard(event);
@@ -561,6 +597,19 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     this.playCtl.tick(dt, active);
     // Vị trí sinh vật chỉ gửi 5 lần mỗi giây (client tự nội suy), đỡ tốn băng thông và đỡ bắt HUD tính lại.
     if (++this.realtimeTicks % 2 === 0) this.syncCreatures();
+  }
+
+  /** Núi lửa, triều cường: báo hiệu ứng cho mọi người, sát thương đi vào engine luật. */
+  private onSurvival(event: SurvivalEvent) {
+    if (event.kind === "volcano") {
+      this.broadcast(SurvivalMessages.volcano, event.message);
+      return;
+    }
+    const p = this.state.players.get(event.playerId);
+    this.encounter(event.playerId, event.source, event.defId, event.defId, event.effects, {}, { title: event.title, text: event.text });
+    if (!p) return;
+    this.broadcast(Messages.fx, { kind: event.source === "drowning" ? "splash" : "burn", x: p.x, y: p.y + 1.4, z: p.z, word: event.word, amount: -(event.effects.hp ?? 0) } satisfies FxMessage);
+    if (event.knock) this.clientOf(event.playerId)?.send(Messages.knock, event.knock satisfies KnockMessage);
   }
 
   private onBite(bite: Bite) {

@@ -1,6 +1,7 @@
 import { useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Color, Fog, Vector3, type DirectionalLight, type HemisphereLight, type PerspectiveCamera } from "three";
+import { dayTime } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { localEnv, localPosition, sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
@@ -77,22 +78,8 @@ function smoothstep(a: number, b: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Giờ trong ngày (0–1) suy ra từ pha hiện tại và thời gian còn lại của pha. */
-export function dayTime(phase: string, remaining: number, duration: number): number {
-  const p = duration > 0 ? Math.min(1, Math.max(0, 1 - remaining / duration)) : 0;
-  switch (phase) {
-    case "dawn":
-      return 0.02 + 0.08 * p;
-    case "explore":
-      return 0.1 + 0.62 * p;
-    case "dusk":
-      return 0.72 + 0.1 * p;
-    case "night":
-      return SUNSET + (1 - SUNSET) * p;
-    default:
-      return 0.35;
-  }
-}
+/** Giờ trong ngày (0–1) suy ra từ pha hiện tại: dùng chung với thủy triều (tide.ts của content). */
+export { dayTime };
 
 /** Đồng hồ mặt trời: vị trí, màu nắng, màu trời, sương mù và sao chạy theo giờ trong ngày. */
 export function DayCycle({

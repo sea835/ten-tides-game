@@ -50,7 +50,7 @@ export function Controls({ room }: { room: IslandRoom }) {
     const primary = () => {
       const hud = getHud();
       if (hud.build) {
-        room.send(Messages.build, { kind: buildGhost.kind, x: buildGhost.x, z: buildGhost.z, rot: buildGhost.rot });
+        room.send(Messages.build, { kind: buildGhost.kind, x: buildGhost.x, z: buildGhost.z, rot: buildGhost.rot, level: buildGhost.level });
         return;
       }
       const held = (view?.bag ?? []).find((b) => b.uid === getHands());
@@ -99,7 +99,9 @@ export function Controls({ room }: { room: IslandRoom }) {
     const onWheel = (e: WheelEvent) => {
       if (!locked()) return;
       if (getHud().build) {
-        buildGhost.turn += Math.sign(e.deltaY) * 0.4;
+        // Mảnh lắp ghép: lăn chuột nâng hạ tầng định đặt (hướng cầu thang theo hướng nhìn); nhà kiểu cũ thì xoay.
+        if (worldCatalog.buildings.get(getHud().build)?.snap) buildGhost.lift = Math.max(-1, Math.min(2, buildGhost.lift - Math.sign(e.deltaY)));
+        else buildGhost.turn += Math.sign(e.deltaY) * 0.4;
         return;
       }
       cycle(Math.sign(e.deltaY));
@@ -118,6 +120,7 @@ export function Controls({ room }: { room: IslandRoom }) {
           break;
         case "KeyV": {
           const i = BUILD_CYCLE.indexOf(getHud().build);
+          buildGhost.lift = 0;
           setHud({ build: BUILD_CYCLE[(i + 1) % BUILD_CYCLE.length]! });
           break;
         }

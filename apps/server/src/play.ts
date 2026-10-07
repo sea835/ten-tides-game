@@ -60,6 +60,8 @@ export interface Building {
   dx: number;
   dz: number;
   rot: number;
+  /** Mảnh lắp ghép: tầng (xem snap.ts). */
+  level?: number;
 }
 
 export interface Status {
@@ -98,6 +100,8 @@ export class Play {
   readonly planted = new Map<string, Planted>();
   readonly climbers = new Map<string, string>();
   readonly buildings = new Map<string, Building>();
+  /** Mực nước biển lúc này (thủy triều): đồ ném rơi xuống nước chậm lại, văng nước. */
+  seaLevel = WATER_LEVEL;
   camp: { x: number; z: number; packed: boolean } = { x: CAMP.x, z: CAMP.z, packed: false };
   /** Món trên tay mỗi người: uid trong balo. */
   readonly held = new Map<string, string>();
@@ -276,7 +280,7 @@ export class Play {
       let done = false;
       for (let k = 0; k < sub && !done; k++) {
         const h = dt / sub;
-        const inWater = p.y < WATER_LEVEL;
+        const inWater = p.y < this.seaLevel;
         // Dưới nước thì chậm hẳn.
         const drag = inWater ? 0.85 : 1;
         p.vx *= drag;
@@ -298,7 +302,7 @@ export class Play {
         if (done) break;
         const ground = this.world.heightAt(p.x, p.z);
         if (p.y <= ground + 0.05 || Math.abs(p.x) > 238 || Math.abs(p.z) > 238 || p.age > 6) {
-          events.push({ kind: "land", projectile: p, x: p.x, y: ground, z: p.z, water: ground < WATER_LEVEL });
+          events.push({ kind: "land", projectile: p, x: p.x, y: ground, z: p.z, water: ground < this.seaLevel });
           done = true;
         }
       }

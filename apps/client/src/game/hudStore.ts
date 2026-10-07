@@ -41,6 +41,9 @@ interface HudState {
   build: string;
   /** Chỗ dựng hợp lệ không (bóng xanh hay đỏ). */
   buildOk: boolean;
+  /** Mảnh lắp ghép: vì sao không dựng được, và đang ngắm tầng mấy. */
+  buildReason: string;
+  buildLevel: number;
 }
 
 interface HudState {
@@ -71,6 +74,9 @@ interface HudState {
   build: string;
   /** Chỗ dựng hợp lệ không (bóng xanh hay đỏ). */
   buildOk: boolean;
+  /** Mảnh lắp ghép: vì sao không dựng được, và đang ngắm tầng mấy. */
+  buildReason: string;
+  buildLevel: number;
 }
 
 let state: HudState = {
@@ -89,6 +95,8 @@ let state: HudState = {
   victim: null,
   build: "",
   buildOk: false,
+  buildReason: "",
+  buildLevel: 0,
 };
 const listeners = new Set<() => void>();
 

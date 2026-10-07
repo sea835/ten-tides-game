@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { LAVA, WATER_LEVEL, type World } from "@tentides/content";
+import { LAVA, type World } from "@tentides/content";
+import { tide } from "../tide.ts";
 import { Messages, type EncounterMessage, type FxMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useFx } from "../fxStore.ts";
@@ -413,7 +414,7 @@ class Music {
 
 function surfaceSound(world: World, x: number, z: number): "step_sand" | "step_grass" | "step_rock" | "step_water" | "step_wood" {
   const ground = world.heightAt(x, z);
-  if (ground < WATER_LEVEL + 0.05) return "step_water";
+  if (ground < tide.level + 0.05) return "step_water";
   if (world.structureAt(x, z)) return "step_rock";
   const s = world.surface(x, z);
   if (s.islet && (s.islet.kind === "rocky" || s.islet.kind === "volcanic")) return "step_rock";

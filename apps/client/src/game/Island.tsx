@@ -32,6 +32,8 @@ import { SeaLife } from "./SeaLife.tsx";
 import { Trees } from "./Trees.tsx";
 import { Camp } from "./Camp.tsx";
 import { Landmarks } from "./Landmarks.tsx";
+import { SurvivalWorld } from "./SurvivalWorld.tsx";
+import { tide } from "./tide.ts";
 import { detailed } from "./textures.ts";
 import { GrassField } from "./Grass.tsx";
 import { Flame } from "./Flame.tsx";
@@ -219,6 +221,7 @@ function seabedLight(m: MeshStandardMaterial) {
   m.customProgramCacheKey = () => "seabed";
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = waterUniforms.uTime;
+    shader.uniforms.uTide = waterUniforms.uTide;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vSeabed;")
       .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvSeabed = (modelMatrix * vec4(transformed, 1.0)).xyz;");
@@ -227,6 +230,7 @@ function seabedLight(m: MeshStandardMaterial) {
         "#include <common>",
         /* glsl */ `#include <common>
         uniform float uTime;
+        uniform float uTide;
         varying vec3 vSeabed;
         float tenCaustic(vec2 p, float t) {
           vec2 i = p;
@@ -245,7 +249,7 @@ function seabedLight(m: MeshStandardMaterial) {
       .replace(
         "#include <color_fragment>",
         /* glsl */ `#include <color_fragment>
-        float tenWater = ${WATER_LEVEL.toFixed(2)};
+        float tenWater = ${WATER_LEVEL.toFixed(2)} + uTide;
         float tenAbove = vSeabed.y - tenWater;
         float tenWetLine = 0.45 + 0.25 * sin(uTime * 0.75 + (vSeabed.x + vSeabed.z) * 0.05);
         float tenWet = 1.0 - smoothstep(0.0, tenWetLine, tenAbove);
@@ -469,7 +473,7 @@ function Boat({ room }: { room: IslandRoom }) {
     const b = boat.current;
     if (!b) return;
     const t = clock.elapsedTime;
-    b.position.y = WATER_LEVEL + 0.35 + Math.sin(t * 1.2) * 0.12 - damage * 0.35;
+    b.position.y = tide.level + 0.35 + Math.sin(t * 1.2) * 0.12 - damage * 0.35;
     b.rotation.z = Math.sin(t * 0.9) * 0.05 + damage * 0.22;
     b.rotation.x = Math.sin(t * 0.7 + 1) * 0.03;
   });
@@ -500,7 +504,7 @@ export function Island({ room, world }: { room: IslandRoom; world: World }) {
     <>
       <WindClock />
       <Terrain room={room} world={world} />
-      <Water world={world} />
+      <Water world={world} tidal />
       <Trees room={room} world={world} />
       <Vegetation world={world} />
       <Structures world={world} />
@@ -512,6 +516,7 @@ export function Island({ room, world }: { room: IslandRoom; world: World }) {
       <Camp room={room} world={world} />
       <Landmarks world={world} />
       <Boat room={room} />
+      <SurvivalWorld room={room} world={world} />
     </>
   );
 }

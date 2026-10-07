@@ -72,8 +72,11 @@ export class Hazards {
     return this.sprung.has(trapId);
   }
 
-  /** `active`: đang trong giờ đi lại trên đảo (ban đêm và lúc chuẩn bị không có nguy hiểm). */
-  step(dt: number, divers: readonly Diver[], active: boolean, fire?: Fire): HazardEvent[] {
+  /**
+   * `active`: đang trong giờ đi lại trên đảo (ban đêm và lúc chuẩn bị không có nguy hiểm).
+   * `sea`: mực nước biển lúc này (thủy triều, xem tide.ts).
+   */
+  step(dt: number, divers: readonly Diver[], active: boolean, fire?: Fire, sea = WATER_LEVEL): HazardEvent[] {
     const events: HazardEvent[] = [];
     for (const d of divers) {
       if (active && d.alive) {
@@ -93,7 +96,7 @@ export class Hazards {
         } else this.burnTimer.delete(d.id);
       }
       let breath = this.breath.get(d.id) ?? 100;
-      const underwater = active && d.alive && d.y + HEAD_HEIGHT < WATER_LEVEL - 0.05 && !this.world.structureAt(d.x, d.z);
+      const underwater = active && d.alive && d.y + HEAD_HEIGHT < sea - 0.05 && !this.world.structureAt(d.x, d.z);
       if (underwater) {
         breath = Math.max(0, breath - (100 / breathSeconds(d.strength, d.background)) * dt);
         if (breath === 0) {

@@ -289,5 +289,12 @@
   ],
   "death_burn": [
     "{name} gục bên đống lửa trại, người cháy sém."
+  ],
+  "encounter_volcanic": [
+    "Núi lửa không tha cho {name}: {thing} để lại một vết bỏng dài.",
+    "{name} khập khiễng về trại, áo còn cháy sém vì {thing}."
+  ],
+  "death_volcanic": [
+    "{name} gục xuống giữa tro bụi và dung nham, khi hòn đảo bắt đầu tự thiêu rụi."
   ]
 }

@@ -11,6 +11,7 @@ import { usePrivate } from "./privateStore.ts";
 import { buildGhost, localPosition, sky } from "./shared.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { Flame } from "./Flame.tsx";
+import { SnapGhost, SnapPieces, type PlacedBuilding } from "./SnapBuild.tsx";
 import { detailed } from "./textures.ts";
 
 // Trại: lửa trại, hai lều và những công trình cả đội dựng thêm (chòi lá, nhà sàn, hàng rào), tất cả đặt
@@ -228,13 +229,56 @@ function BuildingCollider({ kind }: { kind: string }) {
 }
 
 /** Bóng công trình trước mặt khi đang ở chế độ dựng nhà: xanh là dựng được, đỏ là không. */
-function BuildGhost({ world, camp, buildings, blocked }: { world: World; camp: { x: number; z: number; packed: boolean }; buildings: { x: number; z: number }[]; blocked: { x: number; z: number }[] }) {
-  const group = useRef<Group>(null);
+function BuildGhost({
+  world,
+  camp,
+  buildings,
+  blocked,
+  records,
+}: {
+  world: World;
+  camp: { x: number; z: number; packed: boolean };
+  buildings: { x: number; z: number }[];
+  blocked: { x: number; z: number }[];
+  records: readonly PlacedBuilding[];
+}) {
   const view = usePrivate();
   const kind = useHud().build;
   const def = worldCatalog.buildings.get(kind);
   const items = view?.bag.map((b) => b.itemId) ?? [];
   const enough = def ? Object.entries(def.cost).every(([item, n]) => items.filter((i) => i === item).length >= n) : false;
+  // Vật cản cho mảnh lắp ghép: cây, nhà kiểu cũ (đúng như server kiểm tra).
+  const obstacles = useMemo(
+    () => [
+      ...blocked.map((t) => ({ x: t.x, z: t.z, r: 0.3 })),
+      ...records
+        .filter((b) => !worldCatalog.buildings.get(b.kind)?.snap)
+        .map((b) => ({ x: camp.x + b.dx, z: camp.z + b.dz, r: (worldCatalog.buildings.get(b.kind)?.size[0] ?? 3) / 2 })),
+    ],
+    [blocked, records, camp.x, camp.z],
+  );
+  if (def?.snap) return <SnapGhost world={world} camp={camp} kind={kind} snap={def.snap} buildings={records} obstacles={obstacles} enough={enough} />;
+  return <FreeGhost world={world} camp={camp} buildings={buildings} blocked={blocked} kind={kind} enough={enough} />;
+}
+
+/** Công trình đặt tự do kiểu cũ (chòi lá, nhà sàn, hàng rào). */
+function FreeGhost({
+  world,
+  camp,
+  buildings,
+  blocked,
+  kind,
+  enough,
+}: {
+  world: World;
+  camp: { x: number; z: number; packed: boolean };
+  buildings: { x: number; z: number }[];
+  blocked: { x: number; z: number }[];
+  kind: string;
+  enough: boolean;
+}) {
+  const group = useRef<Group>(null);
+  const def = worldCatalog.buildings.get(kind);
 
   useFrame(() => {
     const g = group.current;
@@ -247,7 +291,7 @@ function BuildGhost({ world, camp, buildings, blocked }: { world: World; camp: {
     const fromCamp = Math.hypot(x - camp.x, z - camp.z);
     const clear = buildings.every((b) => Math.hypot(b.x - x, b.z - z) > 2.4 + def.size[0] / 2 - 1.5) && blocked.every((t) => Math.hypot(t.x - x, t.z - z) > def.size[0] / 2 + 0.3);
     const ok = enough && !camp.packed && y > 0.4 && !world.structureAt(x, z) && fromCamp <= BUILD_RADIUS && fromCamp >= 3.5 && clear;
-    Object.assign(buildGhost, { x, z, rot, ok, kind });
+    Object.assign(buildGhost, { x, z, rot, ok, kind, level: 0 });
     g.position.set(x, y, z);
     g.rotation.y = rot;
     if (getHud().buildOk !== ok) setHud({ buildOk: ok });
@@ -270,12 +314,14 @@ function BuildGhost({ world, camp, buildings, blocked }: { world: World; camp: {
 
 export function Camp({ room, world }: { room: IslandRoom; world: World }) {
   const camp = useRoomSnapshot(room, (s) => ({ x: s.campX, z: s.campZ, packed: s.campPacked }));
-  const buildings = useRoomSnapshot(room, (s) => [...s.buildings.entries()].map(([id, b]) => ({ id, kind: b.kind, dx: b.dx, dz: b.dz, rot: b.rot })));
+  const buildings = useRoomSnapshot(room, (s) => [...s.buildings.entries()].map(([id, b]) => ({ id, kind: b.kind, dx: b.dx, dz: b.dz, rot: b.rot, level: b.level })));
   const stumps = useRoomSnapshot(room, (s) => [...s.stumps].join(","));
   const plants = useRoomSnapshot(room, (s) => [...s.plants.values()].map((p) => ({ x: Math.round(p.x), z: Math.round(p.z) })));
   const building = useHud().build;
   const ground = world.heightAt(camp.x, camp.z);
   const placed = buildings.map((b) => ({ ...b, x: camp.x + b.dx, z: camp.z + b.dz }));
+  // Công trình kiểu cũ đặt tự do; mảnh lắp ghép (sàn, vách, cầu thang, tháp canh) vẽ riêng theo lưới.
+  const free = placed.filter((b) => !worldCatalog.buildings.get(b.kind)?.snap);
   const blocked = useMemo(() => {
     const felled = new Set(stumps.split(","));
     return [...world.trees.filter((t) => !felled.has(t.id)), ...plants];
@@ -293,7 +339,8 @@ export function Camp({ room, world }: { room: IslandRoom; world: World }) {
           {tents.map((t, i) => (
             <Tent key={i} x={t.x} y={world.heightAt(t.x, t.z)} z={t.z} rot={t.rot} color={t.color} />
           ))}
-          {placed.map((b) => (
+          <SnapPieces world={world} camp={camp} buildings={buildings} />
+          {free.map((b) => (
             <group key={b.id} position={[b.x, world.heightAt(b.x, b.z), b.z]} rotation-y={b.rot}>
               <BuildingModel kind={b.kind} />
               <RigidBody type="fixed" colliders={false}>
@@ -310,7 +357,7 @@ export function Camp({ room, world }: { room: IslandRoom; world: World }) {
           <meshStandardMaterial color="#2b2622" />
         </mesh>
       )}
-      {building && <BuildGhost world={world} camp={camp} buildings={placed} blocked={blocked} />}
+      {building && <BuildGhost world={world} camp={camp} buildings={placed} blocked={blocked} records={buildings} />}
     </>
   );
 }

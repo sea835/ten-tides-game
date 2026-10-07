@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Dices, Flame, Gem, Hammer, HandHeart, Moon, PawPrint, Sailboat, ScrollText, Skull, Sparkles, Sunset, Swords, Tent, TreePalm, TriangleAlert, UtensilsCrossed, Wrench, Zap, type LucideIcon } from "lucide-react";
-import { RATION_LABELS, content, worldCatalog } from "@tentides/content";
+import { RATION_LABELS, SURVIVAL_THINGS, content, worldCatalog } from "@tentides/content";
 import type { IslandState, LogEntryState } from "@tentides/protocol";
 import type { RationId } from "@tentides/rules";
 import type { IslandRoom } from "../../net.ts";
@@ -44,6 +44,7 @@ const ENCOUNTER_ICONS: Record<string, LucideIcon> = {
   page: ScrollText,
   lava: Flame,
   burn: Flame,
+  volcanic: Flame,
 };
 
 /** Tên ngắn của biến cố ngày 5 cho dòng nhật ký (lời kể đầy đủ nằm ở bản kể bình minh). */
@@ -71,7 +72,7 @@ function encounterLine(e: LogEntryState, name: (id: string) => string): Line {
   const trap = worldCatalog.traps.get(e.defId);
   switch (e.source) {
     case "egg":
-      return { day: e.day, ok: true, text: `${who} tìm thấy ${poi?.name.toLowerCase() ?? "một bí mật"}${tail}` };
+      return { day: e.day, ok: true, text: `${who} tìm thấy ${poi?.name.toLowerCase() ?? SURVIVAL_THINGS[e.defId] ?? "một bí mật"}${tail}` };
     case "anomaly":
       return { day: e.day, ok: ![...e.effects].some((x) => x.amount < 0), text: `${who} chạm vào ${poi?.name.toLowerCase() ?? "điều gì đó lạ"}${tail}` };
     case "trap":
@@ -96,6 +97,11 @@ function encounterLine(e: LogEntryState, name: (id: string) => string): Line {
       return { day: e.day, ok: false, text: `${who} rơi xuống hồ dung nham` };
     case "burn":
       return { day: e.day, ok: false, text: `${who} giẫm vào đống lửa trại${tail}` };
+    case "volcanic":
+      return { day: e.day, ok: false, text: `${who} bị ${SURVIVAL_THINGS[e.defId] ?? "núi lửa"} thiêu bỏng${tail}` };
+    case "drowning":
+      if (e.defId === "flood_tide") return { day: e.day, ok: false, text: `${who} bị triều cường cuốn${tail}` };
+      return { day: e.day, ok: false, text: `${who} suýt đuối nước${tail}` };
     default:
       return { day: e.day, ok: false, text: `${who} suýt đuối nước${tail}` };
   }
