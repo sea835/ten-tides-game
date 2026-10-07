@@ -21,6 +21,12 @@ import { Trails } from "./Trails.tsx";
 import { WaypointTracker } from "./Waypoint.tsx";
 import { Weather } from "./Weather.tsx";
 import { DayCycle } from "./DayCycle.tsx";
+import { Atmosphere } from "./Atmosphere.tsx";
+import { cloudUniforms, installHeightFog, wetUniforms } from "./atmosphere.ts";
+import { weatherUniforms } from "./textures.ts";
+import { trampleUniforms } from "./trample.ts";
+import { useGodRays } from "./GodRays.tsx";
+import { RainGlass } from "./RainGlass.tsx";
 import { cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
 import { FrameDriver, PerfOverlay } from "./FrameDriver.tsx";
 import { Hud } from "./hud/Hud.tsx";
@@ -45,6 +51,9 @@ import { VoiceHeads } from "./voice/VoiceHeads.tsx";
 
 const HORIZON = "#c4e4f3";
 
+// Sương mù bám độ cao cho mọi vật liệu: phải cài trước khi dựng shader đầu tiên.
+installHeightFog();
+
 /** Móc debug khi dev: xem room, vị trí, hướng nhìn và camera trong console trình duyệt. */
 function DebugHook({ room }: { room: IslandRoom }) {
   const camera = useThree((s) => s.camera);
@@ -53,7 +62,7 @@ function DebugHook({ room }: { room: IslandRoom }) {
   useEffect(() => {
     if (import.meta.env.DEV) {
       const w = window as unknown as { __tentides?: Record<string, unknown> };
-      w.__tentides = { ...(w.__tentides ?? {}), room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx, audio };
+      w.__tentides = { ...(w.__tentides ?? {}), room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx, audio, atmosphere: { cloudUniforms, wetUniforms, weatherUniforms, trampleUniforms } };
     }
   }, [room, camera, scene, world]);
   return null;
@@ -78,7 +87,8 @@ function PlayerLight() {
 
 /**
  * Hậu kỳ: bóng tối ở khe, góc, chân cây (ambient occlusion, chỉ ở mức Cao); lửa, dung nham, nắng loá toả quầng;
- * tone map kiểu phim (AgX, màu tự nhiên, không cháy sáng); chỉnh màu nhẹ; góc màn hình tối nhẹ.
+ * tia nắng xuyên qua cây, nhà khi nắng chiếu thấp (GodRays.tsx); tone map kiểu phim (AgX, màu tự nhiên, không cháy
+ * sáng); chỉnh màu nhẹ; góc màn hình tối nhẹ.
  */
 function PostFx({ ao: withAo }: { ao: boolean }) {
   const scene = useThree((s) => s.scene);
@@ -86,6 +96,8 @@ function PostFx({ ao: withAo }: { ao: boolean }) {
   const size = useThree((s) => s.size);
   // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần).
   const [ao, setAo] = useState<N8AOPostPass | null>(null);
+  // Mức Cao lấy nhiều mẫu hơn cho tia mịn; Trung bình ít mẫu (tia hơi lấm tấm nhưng nhẹ).
+  const rays = useGodRays(withAo ? 32 : 20);
   useEffect(() => {
     if (!withAo) return;
     const pass = new N8AOPostPass(scene, camera, size.width, size.height);
@@ -108,6 +120,7 @@ function PostFx({ ao: withAo }: { ao: boolean }) {
     // Bật tắt AO thì dựng lại cả chuỗi hậu kỳ.
     <EffectComposer key={withAo ? "full" : "lite"} multisampling={0}>
       {withAo && ao && <primitive object={ao} />}
+      <primitive object={rays} />
       <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.7} radius={0.75} />
       <ToneMapping mode={ToneMappingMode.AGX} />
       <HueSaturation saturation={0.22} />
@@ -231,11 +244,13 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
           <WaypointTracker />
           <Texturize />
           <DayCycle room={room} sun={sun} hemi={hemi} ibl={profile.ibl} />
+          <Atmosphere room={room} />
           <DebugHook room={room} />
           {post && <PostFx ao={profile.post === "full"} />}
           {battle && <ViewPass post={post} />}
         </Suspense>
       </Canvas>
+      <RainGlass />
       <PerfOverlay />
       {battle ? (
         <BattleHud room={room} onLeave={onLeave} />

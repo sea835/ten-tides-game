@@ -20,7 +20,10 @@ import {
   type WebGLRenderer,
 } from "three";
 import { MAP_HALF_SIZE } from "@tentides/content";
+import { CLOUD_PARS_GLSL, cloudLightsChunk, cloudTexture, cloudUniforms } from "./atmosphere.ts";
 import { mulberry32, wind, windStrength } from "./nature.ts";
+import { reflectionHidden } from "./reflection.ts";
+import { TRAMPLE_GLSL, trampleUniforms } from "./trample.ts";
 
 // Thảm cỏ dày quanh camera: hàng trăm nghìn lá cỏ vẽ bằng một lệnh (instancing). Mỗi lá cố định một chỗ trên
 // thế giới trong một ô vuông lặp lại theo camera: đi tới thì lá phía sau vòng lên phía trước, nên cỏ luôn phủ quanh
@@ -171,6 +174,8 @@ const VERTEX_HEAD = /* glsl */ `
   varying vec3 vGrassColor;
   varying float vTip;
   varying float vShade;
+  varying vec2 vTenCloudXZ;
+  ${TRAMPLE_GLSL}
 `;
 
 const VERTEX_PLACE = /* glsl */ `
@@ -199,11 +204,15 @@ const VERTEX_PLACE = /* glsl */ `
   // Gió: từng đợt gió lướt qua bãi cỏ thành sóng.
   float gGust = sin(uWind * 2.2 + gXZ.x * 0.28 + gXZ.y * 0.17) * 0.6 + sin(uWind * 3.7 + gXZ.x * 0.9 - gXZ.y * 0.6) * 0.25;
   vec2 gWindOff = vec2(0.85, 0.5) * (gGust + 0.4) * 0.22 * uWindStrength * gT * gT * gHeight;
+  // Người, xe đi qua thì lá dạt ra hai bên và rạp xuống; vụ nổ quét một vòng rạp cỏ (trample.ts).
+  vec3 gTr = gHeight > 0.0 ? tenTrample(gXZ) : vec3(0.0);
+  gWindOff = gWindOff * (1.0 - gTr.z * 0.7) + gTr.xy * (0.55 + 0.4 * gTr.z) * gT * gHeight;
   vec3 gPos = vec3(
     gXZ.x + gPerp.x * gWidth + gDir.x * gLean + gWindOff.x,
-    gY - 0.02 + gT * gHeight,
+    gY - 0.02 + gT * gHeight * (1.0 - 0.62 * gTr.z),
     gXZ.y + gPerp.y * gWidth + gDir.y * gLean + gWindOff.y
   );
+  vTenCloudXZ = gXZ;
   // Mỗi lá một sắc: lá non xanh tươi, lá già ngả vàng, lá khuất sẫm hơn.
   float gHue = fract(aSeed.w * 71.3 + aSeed.z * 13.7);
   vec3 gTint = mix(vec3(0.85, 1.12, 0.62), vec3(1.25, 1.1, 0.55), smoothstep(0.7, 1.0, gHue));
@@ -254,8 +263,9 @@ export function GrassField({ geometries, count, clearings, heightAt, half = MAP_
     const m = new MeshStandardMaterial({ roughness: 0.8, side: DoubleSide });
     m.userData.detail = "none";
     m.customProgramCacheKey = () => "grass-field";
+    cloudTexture();
     m.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms);
+      Object.assign(shader.uniforms, uniforms, trampleUniforms, cloudUniforms);
       shader.vertexShader = shader.vertexShader
         .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
         .replace(
@@ -264,7 +274,9 @@ export function GrassField({ geometries, count, clearings, heightAt, half = MAP_
         )
         .replace("#include <begin_vertex>", "vec3 transformed = gPos;");
       shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vGrassColor;\nvarying float vTip;\nvarying float vShade;")
+        .replace("#include <common>", `#include <common>\nvarying vec3 vGrassColor;\nvarying float vTip;\nvarying float vShade;\nvarying vec2 vTenCloudXZ;\n${CLOUD_PARS_GLSL}`)
+        // Bóng mây trôi qua bãi cỏ cùng nhịp với mặt đất.
+        .replace("#include <lights_fragment_begin>", cloudLightsChunk("vTenCloudXZ"))
         .replace(
           "#include <color_fragment>",
           /* glsl */ `#include <color_fragment>
@@ -276,6 +288,12 @@ export function GrassField({ geometries, count, clearings, heightAt, half = MAP_
     return m;
   }, [uniforms]);
   useEffect(() => () => material.dispose(), [material]);
+  // Thảm cỏ không vẽ vào ảnh phản chiếu của mặt nước (nặng mà gần như không thấy).
+  useEffect(() => {
+    const list = meshes.current.slice();
+    for (const m of list) if (m) reflectionHidden.add(m);
+    return () => list.forEach((m) => m && reflectionHidden.delete(m));
+  }, [baked, chunks]);
 
   useFrame(({ camera }) => {
     if (baked && done.current !== baked) {
