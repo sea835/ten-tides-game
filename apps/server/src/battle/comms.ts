@@ -1,6 +1,7 @@
 import { MAP_HALF_SIZE } from "@tentides/content";
 import {
   Messages,
+  PING_LOOT_SLACK,
   PING_MAX_DISTANCE,
   PING_MIN_INTERVAL_MS,
   PING_TTL_MS,
@@ -14,12 +15,15 @@ import {
 } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 
-// Liên lạc trong đội: đánh dấu chuột giữa (chỗ thường, địch, nguy hiểm) và câu bộ đàm (vòng khẩu lệnh). Server kiểm
+// Liên lạc trong đội: đánh dấu chuột giữa (chỗ thường, địch, đồ dưới đất, nguy hiểm, các ô trên vòng chọn khi giữ
+// chuột giữa: tấn công, phòng thủ, đang tới, cần giáp, thấy địch, cẩn thận) và câu bộ đàm (vòng khẩu lệnh). Server kiểm
 // tra (nhịp gửi, tầm xa, người bị đánh dấu có thật là địch, ở gần chỗ đánh dấu) rồi chỉ chuyển cho người cùng đội
 // (đội của người chơi ở chế độ Đồng đội, phe ở Chiến trường). Solo không có đội: chỉ mình thấy dấu của mình.
 
 /** Người bị đánh dấu "địch" phải ở gần chỗ đánh dấu chừng này mét (bù độ trễ, nội suy trên máy người đánh dấu). */
 export const PING_TARGET_SLACK = 6;
+/** Chống spam dấu (nhất là vòng chọn): mỗi người tối đa `count` dấu trong `ms` mili giây (ngoài nhịp tối thiểu). */
+export const PING_BURST = { count: 5, ms: 5000 };
 /** Câu tấn công / phòng thủ: gắn tên cứ điểm gần nhất trong tầm này (m). */
 const FLAG_NEAR = 140;
 
@@ -30,8 +34,9 @@ export function hostile(a: PlayerState, b: PlayerState): boolean {
 
 /**
  * Kiểm tra một dấu: người gửi còn sống, điểm đánh dấu hợp lệ (trong bản đồ, không quá xa người gửi). Dấu địch: người
- * bị đánh dấu phải còn sống, là địch, ở gần chỗ đánh dấu, không thì hạ xuống thành dấu chỗ thường. Trả về dấu để
- * chuyển đi (dấu địch lấy đúng vị trí người đó trên server), hay null nếu bỏ.
+ * bị đánh dấu phải còn sống, là địch, ở gần chỗ đánh dấu, không thì hạ xuống thành dấu chỗ thường. Dấu đồ: món đồ
+ * (khoá trong groundItems) phải còn nằm gần chỗ đánh dấu, không thì cũng thành dấu chỗ thường. Trả về dấu để chuyển
+ * đi (dấu địch, dấu đồ lấy đúng vị trí trên server), hay null nếu bỏ.
  */
 export function validatePing(state: IslandState, id: string, m: PingMessage, half = MAP_HALF_SIZE): PingBroadcast | null {
   const p = state.players.get(id);
@@ -52,7 +57,17 @@ export function validatePing(state: IslandState, id: string, m: PingMessage, hal
       z = t.z;
     } else kind = "spot";
   }
-  return { from: id, name: p.name, kind, x, y, z, target, ttl: PING_TTL_MS[kind] };
+  let item = "";
+  if (kind === "loot") {
+    const g = m.item ? state.groundItems.get(m.item) : undefined;
+    if (g && Math.hypot(g.x - m.x, g.z - m.z) <= PING_LOOT_SLACK && Math.abs(g.y - m.y) <= PING_LOOT_SLACK) {
+      item = g.itemId;
+      x = g.x;
+      y = g.y;
+      z = g.z;
+    } else kind = "spot";
+  }
+  return { from: id, name: p.name, kind, x, y, z, target, ttl: PING_TTL_MS[kind], ...(item ? { item } : {}) };
 }
 
 /** Những người nghe được người `id`: cả đội (cùng `team`), không đội thì chỉ mình. */
@@ -67,12 +82,15 @@ export function audience(state: IslandState, id: string): string[] {
 
 export class Comms {
   private lastPing = new Map<string, number>();
+  /** Giờ các dấu gần đây của từng người (để chặn spam theo PING_BURST). */
+  private recent = new Map<string, number[]>();
   private lastRadio = new Map<string, number>();
 
   constructor(private readonly room: BattleRoom) {}
 
   clear() {
     this.lastPing.clear();
+    this.recent.clear();
     this.lastRadio.clear();
   }
 
@@ -84,9 +102,13 @@ export class Comms {
   ping(id: string, m: PingMessage, now = Date.now()): PingBroadcast | null {
     if (!this.room.fighting()) return null;
     if (now - (this.lastPing.get(id) ?? -Infinity) < PING_MIN_INTERVAL_MS) return null;
+    const recent = (this.recent.get(id) ?? []).filter((t) => now - t < PING_BURST.ms);
+    if (recent.length >= PING_BURST.count) return null;
     const out = validatePing(this.room.state, id, m, this.room.map?.half ?? MAP_HALF_SIZE);
     if (!out) return null;
     this.lastPing.set(id, now);
+    recent.push(now);
+    this.recent.set(id, recent);
     this.send(audience(this.room.state, id), Messages.ping, out);
     return out;
   }

@@ -792,6 +792,23 @@ kbd {
   display: flex;
   gap: 4px;
 }
+/* Thủy triều và núi lửa leo thang (đảo sinh tồn). */
+.clock-hazards {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.clock-hazards .warn {
+  color: var(--sky);
+  font-weight: 600;
+}
+.clock-hazards .danger {
+  color: var(--danger);
+  font-weight: 700;
+  animation: pulse 1.6s ease-in-out infinite;
+}
 .tide {
   width: 16px;
   height: 4px;

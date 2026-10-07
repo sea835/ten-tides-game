@@ -8,9 +8,9 @@ import { WRECK_SECONDS } from "@tentides/content";
 
 /**
  * Bộ điều khiển nào đang giữ `seat` (camera, thân nhân vật theo xe): "tank" (lái xe tăng), "carrier" (xe chở quân),
- * "emplacement" (vũ khí cố định: ổ đại liên, cối — Emplacements.tsx).
+ * "emplacement" (vũ khí cố định: ổ đại liên, cối — Emplacements.tsx), "heli" (trực thăng — Heli.tsx).
  */
-export const seatOwner = { kind: "" as "" | "tank" | "carrier" | "emplacement" };
+export const seatOwner = { kind: "" as "" | "tank" | "carrier" | "emplacement" | "heli" };
 
 /** Xe gần nhất lên được: loại xe và ghế sẽ ngồi (cho dòng nhắc "F lên xe"). */
 export const nearInfo = { kind: "", seat: "" };

@@ -672,6 +672,74 @@ const GUNS: Record<string, GunSpec> = {
       cyl("steel", 0.006, 0.04, [0, 0.09, 1.04], { segs: 8 }),
     ],
   },
+  // Minigun (thùng chi viện, vác cùng giáp Juggernaut): sáu nòng quanh trục, hộp động cơ, tay cầm trên, hộp đạn
+  // to treo bên trái. Phần "action" là chùm nòng (ViewModel không lùi nó: travel 0).
+  minigun: {
+    muzzle: [0, 0.08, 0.78],
+    sight: 0.2,
+    support: [0.0, 0.17, 0.12],
+    stock: 0.2,
+    eject: [-0.07, 0.06, 0.05],
+    travel: 0,
+    parts: () => [
+      box("metal", 0.13, 0.13, 0.26, [0, 0.08, -0.05]),
+      cyl("steel", 0.07, 0.06, [0, 0.08, 0.1], { segs: 14 }),
+      cyl("steel", 0.065, 0.03, [0, 0.08, 0.62], { segs: 14 }),
+      grip("poly", 0.036),
+      ...trigger(0.035, 0.02),
+      box("poly", 0.03, 0.03, 0.2, [0, 0.19, 0.06]),
+      box("poly", 0.03, 0.08, 0.03, [0, 0.15, -0.03]),
+      box("poly", 0.03, 0.08, 0.03, [0, 0.15, 0.15]),
+      box("metal", 0.05, 0.03, 0.18, [0.075, 0.03, 0.0]),
+    ],
+    action: () => Array.from({ length: 6 }, (_, k) => cyl("metal", 0.013, 0.66, [Math.cos((k / 6) * Math.PI * 2) * 0.042, 0.08 + Math.sin((k / 6) * Math.PI * 2) * 0.042, 0.45], { segs: 8 })),
+    mag: () => [box("olive", 0.12, 0.16, 0.22, [0.13, -0.03, -0.02]), box("metal", 0.05, 0.03, 0.08, [0.07, 0.04, 0.02])],
+  },
+  // TOW: ống phóng tên lửa vác vai, kính ngắm dẫn đường hộp to bên trái, hai tay cầm; đầu đạn lộ ở miệng ống.
+  tow: {
+    muzzle: [0, 0.1, 0.7],
+    sight: 0.2,
+    support: [0.0, 0.03, 0.24],
+    stock: 0.36,
+    eject: [0, 0.1, -0.55],
+    travel: 0,
+    parts: () => [
+      cyl("olive", 0.075, 1.25, [0, 0.1, 0.08], { segs: 16 }),
+      cyl("metal", 0.08, 0.04, [0, 0.1, 0.7], { segs: 16 }),
+      cyl("metal", 0.08, 0.04, [0, 0.1, -0.54], { segs: 16 }),
+      box("metal", 0.08, 0.1, 0.22, [-0.12, 0.16, 0.0]),
+      cyl("steel", 0.022, 0.05, [-0.12, 0.17, -0.13], { segs: 10 }),
+      grip("poly", 0.034),
+      box("poly", 0.03, 0.1, 0.04, [0, -0.01, 0.24], [0.2, 0, 0]),
+      ...trigger(0.035, 0.03),
+    ],
+    action: () => [],
+    mag: () => [cyl("steel", 0.06, 0.05, [0, 0.1, 0.68], { segs: 14, r2: 0.03 })],
+  },
+  // IGLA: ống phóng phòng không dài thẳng màu ô liu, đầu dò tầm nhiệt tròn ở mũi ống, khối nguồn / tay cầm dưới
+  // ống, kính ngắm khung bên trái. Bắn đi thì nắp mũi ("mag") biến mất tới khi nạp ống mới.
+  igla: {
+    muzzle: [0, 0.09, 0.82],
+    sight: 0.17,
+    support: [0.0, 0.03, 0.26],
+    stock: 0.62,
+    eject: [0, 0.09, -0.6],
+    travel: 0,
+    parts: () => [
+      cyl("olive", 0.04, 1.42, [0, 0.09, 0.1], { segs: 14 }),
+      cyl("olive", 0.046, 0.12, [0, 0.09, -0.56], { segs: 14, r2: 0.052, open: true }),
+      cyl("poly", 0.045, 0.06, [0, 0.09, 0.3], { segs: 14 }),
+      box("poly", 0.07, 0.09, 0.2, [0, 0.005, 0.12]),
+      cyl("poly", 0.022, 0.16, [0, -0.02, 0.27], { segs: 10 }),
+      grip("poly", 0.034),
+      ...trigger(0.035, 0.03),
+      box("metal", 0.012, 0.06, 0.12, [-0.055, 0.15, 0.05]),
+      box("metal", 0.03, 0.03, 0.03, [-0.055, 0.19, 0.0]),
+      post(0.17, 0.4, 0.13),
+    ],
+    action: () => [],
+    mag: () => [cyl("poly", 0.042, 0.04, [0, 0.09, 0.83], { segs: 14, r2: 0.03 }), sph("steel", 0.03, [0, 0.09, 0.85], [1, 1, 0.6], undefined, [10, 8])],
+  },
   // AWM: khung báng xanh ô liu có lỗ ngón cái, nòng to với hãm nẩy, ống ngắm lớn, chân chống.
   awm: {
     muzzle: [0, 0.1, 0.78],
@@ -1349,6 +1417,21 @@ export function LootModel({ id }: { id: string }) {
     return (
       <group position-y={-0.05}>
         <HelmetModel level={Number(arg) || 1} />
+      </group>
+    );
+  }
+  if (id === "jugg") {
+    // Bộ giáp Juggernaut (thùng chi viện): áo giáp nặng nhất nằm sấp, mũ nặng đặt bên cạnh.
+    return (
+      <group scale={1.25}>
+        <group position-y={0.075} rotation-x={-Math.PI / 2}>
+          <group position-y={-0.27} scale={[1, 1, 0.55]}>
+            <VestModel level={3} />
+          </group>
+        </group>
+        <group position={[0.42, -0.05, 0]}>
+          <HelmetModel level={3} />
+        </group>
       </group>
     );
   }

@@ -611,7 +611,8 @@ function generateReefs(rand: Rand, islets: readonly Islet[]): Reef[] {
     if (reefs.some((r) => Math.hypot(r.x - x, r.z - z) < r.radius + radius + 6)) continue;
     if (islets.some((it) => isletEdge(it, x, z) > -4)) continue;
     if (islandHeightAt(x, z) > -3) continue;
-    reefs.push({ id: `reef${reefs.length}`, x, z, radius, top: -2.2 - rand() * 1.4 });
+    // Đỉnh rạn nằm dưới mặt nước lúc triều trung bình, đầu san hô nhô lên khi triều rút (xem tide.ts).
+    reefs.push({ id: `reef${reefs.length}`, x, z, radius, top: -1.4 - rand() * 1.0 });
   }
   return reefs;
 }

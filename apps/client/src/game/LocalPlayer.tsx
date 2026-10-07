@@ -11,7 +11,8 @@ import {
   DIG_RADIUS,
   PICKUP_RADIUS,
   TREASURE_SITES,
-  WATER_LEVEL,
+  tidalOpen,
+  tidalSites,
   content,
   worldCatalog,
   type World,
@@ -27,13 +28,14 @@ import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { ADRENALINE, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
+import { ADRENALINE, JUGGERNAUT, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
 import { bodies, getBattleHud, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { gun, gun as shooterGun } from "./battle/runtime.ts";
 import { playLand } from "./sound/guns.ts";
 import { aimZoom, getSettings } from "./settings.ts";
 import { scratchRay, scratchRayFrom } from "./scratch.ts";
+import { tide } from "./tide.ts";
 
 const WALK_SPEED = 8;
 const GRAVITY = 25;
@@ -493,10 +495,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
 
     const pos = rb.translation();
     const feetNow = pos.y - FEET_OFFSET;
-    const waterDepth = WATER_LEVEL - world.heightAt(pos.x, pos.z);
+    const waterDepth = tide.level - world.heightAt(pos.x, pos.z);
     // Vào nước sâu thì bơi; về chỗ nông chạm được đáy thì lội. Hai ngưỡng khác nhau để khỏi chập chờn ở mép.
     const wasSwimming = s.swimming;
-    if (!s.swimming && waterDepth > SWIM_ENTER_DEPTH && feetNow < WATER_LEVEL - 0.5) s.swimming = true;
+    if (!s.swimming && waterDepth > SWIM_ENTER_DEPTH && feetNow < tide.level - 0.5) s.swimming = true;
     else if (s.swimming && waterDepth < SWIM_EXIT_DEPTH) s.swimming = false;
     if (s.swimming !== wasSwimming) {
       // Bơi thì không bám xuống đáy (không thì chân bị hút xuống đáy biển).
@@ -543,7 +545,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (battle) s.hop = Math.min(s.hop, 0.3);
     // Bơm Adrenaline (lính Đột Kích): chạy nhanh hơn một phần tư trong lúc thuốc còn tác dụng (server nới mức kiểm tra).
     const adrenaline = battle && !s.swimming && (sheet?.gear?.boost ?? 0) > 0 ? ADRENALINE.speed : 1;
-    const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * adrenaline * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
+    // Giáp Juggernaut (thùng chi viện) nặng: đi chậm hẳn.
+    const heavy = battle && sheet?.gear?.jugg ? JUGGERNAUT.speed : 1;
+    const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * adrenaline * heavy * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
     // Chóng mặt thì đi loạng choạng: hướng đi bị lệch qua lệch lại.
@@ -664,7 +668,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     } else {
       if (s.swimming) {
         // Giữ C (hoặc Ctrl) để lặn, Space để ngoi; thả tay thì nổi dần lên mặt nước. Hết hơi thì bị đẩy lên.
-        const surface = WATER_LEVEL - SWIM_FLOAT;
+        const surface = tide.level - SWIM_FLOAT;
         const diving = !frozen && breath > 0 && (keys.has("KeyC") || keys.has("ControlLeft") || keys.has("ControlRight"));
         const ascending = !frozen && keys.has("Space");
         // Kiệt sức hay mang quá nặng thì không nổi được nữa: chìm dần, phải đạp nước (Space) mới ngoi lên nổi,
@@ -912,7 +916,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const side = s.vx * Math.cos(view.yaw) - s.vz * Math.sin(view.yaw);
     s.roll += (-side * 0.0045 * bobK - s.roll) * Math.min(1, dt * 6);
     // Đầu chìm dưới mặt nước (dùng ở cả hai nhánh camera, nên tính trước khi tách).
-    const headUnder = feetY + HEAD_HEIGHT < WATER_LEVEL - 0.05;
+    const headUnder = feetY + HEAD_HEIGHT < tide.level - 0.05;
     if (firstPerson) {
       // Mắt ở trên đỉnh đầu một chút, nhìn theo yaw/pitch (pitch dương là cúi xuống).
       // Mắt (góc thứ nhất) đi mượt theo tư thế: đứng, ngồi xổm, nằm sấp (đầu nằm ở phía trước).
@@ -945,9 +949,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       s.camDist = firstFrame || wantDist < s.camDist ? wantDist : s.camDist + (wantDist - s.camDist) * Math.min(1, dt * 4);
       camPos.copy(camTarget).addScaledVector(camDir, s.camDist);
       // Đang lặn thì camera được xuống nước theo; bơi trên mặt thì giữ camera trên mặt nước.
-      const minCamY = (headUnder ? world.heightAt(camPos.x, camPos.z) : Math.max(world.heightAt(camPos.x, camPos.z), WATER_LEVEL + 0.25)) + 0.5;
+      const minCamY = (headUnder ? world.heightAt(camPos.x, camPos.z) : Math.max(world.heightAt(camPos.x, camPos.z), tide.level + 0.25)) + 0.5;
       if (camPos.y < minCamY) camPos.y = minCamY;
-      if (headUnder && camPos.y > WATER_LEVEL - 0.3) camPos.y = WATER_LEVEL - 0.3;
+      if (headUnder && camPos.y > tide.level - 0.3) camPos.y = tide.level - 0.3;
       state.camera.position.copy(camPos);
       state.camera.lookAt(camTarget);
       state.camera.rotateZ(s.roll * 0.4 - leanNow * LEAN.roll * 0.5);
@@ -1026,7 +1030,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const maxDepth = inside ? Math.max(1, ...inside.structure.depth) : 1;
     const indoorTarget = inside ? 0.45 + 0.55 * (inside.depth / maxDepth) : 0;
     localEnv.indoor += (indoorTarget - localEnv.indoor) * Math.min(1, dt * 3);
-    localEnv.underwater = state.camera.position.y < WATER_LEVEL - 0.05;
+    localEnv.underwater = state.camera.position.y < tide.level - 0.05;
     // Không copy cả mảng mỗi khung hình chỉ để chạy hai phép includes (trước đây là
     // `[...sheet.items]` + 2 lần quét tuyến tính, ở mọi khung hình).
     const items = sheet?.items;
@@ -1194,6 +1198,11 @@ function nearestTarget(room: IslandRoom, world: World, x: number, y: number, z: 
     }
   }
   if (best) return best;
+  // Cổ vật trong xác tàu đắm, hang ngầm, trên rạn san hô: chỉ khi triều đã rút.
+  for (const site of tidalSites(world)) {
+    if (found.includes(site.id) || !tidalOpen(site, tide.level) || Math.abs(site.y - y) > 4) continue;
+    if (Math.hypot(site.x - x, site.z - z) <= INTERACT_RADIUS) return { id: site.id, kind: "poi", label: `Lục lọi ${site.name.toLowerCase()}` };
+  }
   // Trang nhật ký của hôm nay, chưa ai nhặt.
   for (const page of world.pages) {
     if (page.day !== state.day || found.includes(page.id) || Math.abs(page.y - y) > 3) continue;
@@ -1291,8 +1300,9 @@ function BattleLook({ room, children }: { room: IslandRoom; children: (look: { w
       throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : gadget && gadget !== "m203" ? gadget : "",
       knife: slot === "",
       outfit: k.outfit,
-      armor: k.armor,
-      helmet: k.helmet,
+      // Giáp Juggernaut: vẽ bộ giáp, mũ nặng nhất.
+      armor: me?.gear.jugg ? 3 : k.armor,
+      helmet: me?.gear.jugg ? 3 : k.helmet,
     };
   });
   return <>{children(look)}</>;

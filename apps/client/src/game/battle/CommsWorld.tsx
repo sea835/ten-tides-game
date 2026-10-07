@@ -2,21 +2,26 @@ import { useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3, type Camera } from "three";
 import type { World } from "@tentides/content";
-import { Messages, type PingMessage } from "@tentides/protocol";
+import { Messages, PING_WHEEL, type PingMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
+import { lookLock } from "../input.ts";
 import { localPosition } from "../shared.ts";
-import { PING_LABEL, enemyAlong, markerPool, pings, updatePings } from "./comms.ts";
+import { PING_HOLD_MS, enemyAlong, lootAlong, markerPool, pingText, pingWheelOpen, pings, setPingWheel, updatePings, wheelSlice } from "./comms.ts";
 import { menuOpen, seat } from "./runtime.ts";
 import { lastOrder, ORDER_LABEL } from "./SquadHud.tsx";
 import { physicsProbe } from "./surface.ts";
 
-// Phần trong cảnh 3D của liên lạc trong đội: bấm chuột giữa thì dò tia từ camera qua tâm màn hình (trúng địch thì
-// đánh dấu địch, không thì đánh dấu chỗ; bấm đúp là nguy hiểm), và mỗi khung hình chiếu các dấu (cùng lệnh đội đang
-// ra) lên màn hình: ô dấu ghim vào chỗ trong thế giới, ra ngoài khung nhìn thì nép vào mép màn hình kèm mũi tên.
+// Phần trong cảnh 3D của liên lạc trong đội: bấm chuột giữa thì dò tia từ camera qua tâm màn hình, đánh dấu theo
+// ngữ cảnh (trúng địch: "Phát hiện địch!", trúng đồ dưới đất: "Ở đây có …!", chỗ trống: "Di chuyển tới đây!"; bấm đúp
+// là nguy hiểm); giữ chuột giữa thì mở vòng chọn (tấn công, phòng thủ, đang tới, cần giáp, thấy địch, cẩn thận), thả ra
+// để đánh dấu ô đang chọn ở chỗ đã nhìn lúc bấm. Mỗi khung hình chiếu các dấu (cùng lệnh đội đang ra) lên màn hình: ô
+// dấu ghim vào chỗ trong thế giới, ra ngoài khung nhìn thì nép vào mép màn hình kèm mũi tên.
 
 /** Bấm đúp trong khoảng này (ms) là dấu nguy hiểm; bấm đơn thì chờ hết khoảng này mới gửi. */
 const DOUBLE_MS = 260;
 const PING_RANGE = 400;
+/** Chuột phải đi chừng này điểm ảnh khỏi tâm vòng chọn mới tính là chọn ô. */
+const WHEEL_DEAD = 24;
 /** Mép màn hình (toạ độ chuẩn −1…1) mà dấu nép vào khi ở ngoài khung nhìn. */
 const EDGE_X = 0.93;
 const EDGE_Y = 0.86;
@@ -61,34 +66,28 @@ function place(el: HTMLDivElement, n: number, cam: Camera, size: { width: number
   }
 }
 
+/** Cập nhật ô đang chọn trên vòng dấu (chỉ khi vòng đang mở; kho tự bỏ qua nếu không đổi). */
+function pingWheelPick(dx: number, dy: number) {
+  if (!pingWheelOpen()) return;
+  setPingWheel(true, wheelSlice(dx, dy, PING_WHEEL.length, WHEEL_DEAD));
+}
+
 export function CommsWorld({ room, world }: { room: IslandRoom; world: World }) {
   const camera = useThree((s) => s.camera);
 
-  // Chuột giữa: đánh dấu.
+  // Chuột giữa: bấm nhanh là dấu theo ngữ cảnh (bấm đúp: nguy hiểm), giữ là vòng chọn.
   useEffect(() => {
     let pending: (PingMessage & { timer: number }) | null = null;
+    /** Đang giữ chuột giữa: dấu theo ngữ cảnh đã dò lúc bấm, hẹn giờ mở vòng chọn, vòng đã mở chưa. */
+    let hold: { m: PingMessage; timer: number; wheel: boolean } | null = null;
     const flush = () => {
       if (!pending) return;
       const { timer: _t, ...m } = pending;
       pending = null;
       room.send(Messages.ping, m);
     };
-    const onDown = (e: MouseEvent) => {
-      if (e.button !== 1) return;
-      e.preventDefault();
-      if (!document.pointerLockElement || menuOpen()) return;
-      const phase = room.state.phase;
-      if (phase !== "prep" && phase !== "battle") return;
-      const me = myId(room);
-      if (!room.state.players.get(me)?.alive) return;
-      // Bấm lần hai ngay sau lần đầu: đổi dấu vừa chọn thành "nguy hiểm".
-      if (pending) {
-        clearTimeout(pending.timer);
-        pending.kind = "danger";
-        pending.target = undefined;
-        flush();
-        return;
-      }
+    /** Dò tia từ camera qua tâm màn hình: dấu theo ngữ cảnh (địch, đồ dưới đất, chỗ trống). */
+    const probe = (me: string): PingMessage => {
       camera.getWorldDirection(dir);
       // Ngồi xe tăng: bắt đầu tia ra khỏi thân xe (camera ở sau xe).
       const skip = seat.id ? 6 : 0.3;
@@ -107,27 +106,102 @@ export function CommsWorld({ room, world }: { room: IslandRoom; world: World }) 
           }
       }
       const target = enemyAlong(room, me, ox, oy, oz, dir.x, dir.y, dir.z, t + 1.5);
-      const m: PingMessage = { kind: target ? "enemy" : "spot", x: ox + dir.x * t, y: oy + dir.y * t, z: oz + dir.z * t };
       if (target) {
         const p = room.state.players.get(target);
-        if (p) Object.assign(m, { target, x: p.x, y: p.y, z: p.z });
+        if (p) return { kind: "enemy", target, x: p.x, y: p.y, z: p.z };
       }
-      pending = { ...m, timer: window.setTimeout(flush, DOUBLE_MS) };
+      const item = lootAlong(room, ox, oy, oz, dir.x, dir.y, dir.z, t + 1.5);
+      const g = item ? room.state.groundItems.get(item) : undefined;
+      if (g) return { kind: "loot", item, x: g.x, y: g.y, z: g.z };
+      return { kind: "spot", x: ox + dir.x * t, y: oy + dir.y * t, z: oz + dir.z * t };
+    };
+    const closeWheel = () => {
+      if (hold?.wheel) {
+        lookLock.active = false;
+        setPingWheel(false, -1);
+      }
+    };
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      if (!document.pointerLockElement || menuOpen() || hold) return;
+      const phase = room.state.phase;
+      if (phase !== "prep" && phase !== "battle") return;
+      const me = myId(room);
+      if (!room.state.players.get(me)?.alive) return;
+      // Bấm lần hai ngay sau lần đầu: đổi dấu vừa chọn thành "nguy hiểm".
+      if (pending) {
+        clearTimeout(pending.timer);
+        pending.kind = "danger";
+        pending.target = undefined;
+        pending.item = undefined;
+        flush();
+        return;
+      }
+      const m = probe(me);
+      hold = {
+        m,
+        wheel: false,
+        timer: window.setTimeout(() => {
+          // Vòng khẩu lệnh bộ đàm đang mở (cũng khoá hướng nhìn) thì thôi.
+          if (!hold || lookLock.active) return;
+          hold.wheel = true;
+          lookLock.active = true;
+          lookLock.dx = 0;
+          lookLock.dy = 0;
+          setPingWheel(true, -1);
+        }, PING_HOLD_MS),
+      };
+    };
+    const onUp = (e: MouseEvent) => {
+      if (e.button !== 1 || !hold) return;
+      const h = hold;
+      clearTimeout(h.timer);
+      if (h.wheel) {
+        // Thả trên vòng chọn: đánh dấu ô đang chọn ở chỗ đã nhìn lúc bấm (giữa vùng chết thì thôi).
+        const pick = wheelSlice(lookLock.dx, lookLock.dy, PING_WHEEL.length, WHEEL_DEAD);
+        closeWheel();
+        hold = null;
+        if (pick >= 0) room.send(Messages.ping, { kind: PING_WHEEL[pick]!, x: h.m.x, y: h.m.y, z: h.m.z } satisfies PingMessage);
+        return;
+      }
+      hold = null;
+      pending = { ...h.m, timer: window.setTimeout(flush, DOUBLE_MS) };
     };
     // Chặn cuộn tự động của trình duyệt khi bấm chuột giữa.
     const onAux = (e: MouseEvent) => {
       if (e.button === 1) e.preventDefault();
     };
+    const onBlur = () => {
+      if (!hold) return;
+      clearTimeout(hold.timer);
+      closeWheel();
+      hold = null;
+    };
     window.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
     window.addEventListener("auxclick", onAux);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
       window.removeEventListener("auxclick", onAux);
+      window.removeEventListener("blur", onBlur);
       if (pending) clearTimeout(pending.timer);
+      onBlur();
     };
   }, [room, camera, world]);
 
   useFrame(({ camera: cam, size }) => {
+    // Vòng chọn dấu đang mở: ô theo chuột đã đi (giữ chuột trong vòng để đổi ô cho nhanh).
+    if (lookLock.active) {
+      const r = Math.hypot(lookLock.dx, lookLock.dy);
+      if (r > 120) {
+        lookLock.dx *= 120 / r;
+        lookLock.dy *= 120 / r;
+      }
+    }
+    pingWheelPick(lookLock.dx, lookLock.dy);
     const els = markerPool.els;
     if (!els.length) return;
     const now = performance.now();
@@ -137,7 +211,7 @@ export function CommsWorld({ room, world }: { room: IslandRoom; world: World }) 
       if (n >= els.length) break;
       if (claim(n, p.key)) {
         els[n]!.className = `cm-mark ${p.kind}${p.mine ? " mine" : ""}`;
-        els[n]!.children[2]!.textContent = p.mine ? PING_LABEL[p.kind] : `${PING_LABEL[p.kind]} · ${p.name}`;
+        els[n]!.children[2]!.textContent = p.mine ? pingText(p.kind, p.item) : `${pingText(p.kind, p.item)} · ${p.name}`;
       }
       place(els[n]!, n, cam, size, p.x, p.y + (p.kind === "enemy" || p.kind === "spotted" ? 2.3 : 0.6), p.z);
       n++;

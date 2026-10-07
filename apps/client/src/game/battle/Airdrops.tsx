@@ -192,8 +192,9 @@ export function AirdropNotice({ room }: { room: IslandRoom }) {
   useEffect(() => {
     const cb = Callbacks.get(room);
     return cb.onAdd("airdrops", (a: AirdropState) => {
-      // Vào giữa trận thấy thùng đã nằm đất thì thôi báo.
-      if (a.landed || a.fallLeft < AIRDROP.fall * 0.5) return;
+      // Vào giữa trận thấy thùng đã nằm đất thì thôi báo. Thùng chi viện (điểm chiến thuật) rơi từ 60% thời gian:
+      // StreakHud báo riêng.
+      if (a.landed || a.fallLeft < AIRDROP.fall * 0.7) return;
       setShown({ at: performance.now(), x: a.x, z: a.z });
       play("dawn", { bus: "ui", volume: 0.7 });
     });

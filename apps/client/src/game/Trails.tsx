@@ -1,7 +1,8 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { AdditiveBlending, Color, Object3D, type InstancedMesh } from "three";
-import { WATER_LEVEL, type World } from "@tentides/content";
+import type { World } from "@tentides/content";
+import { tide } from "./tide.ts";
 import { myId, type IslandRoom } from "../net.ts";
 import { localMotion, localPosition } from "./shared.ts";
 
@@ -64,7 +65,7 @@ export function Trails({ room, world }: { room: IslandRoom; world: World }) {
       prev.puff -= dt;
       prev.ring -= dt;
       const ground = world.heightAt(m.x, m.z);
-      const onGround = !m.swimming && m.y - ground < 0.3 && ground > WATER_LEVEL + 0.05;
+      const onGround = !m.swimming && m.y - ground < 0.3 && ground > tide.level + 0.05;
       // Chạy (hoặc người khác đi nhanh) trên đất: mỗi bước một nhúm bụi sau gót.
       if (onGround && (m.running || speed > 7.5) && prev.puff <= 0) {
         prev.puff = 0.09;
@@ -84,8 +85,8 @@ export function Trails({ room, world }: { room: IslandRoom; world: World }) {
         }
       }
       // Bơi (hoặc lội qua chỗ nông): vòng gợn loang ra trên mặt nước.
-      const wading = !m.swimming && ground < WATER_LEVEL - 0.1 && m.y < WATER_LEVEL + 0.2 && speed > 1;
-      if ((m.swimming || wading) && Math.abs(m.y - (WATER_LEVEL - 1.3)) < 1.2 + (wading ? 1 : 0) && prev.ring <= 0) {
+      const wading = !m.swimming && ground < tide.level - 0.1 && m.y < tide.level + 0.2 && speed > 1;
+      if ((m.swimming || wading) && Math.abs(m.y - (tide.level - 1.3)) < 1.2 + (wading ? 1 : 0) && prev.ring <= 0) {
         prev.ring = speed > 1 ? 0.28 : 0.9;
         rings.current.push({ x: m.x, z: m.z, life: 0, max: 1.6, size: speed > 1 ? 1.4 : 0.9 });
       }
@@ -138,7 +139,7 @@ export function Trails({ room, world }: { room: IslandRoom; world: World }) {
       for (let i = 0; i < list.length; i++) {
         const ring = list[i]!;
         const k = ring.life / ring.max;
-        dummy.position.set(ring.x, WATER_LEVEL + 0.06, ring.z);
+        dummy.position.set(ring.x, tide.level + 0.06, ring.z);
         dummy.scale.setScalar(ring.size * (0.4 + k * 2.2));
         // Vẽ cộng sáng: màu tối dần về đen là mờ dần.
         color.setScalar(0.45 * (1 - k));

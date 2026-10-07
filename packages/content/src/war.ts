@@ -607,9 +607,26 @@ function buildHq(b: Builder) {
   b.add(b.site.rx + 12, 0.03, 0, 18, 0.06, 30, "road", { solid: false, tint: "#6d6d68" });
   for (const v of [-9, 0, 9]) b.add(b.site.rx + 12, 0.035, v + 4.5, 17, 0.02, 0.2, "road", { solid: false, tint: "#e8e0c0" });
   ammoCrates(b, SUPPLY_HQ[0], SUPPLY_HQ[1], Math.PI / 2);
+  // Sân đỗ trực thăng góc sân sau: bệ bê tông tròn (vẽ bằng tấm mỏng không chắn), vòng sơn vàng, chữ H.
+  const [hu, hv] = HELIPAD_HQ;
+  b.add(hu, 0.04, hv, 13, 0.08, 13, "road", { solid: false, tint: "#7b7b74" });
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    b.add(hu + Math.cos(a) * 5.4, 0.085, hv + Math.sin(a) * 5.4, 0.35, 0.02, 2.6, "road", { solid: false, tint: "#e2c23a", rot: -a });
+  }
+  b.add(hu - 1.3, 0.09, hv, 0.5, 0.02, 4, "road", { solid: false, tint: "#f2f0e6" });
+  b.add(hu + 1.3, 0.09, hv, 0.5, 0.02, 4, "road", { solid: false, tint: "#f2f0e6" });
+  b.add(hu, 0.09, hv, 2.1, 0.02, 0.5, "road", { solid: false, tint: "#f2f0e6" });
 }
 /** Hòm đạn tiếp tế trước cổng căn cứ (toạ độ riêng của khu). */
 const SUPPLY_HQ = [31.5, -8] as const;
+/** Sân đỗ trực thăng trong căn cứ (toạ độ riêng của khu; góc sân sau, xa bãi xe tăng). */
+const HELIPAD_HQ = [14, -18] as const;
+/** Sân đỗ trực thăng của hai phe (toạ độ thế giới, độ cao mặt sân). */
+export const WAR_HELIPADS = {
+  blue: { ...toWorld(WAR_SITES[0]!, HELIPAD_HQ[0], HELIPAD_HQ[1]), y: WAR_SITES[0]!.h, rotY: WAR_SITES[0]!.rot + Math.PI / 2 },
+  red: { ...toWorld(WAR_SITES[1]!, HELIPAD_HQ[0], HELIPAD_HQ[1]), y: WAR_SITES[1]!.h, rotY: WAR_SITES[1]!.rot + Math.PI / 2 },
+} as const;
 
 // ---------------------------------------------------------------------------- cây cỏ
 

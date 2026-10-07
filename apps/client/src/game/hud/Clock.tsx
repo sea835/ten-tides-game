@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause } from "lucide-react";
-import { PHASE_LABELS } from "@tentides/content";
+import { PHASE_LABELS, TIDAL_PHASES, WATER_LEVEL, seaLevel, tideRising, volcanoStage } from "@tentides/content";
 import { MAX_PLAYERS } from "@tentides/protocol";
 import { TOTAL_DAYS, WEATHER_LABELS, type Phase, type WeatherId } from "@tentides/rules";
 import type { IslandRoom } from "../../net.ts";
@@ -20,6 +20,11 @@ export function PhaseClock({ room }: { room: IslandRoom }) {
     paused: st.paused,
     weather: st.weather as WeatherId | "",
     players: st.players.size,
+    // Thủy triều (so với mốc, làm tròn 0,1 m) và núi lửa leo thang của đảo sinh tồn.
+    sea: Math.round((seaLevel(st) - WATER_LEVEL) * 10) / 10,
+    rising: tideRising(st),
+    tidal: st.mode === "story" && TIDAL_PHASES.includes(st.phase),
+    stage: st.mode === "story" ? volcanoStage(st.volcano) : 0,
   }));
   const Icon = PHASE_ICONS[s.phase];
   const urgent = URGENT_PHASES.has(s.phase) && s.timeLeft > 0 && s.timeLeft <= URGENT_SECONDS;
@@ -61,6 +66,15 @@ export function PhaseClock({ room }: { room: IslandRoom }) {
           <span className="clock-time">{s.timeLeft > 0 ? clock(s.timeLeft) : "–"}</span>
         )}
       </div>
+      {s.tidal && (
+        <div className="clock-hazards">
+          <span className={s.rising && s.sea > 0.4 ? "warn" : ""} title="Mực nước biển so với mốc">
+            {s.rising ? "Triều lên ↑" : "Triều rút ↓"} {s.sea > 0 ? "+" : ""}
+            {s.sea.toFixed(1).replace(".", ",")} m
+          </span>
+          {s.stage >= 2 && <span className="danger">{s.stage === 3 ? "Núi lửa phun trào!" : "Núi lửa rung chuyển"}</span>}
+        </div>
+      )}
       <div className="tides" aria-label={`Ngày ${s.day} trên ${TOTAL_DAYS}`}>
         {Array.from({ length: TOTAL_DAYS }, (_, i) => (
           <span key={i} className={i + 1 < s.day ? "tide past" : i + 1 === s.day ? "tide now" : "tide"} />

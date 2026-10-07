@@ -47,6 +47,7 @@ import { SpeakingMark, VoiceChat, VoiceSettingsSection } from "../voice/VoiceCha
 import { KillerBanner, XpFeed } from "../../progress/BattleProgress.tsx";
 import { RankBadge } from "../../progress/RankBadge.tsx";
 import { CommsHud, PingMarks } from "./CommsHud.tsx";
+import { StreakHud, StreakMarks } from "./StreakHud.tsx";
 import { CommandCenter } from "./CommandCenter.tsx";
 import { KillcamHud } from "./Killcam.tsx";
 import { useKillcam } from "./replay.ts";
@@ -409,9 +410,17 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
                 <line x2={Math.sin(v.rotY) * r * 1.9} y2={Math.cos(v.rotY) * r * 1.9} style={{ stroke: fill, strokeWidth: r * 0.45 }} />
               </g>
             );
+          // Trực thăng: dấu thập (thân + cánh quạt); xuồng cao tốc: thoi nhỏ.
+          if (v.kind === "heli")
+            return (
+              <g key={`v${i}`} transform={`translate(${v.x} ${v.z}) rotate(${(-v.rotY * 180) / Math.PI})`} className="bm-heli">
+                <circle r={r * 1.25} style={{ fill: "none", stroke: fill, strokeWidth: r * 0.3 }} />
+                <path d={`M0,${-r * 1.4} L0,${r * 1.6} M${-r},0 L${r},0`} style={{ stroke: fill, strokeWidth: r * 0.45 }} />
+              </g>
+            );
           if (v.kind === "mortar") return <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.3} L${v.x + r * 1.15},${v.z + r} L${v.x - r * 1.15},${v.z + r} Z`} className="bm-tank bm-emplace" style={{ fill }} />;
-          return v.kind === "boat" ? (
-            <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.4} L${v.x + r},${v.z} L${v.x},${v.z + r * 1.4} L${v.x - r},${v.z} Z`} className="bm-tank" style={{ fill }} />
+          return v.kind === "boat" || v.kind === "rhib" ? (
+            <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.4} L${v.x + r},${v.z} L${v.x},${v.z + r * 1.4} L${v.x - r},${v.z} Z`} className="bm-tank" style={{ fill }} transform={v.kind === "rhib" ? `translate(${v.x * 0.3} ${v.z * 0.3}) scale(0.7)` : undefined} />
           ) : (
             <rect key={`v${i}`} x={v.x - r} y={v.z - r} width={2 * r} height={2 * r} rx={v.kind === "tank" ? 0 : r * 0.4} className="bm-tank" style={{ fill }} />
           );
@@ -427,6 +436,7 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
         </g>
       )}
       {phase === "battle" || phase === "prep" ? <PingMarks u={u} /> : null}
+      {phase === "battle" && <StreakMarks room={room} u={u} />}
       {me && (
         <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180}) scale(${u})`}>
           <path d="M0,-10 L7,7 L0,3.5 L-7,7 Z" className="bm-me" />
@@ -606,7 +616,7 @@ function KillFeed({ room }: { room: IslandRoom }) {
               {nameOf(room, k.killer)}
             </b>
           ) : null}
-          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : k.weapon === "tank" ? "⛟ pháo" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
+          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : k.weapon === "tank" ? "⛟ pháo" : k.weapon === "artillery" ? "💥 pháo kích" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
           <b className="v">
             <RankBadge rank={k.vr} size={14} />
             {nameOf(room, k.victim)}
@@ -1102,6 +1112,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       {fighting && <SquadHud room={room} />}
       {fighting && <TankHud />}
       {fighting && <CommsHud room={room} />}
+      {fighting && <StreakHud room={room} bigMap={<BattleMinimap room={room} big />} />}
       <Toast />
       <TankPrompt />
       <Pickup />

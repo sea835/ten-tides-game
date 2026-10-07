@@ -14,12 +14,14 @@ function live(): AudioContext | null {
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
-/** Tiếng máy theo loại xe ("jeep" hay "boat"); `update` mỗi khung hình với vị trí, tốc độ (m/s), có phải xe mình. */
+/** Tiếng máy theo loại xe ("jeep", "boat" hay "rhib"); `update` mỗi khung hình với vị trí, tốc độ (m/s), có phải xe mình. */
 export function motorEngine(kind: string): { update: (at: Place, speed: number, local: boolean) => void; stop: () => void } {
   const ctx = live();
   if (!ctx) return { update: noop, stop: noop };
-  const boat = kind === "boat";
-  const top = boat ? 15 : 21;
+  // Xuồng cao tốc: máy đuôi tôm như thuyền nhưng nhỏ, quay nhanh nên rít cao hơn.
+  const boat = kind === "boat" || kind === "rhib";
+  const top = kind === "rhib" ? 26 : boat ? 15 : 21;
+  const high = kind === "rhib" ? 1.35 : 1;
   const out = ctx.createGain();
   out.gain.value = 0;
   const pan = ctx.createStereoPanner();
@@ -75,8 +77,8 @@ export function motorEngine(kind: string): { update: (at: Place, speed: number, 
       pan.pan.setTargetAtTime(p, t, 0.1);
       // Vòng tua: nhanh thì lên cao (xe trinh sát có "số": tua tụt nhẹ ở giữa dải tốc độ).
       const rev = boat ? 0.35 + 0.65 * k : 0.3 + 0.7 * ((k * 2.2) % 1) * 0.6 + 0.4 * k;
-      osc.frequency.setTargetAtTime((boat ? 55 : 40) * (1 + 1.6 * rev), t, 0.25);
-      osc2.frequency.setTargetAtTime((boat ? 110 : 80) * (1 + 1.6 * rev), t, 0.25);
+      osc.frequency.setTargetAtTime((boat ? 55 : 40) * high * (1 + 1.6 * rev), t, 0.25);
+      osc2.frequency.setTargetAtTime((boat ? 110 : 80) * high * (1 + 1.6 * rev), t, 0.25);
       olp.frequency.setTargetAtTime(240 + 900 * rev, t, 0.25);
       ng.gain.setTargetAtTime(boat ? 0.04 + 0.22 * k : 0.25 + 0.15 * k, t, 0.2);
       nf.frequency.setTargetAtTime(boat ? 500 + 900 * k : 250 + 250 * k, t, 0.3);

@@ -1121,7 +1121,8 @@ function Grenades({ room }: { room: IslandRoom }) {
   const [list, setList] = useState<[string, ProjectileState][]>([]);
   useEffect(() => {
     const callbacks = Callbacks.get(room);
-    const refresh = () => setList([...(room.state.projectiles as unknown as Map<string, ProjectileState>).entries()]);
+    // Tên lửa TOW vẽ riêng (StreakWorld.tsx).
+    const refresh = () => setList([...(room.state.projectiles as unknown as Map<string, ProjectileState>).entries()].filter(([, p]) => p.itemId !== "tow"));
     const a = callbacks.onAdd("projectiles", refresh);
     const r = callbacks.onRemove("projectiles", refresh);
     refresh();

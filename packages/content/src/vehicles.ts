@@ -2,15 +2,18 @@
 // ("jeep", có đại liên trên thùng xe), thuyền tuần tra ("boat", có súng máy mũi thuyền). Ở đây có: thông số từng
 // loại, chỗ ngồi, một bước lái xe / thuyền (khớp va chạm giữa máy người lái và server), dò tia trúng vỏ xe kèm mặt
 // trúng (giáp trước, hông, đuôi), hệ số giáp theo góc, đứt xích khi nổ sát dải xích.
+// Xuồng cao tốc ("rhib", đại liên M2 trên mũi) dùng chung bước lái với thuyền; trực thăng ("heli") có mô hình bay
+// riêng ở aircraft.ts, ở đây chỉ có thông số chung, ghế (hai xạ thủ cửa hông) và cung bắn súng cửa.
 
 import { boxAt, boxesNear, type BattleMap } from "./battle.ts";
 import { WEAPON, type WeaponDef } from "./battleItems.ts";
 import { TANK, tankFits, tankGround, tankStep, type TankPose } from "./squad.ts";
 import { MORTAR, NEST, emplacementSpec, isEmplacement } from "./emplacements.ts";
+import { DOOR_PITCH, HELI, clampDoor, heliFits, heliGround, inDoorArc } from "./aircraft.ts";
 
 type V3 = readonly [number, number, number];
 
-export const VEHICLE_KINDS = ["tank", "jeep", "boat", "hmg_nest", "mortar"] as const;
+export const VEHICLE_KINDS = ["tank", "jeep", "boat", "hmg_nest", "mortar", "heli", "rhib"] as const;
 export type VehicleKind = (typeof VEHICLE_KINDS)[number];
 
 /**
@@ -60,6 +63,31 @@ export const BOAT = {
   blastFactor: 1.3,
 } as const;
 
+/**
+ * Xuồng cao tốc tuần tra (RHIB): nhẹ, rất nhanh (~95 km/h), quay gắt, vỏ mỏng; bốn chỗ (lái, đại liên M2 trên mũi,
+ * hai lính). Ăn nước nông hơn thuyền tuần tra nên ủi sát bãi hơn.
+ */
+export const RHIB = {
+  hp: 360,
+  forward: 26,
+  reverse: 5,
+  accel: 7.5,
+  brake: 10,
+  coast: 1.8,
+  turn: 1.05,
+  half: [1.15, 0.7, 3.5] as const,
+  draft: -0.4,
+  hullDraft: -0.08,
+  enter: 5.4,
+  bulletFactor: 0.5,
+  blastFactor: 1.45,
+} as const;
+
+/** Thuyền tuần tra, xuồng cao tốc: chỉ chạy trên mặt nước. */
+export function isBoat(kind: string): boolean {
+  return kind === "boat" || kind === "rhib";
+}
+
 /** Đại liên gắn trên xe (thùng xe trinh sát, mũi thuyền): bắn đạn thường, server dò như súng cầm tay. */
 export const HMG: WeaponDef = {
   ...WEAPON.get("m249")!,
@@ -85,7 +113,7 @@ export const MOUNT = { pitchUp: 0.6, pitchDown: -0.35, barrel: 1.15 } as const;
  * Chỗ ngồi theo hệ toạ độ riêng của xe (x ngang — dương là bên trái khi nhìn theo mũi xe, y cao từ đáy, z dọc —
  * dương là mũi). Ghế 0 luôn là ghế lái. `gunner` là ghế cầm đại liên (−1: không có), `mount` là trụ xoay đại liên.
  */
-export const SEATS: Record<VehicleKind, { seats: readonly V3[]; names: readonly string[]; gunner: number; mount: V3 }> = {
+export const SEATS: Record<VehicleKind, { seats: readonly V3[]; names: readonly string[]; gunner: number; mount: V3; gunner2?: number; mount2?: V3 }> = {
   tank: { seats: [[0, 1.6, 0]], names: ["Lái + pháo thủ"], gunner: -1, mount: [0, TANK.gunY, 0] },
   jeep: {
     seats: [
@@ -110,6 +138,32 @@ export const SEATS: Record<VehicleKind, { seats: readonly V3[]; names: readonly 
     gunner: 1,
     mount: [0, 1.75, 3.25],
   },
+  // Xuồng cao tốc: đại liên M2 trên mũi.
+  rhib: {
+    seats: [
+      [0, 0.75, -1.6],
+      [0, 0.85, 2.15],
+      [0.6, 0.6, 0.2],
+      [-0.6, 0.6, 0.2],
+    ],
+    names: ["Lái xuồng", "Đại liên M2 mũi", "Lính", "Lính"],
+    gunner: 1,
+    mount: [0, 1.6, 2.55],
+  },
+  // Trực thăng: phi công (rocket mũi), hai xạ thủ súng máy hai cửa hông (ghế 1 trái, ghế 2 phải), một ghế sau.
+  heli: {
+    seats: [
+      [0.4, 0.95, 1.2],
+      [0.95, 0.85, -0.2],
+      [-0.95, 0.85, -0.2],
+      [-0.4, 0.95, 1.2],
+    ],
+    names: ["Phi công", "Súng máy cửa trái", "Súng máy cửa phải", "Ghế phụ"],
+    gunner: 1,
+    mount: [1.45, 1.35, 0.35],
+    gunner2: 2,
+    mount2: [-1.45, 1.35, 0.35],
+  },
   // Vũ khí cố định (emplacements.ts): một ghế, cũng là ghế xạ thủ.
   hmg_nest: { seats: [NEST.seat], names: ["Xạ thủ đại liên"], gunner: 0, mount: NEST.mount },
   mortar: { seats: [MORTAR.seat], names: ["Pháo thủ cối"], gunner: 0, mount: MORTAR.mount },
@@ -119,6 +173,8 @@ export const SEATS: Record<VehicleKind, { seats: readonly V3[]; names: readonly 
 export function vehicleSpec(kind: string): { hp: number; half: readonly [number, number, number]; enter: number; bulletFactor: number; blastFactor: number; forward: number; seats: number } {
   if (kind === "jeep") return { hp: JEEP.hp, half: JEEP.half, enter: JEEP.enter, bulletFactor: JEEP.bulletFactor, blastFactor: JEEP.blastFactor, forward: JEEP.forward, seats: SEATS.jeep.seats.length };
   if (kind === "boat") return { hp: BOAT.hp, half: BOAT.half, enter: BOAT.enter, bulletFactor: BOAT.bulletFactor, blastFactor: BOAT.blastFactor, forward: BOAT.forward, seats: SEATS.boat.seats.length };
+  if (kind === "rhib") return { hp: RHIB.hp, half: RHIB.half, enter: RHIB.enter, bulletFactor: RHIB.bulletFactor, blastFactor: RHIB.blastFactor, forward: RHIB.forward, seats: SEATS.rhib.seats.length };
+  if (kind === "heli") return { hp: HELI.hp, half: HELI.half, enter: HELI.enter, bulletFactor: HELI.bulletFactor, blastFactor: HELI.blastFactor, forward: HELI.maxSpeed, seats: SEATS.heli.seats.length };
   if (isEmplacement(kind)) return emplacementSpec(kind);
   return { hp: TANK.hp, half: TANK.half, enter: TANK.enter, bulletFactor: TANK.bulletFactor, blastFactor: TANK.blastFactor, forward: TANK.forward, seats: 1 };
 }
@@ -140,9 +196,10 @@ export function seatPos(kind: string, v: TankPose, seat: number): [number, numbe
   return vehicleLocal(v, s[0], s[1], s[2]);
 }
 
-/** Trụ xoay đại liên trong thế giới, và đầu nòng theo hướng `yaw` (thế giới), góc ngẩng `pitch`. */
-export function mountMuzzle(kind: string, v: TankPose, yaw: number, pitch: number): { pivot: [number, number, number]; o: [number, number, number]; d: [number, number, number] } {
-  const m = seatsOf(kind).mount;
+/** Trụ xoay đại liên trong thế giới, và đầu nòng theo hướng `yaw` (thế giới), góc ngẩng `pitch`. `seat`: ghế xạ thủ (xe hai súng). */
+export function mountMuzzle(kind: string, v: TankPose, yaw: number, pitch: number, seat = -1): { pivot: [number, number, number]; o: [number, number, number]; d: [number, number, number] } {
+  const spec = seatsOf(kind);
+  const m = seat >= 0 && seat === spec.gunner2 && spec.mount2 ? spec.mount2 : spec.mount;
   const pivot = vehicleLocal(v, m[0], m[1], m[2]);
   const cp = Math.cos(pitch);
   const d: [number, number, number] = [Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp];
@@ -152,6 +209,27 @@ export function mountMuzzle(kind: string, v: TankPose, yaw: number, pitch: numbe
 /** Ghế cầm đại liên của loại xe (−1: không có). */
 export function gunnerSeat(kind: string): number {
   return seatsOf(kind).gunner;
+}
+
+/** Ghế `seat` có cầm súng không (trực thăng có hai xạ thủ cửa hông). */
+export function isGunnerSeat(kind: string, seat: number): boolean {
+  const s = seatsOf(kind);
+  return seat >= 0 && (seat === s.gunner || seat === s.gunner2);
+}
+
+/** Góc ngẩng / chúc tối đa của súng gắn trên loại xe (súng cửa trực thăng chúc được sâu để bắn xuống đất). */
+export function mountPitch(kind: string): { up: number; down: number } {
+  return kind === "heli" ? DOOR_PITCH : { up: MOUNT.pitchUp, down: MOUNT.pitchDown };
+}
+
+/** Kẹp hướng súng ghế `seat` về trong cung bắn (cửa trực thăng); xe khác quay tròn được. */
+export function clampMount(kind: string, seat: number, rotY: number, yaw: number): number {
+  return kind === "heli" ? clampDoor(seat, rotY, yaw) : yaw;
+}
+
+/** Hướng `yaw` có trong cung bắn của súng ghế `seat` không. */
+export function inMountArc(kind: string, seat: number, rotY: number, yaw: number, slack = 0): boolean {
+  return kind === "heli" ? inDoorArc(seat, rotY, yaw, slack) : true;
 }
 
 // ---------------------------------------------------------------------------- va chạm, một bước lái
@@ -225,16 +303,16 @@ export function jeepFits(map: BattleMap, x: number, z: number, rotY: number): bo
  * Thuyền nằm được ở đây không: tâm thuyền đủ sâu, mọi điểm quanh mạn còn dưới mặt nước (mũi ủi vào bãi nông được
  * nhưng không lên cạn), không đâm vào cầu cảng, công trình ven biển.
  */
-export function boatFits(map: BattleMap, x: number, z: number, rotY: number): boolean {
+export function boatFits(map: BattleMap, x: number, z: number, rotY: number, spec: { half: readonly [number, number, number]; draft: number; hullDraft: number } = BOAT): boolean {
   if (!inBounds(map, x, z, 5)) return false;
-  if (map.world.heightAt(x, z) > BOAT.draft) return false;
+  if (map.world.heightAt(x, z) > spec.draft) return false;
   const s = Math.sin(rotY);
   const c = Math.cos(rotY);
-  const [hw, , hl] = BOAT.half;
+  const [hw, , hl] = spec.half;
   for (const [u, v] of samples(hw, hl)) {
     const px = x + c * u + s * v;
     const pz = z - s * u + c * v;
-    if (map.world.heightAt(px, pz) > BOAT.hullDraft) return false;
+    if (map.world.heightAt(px, pz) > spec.hullDraft) return false;
     if (boxAt(map.index, px, 0.6, pz, 0.1)) return false;
   }
   for (const b of boxesNear(map.index, x, z, Math.hypot(hw, hl) + 1)) {
@@ -248,6 +326,8 @@ export function boatFits(map: BattleMap, x: number, z: number, rotY: number): bo
 export function vehicleFits(kind: string, map: BattleMap, x: number, z: number, rotY: number): boolean {
   if (kind === "jeep") return jeepFits(map, x, z, rotY);
   if (kind === "boat") return boatFits(map, x, z, rotY);
+  if (kind === "rhib") return boatFits(map, x, z, rotY, RHIB);
+  if (kind === "heli") return heliFits(map, x, z, rotY);
   return tankFits(map, x, z, rotY);
 }
 
@@ -308,12 +388,12 @@ export function jeepStep(map: BattleMap, t: TankPose, throttle: number, steer: n
 /**
  * Một bước lái thuyền: quay theo trớn (đứng yên chỉ xoay chậm), lùi thì lái ngược; mặt thuyền nằm trên mực nước.
  */
-export function boatStep(map: BattleMap, t: TankPose, throttle: number, steer: number, speed: number, dt: number): { pose: TankPose; speed: number; blocked: boolean } {
-  const want = throttle > 0 ? throttle * BOAT.forward : throttle * BOAT.reverse;
-  const v = approach(speed, want, BOAT.accel, BOAT.brake, BOAT.coast, dt);
+export function boatStep(map: BattleMap, t: TankPose, throttle: number, steer: number, speed: number, dt: number, spec: typeof BOAT | typeof RHIB = BOAT): { pose: TankPose; speed: number; blocked: boolean } {
+  const want = throttle > 0 ? throttle * spec.forward : throttle * spec.reverse;
+  const v = approach(speed, want, spec.accel, spec.brake, spec.coast, dt);
   const grip = Math.max(0.2, Math.min(1, Math.abs(v) / 5));
-  const rotY = t.rotY - steer * BOAT.turn * grip * (v < -0.3 ? -1 : 1) * dt;
-  const r = advance((x, z, ry) => boatFits(map, x, z, ry), t, rotY, v, dt);
+  const rotY = t.rotY - steer * spec.turn * grip * (v < -0.3 ? -1 : 1) * dt;
+  const r = advance((x, z, ry) => boatFits(map, x, z, ry, spec), t, rotY, v, dt);
   return { pose: { x: r.x, y: 0, z: r.z, rotY: r.rotY }, speed: r.v, blocked: r.blocked };
 }
 
@@ -322,12 +402,14 @@ export function vehicleStep(kind: string, map: BattleMap, t: TankPose, throttle:
   const th = drive ? throttle : 0;
   if (kind === "jeep") return jeepStep(map, t, th, steer, speed, dt);
   if (kind === "boat") return boatStep(map, t, th, steer, speed, dt);
+  if (kind === "rhib") return boatStep(map, t, th, steer, speed, dt, RHIB);
   return tankStep(map, t, th, steer, drive ? speed : 0, dt);
 }
 
 /** Độ cao đặt xe ở (x, z): thuyền nổi trên mực nước, xe chạy bám đất. */
 export function vehicleY(kind: string, map: BattleMap, x: number, z: number): number {
-  return kind === "boat" ? 0 : tankGround(map, x, z);
+  if (kind === "heli") return heliGround(map, x, z);
+  return isBoat(kind) ? 0 : tankGround(map, x, z);
 }
 
 // ---------------------------------------------------------------------------- giáp, dò trúng vỏ xe

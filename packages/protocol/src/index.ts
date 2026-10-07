@@ -115,6 +115,12 @@ export const GearState = schema(
     n2: t.uint8().default(0),
     /** Bơm Adrenaline: còn bao nhiêu giây chạy nhanh (server cho phép tốc độ cao hơn trong lúc này). */
     boost: t.float32().default(0),
+    /** Điểm chiến thuật (chi viện: UAV, mưa pháo, thùng chi viện), giữ qua các lần gục trong trận. */
+    tp: t.uint16().default(0),
+    /** Đang mặc giáp Juggernaut (chịu đòn gấp ba, đi chậm, vác Minigun); gục là mất. */
+    jugg: t.boolean().default(false),
+    /** Kỹ Thuật mang tên lửa phòng không IGLA thay RPG-7 (lần hồi sinh tới). */
+    aa: t.boolean().default(false),
   },
   "GearState",
 );
@@ -464,6 +470,8 @@ export const BuildingState = schema(
     dx: t.float32().default(0),
     dz: t.float32().default(0),
     rot: t.float32().default(0),
+    /** Mảnh lắp ghép (sàn, vách, cầu thang, tháp canh): ở tầng mấy (xem snap.ts của content). */
+    level: t.uint8().default(0),
   },
   "BuildingState",
 );
@@ -543,6 +551,17 @@ export const VehicleState = schema(
     seats: t.map("string"),
     /** Xe tăng đứt xích: còn bao nhiêu giây (làm tròn lên) mới chạy lại được; 0 là xích lành. */
     tracks: t.uint8().default(0),
+    /** Trực thăng: hướng, góc ngẩng súng cửa phải (ghế 2; súng cửa trái dùng `turret`/`pitch`). */
+    turret2: t.float32().default(0),
+    pitch2: t.float32().default(0),
+    /** Trực thăng: góc chúc mũi (dương là chúc xuống), nghiêng cánh (dương là nghiêng phải). */
+    tilt: t.float32().default(0),
+    roll: t.float32().default(0),
+    /** Trực thăng: rocket mũi, lượt pháo sáng còn lại. */
+    rockets: t.uint8().default(0),
+    flares: t.uint8().default(0),
+    /** Cảnh báo cho tổ lái trực thăng: 0 yên, 1 đang bị ngắm khoá, 2 đã bị khoá, 3 tên lửa đang bay tới. */
+    alert: t.uint8().default(0),
   },
   "VehicleState",
 );
@@ -766,7 +785,8 @@ export const UseMessage = z.object({ x: finite, z: finite });
 export const PickupMessage = z.object({ id });
 /** Leo lên cây (id cây) hoặc tụt xuống (rỗng). */
 export const ClimbMessage = z.object({ treeId: z.string().max(64) });
-export const BuildMessage = z.object({ kind: id, x: finite, z: finite, rot: angle });
+/** Dựng công trình; `level` là tầng của mảnh lắp ghép (sàn, vách, cầu thang, tháp canh). */
+export const BuildMessage = z.object({ kind: id, x: finite, z: finite, rot: angle, level: z.int().min(0).max(3).optional() });
 export const AssassinateMessage = z.object({ target: id });
 
 /** Server gửi cho mọi người để vẽ hiệu ứng: trúng đòn, trượt, chặt cây, cây đổ, thú chết, ăn uống... */
@@ -886,7 +906,7 @@ export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "p
 export const GadgetMessage = z.object({ use: z.enum(GADGET_IDS), o: vec3.optional(), d: vec3.optional(), target: z.string().max(64).optional() });
 export type GadgetMessage = z.infer<typeof GadgetMessage>;
 /** Ở sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới. */
-export const PickClassMessage = z.object({ cls: z.enum(SOLDIER_CLASSES) });
+export const PickClassMessage = z.object({ cls: z.enum(SOLDIER_CLASSES), aa: z.boolean().optional() });
 export const BattleBuyMessage = z.object({ item: z.string().max(40) });
 export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke", "flash"]), o: vec3, v: vec3 });
 /** Đâm dao: người bị đâm (máy mình dò trước, server kiểm tra lại tầm với, hướng, tường). Không trúng ai thì để trống. */
@@ -918,7 +938,19 @@ export const BattleSettingsMessage = z
   .partial();
 export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
 /** Lái xe tăng: vị trí, hướng thân, hướng tháp pháo, góc nòng (máy người lái tự tính, server kiểm tra tốc độ). */
-export const VehicleMoveMessage = z.object({ x: finite, y: finite, z: finite, rotY: finite, turret: finite, pitch: z.number().min(-1).max(1), moving: z.boolean() });
+export const VehicleMoveMessage = z.object({
+  x: finite,
+  y: finite,
+  z: finite,
+  rotY: finite,
+  turret: finite,
+  pitch: z.number().min(-1).max(1),
+  moving: z.boolean(),
+  /** Trực thăng: góc chúc mũi, nghiêng cánh, tốc độ va chạm máy phi công vừa tính (m/s, 0 là không va chạm). */
+  tilt: z.number().min(-1).max(1).optional(),
+  roll: z.number().min(-1).max(1).optional(),
+  impact: z.number().min(0).max(200).optional(),
+});
 export type VehicleMoveMessage = z.infer<typeof VehicleMoveMessage>;
 /** Bắn pháo xe tăng theo hướng tháp pháo, góc nòng hiện tại. */
 export const TankFireMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1) });
@@ -954,6 +986,25 @@ export interface MortarFxMessage {
   vz: number;
   t: number;
 }
+/** Người cầm IGLA đang giữ tâm ngắm lên trực thăng `vid` (gửi đều đặn ~5 lần / giây khi ngắm khoá). */
+export const AaLockMessage = z.object({ vid: id });
+export type AaLockMessage = z.infer<typeof AaLockMessage>;
+/**
+ * Server báo mọi người hiệu ứng trên không: tên lửa vừa phóng / đang bay ("missile": vị trí hiện tại, vị trí trước
+ * đó, tốc độ — máy khác vẽ đoạn khói), tên lửa nổ / tắt ("end"), trực thăng thả pháo sáng ("flare": vị trí, vận tốc
+ * trực thăng).
+ */
+export interface AirFxMessage {
+  kind: "missile" | "end" | "flare";
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  px: number;
+  py: number;
+  pz: number;
+  speed: number;
+}
 /** Server báo mọi người: đạn nảy khỏi giáp trước, xe tăng đứt xích (để vẽ tia lửa, khói, phát tiếng). */
 export interface VehicleFxMessage {
   kind: "ricochet" | "tracks";
@@ -969,8 +1020,16 @@ export const SquadBoardMessage = z.object({ vid: id });
 
 // ---------------------------------------------------------------------------- liên lạc trong đội: đánh dấu, bộ đàm
 
-/** Đánh dấu (chuột giữa): chỗ thường, địch (kèm người bị đánh dấu), nguy hiểm (bấm đúp). */
-export const PING_KINDS = ["spot", "enemy", "danger"] as const;
+/**
+ * Đánh dấu (chuột giữa): bấm nhanh là dấu theo ngữ cảnh: chỗ trống ("spot": di chuyển tới đây), địch (kèm người bị
+ * đánh dấu), đồ dưới đất ("loot", kèm khoá món đồ), bấm đúp là nguy hiểm. Giữ chuột giữa mở vòng chọn: tấn công,
+ * phòng thủ, đang tới, cần giáp, nhìn thấy địch, cẩn thận.
+ */
+export const PING_KINDS = ["spot", "enemy", "danger", "loot", "attack", "defend", "coming", "armor", "seen", "careful"] as const;
+/** Các ô trên vòng chọn (giữ chuột giữa), theo chiều kim đồng hồ từ trên cùng. */
+export const PING_WHEEL = ["attack", "defend", "coming", "armor", "seen", "careful"] as const;
+/** Dấu đồ dưới đất: món đồ phải ở gần chỗ đánh dấu chừng này mét. */
+export const PING_LOOT_SLACK = 3;
 export type PingKind = (typeof PING_KINDS)[number];
 /** Dấu hiện trên HUD: ba loại người chơi tự đánh, cộng dấu "spotted" do ống nhòm trinh sát (server tạo, thoi đỏ 15 s). */
 export type PingShownKind = PingKind | "spotted";
@@ -978,8 +1037,8 @@ export type PingShownKind = PingKind | "spotted";
 export const PING_MIN_INTERVAL_MS = 500;
 export const PING_MAX_DISTANCE = 450;
 /** Dấu tồn tại bao lâu (ms) theo loại. */
-export const PING_TTL_MS: Record<PingShownKind, number> = { spot: 8000, enemy: 6000, danger: 8000, spotted: 15000 };
-export const PingMessage = z.object({ kind: z.enum(PING_KINDS), x: finite, y: finite, z: finite, target: id.optional() });
+export const PING_TTL_MS: Record<PingShownKind, number> = { spot: 8000, enemy: 6000, danger: 8000, spotted: 15000, loot: 12000, attack: 10000, defend: 10000, coming: 8000, armor: 10000, seen: 8000, careful: 8000 };
+export const PingMessage = z.object({ kind: z.enum(PING_KINDS), x: finite, y: finite, z: finite, target: id.optional(), item: id.optional() });
 export type PingMessage = z.infer<typeof PingMessage>;
 /** Server chuyển dấu tới đồng đội (solo thì chỉ mình thấy). Dấu địch: vị trí là chỗ người đó lúc đánh dấu. */
 export interface PingBroadcast {
@@ -991,6 +1050,8 @@ export interface PingBroadcast {
   z: number;
   target: string;
   ttl: number;
+  /** Dấu đồ dưới đất: id món đồ (vd. "armor:3"), để hiện "Ở đây có Giáp cấp 3!". */
+  item?: string;
 }
 /** Vòng khẩu lệnh bộ đàm: mã từng câu (chữ hiện trên HUD do client dịch). */
 export const RADIO_LINES = ["help", "ammo", "medic", "attack", "defend", "ack", "retreat", "thanks"] as const;
@@ -1006,6 +1067,35 @@ export interface RadioBroadcast {
   flag: string;
 }
 export type SquadOrderMessage = z.infer<typeof SquadOrderMessage>;
+
+// ---------------------------------------------------------------------------- điểm chi viện chiến thuật
+
+/** Gọi chi viện (phím K): UAV, mưa pháo (toạ độ x, z), thùng chi viện (toạ độ, chọn giáp Juggernaut hay TOW). */
+export const StreakMessage = z.object({ kind: z.enum(["uav", "artillery", "airdrop"]), x: finite.optional(), z: finite.optional(), pick: z.enum(["jugg", "tow"]).optional() });
+export type StreakMessage = z.infer<typeof StreakMessage>;
+/** Đang giữ chuột lái tên lửa TOW: mắt (camera) và hướng ngắm, gửi đều đặn trong lúc tên lửa còn bay. */
+export const TowSteerMessage = z.object({ o: z.tuple([finite, finite, finite]), d: z.tuple([finite, finite, finite]) });
+export type TowSteerMessage = z.infer<typeof TowSteerMessage>;
+/**
+ * Server báo mọi người một chi viện vừa được gọi: UAV (phe `team` thấy địch trong `t` giây), mưa pháo (chỗ chấm, còn
+ * `t` giây tới loạt đầu), loạt pháo sắp rơi ("salvo": các điểm rơi `pts`, còn `t` giây — tiếng rít), thùng chi viện.
+ */
+export interface StreakFxMessage {
+  kind: "uav" | "artillery" | "salvo" | "airdrop";
+  team: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  t: number;
+  pts?: [number, number, number][];
+}
+/** Server báo riêng: vừa được (hay vừa tiêu, `amount` âm) điểm chiến thuật; `total` là số điểm hiện có. */
+export interface PointsMessage {
+  kind: string;
+  amount: number;
+  total: number;
+}
 /** Chiến trường: hồi sinh ở căn cứ ("hq") hay ở cứ điểm phe mình đang giữ (chữ cái), với lớp lính đã chọn. */
 export const RespawnMessage = z.object({ at: z.string().max(8), role: z.enum(["rifle", "sniper", "support", "antitank", "tanker"]) });
 export type RespawnMessage = z.infer<typeof RespawnMessage>;
@@ -1133,6 +1223,10 @@ export const Messages = {
   vehicleAim: "vehicleAim",
   vehicleGun: "vehicleGun",
   vehicleFx: "vehicleFx",
+  /** Trực thăng: phi công thả pháo sáng; người cầm IGLA báo đang ngắm khoá; server báo hiệu ứng trên không. */
+  heliFlare: "heliFlare",
+  aaLock: "aaLock",
+  airFx: "airFx",
   /** Vũ khí cố định: pháo thủ cối bắn; server báo hiệu ứng đạn cối. */
   mortarFire: "mortarFire",
   mortarFx: "mortarFx",
@@ -1153,6 +1247,11 @@ export const Messages = {
   /** Dùng khí tài lớp lính (GadgetMessage); chọn lớp lính ở sảnh (PickClassMessage). */
   gadget: "gadget",
   pickClass: "pickClass",
+  /** Điểm chi viện: gọi chi viện (StreakMessage), lái tên lửa TOW (TowSteerMessage), hiệu ứng chi viện, điểm. */
+  streak: "streak",
+  towSteer: "towSteer",
+  streakFx: "streakFx",
+  points: "points",
 } as const;
 
 /** Một dòng bảng điểm cuối trận. `support` là tiếp tế, sửa xe, hồi sinh đồng đội; `score` để xếp hạng. */
@@ -1198,3 +1297,4 @@ export interface XpMessage {
 export const KICKED_CLOSE_CODE = 4001;
 
 export * from "./voice.ts";
+export * from "./survival.ts";

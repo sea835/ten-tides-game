@@ -16,7 +16,13 @@ import {
   type Boost,
   cannonMuzzle,
   cannonPitch,
+  clampMount,
   gunnerSeat,
+  heliGround,
+  inMountArc,
+  isBoat,
+  isGunnerSeat,
+  mountPitch,
   insideBox,
   mountMuzzle,
   rayBody,
@@ -37,6 +43,7 @@ import {
 } from "@tentides/content";
 import { Messages, VehicleState, type BoomMessage, type CorrectMessage, type HitMessage, type ShotMessage, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
+import { Air } from "./air.ts";
 import { Emplacements } from "./emplacements.ts";
 import { Fleet } from "./fleet.ts";
 
@@ -88,10 +95,13 @@ export class Vehicles {
   readonly fleet: Fleet;
   /** Vũ khí cố định (ổ đại liên, cối): cũng là VehicleState, dùng chung ghế; xem emplacements.ts. */
   readonly emplacements: Emplacements;
+  /** Trực thăng (bay, rocket, pháo sáng) và tên lửa phòng không IGLA; xem air.ts. */
+  readonly air: Air;
 
   constructor(private readonly room: BattleRoom) {
     this.fleet = new Fleet(room, this);
     this.emplacements = new Emplacements(room, this);
+    this.air = new Air(room, this);
   }
 
   clear() {
@@ -104,6 +114,7 @@ export class Vehicles {
     this.gunReadyAt.clear();
     this.fleet.clear();
     this.emplacements.clear();
+    this.air.clear();
   }
 
   /** Mọi người đang ngồi trên xe (ghế lái trước). */
@@ -159,7 +170,7 @@ export class Vehicles {
       const px = x + Math.cos(a) * r;
       const pz = z + Math.sin(a) * r;
       const rotY = rand() * Math.PI * 2;
-      if (kind !== "boat" && Math.hypot(px, pz) > (map.half ?? 240) * 0.8) continue;
+      if (!isBoat(kind) && Math.hypot(px, pz) > (map.half ?? 240) * 0.8) continue;
       // Xe trinh sát đậu trên đất khô (lội nước được nhưng không đặt sẵn dưới nước).
       if (kind === "jeep" && map.world.heightAt(px, pz) < 0.6) continue;
       if (!vehicleFits(kind, map, px, pz, rotY) || !vehicleFits(kind, map, px, pz, rotY + Math.PI / 2)) continue;
@@ -183,6 +194,7 @@ export class Vehicles {
     v.hp = vehicleSpec(kind).hp;
     v.team = team;
     this.room.state.vehicles.set(id, v);
+    if (kind === "heli") this.air.arm(id, v);
     if (driver) this.seat(driver, id);
     return id;
   }
@@ -221,7 +233,7 @@ export class Vehicles {
     p.x = at[0];
     p.y = at[1] - 0.5;
     p.z = at[2];
-    p.rotY = seat === gunnerSeat(v.kind) ? v.turret : v.rotY;
+    p.rotY = seat === gunnerSeat(v.kind) ? v.turret : isGunnerSeat(v.kind, seat) ? v.turret2 : v.rotY;
   }
 
   /** Mọi người trên xe đi theo xe. */
@@ -247,8 +259,13 @@ export class Vehicles {
     const s = Math.sin(v.rotY);
     const [hw, hh, hl] = vehicleSpec(v.kind).half;
     const shallow = v.kind === "tank" ? 0.3 : -1.3;
+    // Trực thăng đang bay: nhảy ra ngay cạnh cửa (rơi xuống đất).
+    if (v.kind === "heli" && v.y - heliGround(map, v.x, v.z) > 2.5) {
+      const u = hw + 1.2;
+      return { x: v.x + c * u, y: v.y, z: v.z - s * u };
+    }
     const spots: readonly (readonly [number, number])[] =
-      v.kind === "boat"
+      isBoat(v.kind)
         ? [
             [0, hl + 1.6],
             [-1.2, hl + 1.2],
@@ -276,7 +293,7 @@ export class Vehicles {
       return { x, y: h + 0.05, z };
     }
     // Thuyền ngoài khơi: nhảy xuống nước bên mạn (bơi vào bờ).
-    if (v.kind === "boat") {
+    if (isBoat(v.kind)) {
       const u = -hw - 1.4;
       return { x: v.x + c * u, y: -0.9, z: v.z - s * u };
     }
@@ -378,6 +395,11 @@ export class Vehicles {
     const v = p?.vehicle ? s.vehicles.get(p.vehicle) : undefined;
     // Vũ khí cố định không chạy được.
     if (!p || !v || !p.alive || v.driver !== pid || v.hp <= 0 || isEmplacement(v.kind)) return;
+    // Trực thăng: kiểm tra riêng (bay trên cao, va chạm), xem air.ts.
+    if (v.kind === "heli") {
+      if (this.air.move(pid, p.vehicle, v, m)) this.syncCrew(v);
+      return;
+    }
     const now = Date.now();
     const elapsed = Math.max(100, now - (this.lastMoveAt.get(pid) ?? now - 100));
     const dist = Math.hypot(m.x - v.x, m.z - v.z);
@@ -387,7 +409,7 @@ export class Vehicles {
     const spec = vehicleSpec(v.kind);
     const limit = v.kind === "tank" ? spec.forward * 1.8 : spec.forward * 1.45;
     const h = map.world.heightAt(m.x, m.z);
-    const wrongGround = v.kind === "boat" ? h > 0.2 : v.kind === "jeep" ? h < -1.4 : false;
+    const wrongGround = isBoat(v.kind) ? h > 0.2 : v.kind === "jeep" ? h < -1.4 : false;
     if (dist > limit * (elapsed / 1000) + 0.5 || Math.hypot(m.x, m.z) > (map.half ?? 240) * 1.2 || wrongGround || (v.tracks > 0 && dist > 0.6)) {
       this.room.clientOf(pid)?.send(Messages.correct, { x: v.x, y: v.y, z: v.z } satisfies CorrectMessage);
       return;
@@ -411,10 +433,19 @@ export class Vehicles {
     const s = this.room.state;
     const p = s.players.get(pid);
     const v = p?.vehicle ? s.vehicles.get(p.vehicle) : undefined;
-    if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || this.seatOf(v, pid) !== gunnerSeat(v.kind)) return;
+    const seat = v ? this.seatOf(v, pid) : -1;
+    if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || !isGunnerSeat(v.kind, seat)) return;
+    const lim = mountPitch(v.kind);
+    // Súng cửa phải trực thăng (ghế 2): hướng riêng.
+    if (seat !== gunnerSeat(v.kind)) {
+      v.turret2 = clampMount(v.kind, seat, v.rotY, turret);
+      v.pitch2 = Math.max(lim.down, Math.min(lim.up, pitch));
+      p.rotY = v.turret2;
+      return;
+    }
     // Ổ đại liên chỉ xoay trong cung trước mặt; cối: `pitch` là góc ngẩng ống cối (45°–85°).
-    v.turret = clampTraverse(v.kind, v.rotY, turret);
-    v.pitch = v.kind === "mortar" ? clampElevation(pitch) : Math.max(MOUNT.pitchDown, Math.min(MOUNT.pitchUp, pitch));
+    v.turret = clampMount(v.kind, seat, v.rotY, clampTraverse(v.kind, v.rotY, turret));
+    v.pitch = v.kind === "mortar" ? clampElevation(pitch) : Math.max(lim.down, Math.min(lim.up, pitch));
     p.rotY = v.turret;
   }
 
@@ -428,23 +459,36 @@ export class Vehicles {
     const vid = p?.vehicle ?? "";
     const v = vid ? s.vehicles.get(vid) : undefined;
     if (!p || !v || !p.alive || v.hp <= 0 || v.kind === "tank" || v.kind === "mortar" || !this.room.fighting()) return;
-    if (this.seatOf(v, pid) !== gunnerSeat(v.kind)) return;
+    const seat = this.seatOf(v, pid);
+    if (!isGunnerSeat(v.kind, seat)) return;
+    const second = seat !== gunnerSeat(v.kind);
+    const gunKey = second ? `${vid}:2` : vid;
     const now = Date.now();
-    if (now < (this.gunReadyAt.get(vid) ?? 0)) return;
+    if (now < (this.gunReadyAt.get(gunKey) ?? 0)) return;
     const l = Math.hypot(m.d[0], m.d[1], m.d[2]);
     if (l < 1e-6) return;
     const d: [number, number, number] = [m.d[0] / l, m.d[1] / l, m.d[2] / l];
     // Đầu nòng phải ở sát trụ súng (nới cho xe đang chạy, trễ mạng); góc ngẩng trong tầm xoay của giá súng.
-    const { pivot } = mountMuzzle(v.kind, v, 0, 0);
-    if (Math.hypot(m.o[0] - pivot[0], m.o[1] - pivot[1], m.o[2] - pivot[2]) > MOUNT.barrel + 3.5) return;
+    const { pivot } = mountMuzzle(v.kind, v, 0, 0, seat);
+    // Trực thăng bay nhanh: nới thêm theo tốc độ (gói vị trí chậm hơn gói bắn).
+    const slack = v.kind === "heli" ? 6 : 3.5;
+    if (Math.hypot(m.o[0] - pivot[0], m.o[1] - pivot[1], m.o[2] - pivot[2]) > MOUNT.barrel + slack) return;
     const pitch = Math.asin(Math.max(-1, Math.min(1, d[1])));
-    if (pitch > MOUNT.pitchUp + 0.15 || pitch < MOUNT.pitchDown - 0.15) return;
-    // Ổ đại liên: ngoài cung xoay của giá súng (nới chút cho tản đạn, trễ mạng) thì không nhận.
-    if (!inTraverse(v.kind, v.rotY, Math.atan2(d[0], d[2]), 0.1)) return;
-    this.gunReadyAt.set(vid, now + (60000 / HMG.rpm) * 0.8);
-    v.turret = clampTraverse(v.kind, v.rotY, Math.atan2(d[0], d[2]));
-    v.pitch = Math.max(MOUNT.pitchDown, Math.min(MOUNT.pitchUp, pitch));
-    p.rotY = v.turret;
+    const lim = mountPitch(v.kind);
+    if (pitch > lim.up + 0.15 || pitch < lim.down - 0.15) return;
+    const yaw = Math.atan2(d[0], d[2]);
+    // Ổ đại liên, súng cửa trực thăng: ngoài cung xoay của giá súng (nới chút cho tản đạn, trễ mạng) thì không nhận.
+    if (!inTraverse(v.kind, v.rotY, yaw, 0.1) || !inMountArc(v.kind, seat, v.rotY, yaw, 0.15)) return;
+    this.gunReadyAt.set(gunKey, now + (60000 / HMG.rpm) * 0.8);
+    if (second) {
+      v.turret2 = clampMount(v.kind, seat, v.rotY, yaw);
+      v.pitch2 = Math.max(lim.down, Math.min(lim.up, pitch));
+      p.rotY = v.turret2;
+    } else {
+      v.turret = clampMount(v.kind, seat, v.rotY, clampTraverse(v.kind, v.rotY, yaw));
+      v.pitch = Math.max(lim.down, Math.min(lim.up, pitch));
+      p.rotY = v.turret;
+    }
     this.room.shootRays(pid, HMG, [m.o[0], m.o[1], m.o[2]], [d], m.hits, false, vid);
   }
 
@@ -462,6 +506,8 @@ export class Vehicles {
     const p = s.players.get(pid);
     const vid = p?.vehicle ?? "";
     const v = vid ? s.vehicles.get(vid) : undefined;
+    // Phi công trực thăng bắn rocket mũi (cùng gói bắn pháo).
+    if (p && v && p.alive && v.kind === "heli") return this.air.rocket(pid, vid, v);
     if (!p || !v || !p.alive || v.kind !== "tank" || v.driver !== pid || v.hp <= 0 || !this.room.fighting()) return;
     const now = Date.now();
     if (now < (this.readyAt.get(vid) ?? 0)) return;
@@ -542,6 +588,8 @@ export class Vehicles {
     if (attacker && !own) this.room.clientOf(attacker)?.send(Messages.hit, { kind: v.hp <= 0 ? "kill" : "body", armor: true, amount: Math.round(amount), ...(v.hp <= 0 ? { crew: crew.length } : {}) } satisfies HitMessage);
     if (v.driver) this.room.bots.onHurt(v.driver, attacker);
     if (v.hp > 0) return;
+    // Phá huỷ xe địch (xe có người, hay xe của phe kia): điểm chi viện chiến thuật.
+    if (attacker && !own && (crew.length || (v.team && a?.team !== v.team))) this.room.streaks.earn(attacker, "vehicle");
     // Nổ tung: người trên xe chết, xác xe nằm lại cháy âm ỉ.
     v.moving = false;
     v.tracks = 0;
@@ -680,6 +728,7 @@ export class Vehicles {
     }
     this.fleet.tick(dt);
     this.emplacements.tick(dt);
+    this.air.tick(dt);
     if (!this.shells.length) return;
     const keep: Shell[] = [];
     for (const sh of this.shells) {

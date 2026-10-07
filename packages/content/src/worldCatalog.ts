@@ -106,6 +106,8 @@ export const BuildingSchema = z.object({
   /** Kích thước nền (ngang, sâu), mét. */
   size: z.tuple([z.number().positive(), z.number().positive()]),
   blurb: z.string().min(1),
+  /** Mảnh lắp ghép theo lưới quanh lửa trại (xem snap.ts); không có là công trình đặt tự do kiểu cũ. */
+  snap: z.enum(["floor", "wall", "stairs", "tower"]).optional(),
 });
 export type BuildingDef = z.infer<typeof BuildingSchema>;
 

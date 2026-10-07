@@ -232,7 +232,7 @@ export interface EncounterEffects {
   gainItem?: string;
 }
 
-export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning", "attack", "fall", "hunt", "page", "lava", "burn"] as const;
+export const ENCOUNTER_SOURCES = ["egg", "anomaly", "trap", "creature", "friend", "drowning", "attack", "fall", "hunt", "page", "lava", "burn", "volcanic"] as const;
 export type EncounterSource = (typeof ENCOUNTER_SOURCES)[number];
 /** Giới hạn mỗi hệ quả của một lần chạm trán, phòng server tính nhầm. */
 export const ENCOUNTER_EFFECT_LIMIT = 60;

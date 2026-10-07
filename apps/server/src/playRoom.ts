@@ -8,11 +8,20 @@ import {
   FALL_DAMAGE_MAX,
   FALL_DAMAGE_PER_M,
   PICKUP_RADIUS,
+  TIDE_MEAN,
   UNARMED_CHOP,
-  WATER_LEVEL,
   content,
   meleeOf,
+  snapFromRecord,
+  snapOffset,
+  snapPiece,
+  snapProblem,
+  snapReach,
+  snapTerrain,
+  snapY,
   worldCatalog,
+  type BuildingDef,
+  type SnapPiece,
   type World,
 } from "@tentides/content";
 import {
@@ -139,7 +148,7 @@ export class PlayController {
     h.onMessage(Messages.climb, ClimbMessage, (client, { treeId }) => this.onClimb(client, treeId));
     h.onMessage(Messages.packCamp, (client) => this.onPackCamp(client));
     h.onMessage(Messages.campfire, (client) => this.onCampfire(client));
-    h.onMessage(Messages.build, BuildMessage, (client, m) => this.onBuild(client, m.kind, m.x, m.z, m.rot));
+    h.onMessage(Messages.build, BuildMessage, (client, m) => this.onBuild(client, m.kind, m.x, m.z, m.rot, m.level ?? 0));
     h.onMessage(Messages.assassinate, AssassinateMessage, (client, { target }) => this.onAssassinate(client, target));
   }
 
@@ -537,12 +546,13 @@ export class PlayController {
     this.moveCamp(CAMP.x, CAMP.z);
   }
 
-  private onBuild(client: Client, kind: string, x: number, z: number, rot: number) {
+  private onBuild(client: Client, kind: string, x: number, z: number, rot: number, level: number) {
     const a = this.actor(client);
     if (!a) return;
     const h = this.host;
     const def = worldCatalog.buildings.get(kind);
     if (!def) return;
+    if (def.snap) return this.onSnapBuild(client, a, def, x, z, rot, level);
     const camp = this.play.camp;
     if (camp.packed) return h.reject(client, "Phải dựng lửa trại trước đã.");
     const fromCamp = Math.hypot(x - camp.x, z - camp.z);
@@ -568,6 +578,50 @@ export class PlayController {
 
   // ------------------------------------------------------------------ leo cây
 
+  /** Mảnh lắp ghép của trại hiện có (sàn, vách, cầu thang, tháp canh). */
+  snapPieces(): SnapPiece[] {
+    const out: SnapPiece[] = [];
+    for (const b of this.play.buildings.values()) {
+      const snap = worldCatalog.buildings.get(b.kind)?.snap;
+      if (snap) out.push(snapFromRecord(snap, b.dx, b.dz, b.rot, b.level ?? 0));
+    }
+    return out;
+  }
+
+  /**
+   * Dựng một mảnh lắp ghép: bắt điểm ngắm vào lưới quanh lửa trại, kiểm tra chỗ đặt (đỡ, chồng lấn, địa hình, cây,
+   * nhà kiểu cũ, nước lúc triều lên) bằng đúng hàm client dùng để vẽ bóng xanh đỏ, rồi trừ vật liệu.
+   */
+  private onSnapBuild(client: Client, a: { id: string; player: { x: number; y: number; z: number }; sheet: Parameters<typeof hasMaterials>[0] }, def: BuildingDef, x: number, z: number, rot: number, level: number) {
+    const h = this.host;
+    const camp = this.play.camp;
+    if (camp.packed) return h.reject(client, "Phải dựng lửa trại trước đã.");
+    if (Math.hypot(x - a.player.x, z - a.player.z) > 9) return h.reject(client, "Hãy lại gần chỗ định dựng.");
+    const piece = snapPiece(def.snap!, x - camp.x, z - camp.z, level, rot);
+    const obstacles = [
+      ...this.play.standingTrees().map((t) => ({ x: t.x, z: t.z, r: 0.3 })),
+      ...[...this.play.buildings.values()]
+        .filter((b) => !worldCatalog.buildings.get(b.kind)?.snap)
+        .map((b) => ({ x: camp.x + b.dx, z: camp.z + b.dz, r: (worldCatalog.buildings.get(b.kind)?.size[0] ?? 3) / 2 })),
+    ];
+    const terrain = snapTerrain(h.world(), camp.x, camp.z, obstacles, TIDE_MEAN + 0.3);
+    const problem = snapProblem(this.snapPieces(), piece, terrain, snapReach(BUILD_RADIUS));
+    if (problem) return h.reject(client, problem);
+    if (!hasMaterials(a.sheet, def.cost)) {
+      const need = Object.entries(def.cost)
+        .map(([item, n]) => `${n} ${content.items.get(item)?.name.toLowerCase() ?? item}`)
+        .join(", ");
+      return h.reject(client, `Cần ${need} trong balo.`);
+    }
+    if (!h.dispatch({ type: "build", playerId: a.id, building: def.id, cost: def.cost, shelter: def.shelter }, client)) return;
+    this.feat(a.id, "built");
+    const o = snapOffset(piece);
+    this.play.buildings.set(this.play.id("h"), { kind: def.id, dx: o.dx, dz: o.dz, rot: o.rot, level: piece.level });
+    this.act(a.id, "chop");
+    const base = terrain.cell(piece.i, piece.j).base;
+    this.fx({ kind: "build", x: camp.x + o.dx, y: snapY(base, piece.level) + 1.5, z: camp.z + o.dz, word: "CỘC CỘC CỘC!" });
+  }
+
   private onClimb(client: Client, treeId: string) {
     const h = this.host;
     const id = h.playerOf(client);
@@ -582,7 +636,7 @@ export class PlayController {
     if (!tree) return h.reject(client, "Cây này không còn nữa.");
     if (!this.play.climbable(tree)) return h.reject(client, "Cây còn non quá, leo gãy mất.");
     if (Math.hypot(tree.x - a.player.x, tree.z - a.player.z) > CLIMB_REACH + TOLERANCE) return h.reject(client, "Hãy lại sát gốc cây.");
-    if (a.player.y < WATER_LEVEL - 0.5) return h.reject(client, "Đang bơi thì leo sao được.");
+    if (a.player.y < this.play.seaLevel - 0.5) return h.reject(client, "Đang bơi thì leo sao được.");
     if (this.play.climbers.get(id) !== treeId) this.feat(id, "climbs");
     this.play.climbers.set(id, treeId);
   }
@@ -632,8 +686,8 @@ export class PlayController {
         this.hit(p.owner, e.target, p.hit, p.itemId, { x: p.x - p.vx * 0.1, z: p.z - p.vz * 0.1 });
         if (!p.hit.breaks) this.play.place(p.itemId, e.target.x, e.target.z);
       } else {
-        if (e.water) this.fx({ kind: "splash", x: e.x, y: WATER_LEVEL, z: e.z });
-        if (p.hit.breaks) this.fx({ kind: "hit", x: e.x, y: Math.max(e.y, WATER_LEVEL) + 0.4, z: e.z, word: p.hit.word ?? "BỐP!" });
+        if (e.water) this.fx({ kind: "splash", x: e.x, y: this.play.seaLevel, z: e.z });
+        if (p.hit.breaks) this.fx({ kind: "hit", x: e.x, y: Math.max(e.y, this.play.seaLevel) + 0.4, z: e.z, word: p.hit.word ?? "BỐP!" });
         else this.play.place(p.itemId, e.x, e.z);
       }
     }
@@ -646,7 +700,7 @@ export class PlayController {
     const h = this.host;
     const world = h.world();
     for (const [id, p] of h.state.players) {
-      const offshore = p.y < WATER_LEVEL - 0.5 && world.heightAt(p.x, p.z) < -6 && world.surface(p.x, p.z).inland < -18;
+      const offshore = p.y < this.play.seaLevel - 0.5 && world.heightAt(p.x, p.z) < -6 && world.surface(p.x, p.z).inland < -18;
       if (!offshore || !h.game().players[id]?.alive) {
         this.seaTime.set(id, 0);
         continue;
@@ -657,7 +711,7 @@ export class PlayController {
         const shark = h.wildlife().spawnShark(p);
         if (shark) {
           this.seaTime.set(id, -20);
-          this.fx({ kind: "splash", x: shark.x, y: WATER_LEVEL, z: shark.z, word: "VÂY CÁ MẬP!" });
+          this.fx({ kind: "splash", x: shark.x, y: this.play.seaLevel, z: shark.z, word: "VÂY CÁ MẬP!" });
         }
       }
     }
@@ -706,6 +760,7 @@ export class PlayController {
       t.dx = b.dx;
       t.dz = b.dz;
       t.rot = b.rot;
+      t.level = b.level ?? 0;
     });
     const stumps = [...this.play.felled].join(",");
     if (stumps !== this.synced.stumps) {
