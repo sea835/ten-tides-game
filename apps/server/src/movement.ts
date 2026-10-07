@@ -1,5 +1,5 @@
 import { MAP_HALF_SIZE, heightAt as islandHeightAt } from "@tentides/content";
-import { MAX_RUN_SPEED, MAX_SPEED_BOOST, type MoveMessage } from "@tentides/protocol";
+import { GAIT, MAX_RUN_SPEED, MAX_SPEED_BOOST, type MoveMessage } from "@tentides/protocol";
 
 export interface Position {
   x: number;
@@ -32,4 +32,15 @@ export function isPlausibleMove(
   const seconds = Math.max(elapsedMs, MIN_WINDOW_MS) / 1000;
   const horizontal = Math.hypot(to.x - from.x, to.z - from.z);
   return horizontal <= MAX_RUN_SPEED * MAX_SPEED_BOOST * SPEED_TOLERANCE * Math.max(1, boost) * seconds;
+}
+
+/**
+ * Dáng di chuyển nhất thời client báo lên (trượt, lao người, trên không — chỉ để máy khác diễn lại): bỏ bit lạ, lao
+ * người mà không nằm sấp thì không tính (lao người luôn kết thúc ở tư thế nằm, hộp trúng đạn là hộp nằm).
+ */
+export function sanitizeGait(gait: number, prone: boolean): number {
+  const g = gait & (GAIT.kind | GAIT.air);
+  const kind = g & GAIT.kind;
+  if (kind === GAIT.kind || (kind === GAIT.dive && !prone)) return g & GAIT.air;
+  return g;
 }

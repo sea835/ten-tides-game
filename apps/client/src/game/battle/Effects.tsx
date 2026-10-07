@@ -342,7 +342,7 @@ function SmokeEmitters({ room }: { room: IslandRoom }) {
 // ---------------------------------------------------------------------------- nổ
 
 /** Tia lửa, mảnh vụn nóng đỏ văng ra từ vụ nổ (rơi theo trọng lực, tắt dần). */
-interface Ember {
+export interface Ember {
   x: number;
   y: number;
   z: number;
@@ -353,8 +353,8 @@ interface Ember {
   life: number;
   size: number;
 }
-const embers: Ember[] = [];
-const MAX_EMBERS = 360;
+export const embers: Ember[] = [];
+export const MAX_EMBERS = 360;
 /** Mỗi vụ nổ vẽ chừng này cầu lửa con (lệch nhau, nở trễ nhau) cho cầu lửa cuồn cuộn, không tròn trịa. */
 const FIREBALLS = 7;
 /** Tầng lửa thứ hai: vài cuộn lửa đỏ sẫm bốc lên sau (như nấm lửa), nguội dần thành khói đen của cột khói. */

@@ -17,7 +17,7 @@ import {
   worldCatalog,
   type World,
 } from "@tentides/content";
-import { INTERACT_RADIUS, MAX_RUN_SPEED, MAX_SPEED_BOOST, Messages, type CorrectMessage, type KnockMessage, type MoveMessage } from "@tentides/protocol";
+import { GAIT, INTERACT_RADIUS, MAX_RUN_SPEED, MAX_SPEED_BOOST, Messages, type CorrectMessage, type KnockMessage, type MoveMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { getCameraView } from "./camera.ts";
 import { Character, type Motion } from "./Character.tsx";
@@ -28,7 +28,8 @@ import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { ADRENALINE, JUGGERNAUT, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
+import { ADRENALINE, DIVE, JUGGERNAUT, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
+import { groundProbe } from "./character/motionFx.ts";
 import { bodies, getBattleHud, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { gun, gun as shooterGun } from "./battle/runtime.ts";
@@ -235,6 +236,12 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     /** Đang trượt: hướng và tốc độ còn lại. */
     slide: null as { dir: number; speed: number } | null,
     slideReadyAt: 0,
+    /** Đang lao người nằm sấp (xem DIVE): hướng, tốc độ, đã chạm đất chưa, hãm trượt (m/s²). */
+    dive: null as { dir: number; speed: number; landed: boolean; brake: number; t: number } | null,
+    /** Vừa lao người: còn giữ Shift từ lúc chạy thì chưa tính là bấm chạy để đứng dậy. */
+    diveHold: false,
+    /** Bộ đếm cú nhảy (Character diễn nhún lấy đà). */
+    jumps: 0,
     /** Đà nhảy thỏ: tốc độ được cộng thêm chừng này phần. */
     hop: 0,
     spaceHeld: false,
@@ -274,6 +281,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     vault: null as null | { t: number; ax: number; ay: number; az: number; bx: number; by: number; bz: number; cx: number; cy: number; cz: number },
   });
   const camTarget = useMemo(() => new Vector3(), []);
+  // Dò mặt đất dưới bàn chân (Character đặt chân bám dốc, tung bụi).
+  const ground = useMemo(() => groundProbe(world), [world]);
   const camPos = useMemo(() => new Vector3(), []);
   const camDir = useMemo(() => new Vector3(), []);
 
@@ -410,6 +419,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     w.__tentides ??= {};
     w.__tentides.sim = sim.current;
     w.__tentides.keys = keys;
+    w.__tentides.avatar = avatar.current;
     w.__tentides.tryVault = () => {
       const p = body.current?.translation();
       return p ? tryVault(p, p.y - FEET_OFFSET) : "no body";
@@ -438,6 +448,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       s.crouching = s.prone = false;
       s.pronePressed = s.crouchPressed = false;
       s.slide = null;
+      s.dive = null;
       s.vault = null;
       s.vx = s.vz = s.vy = 0;
       stance.aiming = stance.firstPerson = stance.prone = stance.crouching = false;
@@ -483,12 +494,29 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       shooterGun.readyAt = Math.max(shooterGun.readyAt, now + PRONE_TIME * 1000);
       playLand({ x: localPosition.x, y: localPosition.y, z: localPosition.z }, on ? 0.15 : 0.05);
     };
+    // Đang chạy nước rút bấm Z: lao người tới trước rồi nằm sấp (dolphin dive), không thì nằm xuống / đứng dậy như cũ.
+    const diveReady = !s.prone && (keys.has("ShiftLeft") || keys.has("ShiftRight")) && !stance.aiming && !stance.holdFire && !s.crouching && Math.hypot(s.vx, s.vz) > BATTLE_WALK + 0.5;
     if (s.pronePressed) {
       s.pronePressed = false;
-      if (battle && !frozen && !s.swimming && !s.climb && !s.slide && !s.vault && s.grounded) setProne(!s.prone);
+      if (battle && !frozen && !s.swimming && !s.climb && !s.slide && !s.vault && !s.dive && s.grounded) {
+        if (diveReady) {
+          setProne(true);
+          // Hạ súng suốt cú lao (dài hơn nằm xuống thường).
+          const now = performance.now();
+          stance.swapDur = DIVE.time;
+          shooterGun.readyAt = Math.max(shooterGun.readyAt, now + DIVE.time * 1000);
+          s.dive = { dir: Math.atan2(s.vx, s.vz), speed: Math.min(TOP_SPEED, Math.hypot(s.vx, s.vz) * DIVE.boost), landed: false, brake: 0, t: 0 };
+          s.vy = DIVE.lift;
+          s.coyote = 0;
+          s.airJump = false;
+          s.diveHold = true;
+        } else setProne(!s.prone);
+      }
     }
     if (s.prone && (!battle || s.swimming || s.climb || dead)) s.prone = false;
-    if (s.prone && !frozen && keys.has("Space")) {
+    if (!s.prone) s.dive = null;
+    if (s.diveHold && !(keys.has("ShiftLeft") || keys.has("ShiftRight"))) s.diveHold = false;
+    if (s.prone && !s.dive && !frozen && keys.has("Space")) {
       setProne(false);
       s.jumpPressAt = -1;
     }
@@ -513,7 +541,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const shift = keys.has("ShiftLeft") || keys.has("ShiftRight");
     // Battleground: chạy thì đứng dậy; đang ngắm thì không chạy được; chạy không tốn sức bền.
     if (battle && shift && s.crouching && (forward !== 0 || strafe !== 0)) s.crouching = false;
-    if (battle && shift && s.prone && (forward !== 0 || strafe !== 0)) setProne(false);
+    if (battle && shift && s.prone && !s.dive && !s.diveHold && (forward !== 0 || strafe !== 0)) setProne(false);
     const wantsRun = shift && (forward !== 0 || strafe !== 0) && !frozen && !s.prone && !(battle && (stance.aiming || stance.holdFire || s.crouching));
     const running = wantsRun && (battle || (!s.exhausted && s.energy > 0));
     // Vừa chạy vừa bắn: giữ Shift và bóp cò thì không chạy nước rút (không bắn được) mà chạy bắn,
@@ -581,7 +609,15 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     // Đang chạy trên đất mà bấm C thì trượt tới theo đà; không thì ngồi xuống/đứng dậy như cũ.
     if (s.crouchPressed) {
       s.crouchPressed = false;
-      if (running && moving && s.grounded && !s.slide && !s.climb && !s.swimming && s.clock >= s.slideReadyAt) {
+      if (s.slide && battle && !frozen) {
+        // Bấm C lần nữa khi đang trượt (nhấp đúp C): huỷ trượt, bật dậy chạy tiếp, giữ đà theo hướng trượt
+        // (quán tính đi đứng hãm dần về tốc độ chạy).
+        const keep = Math.min(s.slide.speed, TOP_SPEED);
+        s.vx = Math.sin(s.slide.dir) * keep;
+        s.vz = Math.cos(s.slide.dir) * keep;
+        endSlide();
+        s.crouching = false;
+      } else if (running && moving && s.grounded && !s.slide && !s.climb && !s.swimming && s.clock >= s.slideReadyAt) {
         const cur = Math.max(speed, Math.hypot(s.vx, s.vz));
         s.slide = { dir: Math.atan2(wantX, wantZ), speed: Math.min(TOP_SPEED, cur * (battle ? BATTLE_SLIDE_BOOST : SLIDE_BOOST)) };
         if (battle) playLand({ x: pos.x, y: feetNow, z: pos.z }, 0.2);
@@ -596,6 +632,31 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       }
     }
     if (s.slide && (frozen || s.swimming || s.climb)) s.slide = null;
+    if (s.dive) {
+      // Lao người: bay theo đà chạy (chỉ bẻ lái chút ít), chạm đất thì trượt khuỷu tay chừng DIVE.slide mét rồi nằm hẳn.
+      const dv = s.dive;
+      if (moving) {
+        const turn = Math.atan2(Math.sin(Math.atan2(wantX, wantZ) - dv.dir), Math.cos(Math.atan2(wantX, wantZ) - dv.dir));
+        dv.dir += Math.max(-SLIDE_TURN * 0.5 * dt, Math.min(SLIDE_TURN * 0.5 * dt, turn));
+      }
+      dv.t += dt;
+      // Không rời được đất (trần thấp, dốc lên) thì coi như đã chạm đất sau chừng này giây.
+      if (!dv.landed && dv.t > 0.6) {
+        dv.landed = true;
+        dv.speed = Math.min(dv.speed, DIVE.slideSpeed);
+        dv.brake = (dv.speed * dv.speed) / (2 * DIVE.slide);
+      }
+      if (dv.landed) dv.speed = Math.max(0, dv.speed - dv.brake * dt);
+      s.vx = Math.sin(dv.dir) * dv.speed;
+      s.vz = Math.cos(dv.dir) * dv.speed;
+      mx = s.vx * dt;
+      mz = s.vz * dt;
+      s.facing = dv.dir;
+      if (dv.landed && dv.speed < 0.3) {
+        s.dive = null;
+        s.vx = s.vz = 0;
+      }
+    }
     if (s.slide) {
       // Trượt: chậm dần, chỉ bẻ lái được chút ít theo hướng đang bấm.
       const sl = s.slide;
@@ -711,6 +772,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
           } else if (timed && moving && s.grounded) s.hop = Math.min(BHOP_MAX, s.hop + BHOP_GAIN);
           else s.hop = 0;
           s.vy = battle ? BATTLE_JUMP : JUMP_SPEED;
+          s.jumps++;
           s.airJump = true;
           s.jumpAt = s.clock;
           s.hopReady = false;
@@ -781,6 +843,16 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
           s.vz *= keep;
         }
         playLand({ x: pos.x, y: feetNow, z: pos.z }, hard);
+      }
+      // Lao người chạm đất: ngực, khuỷu tay trượt trên đất (hãm sao cho trượt đúng DIVE.slide mét), tiếng dậm người.
+      if (s.dive && !s.dive.landed && s.grounded && !wasGrounded) {
+        const dv = s.dive;
+        dv.landed = true;
+        dv.speed = Math.min(dv.speed, DIVE.slideSpeed);
+        dv.brake = (dv.speed * dv.speed) / (2 * DIVE.slide);
+        stance.land = Math.max(stance.land, 0.45);
+        s.dipV -= 1.2;
+        playLand({ x: pos.x, y: feetNow, z: pos.z }, 0.45);
       }
       if (s.grounded && s.vy < 0) s.vy = 0;
       // Coyote time: đang đất thì hồn đầy, rời đất thì đếm ngược (xem COYOTE_TIME).
@@ -1004,6 +1076,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     localMotion.sitting = s.sitting;
     localMotion.swimming = s.swimming;
     localMotion.aiming = battle && stance.aiming;
+    localMotion.airborne = !s.grounded && !s.swimming && !s.climb && !s.vault;
+    localMotion.vy = s.vy;
+    localMotion.jumps = s.jumps;
+    localMotion.diving = !!s.dive;
     stance.crouching = s.crouching;
     stance.prone = s.prone;
     stance.moving = moving || sliding;
@@ -1096,8 +1172,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         msg.aiming = stance.aiming;
         msg.aimPitch = localMotion.aimPitch;
         msg.lean = Math.round(leanNow * 8) / 8;
+        // Máy khác diễn lại trượt, lao người, nhảy.
+        msg.gait = (s.dive ? GAIT.dive : sliding ? GAIT.slide : 0) | (localMotion.airborne ? GAIT.air : 0);
       }
-      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming},${s.crouching},${s.prone},${msg.aiming},${(msg.aimPitch ?? 0).toFixed(2)},${msg.lean ?? 0}`;
+      const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming},${s.crouching},${s.prone},${msg.aiming},${(msg.aimPitch ?? 0).toFixed(2)},${msg.lean ?? 0},${msg.gait ?? 0}`;
       if (key !== s.lastSent) {
         s.lastSent = key;
         room.send(Messages.move, msg);
@@ -1110,7 +1188,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       <CapsuleCollider ref={collider} args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
       <group position-y={-FEET_OFFSET}>
         {room.state.mode === "battle" ? (
-          <BattleLook room={room}>{({ skin, ...look }) => <Character ref={avatar} color={me.color} {...look} gunSkin={skin} motion={() => readLocalMotion(room)} />}</BattleLook>
+          <BattleLook room={room}>{({ skin, ...look }) => <Character ref={avatar} color={me.color} {...look} gunSkin={skin} ground={ground} motion={() => readLocalMotion(room)} />}</BattleLook>
         ) : (
           <Carrier room={room}>{(carrying, held) => <Character ref={avatar} color={me.color} carrying={carrying} held={held} motion={() => readLocalMotion(room)} />}</Carrier>
         )}
@@ -1135,6 +1213,11 @@ function readLocalMotion(room: IslandRoom): Motion {
     const k = Math.min(1, (now - stance.swapAt) / (stance.swapDur * 1000));
     merged.swap = 1 - k * k * (3 - 2 * k);
     merged.cook = stance.cookAt > 0;
+  }
+  // Dev: ép dáng để chụp ảnh kiểm tra (window.__tentides.pose = { crouching: true, ... }).
+  if (import.meta.env.DEV) {
+    const pose = (window as unknown as { __tentides?: { pose?: Partial<Motion> } }).__tentides?.pose;
+    if (pose) Object.assign(merged, pose);
   }
   return merged;
 }
