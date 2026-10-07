@@ -9,7 +9,10 @@ import {
   RHIB,
   WAR_HELIPADS,
   WEAPON,
+  ROCKET_CONE,
   advanceLock,
+  clampRocketAim,
+  heliRocketAim,
   boatFits,
   boatStep,
   clampDoor,
@@ -147,18 +150,23 @@ describe("súng cửa, rocket, ghế trực thăng", () => {
 });
 
 describe("tên lửa IGLA: khoá, bay đuổi, pháo sáng", () => {
-  it("giữ tâm liên tục ~1,5 giây thì khoá chín; đứt quãng thì khoá lại từ đầu", () => {
+  it("giữ tâm liên tục đủ IGLA_LOCK.time thì khoá chín; đứt quãng thì khoá lại từ đầu", () => {
+    const T = IGLA_LOCK.time * 1000;
     let lock = advanceLock(null, "v1", 0);
-    for (let t = 100; t <= 1500; t += 100) lock = advanceLock(lock, "v1", t);
-    expect(lockReady(lock, 1500)).toBe(true);
+    for (let t = 100; t <= T; t += 100) lock = advanceLock(lock, "v1", t);
+    expect(lockReady(lock, T)).toBe(true);
     expect(lockReady(advanceLock(null, "v1", 0), 0)).toBe(false);
+    // Giữ chưa đủ lâu (thiếu hơn phần nới cho trễ mạng): chưa khoá.
+    let early = advanceLock(null, "v1", 0);
+    for (let t = 100; t <= T - IGLA_LOCK.slack * 1000 - 200; t += 100) early = advanceLock(early, "v1", t);
+    expect(lockReady(early, T - IGLA_LOCK.slack * 1000 - 200)).toBe(false);
     // Mất dấu quá lâu: bắt đầu lại.
-    const lost = advanceLock(lock, "v1", 1500 + IGLA_LOCK.gap * 1000 + 50);
+    const lost = advanceLock(lock, "v1", T + IGLA_LOCK.gap * 1000 + 50);
     expect(lost.held).toBe(0);
     // Đổi mục tiêu: bắt đầu lại.
-    expect(advanceLock(lock, "v2", 1600).held).toBe(0);
+    expect(advanceLock(lock, "v2", T + 100).held).toBe(0);
     // Khoá chín nhưng để quá lâu không ngắm thì hết hiệu lực.
-    expect(lockReady(lock, 1500 + IGLA_LOCK.gap * 1000 + 1)).toBe(false);
+    expect(lockReady(lock, T + IGLA_LOCK.gap * 1000 + 1)).toBe(false);
   });
 
   it("tên lửa quay đầu có giới hạn, đuổi kịp mục tiêu đứng yên", () => {
@@ -210,5 +218,25 @@ describe("xuồng cao tốc (RHIB)", () => {
     expect(top).toBeLessThanOrEqual(RHIB.forward + 1e-6);
     expect(vehicleSpec("rhib").seats).toBe(4);
     expect(isGunnerSeat("rhib", 1)).toBe(true);
+  });
+});
+
+describe("rocket trực thăng ngắm theo chuột", () => {
+  it("trong nón quanh mũi thì bay đúng hướng ngắm, ngoài nón thì bám mép nón", () => {
+    const pose = { x: 0, y: 40, z: 0, rotY: 1, tilt: 0.2, roll: 0 };
+    const inside = heliRocketAim(pose, 0, 1.1, -0.3);
+    expect(Math.atan2(inside.d[0], inside.d[2])).toBeCloseTo(1.1, 5);
+    expect(Math.asin(inside.d[1])).toBeCloseTo(-0.3, 5);
+    const a = clampRocketAim(1, 1 + Math.PI / 2, 1.2);
+    expect(a.yaw).toBeCloseTo(1 + ROCKET_CONE.yaw, 5);
+    expect(a.pitch).toBe(ROCKET_CONE.up);
+    expect(clampRocketAim(Math.PI - 0.1, -Math.PI + 0.1, -2).yaw).toBeCloseTo(Math.PI + 0.1, 5);
+    expect(clampRocketAim(0, 0, -2).pitch).toBe(ROCKET_CONE.down);
+  });
+
+  it("IGLA: hai phát mới hạ được trực thăng còn nguyên máu", () => {
+    expect(MISSILE.armor).toBeLessThan(HELI.hp);
+    expect(MISSILE.armor * 2).toBeGreaterThanOrEqual(HELI.hp);
+    expect(MISSILE.vmax).toBeGreaterThan(HELI.maxSpeed * 3);
   });
 });

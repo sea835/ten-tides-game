@@ -31,7 +31,7 @@ export function HeliHud() {
       el.style.display = heliHud.active ? "" : "none";
       if (!heliHud.active) return;
       el.classList.toggle("zoom", heliHud.zoom);
-      if (cross.current) cross.current.style.display = heliHud.gunner ? "" : "none";
+      if (cross.current) cross.current.style.display = heliHud.gunner || heliHud.seat === 0 ? "" : "none";
       if (ring.current) {
         ring.current.style.display = heliHud.gunner && heliHud.aimOn ? "" : "none";
         ring.current.style.left = `${(heliHud.aimX * 100).toFixed(2)}%`;
@@ -95,7 +95,7 @@ export function HeliHud() {
         <p>
           {seat === 0 ? (
             <>
-              <kbd>W</kbd>/<kbd>S</kbd> chúc / ngóc mũi · <kbd>A</kbd>/<kbd>D</kbd> quay đầu · <kbd>Q</kbd>/<kbd>E</kbd> nghiêng trượt ngang · <kbd>Space</kbd>/<kbd>Shift</kbd> lên / xuống · chuột trái rocket · <kbd>X</kbd> pháo sáng · <kbd>C</kbd> {heliHud.cockpit ? "camera sau đuôi" : "camera buồng lái"} · đáp ở sân đỗ để nạp đạn ·{" "}
+              <kbd>W</kbd>/<kbd>S</kbd> chúc / ngóc mũi · chuột / <kbd>A</kbd>/<kbd>D</kbd> quay đầu (giữ <kbd>Alt</kbd> nhìn tự do) · <kbd>Q</kbd>/<kbd>E</kbd> nghiêng trượt ngang · <kbd>Space</kbd>/<kbd>Shift</kbd> lên / xuống · chuột trái rocket (bay về tâm ngắm) · <kbd>X</kbd> pháo sáng · <kbd>C</kbd> {heliHud.cockpit ? "camera sau đuôi" : "camera buồng lái"} · đáp ở sân đỗ để nạp đạn ·{" "}
             </>
           ) : heliHud.gunner ? (
             <>chuột xoay súng cửa · chuột trái bắn · chuột phải ngắm gần · </>

@@ -10,13 +10,13 @@ import { tankGround, type TankPose } from "./squad.ts";
 
 /** Thông số trực thăng. Gốc toạ độ ở đáy càng đáp, giữa thân; mũi theo hướng rotY như xe. */
 export const HELI = {
-  hp: 640,
+  hp: 760,
   /** Nửa kích thước hộp thân (ngang, cao, dọc) để dò đạn, nổ; không tính đuôi mảnh và cánh quạt. */
   half: [1.15, 1.2, 3.3] as const,
   /** Bán kính bấm F lên trực thăng (đứng cạnh cửa). */
   enter: 6,
-  bulletFactor: 0.5,
-  blastFactor: 1.4,
+  bulletFactor: 0.36,
+  blastFactor: 1.25,
   /** Tốc độ ngang tối đa (m/s, ~165 km/h) khi chúc mũi hết cỡ. */
   maxSpeed: 46,
   /** Tốc độ lên / xuống tối đa (m/s) theo cần tập thể; gia tốc đuổi theo tốc độ đứng mong muốn. */
@@ -48,8 +48,8 @@ export const HELI = {
   /** Rocket mũi: số quả mỗi lần nạp, giãn cách hai quả (s); pháo sáng: số lượt, chờ giữa hai lượt (s). */
   rockets: 14,
   rocketGap: 0.28,
-  flares: 4,
-  flareCooldown: 5,
+  flares: 6,
+  flareCooldown: 4,
   /** Đáp trong bán kính này quanh sân đỗ nhà (m) thì được nạp lại rocket, pháo sáng (mỗi `rearmEvery` giây một đợt). */
   rearmRadius: 16,
   rearmEvery: 1.2,
@@ -318,6 +318,26 @@ export const HYDRA: WeaponDef = {
 };
 if (!WEAPON.has(HYDRA.id)) (WEAPON as Map<string, WeaponDef>).set(HYDRA.id, HYDRA);
 
+/**
+ * Nón ngắm rocket quanh mũi: phi công ngắm bằng chuột (tâm màn hình), rocket bay về đó nếu nằm trong ±`yaw` rad quanh
+ * hướng mũi và góc ngẩng / chúc tuyệt đối trong [`down`, `up`]; ngoài nón thì bám mép nón.
+ */
+export const ROCKET_CONE = { yaw: 0.32, up: 0.22, down: -0.85 } as const;
+
+/** Kẹp hướng ngắm (`yaw` theo quy ước rotY, `pitch` dương là ngẩng) vào nón rocket của trực thăng hướng `rotY`. */
+export function clampRocketAim(rotY: number, yaw: number, pitch: number): { yaw: number; pitch: number } {
+  const d = Math.atan2(Math.sin(yaw - rotY), Math.cos(yaw - rotY));
+  return { yaw: rotY + clamp(d, -ROCKET_CONE.yaw, ROCKET_CONE.yaw), pitch: clamp(pitch, ROCKET_CONE.down, ROCKET_CONE.up) };
+}
+
+/** Rocket thứ `k` bắn theo hướng ngắm (`yaw`, `pitch`, đã kẹp vào nón quanh mũi): đầu ống và hướng bay. */
+export function heliRocketAim(v: HeliPose, k: number, yaw: number, pitch: number): { o: [number, number, number]; d: [number, number, number] } {
+  const a = clampRocketAim(v.rotY, yaw, pitch);
+  const { o } = heliRocketMuzzle(v, k);
+  const cp = Math.cos(a.pitch);
+  return { o, d: [Math.sin(a.yaw) * cp, Math.sin(a.pitch), Math.cos(a.yaw) * cp] };
+}
+
 /** Đầu ống rocket thứ `k` và hướng bắn theo mũi trực thăng (kể cả góc chúc mũi). */
 export function heliRocketMuzzle(v: HeliPose, k: number): { o: [number, number, number]; d: [number, number, number] } {
   const pod = HELI_PODS[k % HELI_PODS.length]!;
@@ -355,17 +375,17 @@ export function inDoorArc(seat: number, rotY: number, yaw: number, slack = 0): b
 // ---------------------------------------------------------------------------- tên lửa vác vai IGLA, pháo sáng
 
 /** Khoá mục tiêu: giữ tâm ngắm lên trực thăng chừng này giây; tầm, nón ngắm (rad), quãng ngắt cho phép (s), độ cao tối thiểu. */
-export const IGLA_LOCK = { time: 1.5, range: 520, cone: 0.09, gap: 0.5, minAlt: 3, slack: 0.25 } as const;
+export const IGLA_LOCK = { time: 2.4, range: 400, cone: 0.09, gap: 0.5, minAlt: 3, slack: 0.25 } as const;
 
 /**
  * Tên lửa: rời ống chậm, động cơ đẩy lên `vmax`; quay đầu tối đa `turn` rad/s (không bám được cú quay gắt ở gần);
  * cháy hết sau `life` giây; ngòi cận đích `fuse` m; sát thương vào trực thăng trúng (`armor`), sức nổ (bán kính,
  * sát thương người ở tâm). Không có khoá thì bay thẳng như rocket.
  */
-export const MISSILE = { speed: 60, vmax: 240, accel: 300, turn: 2.1, life: 7, fuse: 4.5, arm: 0.3, armor: 470, radius: 3.5, damage: 70 } as const;
+export const MISSILE = { speed: 55, vmax: 175, accel: 220, turn: 1.5, life: 6, fuse: 4, arm: 0.3, armor: 390, radius: 3.5, damage: 70 } as const;
 
 /** Pháo sáng: số lượt mỗi lần nạp (HELI.flares), cháy bao lâu (s), tên lửa trong tầm này thì bị mồi, xác suất bị mồi. */
-export const FLARES = { burn: 3, range: 420, chance: 0.9 } as const;
+export const FLARES = { burn: 3.5, range: 420, chance: 0.95 } as const;
 
 /** Khoá đang giữ: trực thăng nào, đã giữ bao lâu (s), lần cuối thấy (ms). */
 export interface LockState {
