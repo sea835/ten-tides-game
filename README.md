@@ -27,6 +27,18 @@ thiết kế cũ ở [PROJECT.md](PROJECT.md), phần mô tả cũ của nó ở
 - **Đồ hoạ, âm thanh**: biển stylized có bọt sóng ven bờ, bom khói dày, vụ nổ có cột khói đen, ánh chớp đầu nòng, sấm
   chớp, tuyết đọng; tiếng nổ siêu thanh, đạn rít sát tai, tiếng vọng theo địa hình, ù tai khi nổ gần.
 - **Mạng**: tải lại trang (F5) hay rớt mạng dưới 45 giây thì vào lại đúng trận, đúng phe, đúng súng.
+- **Nâng cấp "Pro VIP"**: sảnh 3D (nhân vật trên bục, kéo để xoay; bờ biển hoàng hôn hay phòng chỉ huy), giao diện
+  kính mờ quân sự, bục vinh danh cuối trận; **I** ngắm nghía súng, súng trễ theo khi lia chuột / nhún khi tiếp đất,
+  khí nóng và khói nòng; chuông kim loại khi hạ bằng headshot, đầu lâu dưới tâm ngắm, DOUBLE / TRIPLE KILL, RAMPAGE;
+  chuyển động có trọng lượng (lắc hông, nghiêng khi vào cua, bàn chân bám dốc, nhún khi tiếp đất), đang chạy bấm **Z** thì
+  lao người nằm sấp, đang trượt bấm **C** thì huỷ trượt; khớp tròn, quân phục chi tiết, thẻ bài / dây súng đung đưa,
+  chớp mắt; tia nắng, sương mù theo độ cao, mặt biển phản chiếu (đồ hoạ Cao), mặt đất và súng ướt khi mưa, cỏ rạp khi
+  đi qua, bóng mây trôi.
+- **Không chiến, thuỷ chiến**: trực thăng vũ trang ở bãi đáp mỗi căn cứ (lái: W/S chúi mũi, A/D xoay, Q/E nghiêng,
+  Space / Shift lên xuống, chuột trái rocket, **X** pháo sáng, **C** đổi camera), xạ thủ hai bên cửa; tên lửa vác vai
+  IGLA khoá mục tiêu (Kỹ Thuật chọn ở sảnh); xuồng cao tốc RHIB có súng M2.
+- **Chi viện chiến thuật** (50v50, Tiểu Đội): điểm chiến thuật từ hạ địch, chiếm cờ, tiếp đạn, sửa xe; **K** mở menu:
+  UAV (500), mưa pháo (1200), hòm tiếp tế giáp Juggernaut + Minigun hay TOW (2000). Giữ chuột giữa mở vòng ping.
 
 ### Chế độ sinh tồn (đã lưu trữ)
 
