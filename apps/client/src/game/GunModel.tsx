@@ -16,6 +16,8 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { skinMaterial, skinViewMaterial } from "./skinMaterials.ts";
+import { withRim } from "./character/rim.ts";
+import { withRelief, type ReliefKind } from "./character/relief.ts";
 
 // Mô hình 3D dựng bằng khối cho chế độ Battleground: súng (cầm trên tay và nằm dưới đất), đạn, giáp, mũ, lựu đạn,
 // bom khói, mìn, băng gạc, hộp cứu thương, tiền. Mỗi mô hình gộp các khối cùng vật liệu thành một hình (ít lệnh vẽ),
@@ -64,8 +66,8 @@ const MATS: Record<string, MatDef> = {
   plate: { color: "#3c4130", rough: 0.7, detail: "none" },
   strap: { color: "#232420", rough: 0.9, detail: "fabric" },
   helmet1: { color: "#5e5c3e", rough: 0.9, detail: "fabric" },
-  helmet2: { color: "#56603f", rough: 0.7, detail: "none" },
-  helmet3: { color: "#39402f", rough: 0.6, detail: "none" },
+  helmet2: { color: "#56603f", metal: 0.15, rough: 0.66, detail: "none" },
+  helmet3: { color: "#39402f", metal: 0.15, rough: 0.58, detail: "none" },
   visor: { color: "#1c2a33", metal: 0.6, rough: 0.1, opacity: 0.55, detail: "none", double: true },
   // Hộp đạn: màu theo cỡ đạn cho dễ nhận ra.
   "ammo:9mm": { color: "#c9a33a", rough: 0.7, detail: "none" },
@@ -98,9 +100,23 @@ export function gearMaterial(key: string, opacity = 1): MeshStandardMaterial {
   if (alpha < 1) m.depthWrite = false;
   m.userData.detail = d.detail ?? "none";
   m.userData.detailSpace = "object";
+  // Áo giáp, mũ: viền sáng như người mặc, nổi gân bề mặt (sợi Kevlar, gốm lục giác, mũ sắt trầy xước).
+  const relief = GEAR_RELIEF[key];
+  if (relief) withRelief(withRim(m), relief[0], relief[1]);
   matCache.set(id, m);
   return m;
 }
+
+const GEAR_RELIEF: Record<string, [ReliefKind, number]> = {
+  vest1: ["kevlar", 1],
+  vest2: ["kevlar", 1],
+  vest3: ["kevlar", 0.8],
+  pouch: ["kevlar", 0.7],
+  plate: ["ceramic", 1],
+  helmet1: ["wrinkle", 0.6],
+  helmet2: ["scuff", 1],
+  helmet3: ["scuff", 1],
+};
 
 /**
  * Vật liệu cho súng trước mặt (góc thứ nhất): nén độ sâu về sát mặt kính camera nên súng luôn vẽ đè lên tường,
@@ -1077,6 +1093,10 @@ function vestParts(level: number): Part[] {
   // Tấm chắn trước và sau.
   parts.push(box("plate", big ? 0.28 : 0.25, big ? 0.3 : 0.26, 0.03, [0, 0.28, 0.148]));
   parts.push(box("plate", big ? 0.28 : 0.25, big ? 0.3 : 0.26, 0.03, [0, 0.28, -0.148]));
+  // Dải vải MOLLE sau lưng: các hàng đai khâu chặn thành từng ô để móc túi.
+  for (const y of big ? [0.19, 0.25, 0.31, 0.37] : [0.22, 0.29, 0.36]) {
+    for (let i = 0; i < 5; i++) parts.push(box("strap", 0.044, 0.02, 0.006, [-0.1 + i * 0.05, y, -0.166]));
+  }
   // Túi băng đạn phía trước bụng, nắp túi sẫm hơn.
   const rows = big ? [0.13, 0.22] : [0.14];
   for (const y of rows) {
