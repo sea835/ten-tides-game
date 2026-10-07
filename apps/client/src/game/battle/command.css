@@ -1,18 +1,20 @@
-/* Sảnh Battleground "Trung tâm chỉ huy": nền tối xanh rêu, lưới bản đồ tác chiến mờ, nhấn vàng hổ phách. */
+/* Sảnh Battleground "Trung tâm chỉ huy", kính mờ quân sự: nhân vật 3D trên bục làm nền (StudioBackdrop), bảng kính
+   mờ viền gradient cyan, lưới bản đồ tác chiến mờ, nhấn vàng cho nút hành động và con số. */
 
 .cc {
-  --cc-bg: rgba(9, 14, 12, 0.94);
-  --cc-card: rgba(255, 255, 255, 0.04);
-  --cc-card-hi: rgba(255, 255, 255, 0.08);
-  --cc-line: rgba(186, 214, 170, 0.16);
-  --cc-line-hi: rgba(186, 214, 170, 0.32);
-  --cc-text: #eef0e6;
-  --cc-muted: #9aa894;
-  --cc-amber: #f2b441;
-  --cc-amber-hi: #ffd27a;
-  --cc-olive: #8fae6a;
-  --cc-blue: #6fa0ff;
-  --cc-red: #ff7a6e;
+  --cc-bg: var(--glass);
+  --cc-card: rgba(255, 255, 255, 0.035);
+  --cc-card-hi: rgba(255, 255, 255, 0.075);
+  --cc-line: rgba(0, 242, 254, 0.13);
+  --cc-line-hi: rgba(0, 242, 254, 0.3);
+  --cc-text: #eaf3fb;
+  --cc-muted: #93a6b6;
+  --cc-amber: #ffc21a;
+  --cc-amber-hi: var(--gold);
+  /* Tên cũ "olive" giữ lại cho đỡ sửa nhiều chỗ: giờ là màu nhấn cyan của giao diện. */
+  --cc-olive: #3fe6f5;
+  --cc-blue: var(--cyan);
+  --cc-red: var(--crimson);
   position: absolute;
   inset: 0;
   display: flex;
@@ -36,16 +38,17 @@
   gap: 16px;
   padding: 20px 22px;
   border-radius: 16px;
-  border: 1px solid var(--cc-line);
+  border: 1px solid transparent;
   background:
-    linear-gradient(var(--cc-line) 1px, transparent 1px) 0 0 / 32px 32px,
-    linear-gradient(90deg, var(--cc-line) 1px, transparent 1px) 0 0 / 32px 32px,
-    var(--cc-bg);
-  background-blend-mode: soft-light, soft-light, normal;
+    linear-gradient(rgba(0, 242, 254, 0.045) 1px, transparent 1px) padding-box 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(0, 242, 254, 0.045) 1px, transparent 1px) padding-box 0 0 / 32px 32px,
+    linear-gradient(var(--cc-bg), var(--cc-bg)) padding-box,
+    var(--edge-cyan) border-box;
   box-shadow:
     0 30px 80px rgba(0, 0, 0, 0.6),
+    var(--glow-cyan),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(12px);
+  backdrop-filter: var(--glass-blur);
 }
 /* Bốn góc khung ngắm. */
 .cc-panel::before,
@@ -54,9 +57,10 @@
   position: absolute;
   width: 22px;
   height: 22px;
-  border: 2px solid var(--cc-amber);
+  border: 2px solid var(--cyan);
   pointer-events: none;
   opacity: 0.8;
+  filter: drop-shadow(0 0 4px rgba(0, 242, 254, 0.6));
 }
 .cc-panel::before {
   left: 8px;
@@ -92,6 +96,7 @@
 }
 .cc-kicker {
   display: block;
+  font-family: var(--font-display);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.24em;
@@ -100,8 +105,9 @@
 }
 .cc-head h2 {
   margin: 2px 0 0;
+  font-family: var(--font-display);
   font-size: clamp(22px, 3vw, 30px);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -125,7 +131,7 @@
   color: var(--cc-muted);
 }
 .cc-code strong {
-  font: 700 26px/1.1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font: 700 28px/1.05 var(--font-num);
   letter-spacing: 0.2em;
   color: var(--cc-amber-hi);
 }
@@ -223,8 +229,9 @@
   color: var(--tone);
 }
 .cc-mode strong {
+  font-family: var(--font-display);
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.02em;
 }
 .cc-mode em {
@@ -271,6 +278,7 @@
   align-items: center;
   gap: 8px;
   margin: 0;
+  font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -308,8 +316,8 @@
   margin-top: auto;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px dashed rgba(242, 180, 65, 0.5);
-  background: rgba(242, 180, 65, 0.07);
+  border: 1px dashed rgba(255, 215, 0, 0.5);
+  background: rgba(255, 215, 0, 0.06);
   text-align: left;
   cursor: pointer;
 }
@@ -329,7 +337,7 @@
   color: var(--cc-muted);
 }
 .cc-armory:hover {
-  background: rgba(242, 180, 65, 0.14);
+  background: rgba(255, 215, 0, 0.13);
 }
 
 .cc-lock {
@@ -362,7 +370,7 @@
 }
 .cc-field-head b {
   margin-left: auto;
-  font: 700 16px/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font: 700 19px/1 var(--font-num);
   color: var(--cc-amber-hi);
 }
 .cc-field-head b small {
@@ -386,7 +394,7 @@
   border-radius: 4px;
   background: var(--cc-amber-hi);
   border: 2px solid #1b1405;
-  box-shadow: 0 0 0 3px rgba(242, 180, 65, 0.25);
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.25);
 }
 .cc-slider input[type="range"]::-moz-range-thumb {
   width: 16px;
@@ -427,11 +435,12 @@
   color: var(--cc-muted);
 }
 .cc-sky button.on {
-  border-color: var(--cc-amber);
-  background: rgba(242, 180, 65, 0.16);
+  border-color: var(--cyan);
+  background: rgba(0, 242, 254, 0.12);
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.15);
 }
 .cc-sky button.on svg {
-  color: var(--cc-amber-hi);
+  color: var(--cyan);
 }
 .cc-sky button:disabled {
   cursor: default;
@@ -528,14 +537,17 @@
   padding: 14px 18px;
   border-radius: 12px;
   border: 0;
-  background: linear-gradient(180deg, var(--cc-amber-hi), var(--cc-amber));
-  color: #221603 !important;
+  background: linear-gradient(180deg, #ffe45c, var(--gold) 45%, var(--gold-2));
+  color: #1c1400 !important;
+  font-family: var(--font-display);
   font-size: 18px !important;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(242, 180, 65, 0.25);
+  box-shadow:
+    0 8px 26px rgba(255, 196, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .cc-start small {
   font-size: 12px;
@@ -647,11 +659,11 @@
   background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 22%, transparent), var(--cc-card));
 }
 .cc .cc-start:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffe09a, #f5c05a);
+  background: linear-gradient(180deg, #fff07a, #ffe02e 45%, #ffbe1a);
   border-color: transparent;
 }
 .cc .cc-sky button.on:hover:not(:disabled) {
-  background: rgba(242, 180, 65, 0.22);
+  background: rgba(0, 242, 254, 0.18);
 }
 .cc .cc-toggle {
   justify-content: flex-start;
@@ -666,4 +678,41 @@
 .cc .cc-armory,
 .cc .cc-code {
   justify-content: flex-start;
+}
+
+/* ---------------------------------------------------------------- nền sảnh 3D */
+
+.cc.has-studio {
+  background: var(--tac-bg);
+}
+.cc-panel {
+  z-index: 1;
+}
+/* Màn hình rộng: bảng dạt sang phải, chừa chỗ bên trái cho nhân vật trên bục. */
+@media (min-width: 1280px) {
+  .cc.has-studio {
+    justify-content: flex-end;
+    padding-right: max(24px, 3vw);
+  }
+  .cc.has-studio .cc-panel {
+    width: min(1060px, 100% - 330px);
+  }
+}
+/* Hai phe: thẻ phe Xanh viền cyan, phe Đỏ viền crimson. */
+.cc .w-side.blue {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(0, 60, 80, 0.32), rgba(0, 30, 45, 0.32)) padding-box,
+    var(--edge-cyan) border-box;
+}
+.cc .w-side.red {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(80, 0, 20, 0.32), rgba(45, 0, 12, 0.32)) padding-box,
+    var(--edge-crimson) border-box;
+}
+/* Nút bánh răng cài đặt của trận nằm ở góc trên trái: dời dòng toạ độ HUD sang bên. */
+.cc .hud-corner.tl {
+  left: 60px;
+  top: 26px;
 }

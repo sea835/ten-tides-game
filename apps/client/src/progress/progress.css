@@ -403,15 +403,19 @@
   gap: 8px;
   padding: 12px 12px 34px;
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(20, 28, 40, 0.85), rgba(10, 14, 20, 0.85)) padding-box,
+    var(--edge-cyan) border-box;
   text-align: left;
   animation: mvp-rise 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
 }
 .mvp-card.p1 {
   padding-bottom: 58px;
-  border-color: rgba(255, 210, 60, 0.6);
-  box-shadow: 0 0 28px rgba(255, 200, 40, 0.18);
+  background:
+    linear-gradient(180deg, rgba(40, 32, 8, 0.85), rgba(12, 12, 10, 0.85)) padding-box,
+    var(--edge-gold) border-box;
+  box-shadow: 0 0 28px rgba(255, 215, 0, 0.2);
 }
 .mvp-card.p2 {
   padding-bottom: 44px;
@@ -423,7 +427,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -433,8 +438,10 @@
   font-size: 13px;
 }
 .mvp-value b {
-  font-size: 22px;
-  color: #fff;
+  font-family: var(--font-num);
+  font-size: 26px;
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(255, 215, 0, 0.35);
 }
 .mvp-line,
 .mvp-none {
@@ -507,5 +514,329 @@
   from {
     opacity: 0;
     transform: translateY(24px);
+  }
+}
+
+/* ---------------------------------------------------------------- bục vinh danh điện ảnh (VictoryPodium) */
+
+.vp {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vp-stage {
+  position: relative;
+  height: clamp(230px, 38vh, 340px);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(#05080d, #05080d) padding-box,
+    var(--edge-gold) border-box;
+  box-shadow: 0 0 34px rgba(255, 215, 0, 0.12);
+}
+.vp-stage canvas {
+  display: block;
+}
+/* Nền tĩnh (máy yếu, không WebGL): đèn rọi ba bục. */
+.vp-still-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 18% 60% at 50% 30%, rgba(255, 215, 0, 0.22), transparent 70%),
+    radial-gradient(ellipse 14% 50% at 27% 40%, rgba(214, 226, 240, 0.14), transparent 70%),
+    radial-gradient(ellipse 14% 50% at 73% 45%, rgba(224, 138, 74, 0.14), transparent 70%),
+    linear-gradient(180deg, #05080d, #0a0e14);
+}
+.vp-blocks {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.vp-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(150px, 26vw);
+}
+.vp-step {
+  width: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: 8px 8px 0 0;
+  font: 700 34px/1 var(--font-num);
+  color: var(--gold);
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.25), rgba(255, 215, 0, 0.05));
+  border: 1px solid rgba(255, 215, 0, 0.45);
+  border-bottom: 0;
+}
+.vp-block.p1 .vp-step {
+  height: 110px;
+}
+.vp-block.p2 .vp-step {
+  height: 76px;
+  color: #d6e2f0;
+  background: linear-gradient(180deg, rgba(214, 226, 240, 0.2), rgba(214, 226, 240, 0.04));
+  border-color: rgba(214, 226, 240, 0.4);
+}
+.vp-block.p3 .vp-step {
+  height: 54px;
+  color: #e08a4a;
+  background: linear-gradient(180deg, rgba(224, 138, 74, 0.22), rgba(224, 138, 74, 0.04));
+  border-color: rgba(224, 138, 74, 0.4);
+}
+/* Nhãn tên trên đầu (3D: chiếu vị trí đầu mỗi khung hình). */
+.vp-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 3px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+  font: 600 12.5px/1.3 var(--font-display);
+  color: #fff;
+  background: rgba(10, 14, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.vp-tag.static {
+  position: static;
+  opacity: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-tag span {
+  font-family: var(--font-num);
+  font-weight: 700;
+  color: var(--gold);
+}
+.vp-tag.p1 {
+  border-color: rgba(255, 215, 0, 0.7);
+  box-shadow: 0 0 14px rgba(255, 215, 0, 0.3);
+}
+.vp-tag.me {
+  color: var(--gold);
+}
+.vp-corner {
+  position: absolute;
+  font: 600 11px/1 var(--font-num);
+  letter-spacing: 0.18em;
+  color: rgba(255, 215, 0, 0.6);
+  pointer-events: none;
+}
+.vp-corner.tl {
+  left: 12px;
+  top: 10px;
+}
+.vp-corner.br {
+  right: 12px;
+  bottom: 10px;
+  color: rgba(255, 8, 68, 0.75);
+}
+.vp-skip {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  padding: 5px 10px !important;
+  font: 600 12px/1 var(--font-display) !important;
+  letter-spacing: 0.06em;
+  border-radius: 7px !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  background: rgba(10, 14, 20, 0.6) !important;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Thành tích của bạn: số vàng nhảy, thanh XP, huân chương. */
+.vp-aar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(12, 17, 25, 0.8), rgba(12, 17, 25, 0.8)) padding-box,
+    var(--edge-cyan) border-box;
+}
+.vp-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 8px;
+}
+.vp-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.vp-stats span {
+  font: 600 11px/1.2 var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #93a6b6;
+}
+.vp-num {
+  font: 700 28px/1 var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: #eaf3fb;
+}
+.vp-num.gold {
+  color: var(--gold);
+  text-shadow:
+    0 0 14px rgba(255, 215, 0, 0.45),
+    0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.vp-xp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.vp-xp-bar {
+  flex: 1;
+  min-width: 0;
+}
+.vp-xp-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  font: 600 12.5px/1.2 var(--font-display);
+}
+.vp-xp-head .vp-num {
+  font-size: 15px;
+  color: var(--cyan);
+}
+.vp-xp-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: visible;
+}
+.vp-xp-track i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan-2), var(--cyan));
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.55);
+}
+.vp-xp-track em {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 25%, rgba(0, 242, 254, 0.7) 40%, transparent 70%);
+}
+.vp-guest {
+  margin: 0;
+  font-size: 12.5px;
+  color: #93a6b6;
+}
+.vp-medals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.vp-medal {
+  --tone: var(--gold);
+  width: 116px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.3s,
+    transform 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+.vp-medal.cyan {
+  --tone: var(--cyan);
+}
+.vp-medal.crimson {
+  --tone: var(--crimson);
+}
+.vp-medal.on {
+  opacity: 1;
+  transform: none;
+}
+.vp-medal-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  color: var(--tone);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.18), rgba(10, 14, 20, 0.9) 70%);
+  border: 2px solid var(--tone);
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--tone) 50%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--tone) 30%, transparent);
+}
+.vp-medal strong {
+  font: 700 12.5px/1.2 var(--font-display);
+  color: var(--tone);
+}
+.vp-medal small {
+  font-size: 11px;
+  color: #b7c6d3;
+}
+/* Hạt lấp lánh văng ra khi huân chương bung. */
+.vp-burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+.vp-burst i {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px;
+  border-radius: 50%;
+  background: var(--tone);
+  box-shadow: 0 0 8px var(--tone);
+  animation: vp-spark 0.9s cubic-bezier(0.1, 0.7, 0.3, 1) both;
+}
+.vp-burst i:nth-child(3n) {
+  background: #fff;
+}
+@keyframes vp-spark {
+  0% {
+    transform: rotate(var(--a)) translateX(0) scale(1.4);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--a)) translateX(var(--d)) scale(0.2);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-burst {
+    display: none;
   }
 }

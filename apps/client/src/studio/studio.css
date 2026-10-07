@@ -1,0 +1,131 @@
+/* Nền sảnh chờ 3D (StudioBackdrop): sân khấu nhân vật phủ kín màn hình sau bảng giao diện, chi tiết HUD ở góc. */
+
+.studio {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  /* Vuốt dọc trên điện thoại vẫn cuộn được trang; vuốt ngang để xoay nhân vật. */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.studio.live {
+  cursor: grab;
+}
+.studio.live:active {
+  cursor: grabbing;
+}
+.studio-canvas {
+  position: absolute;
+  inset: 0;
+  animation: studio-in 1.2s ease-out both;
+}
+@keyframes studio-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Nền tĩnh: máy yếu, không có WebGL, hay lúc sân khấu 3D đang nạp. */
+.studio-still {
+  position: absolute;
+  inset: 0;
+}
+.studio-still.set-command {
+  background:
+    radial-gradient(ellipse 40% 55% at 30% 62%, rgba(0, 242, 254, 0.16), transparent 70%),
+    radial-gradient(ellipse 70% 40% at 50% 100%, rgba(0, 242, 254, 0.08), transparent 70%),
+    linear-gradient(180deg, #05080c 0%, #0a0e14 60%, #071016 100%);
+}
+.studio-still.set-command::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(0, 242, 254, 0.05) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, rgba(0, 242, 254, 0.05) 1px, transparent 1px) 0 0 / 40px 40px;
+  mask-image: radial-gradient(ellipse at 50% 70%, #000 20%, transparent 75%);
+}
+.studio-still.set-beach {
+  background:
+    radial-gradient(circle at 26% 56%, #ffe2a0 0 4%, rgba(255, 176, 96, 0.5) 5%, transparent 22%),
+    linear-gradient(180deg, #141a3a 0%, #3d2d55 28%, #7a3f5c 44%, #ff9a4a 56%, #1d3a52 57%, #0e2132 78%, #0a0e14 100%);
+}
+
+/* Chi tiết HUD kỹ thuật số: toạ độ ở góc, lưới radar mờ. */
+.studio-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 58%, rgba(5, 8, 12, 0.55) 100%),
+    repeating-radial-gradient(circle at 0% 100%, transparent 0 79px, rgba(0, 242, 254, 0.05) 80px);
+}
+.hud-corner {
+  position: absolute;
+  font: 600 11px/1 var(--font-num);
+  letter-spacing: 0.18em;
+  color: rgba(0, 242, 254, 0.55);
+  text-transform: uppercase;
+}
+.hud-corner.tl {
+  left: 16px;
+  top: 14px;
+}
+.hud-corner.br {
+  right: 16px;
+  bottom: 14px;
+}
+.hud-corner::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  vertical-align: 1px;
+}
+
+/* Nút đổi bối cảnh, gợi ý kéo xoay (góc dưới trái). */
+.studio-tools {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.studio-hint {
+  margin-right: 6px;
+  font: 600 12px/1 var(--font-display);
+  letter-spacing: 0.08em;
+  color: rgba(230, 245, 255, 0.7);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+.studio-tools button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  background: rgba(10, 14, 20, 0.55);
+  color: rgba(230, 245, 255, 0.75);
+  backdrop-filter: blur(10px);
+}
+.studio-tools button.on {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.35);
+}
+@media (max-width: 640px) {
+  .hud-corner.tl {
+    display: none;
+  }
+  .studio-hint {
+    display: none;
+  }
+}
