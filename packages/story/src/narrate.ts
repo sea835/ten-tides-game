@@ -6,6 +6,7 @@ import {
   ENDING_LABELS,
   FLAW_LABELS,
   ROLE_LABELS,
+  SURVIVAL_THINGS,
   ZONE_LABELS,
   content,
   worldCatalog,
@@ -107,6 +108,7 @@ function incidentText(t: Teller, config: GameConfig, e: IncidentEffect): string 
 }
 
 /** Tên (viết thường) của thứ được chạm trán: easter egg, điểm bất thường, bẫy hay sinh vật. */
+
 function encounterThing(defId: string): string {
   const name =
     worldCatalog.pois.get(defId)?.name ??
@@ -114,6 +116,7 @@ function encounterThing(defId: string): string {
     worldCatalog.creatures.get(defId)?.name ??
     worldCatalog.buildings.get(defId)?.name ??
     content.items.get(defId)?.name ??
+    SURVIVAL_THINGS[defId] ??
     (defId === "fists" ? "nắm đấm" : "điều lạ");
   return name.toLocaleLowerCase("vi");
 }
@@ -147,6 +150,8 @@ function encounterLine(t: Teller, e: Extract<LogEntry, { kind: "encounter" }>): 
       return t.line("encounter_lava", vars);
     case "burn":
       return t.line("encounter_burn", vars);
+    case "volcanic":
+      return t.line("encounter_volcanic", vars);
   }
 }
 
@@ -156,7 +161,7 @@ function deathLine(t: Teller, state: GameState, e: Extract<LogEntry, { kind: "de
   const before = state.log.slice(0, index < 0 ? state.log.length : index).reverse();
   const last = before.find((x) => x.kind === "encounter" && x.playerId === e.playerId && x.day === e.day);
   const cause = last?.kind === "encounter" && (last.effects.hp ?? 0) < 0 ? last.source : "";
-  const causes: Record<string, string> = { lava: "death_lava", drowning: "death_drown", burn: "death_burn" };
+  const causes: Record<string, string> = { lava: "death_lava", drowning: "death_drown", burn: "death_burn", volcanic: "death_volcanic" };
   const key = causes[cause];
   return t.line(key ?? "death", { name: t.name(e.playerId) });
 }

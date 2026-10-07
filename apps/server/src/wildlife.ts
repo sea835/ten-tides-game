@@ -83,6 +83,8 @@ const WOUNDED_FLEE = 0.3;
 const SHARK_SPECIES = "blackfin_shark";
 
 export class Wildlife {
+  /** Mực nước biển lúc này (thủy triều): cá, sứa, cá heo bơi theo mặt nước. */
+  seaLevel = WATER_LEVEL;
   readonly creatures: SimCreature[] = [];
   private readonly rand: ReturnType<typeof makeRand>;
   private sharks = 0;
@@ -297,7 +299,7 @@ export class Wildlife {
   }
 
   private despawnIfLonely(c: SimCreature, prey: readonly Prey[], dt: number): boolean {
-    const swimmerNear = prey.some((p) => p.alive && p.y < WATER_LEVEL - 0.5 && Math.hypot(p.x - c.x, p.z - c.z) < 60);
+    const swimmerNear = prey.some((p) => p.alive && p.y < this.seaLevel - 0.5 && Math.hypot(p.x - c.x, p.z - c.z) < 60);
     c.lonely = swimmerNear ? 0 : c.lonely + dt;
     if (c.lonely < 20) return false;
     c.dead = true;
@@ -333,7 +335,7 @@ export class Wildlife {
     const hab = c.spawn.habitat;
     if (INSIDE.has(hab)) return this.world.structureAt(p.x, p.z)?.structure.id === c.spawn.structure;
     const ground = this.world.heightAt(p.x, p.z);
-    if (WATER.has(hab)) return ground < -0.6 && p.y < WATER_LEVEL;
+    if (WATER.has(hab)) return ground < -0.6 && p.y < this.seaLevel;
     if (this.world.structureAt(p.x, p.z)) return false;
     if (p.climbing && !c.def.abilities.includes("climb") && !c.def.fly) return false;
     const camp = this.camp();
@@ -456,10 +458,10 @@ export class Wildlife {
       return floor + (def.fly ?? 0) + alt;
     }
     if (WATER.has(spawn.habitat)) {
-      const depth = WATER_LEVEL - ground;
+      const depth = Math.max(0, this.seaLevel - ground);
       let y: number;
-      if (def.model === "dolphin" || def.model === "shark") y = WATER_LEVEL - Math.min(1.6, depth * 0.3);
-      else if (def.model === "jellyfish") y = WATER_LEVEL - Math.min(1.8, depth * 0.45);
+      if (def.model === "dolphin" || def.model === "shark") y = this.seaLevel - Math.min(1.6, depth * 0.3);
+      else if (def.model === "jellyfish") y = this.seaLevel - Math.min(1.8, depth * 0.45);
       else y = ground + Math.min(0.5, depth * 0.3);
       return Math.max(ground + 0.3, y + alt);
     }

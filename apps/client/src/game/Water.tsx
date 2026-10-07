@@ -41,9 +41,17 @@ const NORMAL_TEXELS = 256;
 export const waterUniforms = {
   uTime: { value: 0 },
   uWaveScale: { value: 1 },
+  /** Thủy triều (chế độ sinh tồn): mặt biển cao hơn mốc WATER_LEVEL chừng này mét. Battleground luôn 0. */
+  uTide: { value: 0 },
 };
 
-function bakeDepth(world: World): DataTexture {
+/**
+ * Đảo sinh tồn có thủy triều: nướng bản đồ độ sâu so với một mốc cao hơn chừng này, để bãi cát bị triều cường ngập
+ * vẫn có độ sâu đúng (bọt sóng, màu nước men theo bờ mới khi triều lên xuống).
+ */
+const TIDE_HEADROOM = 1.5;
+
+function bakeDepth(world: World, headroom: number): DataTexture {
   const data = new Uint8Array(DEPTH_TEXELS * DEPTH_TEXELS);
   const half = world.half ?? MAP_HALF_SIZE;
   const size = half * 2;
@@ -51,7 +59,7 @@ function bakeDepth(world: World): DataTexture {
     for (let i = 0; i < DEPTH_TEXELS; i++) {
       const x = -half + ((i + 0.5) / DEPTH_TEXELS) * size;
       const z = -half + ((j + 0.5) / DEPTH_TEXELS) * size;
-      const depth = WATER_LEVEL - world.heightAt(x, z);
+      const depth = WATER_LEVEL + headroom - world.heightAt(x, z);
       data[j * DEPTH_TEXELS + i] = Math.round(Math.min(1, Math.max(0, depth / DEPTH_RANGE)) * 255);
     }
   }
@@ -149,11 +157,14 @@ const COMMON = /* glsl */ `
   uniform float uWaveScale;
   uniform sampler2D uDepth;
   uniform float uHalf;
+  uniform float uTide;
+  uniform float uDepthBias;
 
   float seaDepth(vec2 p) {
     vec2 uv = (p + uHalf) / (2.0 * uHalf);
     float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-    return mix(${DEPTH_RANGE.toFixed(1)}, texture2D(uDepth, uv).r * ${DEPTH_RANGE.toFixed(1)}, inside);
+    // Bản đồ nướng so với mốc + uDepthBias; mặt nước thật đang ở mốc + uTide.
+    return mix(${DEPTH_RANGE.toFixed(1)}, texture2D(uDepth, uv).r * ${DEPTH_RANGE.toFixed(1)}, inside) - uDepthBias + uTide;
   }
 
   // Một con sóng Gerstner: w = (hướng x, hướng z, độ dốc, bước sóng). Cộng dồn tiếp tuyến để ra pháp tuyến.
@@ -333,8 +344,10 @@ const SHALLOW_NIGHT = new Color("#0a2a33");
  */
 const SIZE = 760;
 
-export function Water({ world }: { world: World }) {
-  const depthMap = useMemo(() => bakeDepth(world), [world]);
+/** `tidal`: mặt biển dâng hạ theo thủy triều (đảo sinh tồn); Battleground để mặc định (mặt biển đứng yên ở mốc). */
+export function Water({ world, tidal = false }: { world: World; tidal?: boolean }) {
+  const headroom = tidal ? TIDE_HEADROOM : 0;
+  const depthMap = useMemo(() => bakeDepth(world, headroom), [world, headroom]);
   useEffect(() => () => depthMap.dispose(), [depthMap]);
   // Số ô lưới theo mức chất lượng: đỉnh dồn về gần camera nên bớt ô chủ yếu làm thưa phần xa (sương mù che).
   const segments = useProfile().water;
@@ -359,6 +372,7 @@ export function Water({ world }: { world: World }) {
           uDepth: { value: null },
           uRipple: { value: null },
           uHalf: { value: world.half ?? MAP_HALF_SIZE },
+          uDepthBias: { value: 0 },
         },
       ]),
       vertexShader,
@@ -369,6 +383,7 @@ export function Water({ world }: { world: World }) {
     // Đồng hồ sóng dùng chung (merge sao chép giá trị nên gắn lại sau).
     m.uniforms.uTime = waterUniforms.uTime;
     m.uniforms.uWaveScale = waterUniforms.uWaveScale;
+    m.uniforms.uTide = waterUniforms.uTide;
     m.uniforms.uRipple!.value = waterNormals();
     return m;
   }, []);
@@ -377,6 +392,7 @@ export function Water({ world }: { world: World }) {
     material.uniforms.uHalf!.value = world.half ?? MAP_HALF_SIZE;
   }, [material, world]);
   material.uniforms.uDepth!.value = depthMap;
+  material.uniforms.uDepthBias!.value = headroom;
 
   useFrame(({ clock, camera }) => {
     const u = material.uniforms;
@@ -396,10 +412,11 @@ export function Water({ world }: { world: World }) {
     (u.uSunColor!.value as Color).copy(skyUniforms.uSunColor.value);
     u.uCloud!.value = Math.max(0, weatherFx.cloud - 0.3) / 0.7;
     // Lưới đi theo camera, bám theo bước 2 m để đỉnh không trượt qua lại khi đi.
-    if (mesh.current) mesh.current.position.set(Math.round(camera.position.x / 2) * 2, WATER_LEVEL, Math.round(camera.position.z / 2) * 2);
+    const sea = WATER_LEVEL + waterUniforms.uTide.value;
+    if (mesh.current) mesh.current.position.set(Math.round(camera.position.x / 2) * 2, sea, Math.round(camera.position.z / 2) * 2);
     // Chỉ vẽ mặt camera nhìn thấy (bỏ DoubleSide: đỡ nửa số điểm ảnh tô từ mặt sau sóng). Lặn thì nhìn mặt dưới
     // (cửa sổ Snell trong shader); sát mặt nước sóng có thể cao hơn mắt nên vẽ cả hai mặt.
-    const above = camera.position.y - WATER_LEVEL;
+    const above = camera.position.y - sea;
     const amp = 1.2 * waterUniforms.uWaveScale.value;
     material.side = above > amp ? FrontSide : above < -amp ? BackSide : DoubleSide;
   });

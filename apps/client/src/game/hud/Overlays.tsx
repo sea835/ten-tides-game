@@ -46,8 +46,28 @@ const TARGET_ICON = { poi: Search, creature: Hand, item: Package, tree: TreePalm
 /** Đang chọn chỗ dựng nhà: tên công trình, vật liệu cần (có đủ chưa), chỗ này dựng được không. */
 function BuildPrompt({ kind, ok }: { kind: string; ok: boolean }) {
   const view = usePrivate();
+  const { buildReason, buildLevel } = useHud();
   const def = worldCatalog.buildings.get(kind);
   if (!def) return null;
+  if (def.snap) {
+    const have = (id: string) => (view?.bag ?? []).filter((b) => b.itemId === id).length;
+    return (
+      <div className={ok ? "prompt build ok" : "prompt build"}>
+        <Hammer size={16} aria-hidden />
+        <strong>{def.name}</strong>
+        <span className="hint">
+          {Object.entries(def.cost)
+            .map(([id, n]) => `${itemName(id)} ${have(id)}/${n}`)
+            .join(" · ")}
+          {` · ${buildLevel === 0 ? "tầng trệt" : `tầng ${buildLevel}`}`}
+        </span>
+        <span className="hint prompt-text">
+          {ok ? "Chuột trái: dựng" : buildReason || "Không dựng được ở đây"} · lăn chuột: lên xuống tầng
+          {def.snap === "stairs" ? " · quay người: hướng cầu thang" : ""} · <kbd>V</kbd> đổi · <kbd>Esc</kbd> thôi
+        </span>
+      </div>
+    );
+  }
   const have = (id: string) => (view?.bag ?? []).filter((b) => b.itemId === id).length;
   const enough = Object.entries(def.cost).every(([id, n]) => have(id) >= n);
   return (

@@ -63,7 +63,8 @@ export const suppression = { amount: 0 };
 export const knock = { vx: 0, vz: 0 };
 
 /** Bóng công trình đang ngắm để dựng (Camp tính mỗi khung hình, Controls gửi lên server khi bấm). */
-export const buildGhost = { x: 0, z: 0, rot: 0, turn: 0, ok: false, kind: "" };
+/** Mảnh lắp ghép (sàn, vách, cầu thang, tháp canh): `level` là tầng đang ngắm, `lift` là số tầng lăn chuột nâng thêm. */
+export const buildGhost = { x: 0, z: 0, rot: 0, turn: 0, ok: false, kind: "", level: 0, lift: 0 };
 
 /** Leo cây: LocalPlayer vừa bấm E xin leo cây này, chờ server đồng ý. */
 export const climbRequest = { treeId: "" };

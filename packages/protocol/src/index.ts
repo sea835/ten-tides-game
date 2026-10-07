@@ -460,6 +460,8 @@ export const BuildingState = schema(
     dx: t.float32().default(0),
     dz: t.float32().default(0),
     rot: t.float32().default(0),
+    /** Mảnh lắp ghép (sàn, vách, cầu thang, tháp canh): ở tầng mấy (xem snap.ts của content). */
+    level: t.uint8().default(0),
   },
   "BuildingState",
 );
@@ -760,7 +762,8 @@ export const UseMessage = z.object({ x: finite, z: finite });
 export const PickupMessage = z.object({ id });
 /** Leo lên cây (id cây) hoặc tụt xuống (rỗng). */
 export const ClimbMessage = z.object({ treeId: z.string().max(64) });
-export const BuildMessage = z.object({ kind: id, x: finite, z: finite, rot: angle });
+/** Dựng công trình; `level` là tầng của mảnh lắp ghép (sàn, vách, cầu thang, tháp canh). */
+export const BuildMessage = z.object({ kind: id, x: finite, z: finite, rot: angle, level: z.int().min(0).max(3).optional() });
 export const AssassinateMessage = z.object({ target: id });
 
 /** Server gửi cho mọi người để vẽ hiệu ứng: trúng đòn, trượt, chặt cây, cây đổ, thú chết, ăn uống... */
@@ -1188,3 +1191,4 @@ export interface XpMessage {
 export const KICKED_CLOSE_CODE = 4001;
 
 export * from "./voice.ts";
+export * from "./survival.ts";

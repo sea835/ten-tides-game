@@ -10,7 +10,7 @@ import {
   type LineSegments,
   type MeshBasicMaterial,
 } from "three";
-import { WATER_LEVEL, type World } from "@tentides/content";
+import { WATER_LEVEL, ashAmount, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { useProfile } from "./graphics.ts";
 import { mulberry32, windStrength } from "./nature.ts";
@@ -40,9 +40,13 @@ function WeatherState({ room }: { room: IslandRoom }) {
     const dt = Math.min(rawDt, 0.1);
     const s = room.state;
     const target = s.phase === "lobby" || s.phase === "create" || s.phase === "pack" ? {} : (TARGETS[s.weather] ?? {});
+    // Đảo sinh tồn từ ngày 5: mưa tro của núi lửa phủ mờ tầm nhìn, trời xám đục (Battleground không có).
+    const ash = s.mode === "story" && s.phase !== "lobby" ? ashAmount(s.volcano) : 0;
     const k = Math.min(1, dt * 0.35);
     for (const key of ["cloud", "rain", "fog", "storm", "quake", "snow"] as const) {
-      const goal = target[key] ?? (key === "cloud" ? 0.15 : 0);
+      let goal = target[key] ?? (key === "cloud" ? 0.15 : 0);
+      if (key === "fog") goal = Math.max(goal, ash * 0.6);
+      else if (key === "cloud") goal = Math.max(goal, ash * 0.85);
       weatherFx[key] += (goal - weatherFx[key]) * k;
     }
     windStrength.value = 1 + weatherFx.rain * 0.8 + weatherFx.storm * 2.2 + weatherFx.snow * 0.4;

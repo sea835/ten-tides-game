@@ -1409,6 +1409,63 @@
         0.4
       ],
       "blurb": "Hàng rào cọc, chặn thú dữ đi lạc vào trại."
+    },
+    {
+      "id": "wood_floor",
+      "name": "Sàn gỗ",
+      "cost": {
+        "wood": 2
+      },
+      "shelter": 0,
+      "size": [
+        3,
+        3
+      ],
+      "blurb": "Tấm sàn ván 3×3 m, khớp vào lưới quanh lửa trại; đặt chồng lên tháp canh hay vách để lên tầng.",
+      "snap": "floor"
+    },
+    {
+      "id": "wood_wall",
+      "name": "Vách gỗ",
+      "cost": {
+        "wood": 2
+      },
+      "shelter": 0,
+      "size": [
+        3,
+        0.3
+      ],
+      "blurb": "Vách ván khớp vào cạnh ô sàn, chắn gió và chắn thú; hai vách đỡ được một sàn tầng trên.",
+      "snap": "wall"
+    },
+    {
+      "id": "wood_stairs",
+      "name": "Cầu thang",
+      "cost": {
+        "wood": 3
+      },
+      "shelter": 0,
+      "size": [
+        3,
+        3
+      ],
+      "blurb": "Cầu thang gỗ lên một tầng, xoay theo hướng nhìn.",
+      "snap": "stairs"
+    },
+    {
+      "id": "watchtower",
+      "name": "Tháp canh",
+      "cost": {
+        "wood": 4,
+        "rope": 1
+      },
+      "shelter": 0,
+      "size": [
+        3,
+        3
+      ],
+      "blurb": "Khung bốn cột cao một tầng, nóc là sàn đứng gác; xếp chồng để nhìn xa hơn, tránh triều cường.",
+      "snap": "tower"
     }
   ]
 }
