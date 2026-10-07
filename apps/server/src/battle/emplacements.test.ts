@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MORTAR, NEST, WRECK_SECONDS, isEmplacement, mortarRange, mountMuzzle } from "@tentides/content";
 import { PlayerState } from "@tentides/protocol";
 import { BattleRoom } from "./BattleRoom.ts";
@@ -174,7 +174,10 @@ describe("cối 82mm: server kiểm tra phát bắn, mô phỏng đạn bay", ()
     const tx = v.x + Math.sin(az) * range;
     const tz = v.z + Math.cos(az) * range;
     const enemy = addPlayer(room, "e", "red", tx, tz);
+    // Bỏ độ tản ngẫu nhiên của cối cho phép thử ổn định (tản lệch có khi rơi trúng mái nhà, cây ngay đường bay).
+    const rnd = vi.spyOn(Math, "random").mockReturnValue(0.5);
     room.vehicles.emplacements.fire("w", az, elev);
+    rnd.mockRestore();
     expect(room.vehicles.emplacements.inFlight()).toBe(1);
     tick(room, 2);
     // Còn đang bay (cầu vồng cao, bay hơn chục giây).
