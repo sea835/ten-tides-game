@@ -140,8 +140,11 @@ export function targetDpr(g: GraphicsSettings): number {
   return Math.max(0.5, Math.min(window.devicePixelRatio || 1, cap));
 }
 
-/** Gợi ý cho vòng lặp vẽ: `idle` (phòng đang tạm dừng, cảnh gần như đứng yên) thì vẽ thưa lại. */
-export const renderHints = { idle: false };
+/**
+ * Gợi ý cho vòng lặp vẽ: `idle` (phòng đang tạm dừng, cảnh gần như đứng yên) hay `covered` (cảnh bị nền sảnh 3D che
+ * kín, vd. Trung tâm chỉ huy) thì vẽ thưa lại.
+ */
+export const renderHints = { idle: false, covered: false };
 
 // ---------------------------------------------------------------------------- số liệu hiệu năng (F3)
 

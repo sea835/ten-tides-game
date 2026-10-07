@@ -526,16 +526,11 @@ export function Soundscape({ room, world }: { room: IslandRoom; world: World }) 
     );
     const offReject = room.onMessage(Messages.rejected, () => play("buzz", { bus: "ui" }));
     const offStar = room.onMessage(Messages.starred, () => play("chime_neutral", { bus: "ui" }));
-    // Bấm nút trên giao diện: tiếng tách nhỏ.
-    const onClick = (e: MouseEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("button")) play("click", { bus: "ui" });
-    };
-    window.addEventListener("click", onClick);
+    // Tiếng bấm, rê chuột qua nút: installUiSounds (sound/ui.ts) gắn cho cả ứng dụng ở App.
     return () => {
       offEncounter();
       offReject();
       offStar();
-      window.removeEventListener("click", onClick);
     };
   }, [room]);
 

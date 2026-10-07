@@ -31,12 +31,15 @@
   min-height: 420px;
   border-radius: var(--radius);
   overflow: hidden;
-  border: 1px solid var(--line);
-  /* Nền phòng chụp: quầng sáng giữa, sàn tối (canvas trong suốt đè lên). */
+  border: 1px solid rgba(0, 242, 254, 0.18);
+  /* Nền phòng chụp: quầng sáng giữa, lưới radar mờ, sàn tối (canvas trong suốt đè lên). */
   background:
-    radial-gradient(ellipse 55% 45% at 50% 48%, rgba(120, 160, 200, 0.16), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 50% 48%, rgba(0, 242, 254, 0.13), transparent 70%),
     radial-gradient(ellipse 60% 18% at 50% 82%, rgba(0, 0, 0, 0.45), transparent 75%),
-    linear-gradient(180deg, #111a24, #070b10);
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 59px, rgba(0, 242, 254, 0.05) 60px),
+    linear-gradient(rgba(0, 242, 254, 0.035) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, rgba(0, 242, 254, 0.035) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(180deg, #0c131b, #05080c);
   cursor: grab;
 }
 .gs-stage:active {
@@ -55,12 +58,16 @@
   pointer-events: none;
 }
 .gs-stage-title b {
-  font-family: var(--font-story);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 22px;
-  color: #fff3d8;
+  letter-spacing: 0.04em;
+  color: #f1f7ff;
 }
 .gs-stage-title span {
-  font-size: 11px;
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: 12px;
   letter-spacing: 0.12em;
   color: var(--muted);
 }
@@ -87,7 +94,7 @@
 }
 .gs-stats dd {
   margin: 0;
-  font-weight: 700;
+  font: 700 14px/1.1 var(--font-num);
 }
 .gs-stats .good dd {
   color: var(--success);
@@ -113,12 +120,13 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 13px;
 }
 .gs-slot-name span {
   font-weight: 500;
-  color: var(--accent-hi);
+  color: var(--cyan);
   text-align: right;
 }
 .gs-options {
@@ -132,10 +140,11 @@
   border-radius: 999px;
 }
 .gs-options button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+  background: rgba(0, 242, 254, 0.16);
+  border-color: var(--cyan);
+  color: var(--cyan);
   font-weight: 700;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.25);
 }
 .gs-none {
   margin: 0;

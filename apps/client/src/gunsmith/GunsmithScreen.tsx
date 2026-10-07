@@ -222,7 +222,7 @@ export function GunsmithScreen({ initialWeapon, onClose }: { initialWeapon?: str
                   {opts.length === 0 ? (
                     <p className="gs-none">Khẩu này không lắp được</p>
                   ) : (
-                    <div className="gs-options">
+                    <div className="gs-options" data-ui="clack">
                       <button className={draft.loadout[slot] === "" ? "on" : ""} onClick={() => setSlot(slot, "")}>
                         Trống
                       </button>
@@ -240,7 +240,7 @@ export function GunsmithScreen({ initialWeapon, onClose }: { initialWeapon?: str
               <div className="gs-slot-name">
                 Skin <span>{SKINS.find((s) => s.id === draft.skin)?.name ?? "Mặc định"}</span>
               </div>
-              <div className="gs-skins">
+              <div className="gs-skins" data-ui="clack">
                 <button className={`gs-skin${draft.skin === "" ? " on" : ""}`} onClick={() => update({ skin: "" })} title="Mặc định">
                   <div className="skin-swatch sm default-look" aria-hidden />
                 </button>
@@ -256,7 +256,7 @@ export function GunsmithScreen({ initialWeapon, onClose }: { initialWeapon?: str
               <button className="ghost" disabled={!dirty || busy} onClick={() => update({ loadout: savedLoadout, skin: savedSkin })} title="Bỏ thay đổi">
                 <RotateCcw size={15} /> Hoàn tác
               </button>
-              <button className="primary" disabled={!profile || !dirty || busy} onClick={() => void save()}>
+              <button className="primary" data-ui="clack" disabled={!profile || !dirty || busy} onClick={() => void save()}>
                 {dirty ? <Save size={15} /> : <Check size={15} />} {profile ? (dirty ? "Lưu bộ lắp ráp" : "Đã lưu") : "Đăng nhập để lưu"}
               </button>
             </div>

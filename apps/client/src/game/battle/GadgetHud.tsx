@@ -116,7 +116,7 @@ export function ClassPicker({ room }: { room: IslandRoom }) {
   return (
     <div className="g-picker">
       <h4>Lớp lính {mode === "squad" ? "của đội trưởng" : "khi xuất kích"}</h4>
-      <div className="g-picker-list">
+      <div className="g-picker-list" data-ui="clack">
         {SOLDIER_CLASS_IDS.map((c) => {
           const def = CLASSES[c];
           return (

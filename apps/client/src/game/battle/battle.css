@@ -682,12 +682,25 @@
 .b-dead {
   position: absolute;
   pointer-events: auto;
-  background: rgba(10, 16, 22, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  /* Kính mờ quân sự: nền tối #0a0e14 trong mờ, viền gradient cyan mảnh phát sáng. */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(10, 14, 20, 0.86), rgba(10, 14, 20, 0.86)) padding-box,
+    var(--edge-cyan) border-box;
   border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(10px);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.55),
+    var(--glow-cyan);
+  backdrop-filter: var(--glass-blur);
   text-shadow: none;
+}
+.b-buy header,
+.b-settings header,
+.b-end h1,
+.b-dead h2,
+.b-score h3 {
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
 }
 .b-buy header,
 .b-settings header {
@@ -1077,18 +1090,28 @@
 }
 .b-dead {
   top: 30%;
-  background: rgba(40, 8, 8, 0.8);
+  background:
+    linear-gradient(rgba(40, 6, 14, 0.82), rgba(40, 6, 14, 0.82)) padding-box,
+    var(--edge-crimson) border-box;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.55),
+    0 0 28px rgba(255, 8, 68, 0.15);
 }
 .b-end h1 {
   margin: 0;
   font-size: 34px;
 }
 .b-end.win h1 {
-  color: #ffd23a;
+  color: var(--gold);
   text-shadow: 0 0 22px rgba(255, 200, 40, 0.5);
 }
 .b-end.win {
-  border-color: rgba(255, 210, 60, 0.5);
+  background:
+    linear-gradient(rgba(10, 14, 20, 0.88), rgba(10, 14, 20, 0.88)) padding-box,
+    var(--edge-gold) border-box;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.55),
+    0 0 34px rgba(255, 215, 0, 0.14);
 }
 .b-dead h2 {
   margin: 0;
@@ -2064,7 +2087,9 @@
   cursor: pointer;
 }
 .b-dead.watch {
-  background: rgba(10, 16, 22, 0.88);
+  background:
+    linear-gradient(rgba(10, 14, 20, 0.88), rgba(10, 14, 20, 0.88)) padding-box,
+    var(--edge-cyan) border-box;
 }
 
 /* Hết trận có bảng vinh danh: bảng rộng hơn, cuộn được. */

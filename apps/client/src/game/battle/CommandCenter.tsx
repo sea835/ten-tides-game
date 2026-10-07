@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Bot,
   CloudFog,
@@ -22,6 +22,9 @@ import { BATTLE_TIMES, MAX_BATTLE_BOTS, MIN_BATTLE_BOTS, Messages, WAR_MAX_PER_S
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { openGunsmith } from "../../gunsmith/openGunsmith.ts";
+import { useAccount } from "../../account/account.ts";
+import { StudioBackdrop } from "../../studio/StudioBackdrop.tsx";
+import { roomLook } from "../../studio/looks.ts";
 import { ClassPicker } from "./GadgetHud.tsx";
 import { SIDE_NAME } from "./WarHud.tsx";
 import "./command.css";
@@ -148,6 +151,23 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
     vehicles: st.settings.vehiclesEnabled,
     players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color, team: p.team })),
   }));
+  // Nhân vật của mình trên bục 3D phía sau bảng: theo lớp lính, trang phục, skin đã lắp.
+  const mine = useRoomSnapshot(room, (st) => {
+    const p = st.players.get(myId(room));
+    return {
+      color: p?.color ?? "#669bbc",
+      cls: p?.gear.cls ?? "",
+      outfit: p?.kit.outfit ?? "",
+      primary: p?.kit.primary1 ?? "",
+      armor: p?.kit.armor ?? 0,
+      helmet: p?.kit.helmet ?? 0,
+      skins: Object.fromEntries(p?.skins.entries() ?? []) as Record<string, string>,
+    };
+  });
+  const account = useAccount();
+  const profile = account.status === "user" ? account.profile : null;
+  const look = useMemo(() => roomLook(mine, profile), [mine, profile]);
+  const panel = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   if (s.phase !== "lobby") return null;
   const me = myId(room);
@@ -174,8 +194,9 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
   };
 
   return (
-    <div className="cc">
-      <div className="cc-panel">
+    <div className="cc has-studio">
+      <StudioBackdrop look={look} defaultSet="command" avoid={panel} coversGame />
+      <div className="cc-panel" ref={panel}>
         <header className="cc-head">
           <div className="cc-brand">
             <span className="cc-kicker">Ten Tides · Frontline</span>
@@ -333,7 +354,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
 
         <footer className="cc-foot">
           {isHost ? (
-            <button className="cc-start" onClick={() => room.send(Messages.start)}>
+            <button className="cc-start" data-ui="clack" onClick={() => room.send(Messages.start)}>
               <Crosshair size={20} aria-hidden /> Xuất kích
               <small>{war ? `${perSide} vs ${perSide} · ${s.tickets} vé` : `${s.players.length + troops} người`}</small>
             </button>

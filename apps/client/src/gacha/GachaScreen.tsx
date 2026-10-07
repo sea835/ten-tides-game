@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, Coins, Lock, Sparkles, X } from "lucide-react";
 import { GACHA, RARITY, SKIN, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS, WEAPON, rarityRank, skinFitsWeapon, type SkinDef, type SkinRarity } from "@tentides/content";
 import { ApiError, equipSkin, refreshProfile, rollGacha, useAccount, type RollOutcome } from "../account/account.ts";
 import { SkinSwatch } from "./SkinSwatch.tsx";
+import { gachaBuildUp, playUi } from "../game/sound/ui.ts";
 import "./gacha.css";
 
 // Màn Kho súng · Gacha: quay skin (1 hoặc 10 lượt, có bảo hiểm), lật thẻ theo độ hiếm, kho skin theo từng khẩu và lắp skin.
@@ -166,17 +167,37 @@ function Reveal({ outcome, onDone, onAgain, coins }: { outcome: RollOutcome; onD
   const [flipped, setFlipped] = useState(0);
   const best = outcome.results.reduce((b, r) => Math.max(b, rarityRank(r.rarity)), 0);
 
+  // Mở hòm: nhịp bass dồn dập trước thẻ đầu (hiếm càng cao chờ càng lâu, càng nhiều nhịp).
+  const buildUp = 0.6 + best * 0.22;
+  const built = useRef<RollOutcome | null>(null);
+  useEffect(() => {
+    // StrictMode chạy hiệu ứng hai lần lúc dev: mỗi lượt quay chỉ dồn nhịp một lần.
+    if (built.current === outcome) return;
+    built.current = outcome;
+    gachaBuildUp(buildUp, best);
+  }, [outcome, buildUp, best]);
   // Lật lần lượt từng thẻ; bấm "Lật hết" để xem ngay.
   useEffect(() => {
     if (flipped >= n) return;
-    const t = setTimeout(() => setFlipped((f) => f + 1), flipped === 0 ? 450 : 260);
+    const t = setTimeout(() => setFlipped((f) => f + 1), flipped === 0 ? buildUp * 1000 : 260);
     return () => clearTimeout(t);
-  }, [flipped, n]);
+  }, [flipped, n, buildUp]);
+  // Tiếng từng thẻ lật theo độ hiếm; lật hết một lần thì chỉ vang tiếng của thẻ hiếm nhất vừa lộ ra.
+  const sounded = useRef(0);
+  useEffect(() => {
+    if (flipped <= sounded.current) return;
+    let top = 0;
+    for (let i = sounded.current; i < flipped; i++) top = Math.max(top, rarityRank(outcome.results[i]!.rarity));
+    sounded.current = flipped;
+    playUi(top === 3 ? "legendary" : top === 2 ? "epic" : "flip");
+  }, [flipped, outcome]);
 
   const done = flipped >= n;
+  // Vầng hào quang Huyền thoại chỉ bung khi thẻ Huyền thoại đã lật (trước đó là nhịp dồn).
+  const lit = outcome.results.slice(0, flipped).some((r) => r.rarity === "legendary");
   return (
-    <div className={`reveal best-${SKIN_RARITIES[best]}`} onClick={() => !done && setFlipped(n)}>
-      {best === 3 && <div className="legend-burst" aria-hidden />}
+    <div className={`reveal best-${SKIN_RARITIES[best]}${flipped === 0 ? " charging" : ""}${lit ? " lit" : ""}`} onClick={() => !done && setFlipped(n)}>
+      {lit && <div className="legend-burst" aria-hidden />}
       <div className={`reveal-cards n${n}`}>
         {outcome.results.map((r, i) => {
           const def = SKIN.get(r.skinId);
@@ -266,7 +287,7 @@ function InventoryTab({ skins, equipped, onError }: { skins: { skinId: string; c
           </span>
         </div>
         <div className="skin-grid">
-          <button className={`skin-tile default${current === "" ? " equipped" : ""}`} disabled={pending} onClick={() => void equip("")}>
+          <button className={`skin-tile default${current === "" ? " equipped" : ""}`} data-ui="clack" disabled={pending} onClick={() => void equip("")}>
             <div className="skin-swatch md default-look" aria-hidden />
             <div className="tile-name">Mặc định</div>
             {current === "" && (
@@ -287,7 +308,7 @@ function InventoryTab({ skins, equipped, onError }: { skins: { skinId: string; c
 function SkinTile({ skin, count, equipped, disabled, onEquip }: { skin: SkinDef; count: number; equipped: boolean; disabled: boolean; onEquip: () => void }) {
   const owned = count > 0;
   return (
-    <button className={`skin-tile ${skin.rarity}${owned ? "" : " locked"}${equipped ? " equipped" : ""}`} style={rarityVar(skin.rarity)} disabled={disabled || !owned || equipped} onClick={onEquip} title={owned ? "Lắp skin này" : "Chưa có"}>
+    <button className={`skin-tile ${skin.rarity}${owned ? "" : " locked"}${equipped ? " equipped" : ""}`} data-ui="clack" style={rarityVar(skin.rarity)} disabled={disabled || !owned || equipped} onClick={onEquip} title={owned ? "Lắp skin này" : "Chưa có"}>
       <SkinSwatch skin={skin} size="md" />
       <div className="tile-name">{skin.name}</div>
       <div className="tile-meta">

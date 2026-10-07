@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Crosshair, DoorOpen, Flag, Plus, RotateCcw, Users } from "lucide-react";
 import { ROOM_CODE_LENGTH } from "@tentides/protocol";
 import { createBattleRoom, createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
 import { AccountPanel } from "./account/AccountPanel.tsx";
 import { useAccount } from "./account/account.ts";
 import { GachaScreen } from "./gacha/GachaScreen.tsx";
+import { StudioBackdrop } from "./studio/StudioBackdrop.tsx";
+import { lobbyLook } from "./studio/looks.ts";
 
 const NAME_KEY = "tentides.name";
 
@@ -38,8 +40,13 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Tài khoản: đăng nhập rồi thì tên trong game là tên tài khoản; Kho súng · Gacha mở đè lên sảnh.
-  const signedIn = useAccount().status === "user";
+  const account = useAccount();
+  const signedIn = account.status === "user";
   const [gacha, setGacha] = useState(false);
+  // Nhân vật trên bục 3D: đổi tên thì đổi mặt (theo màu tên), đăng nhập thì cầm khẩu có skin hiếm nhất.
+  const profile = account.status === "user" ? account.profile : null;
+  const look = useMemo(() => lobbyLook(name, profile), [name, profile]);
+  const inner = useRef<HTMLDivElement>(null);
 
   async function run(action: () => Promise<IslandRoom>) {
     if (!name.trim()) {
@@ -63,16 +70,10 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
   }
 
   return (
-    <main className="lobby frontline">
-      <div className="sea" aria-hidden>
-        <div className="sun" />
-        <div className="isle" />
-        <div className="wave w1" />
-        <div className="wave w2" />
-        <div className="wave w3" />
-      </div>
+    <main className="lobby frontline studio-lobby">
+      <StudioBackdrop look={look} defaultSet="beach" avoid={inner} />
 
-      <div className="lobby-inner">
+      <div className="lobby-inner" ref={inner}>
         <header className="lobby-hero">
           <div className="kicker">Chiến trường web 3D · không cần cài đặt</div>
           <h1>TEN TIDES</h1>
