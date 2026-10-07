@@ -1,4 +1,5 @@
 import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, type Texture, type WebGLProgramParametersWithUniforms } from "three";
+import { injectGlint } from "./viewGlint.ts";
 import { SKIN, type SkinDef, type SkinFinish, type SkinPattern } from "@tentides/content";
 
 // Vật liệu skin súng: thay vật liệu của từng bộ phận súng (khoá GunModel: metal, poly, wood...) bằng vật liệu theo skin.
@@ -628,6 +629,8 @@ function patch(m: MeshStandardMaterial, look: SkinLook, onTop: boolean) {
       .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_COLOR}`)
       .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${FRAGMENT_ROUGH}`)
       .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${FRAGMENT_EMISSIVE}`);
+    // Súng trước mặt: vệt sáng quét khi ngắm nghía (khoe skin).
+    if (onTop) injectGlint(shader);
   };
   const key = `tenskin:${Object.keys(defines).sort().join(",")}${onTop ? ":top" : ""}`;
   m.customProgramCacheKey = () => key;

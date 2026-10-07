@@ -16,6 +16,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { skinMaterial, skinViewMaterial } from "./skinMaterials.ts";
+import { injectGlint } from "./viewGlint.ts";
 
 // Mô hình 3D dựng bằng khối cho chế độ Battleground: súng (cầm trên tay và nằm dưới đất), đạn, giáp, mũ, lựu đạn,
 // bom khói, mìn, băng gạc, hộp cứu thương, tiền. Mỗi mô hình gộp các khối cùng vật liệu thành một hình (ít lệnh vẽ),
@@ -121,6 +122,8 @@ export function drawOnTop<M extends MeshStandardMaterial>(m: M): M {
   delete m.userData.tenDetail;
   m.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n  ${DRAW_ON_TOP_GLSL}`);
+    // Vệt sáng quét khi ngắm nghía súng (viewGlint).
+    injectGlint(shader);
   };
   m.customProgramCacheKey = () => "viewmodel";
   return m;
