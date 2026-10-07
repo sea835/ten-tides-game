@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import {
   BufferAttribute,
   BackSide,
@@ -8,8 +8,12 @@ import {
   DataTexture,
   DoubleSide,
   FrontSide,
+  HalfFloatType,
   LinearFilter,
   LinearMipmapLinearFilter,
+  Matrix4,
+  PerspectiveCamera,
+  Plane,
   RedFormat,
   RepeatWrapping,
   RGBAFormat,
@@ -17,13 +21,21 @@ import {
   UniformsLib,
   UniformsUtils,
   UnsignedByteType,
+  Vector3,
+  Vector4,
+  WebGLRenderTarget,
+  type Camera,
   type Mesh,
+  type Scene,
+  type WebGLRenderer,
 } from "three";
 import { MAP_HALF_SIZE, WATER_LEVEL, type World } from "@tentides/content";
 import { useProfile } from "./graphics.ts";
+import { reflectionHidden } from "./reflection.ts";
 import { sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
 import { fbm } from "./textures.ts";
+import { CLOUD_PARS_GLSL, cloudTexture, cloudUniforms } from "./atmosphere.ts";
 
 // Mặt biển kiểu stylized: ba tầng sóng Gerstner mềm (đỉnh tròn, cuộn nhịp nhàng) cộng hai lớp gợn nhỏ từ bản đồ
 // pháp tuyến, phản chiếu bầu trời theo góc nhìn (Fresnel), nắng lấp lánh, màu nước chuyển ba nấc theo độ sâu (ngọc lam
@@ -31,6 +43,9 @@ import { fbm } from "./textures.ts";
 // bờ (so độ sâu với địa hình) lùa vào theo nhịp sóng, bọt đầu sóng khi gió to. Độ sâu nướng sẵn từ địa hình
 // (`world.heightAt`) thành một tấm bản đồ, nên không cần depth buffer. Lưới nước đi theo camera, dày ở gần và thưa
 // dần ra xa; chỉ vẽ một mặt (mặt trên khi ở trên, mặt dưới khi lặn), sát mặt nước mới vẽ cả hai.
+// Đồ hoạ Cao: thêm ảnh phản chiếu thật (người, xe, cây ven bờ, lửa đầu nòng, cầu lửa) vẽ lại từ camera soi gương qua
+// mặt nước ở nửa độ phân giải, chỉ hiện rõ ở góc nhìn xiên (Fresnel), gợn sóng làm ảnh lăn tăn; bầu trời phản chiếu
+// vẫn tính trong shader (vòm trời, thảm cỏ không vẽ lại cho nhẹ).
 
 /** Độ sâu tối đa lưu trong bản đồ độ sâu (mét). */
 const DEPTH_RANGE = 12;
@@ -224,6 +239,10 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uSunColor;
   uniform float uCloud;
   uniform sampler2D uRipple;
+  uniform sampler2D uReflectMap;
+  uniform mat4 uReflectMatrix;
+  uniform float uReflect;
+  ${CLOUD_PARS_GLSL}
   varying vec3 vWorld;
   varying vec3 vNormalW;
   varying float vHeight;
@@ -269,13 +288,24 @@ const fragmentShader = /* glsl */ `
     vec3 refl = skyColor(reflect(-view, n));
     // Mây dày thì mặt nước bớt bóng loáng.
     refl = mix(refl, uHorizon, uCloud * 0.4);
+    if (uReflect > 0.0) {
+      // Ảnh phản chiếu thật (nửa độ phân giải), gợn sóng làm lệch toạ độ; chỗ trống (trời) giữ bầu trời ở trên.
+      vec4 rc = uReflectMatrix * vec4(vWorld.x, ${WATER_LEVEL.toFixed(2)}, vWorld.z, 1.0);
+      vec2 ruv = rc.xy / rc.w + n.xz * (0.035 + 0.02 * uWaveScale) * (0.4 + 0.6 * detail);
+      vec4 rt = texture2D(uReflectMap, clamp(ruv, vec2(0.002), vec2(0.998)));
+      float redge = smoothstep(0.0, 0.04, ruv.x) * smoothstep(1.0, 0.96, ruv.x) * smoothstep(0.0, 0.04, ruv.y) * smoothstep(1.0, 0.96, ruv.y);
+      refl = mix(refl, rt.rgb, clamp(rt.a, 0.0, 1.0) * redge * uReflect);
+    }
     vec3 col = mix(body, refl, clamp(fres * 1.1, 0.0, 1.0));
 
     // Nắng lấp lánh: một vệt to mềm và vô số chấm sáng nhỏ trên gợn.
     vec3 h = normalize(uSunDir + view);
     float nh = max(dot(n, h), 0.0);
     float glint = pow(nh, 900.0) * 6.0 + pow(nh, 120.0) * 0.5;
-    col += uSunColor * glint * uDay * (1.0 - uCloud * 0.8);
+    // Bóng mây trôi qua thì mặt nước tắt lấp lánh, sẫm đi một chút.
+    float sunShade = tenCloudShade(p);
+    col *= 0.8 + 0.2 * sunShade;
+    col += uSunColor * glint * uDay * (1.0 - uCloud * 0.8) * sunShade;
 
     // Bọt vỗ bờ (so độ sâu nước với địa hình): một viền bọt dày sát mép nước, cộng hai lớp vệt sóng lùa vào bờ
     // theo nhịp (lệch pha nhau), nhiễu bọt làm vỡ vụn thành mảng. Vách đá dốc (độ sâu tăng nhanh) thì dải bọt hẹp.
@@ -333,11 +363,149 @@ const SHALLOW_NIGHT = new Color("#0a2a33");
  */
 const SIZE = 760;
 
+// ---------------------------------------------------------------------------- ảnh phản chiếu (đồ hoạ Cao)
+
+/** Ảnh phản chiếu chỉ vẽ tới chừng này mét (xa hơn đã chìm vào sương, gợn sóng làm nhoè hết). */
+const REFLECT_FAR = 150;
+const NORMAL = new Vector3(0, 1, 0);
+const BIAS = new Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+
+/**
+ * Camera soi gương qua mặt phẳng nước (y = WATER_LEVEL), mặt phẳng gần xiên theo mặt nước (oblique clipping, như
+ * Reflector của three.js) nên phần dưới nước không lọt vào ảnh mà không phải đổi shader của vật nào.
+ */
+class PlanarReflection {
+  readonly target: WebGLRenderTarget;
+  readonly matrix = new Matrix4();
+  private readonly camera = new PerspectiveCamera();
+  private readonly plane = new Plane();
+  private readonly clip = new Vector4();
+  private readonly q = new Vector4();
+  private readonly rot = new Matrix4();
+  private readonly mirror = new Vector3();
+  private readonly look = new Vector3();
+  private readonly hidden: boolean[] = [];
+
+  constructor() {
+    this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthBuffer: true });
+    this.target.texture.generateMipmaps = false;
+    this.target.texture.minFilter = LinearFilter;
+    this.target.texture.magFilter = LinearFilter;
+  }
+
+  /** Vẽ ảnh phản chiếu cho camera chính; trả về false nếu camera không ở trên mặt nước (khỏi vẽ). */
+  render(gl: WebGLRenderer, scene: Scene, main: Camera, scale: number, waterMesh: Mesh | null): boolean {
+    const cam = main as PerspectiveCamera;
+    if (cam.position.y < WATER_LEVEL + 0.15) return false;
+    const w = Math.max(16, Math.round(gl.domElement.width * scale));
+    const h = Math.max(16, Math.round(gl.domElement.height * scale));
+    if (this.target.width !== w || this.target.height !== h) this.target.setSize(w, h);
+
+    // Vị trí, hướng nhìn, hướng lên của camera soi gương (đối xứng qua mặt nước).
+    const m = this.camera;
+    this.mirror.copy(cam.position);
+    this.mirror.y = 2 * WATER_LEVEL - this.mirror.y;
+    this.rot.extractRotation(cam.matrixWorld);
+    this.look.set(0, 0, -1).applyMatrix4(this.rot).add(cam.position);
+    this.look.y = 2 * WATER_LEVEL - this.look.y;
+    m.position.copy(this.mirror);
+    m.up.set(0, 1, 0).applyMatrix4(this.rot).reflect(NORMAL);
+    m.lookAt(this.look);
+    m.fov = cam.fov;
+    m.aspect = cam.aspect;
+    m.near = cam.near;
+    m.far = Math.min(cam.far, REFLECT_FAR);
+    m.updateMatrixWorld();
+    m.updateProjectionMatrix();
+    this.matrix.copy(BIAS).multiply(m.projectionMatrix).multiply(m.matrixWorldInverse);
+
+    // Mặt phẳng gần xiên theo mặt nước (Eric Lengyel), hạ thấp chút để chân người lội nước không bị cắt cụt.
+    this.plane.setFromNormalAndCoplanarPoint(NORMAL, this.look.set(0, WATER_LEVEL - 0.05, 0)).applyMatrix4(m.matrixWorldInverse);
+    this.clip.set(this.plane.normal.x, this.plane.normal.y, this.plane.normal.z, this.plane.constant);
+    const p = m.projectionMatrix.elements;
+    this.q.set((Math.sign(this.clip.x) + p[8]!) / p[0]!, (Math.sign(this.clip.y) + p[9]!) / p[5]!, -1, (1 + p[10]!) / p[14]!);
+    this.clip.multiplyScalar(2 / this.clip.dot(this.q));
+    p[2] = this.clip.x;
+    p[6] = this.clip.y;
+    p[10] = this.clip.z + 1;
+    p[14] = this.clip.w;
+
+    // Ẩn mặt nước, vòm trời, thảm cỏ; không vẽ lại bản đồ bóng (đèn đứng yên, bóng của khung hình chính vẫn đúng).
+    if (waterMesh) waterMesh.visible = false;
+    let i = 0;
+    for (const o of reflectionHidden) {
+      this.hidden[i++] = o.visible;
+      o.visible = false;
+    }
+    const background = scene.background;
+    scene.background = null;
+    const shadowAuto = gl.shadowMap.autoUpdate;
+    const shadowDue = gl.shadowMap.needsUpdate;
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = false;
+    const prevTarget = gl.getRenderTarget();
+    const clearAlpha = gl.getClearAlpha();
+    gl.setClearAlpha(0);
+    gl.setRenderTarget(this.target);
+    gl.clear();
+    gl.render(scene, m);
+    gl.setRenderTarget(prevTarget);
+    gl.setClearAlpha(clearAlpha);
+    gl.shadowMap.autoUpdate = shadowAuto;
+    gl.shadowMap.needsUpdate = shadowDue;
+    scene.background = background;
+    i = 0;
+    for (const o of reflectionHidden) o.visible = this.hidden[i++]!;
+    if (waterMesh) waterMesh.visible = true;
+    return true;
+  }
+
+  dispose() {
+    this.target.dispose();
+  }
+}
+
+/**
+ * Vẽ ảnh phản chiếu sau khi mọi thứ đã cập nhật vị trí (camera, người, xe) và trước lượt vẽ chính của hậu kỳ (ưu tiên
+ * 1): khỏi trễ một khung hình. Chỉ dựng khi có hậu kỳ (đồ hoạ Cao) vì useFrame có ưu tiên thì R3F thôi tự vẽ.
+ */
+function ReflectionPass({ material, mesh, scale }: { material: ShaderMaterial; mesh: RefObject<Mesh | null>; scale: number }) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần).
+  const reflection = useRef<PlanarReflection | null>(null);
+  useEffect(() => {
+    const r = new PlanarReflection();
+    reflection.current = r;
+    return () => {
+      reflection.current = null;
+      r.dispose();
+      material.uniforms.uReflect!.value = 0;
+      material.uniforms.uReflectMap!.value = null;
+    };
+  }, [material]);
+  useFrame(({ camera }) => {
+    const u = material.uniforms;
+    const r = reflection.current;
+    camera.updateMatrixWorld();
+    // Chỉ khi ở trên mặt nước, không quá cao (trên cao nhìn xuống gần như chỉ thấy màu nước), mặt nước đang hiện.
+    const ok = !!r && !!mesh.current?.visible && camera.position.y < WATER_LEVEL + 70 && r.render(gl, scene, camera, scale, mesh.current);
+    u.uReflect!.value = ok ? 1 : 0;
+    if (ok) {
+      u.uReflectMap!.value = r.target.texture;
+      (u.uReflectMatrix!.value as Matrix4).copy(r.matrix);
+    }
+  }, 0.5);
+  return null;
+}
+
 export function Water({ world }: { world: World }) {
   const depthMap = useMemo(() => bakeDepth(world), [world]);
   useEffect(() => () => depthMap.dispose(), [depthMap]);
   // Số ô lưới theo mức chất lượng: đỉnh dồn về gần camera nên bớt ô chủ yếu làm thưa phần xa (sương mù che).
-  const segments = useProfile().water;
+  const profile = useProfile();
+  const segments = profile.water;
+  const reflectScale = profile.reflect;
   const geometry = useMemo(() => radialGrid(SIZE, segments, 2.2), [segments]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const mesh = useRef<Mesh>(null);
@@ -359,6 +527,9 @@ export function Water({ world }: { world: World }) {
           uDepth: { value: null },
           uRipple: { value: null },
           uHalf: { value: world.half ?? MAP_HALF_SIZE },
+          uReflectMap: { value: null },
+          uReflectMatrix: { value: new Matrix4() },
+          uReflect: { value: 0 },
         },
       ]),
       vertexShader,
@@ -370,6 +541,8 @@ export function Water({ world }: { world: World }) {
     m.uniforms.uTime = waterUniforms.uTime;
     m.uniforms.uWaveScale = waterUniforms.uWaveScale;
     m.uniforms.uRipple!.value = waterNormals();
+    cloudTexture();
+    Object.assign(m.uniforms, cloudUniforms);
     return m;
   }, []);
   // Bản đồ rộng hẹp khác nhau (chiến trường rộng hơn đảo): tấm độ sâu phủ đúng cả bản đồ.
@@ -404,5 +577,10 @@ export function Water({ world }: { world: World }) {
     material.side = above > amp ? FrontSide : above < -amp ? BackSide : DoubleSide;
   });
 
-  return <mesh ref={mesh} geometry={geometry} material={material} position-y={WATER_LEVEL} frustumCulled={false} />;
+  return (
+    <>
+      <mesh ref={mesh} geometry={geometry} material={material} position-y={WATER_LEVEL} frustumCulled={false} />
+      {reflectScale > 0 && <ReflectionPass material={material} mesh={mesh} scale={reflectScale} />}
+    </>
+  );
 }

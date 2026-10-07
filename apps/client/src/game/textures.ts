@@ -15,6 +15,7 @@ import {
   type WebGLRenderer,
 } from "three";
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { CLOUD_PARS_GLSL, cloudLightsChunk, cloudTexture, cloudUniforms } from "./atmosphere.ts";
 
 // Chất liệu cho mọi thứ trong cảnh: tám tấm vân (gỗ, đá, lá, vải, cát, cỏ, vách đá, đất) sinh tại chỗ bằng nhiễu
 // lặp liền mép, không tải file nào. Mỗi vật liệu được vá shader để phủ vân theo toạ độ (chiếu ba mặt, khỏi cần UV),
@@ -249,6 +250,7 @@ const VERTEX_HEAD = /* glsl */ `
 varying vec3 vDetailPos;
 varying vec3 vDetailNormal;
 varying float vTenUp;
+varying vec2 vTenCloudXZ;
 #ifdef TEN_SPLAT
   attribute vec4 splat;
   varying vec4 vSplat;
@@ -263,6 +265,12 @@ const VERTEX_UP = /* glsl */ `
       tenN = mat3( instanceMatrix ) * tenN;
     #endif
     vTenUp = normalize( mat3( modelMatrix ) * tenN ).y;
+    // Toạ độ thế giới cho bóng mây (kể cả vật vân theo vật).
+    vec4 tenCw = vec4( transformed, 1.0 );
+    #ifdef USE_INSTANCING
+      tenCw = instanceMatrix * tenCw;
+    #endif
+    vTenCloudXZ = ( modelMatrix * tenCw ).xz;
   }`;
 
 function vertexBody(world: boolean) {
@@ -301,6 +309,7 @@ uniform float uDetailBump;
 varying vec3 vDetailPos;
 varying vec3 vDetailNormal;
 varying float vTenUp;
+varying vec2 vTenCloudXZ;
 #ifdef TEN_SPLAT
   varying vec4 vSplat;
 #endif
@@ -367,6 +376,7 @@ const LITE_FRAGMENT_HEAD = /* glsl */ `
 uniform float uSnow;
 uniform float uWet;
 varying float vTenUp;
+varying vec2 vTenCloudXZ;
 `;
 const LITE_FRAGMENT_COLOR = /* glsl */ `
   #ifdef TEN_WORLD
@@ -378,6 +388,24 @@ const LITE_FRAGMENT_COLOR = /* glsl */ `
   #endif
 `;
 
+/**
+ * Mưa: mặt đất, mái, bậu cửa hướng lên bóng loáng như phủ nước (độ nhám tụt về ~0.06, chỗ trũng theo vân đọng thành
+ * vũng bóng nhất), tường đứng ướt ít hơn; người, đồ vật (vân theo vật) chỉ bớt nhám một chút. `tenH` có ở bản đủ.
+ */
+function wetRoughGlsl(full: boolean) {
+  return /* glsl */ `
+  #ifdef TEN_WORLD
+  {
+    float tenGloss = uWet * ( 0.4 + 0.6 * smoothstep( 0.35, 0.85, vTenUp ) );
+    ${full ? "tenGloss *= 0.6 + 0.4 * smoothstep( 0.62, 0.4, tenH ) * smoothstep( 0.5, 0.9, vTenUp );" : "tenGloss *= 0.8;"}
+    roughnessFactor = mix( roughnessFactor, 0.06, clamp( tenGloss, 0.0, 0.92 ) );
+  }
+  #else
+    roughnessFactor = mix( roughnessFactor, 0.32, uWet * 0.45 );
+  #endif
+`;
+}
+
 const FRAGMENT_NORMAL = /* glsl */ `
   {
     float tenBumpFade = 1.0 - smoothstep( 12.0, 55.0, tenDist );
@@ -385,7 +413,10 @@ const FRAGMENT_NORMAL = /* glsl */ `
   }
 `;
 
-/** Mức tuyết phủ và độ ướt của cả cảnh (Weather cập nhật theo thời tiết), dùng chung cho mọi vật liệu đã vá vân. */
+/**
+ * Mức tuyết phủ và độ ướt của cả cảnh (Weather cập nhật theo thời tiết), dùng chung cho mọi vật liệu đã vá vân.
+ * `uWet` làm sẫm màu và bóng mặt (độ nhám thấp) — xem wetRoughGlsl.
+ */
 export const weatherUniforms = { uSnow: { value: 0 }, uWet: { value: 0 } };
 
 /** Bật tắt vân cho cả cảnh (đồ hoạ thấp thì tắt cho nhẹ máy). Đổi thì các vật liệu đã vá tự dựng lại shader. */
@@ -422,25 +453,30 @@ export function applyDetail(material: MeshStandardMaterial, options: DetailOptio
   material.onBeforeCompile = (shader, renderer) => {
     prev?.call(material, shader, renderer);
     if (world) shader.defines = { ...shader.defines, TEN_WORLD: "" };
+    cloudTexture();
     if (!detailSettings.enabled) {
-      Object.assign(shader.uniforms, weatherUniforms);
+      Object.assign(shader.uniforms, weatherUniforms, cloudUniforms);
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying float vTenUp;")
+        .replace("#include <common>", "#include <common>\nvarying float vTenUp;\nvarying vec2 vTenCloudXZ;")
         .replace("#include <fog_vertex>", `#include <fog_vertex>\n${VERTEX_UP}`);
       shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", `#include <common>\n${LITE_FRAGMENT_HEAD}`)
-        .replace("#include <color_fragment>", `#include <color_fragment>\n${LITE_FRAGMENT_COLOR}`);
+        .replace("#include <common>", `#include <common>\n${LITE_FRAGMENT_HEAD}\n${CLOUD_PARS_GLSL}`)
+        .replace("#include <color_fragment>", `#include <color_fragment>\n${LITE_FRAGMENT_COLOR}`)
+        .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${wetRoughGlsl(false)}`)
+        .replace("#include <lights_fragment_begin>", cloudLightsChunk("vTenCloudXZ"));
       return;
     }
-    Object.assign(shader.uniforms, uniforms, weatherUniforms);
+    Object.assign(shader.uniforms, uniforms, weatherUniforms, cloudUniforms);
     if (options.splat) shader.defines = { ...shader.defines, TEN_SPLAT: "" };
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
       .replace("#include <fog_vertex>", `#include <fog_vertex>\n${vertexBody(world)}`);
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${FRAGMENT_HEAD}`)
+      .replace("#include <common>", `#include <common>\n${FRAGMENT_HEAD}\n${CLOUD_PARS_GLSL}`)
       .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_COLOR}`)
-      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${FRAGMENT_NORMAL}`);
+      .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${wetRoughGlsl(true)}`)
+      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${FRAGMENT_NORMAL}`)
+      .replace("#include <lights_fragment_begin>", cloudLightsChunk("vTenCloudXZ"));
   };
   material.customProgramCacheKey = () => (detailSettings.enabled ? `${prevKey}|detail:${world ? "w" : "o"}:${options.splat ? "s" : ""}` : `${prevKey}|lite:${world ? "w" : "o"}`);
   patched.add(material);

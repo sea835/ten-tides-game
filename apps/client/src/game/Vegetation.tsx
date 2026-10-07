@@ -436,8 +436,8 @@ export function Vegetation({ world }: { world: World }) {
   );
   const mats = useMemo(
     () => ({
-      grass: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.22, 0, true), "leaf"),
-      tall: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.1, 0, true), "leaf"),
+      grass: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.22, 0, true, true), "leaf"),
+      tall: detailed(swayMaterial({ vertexColors: true, side: DoubleSide, roughness: 1 }, 0.1, 0, true, true), "leaf"),
       fern: leafMaterial(frondTexture(), 0.05, 0, 0.6),
       bush: leafMaterial(leafClusterTexture(), 0.025),
       bushCore: detailed(swayMaterial({ roughness: 1 }, 0.025), "leaf"),
