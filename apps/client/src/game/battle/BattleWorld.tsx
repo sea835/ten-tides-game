@@ -11,6 +11,7 @@ import { BattleStructures } from "./Structures.tsx";
 import { ShaderWarmup } from "./ShaderWarmup.tsx";
 import { CommsWorld } from "./CommsWorld.tsx";
 import { Deployables } from "./Deployables.tsx";
+import { StreakWorld } from "./StreakWorld.tsx";
 
 /** Cảnh của bản đồ Battleground: địa hình, biển, cây cỏ và mọi công trình (va chạm kèm theo). */
 export function BattleIsland({ room, world }: { room: IslandRoom; world: World }) {
@@ -27,6 +28,7 @@ export function BattleIsland({ room, world }: { room: IslandRoom; world: World }
       <Deployables room={room} />
       <ShaderWarmup room={room} />
       <CommsWorld room={room} world={world} />
+      <StreakWorld room={room} />
     </>
   );
 }

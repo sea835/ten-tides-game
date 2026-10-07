@@ -170,7 +170,7 @@ export function Killcam({ room }: { room: IslandRoom }) {
   );
 }
 
-const WEAPON_LABEL: Record<string, string> = { zone: "vùng độc", mine: "mìn", frag: "lựu đạn", knife: "dao", tank: "pháo xe tăng", collapse: "nhà sập" };
+const WEAPON_LABEL: Record<string, string> = { zone: "vùng độc", mine: "mìn", frag: "lựu đạn", knife: "dao", tank: "pháo xe tăng", collapse: "nhà sập", artillery: "mưa pháo" };
 
 /** Dải "KILLCAM" trên màn hình: kẻ hạ mình, súng, khoảng cách, thanh thời gian, nút bỏ qua (Space). */
 export function KillcamHud() {

@@ -157,7 +157,7 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       weapon,
       atts,
       skin: weapon ? (player.skins.get(weapon) ?? "") : "",
-      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : gadget && gadget !== "m203" ? gadget : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : gadget && gadget !== "m203" ? gadget : "", knife: slot === "", outfit: k.outfit, armor: player.gear.jugg ? 3 : k.armor, helmet: player.gear.jugg ? 3 : k.helmet };
   });
   // Súng người khác chạm tường: dò tia từ ngực theo hướng họ ngắm (vài lần mỗi giây, chỉ khi ở gần).
   const wall = useRef({ value: 0, at: 0 });

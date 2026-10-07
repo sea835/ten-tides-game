@@ -17,6 +17,7 @@ import { wreck } from "./Wreckage.tsx";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 import { scratchRay, scratchRayFrom } from "../scratch.ts";
 import { gadgetFrame, gadgetSlots, heldGadget } from "./gadgets.ts";
+import { noteStreakShot, streakRpm } from "./streaks.ts";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
 // R thay đạn, 1–3 đổi súng, 4–6 lựu đạn / bom khói / mìn, 7–8 băng gạc / hộp cứu thương, lăn chuột đổi món,
@@ -606,9 +607,13 @@ export function Shooter({ room }: { room: IslandRoom }) {
     // Lịch thay vì so sánh khoảng cách: cổng cũ đánh giá đúng một lần mỗi khung hình nên tần
     // suất thực là ceil(chu kỳ / thời gian khung) — Vector 1100rpm ra 898rpm, M249 750rpm ra 599
     // rpm ở 30fps. Bắn theo lịch thì RPM trung bình đúng ở mọi tần số khung hình.
-    const interval = 60000 / def.rpm;
+    // Minigun: quay nòng một nhịp rồi mới nhả đạn, tốc độ bắn tăng dần theo vòng quay (streaks.ts).
+    const rpm = streakRpm(def, now);
+    if (rpm <= 0) return;
+    const interval = 60000 / rpm;
     if (now < gun.nextShotAt) return;
     fire(def, camera.position, fwd, right);
+    noteStreakShot(def, now);
     // Phát kế tiếp cách phát này đúng một chu kỳ. Kiểu cũ `max(next + interval, now)` sau một quãng nghỉ
     // lại đặt mốc = now, nên khung sau (~16ms) bắn thêm phát nữa: trừ đạn hai lần và server (chặn
     // nhanh hơn 80% RPM) từ chối phát thứ hai, băng đạn lệch với server.

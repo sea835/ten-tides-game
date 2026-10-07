@@ -273,3 +273,61 @@
     font-size: 11px;
   }
 }
+
+/* Dấu thông minh: chỗ trống (di chuyển tới đây) xanh dương, đồ dưới đất vàng, các ô vòng chọn mỗi loại một màu. */
+.cm-mark.spot {
+  --c: #4aa8ff;
+}
+.cm-mark.loot {
+  --c: #ffd23a;
+}
+.cm-mark.loot .cm-icon {
+  border-radius: 3px;
+}
+.cm-mark.attack {
+  --c: #ff6b3d;
+}
+.cm-mark.defend {
+  --c: #38d6a0;
+}
+.cm-mark.coming {
+  --c: #8fe36f;
+}
+.cm-mark.armor {
+  --c: #9fd2ff;
+}
+.cm-mark.seen {
+  --c: #ff3b30;
+}
+.cm-mark.careful {
+  --c: #ff9a1f;
+}
+.cm-mark.seen .cm-icon,
+.cm-mark.careful .cm-icon {
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.cm-wheel.ping .cm-slice.on {
+  background: rgba(74, 168, 255, 0.88);
+  color: #06121f;
+}
+.bm-ping.spot {
+  fill: #4aa8ff;
+}
+.bm-ping.loot {
+  fill: #ffd23a;
+}
+.bm-ping.attack,
+.bm-ping.seen {
+  fill: #ff6b3d;
+}
+.bm-ping.defend {
+  fill: #38d6a0;
+}
+.bm-ping.coming,
+.bm-ping.armor {
+  fill: #8fe36f;
+}
+.bm-ping.careful {
+  fill: #ff9a1f;
+}

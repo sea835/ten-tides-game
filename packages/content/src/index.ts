@@ -17,3 +17,4 @@ export * from "./vehicles.ts";
 export * from "./emplacements.ts";
 export * from "./progression.ts";
 export * from "./loadout.ts";
+export * from "./streaks.ts";

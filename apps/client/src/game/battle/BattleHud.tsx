@@ -47,6 +47,7 @@ import { SpeakingMark, VoiceChat, VoiceSettingsSection } from "../voice/VoiceCha
 import { KillerBanner, XpFeed } from "../../progress/BattleProgress.tsx";
 import { RankBadge } from "../../progress/RankBadge.tsx";
 import { CommsHud, PingMarks } from "./CommsHud.tsx";
+import { StreakHud, StreakMarks } from "./StreakHud.tsx";
 import { CommandCenter } from "./CommandCenter.tsx";
 import { KillcamHud } from "./Killcam.tsx";
 import { useKillcam } from "./replay.ts";
@@ -426,6 +427,7 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
         </g>
       )}
       {phase === "battle" || phase === "prep" ? <PingMarks u={u} /> : null}
+      {phase === "battle" && <StreakMarks room={room} u={u} />}
       {me && (
         <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180}) scale(${u})`}>
           <path d="M0,-10 L7,7 L0,3.5 L-7,7 Z" className="bm-me" />
@@ -605,7 +607,7 @@ function KillFeed({ room }: { room: IslandRoom }) {
               {nameOf(room, k.killer)}
             </b>
           ) : null}
-          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : k.weapon === "tank" ? "⛟ pháo" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
+          <span className="w">{k.weapon === "zone" ? "☠ vùng độc" : k.weapon === "mine" ? "💥 mìn" : k.weapon === "frag" ? "💣" : k.weapon === "knife" ? "🔪 dao" : k.weapon === "tank" ? "⛟ pháo" : k.weapon === "artillery" ? "💥 pháo kích" : WEAPON.get(k.weapon)?.name ?? ""}{k.head ? " 🎯" : ""}</span>
           <b className="v">
             <RankBadge rank={k.vr} size={14} />
             {nameOf(room, k.victim)}
@@ -1100,6 +1102,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       {fighting && <SquadHud room={room} />}
       {fighting && <TankHud />}
       {fighting && <CommsHud room={room} />}
+      {fighting && <StreakHud room={room} bigMap={<BattleMinimap room={room} big />} />}
       <Toast />
       <TankPrompt />
       <Pickup />
