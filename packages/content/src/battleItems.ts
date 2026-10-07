@@ -1,7 +1,7 @@
 // Danh mục đồ của chế độ Battleground: súng, đạn, lựu đạn, bom khói, mìn, giáp, mũ, đồ hồi máu, trang phục.
 // Dùng chung cho server (sát thương, tốc độ bắn, giá) và client (mô hình, âm thanh, cửa hàng).
 
-export type AmmoId = "9mm" | "45acp" | "556" | "762" | "12g" | "300" | "rocket";
+export type AmmoId = "9mm" | "45acp" | "556" | "762" | "12g" | "300" | "rocket" | "missile";
 
 export const AMMO: Record<AmmoId, { name: string; price: number; pack: number }> = {
   "9mm": { name: "Đạn 9mm", price: 60, pack: 45 },
@@ -11,6 +11,7 @@ export const AMMO: Record<AmmoId, { name: string; price: number; pack: number }>
   "12g": { name: "Đạn 12 Gauge", price: 80, pack: 15 },
   "300": { name: "Đạn .300 Magnum", price: 200, pack: 10 },
   rocket: { name: "Đạn RPG", price: 350, pack: 2 },
+  missile: { name: "Tên lửa IGLA", price: 500, pack: 1 },
 };
 
 /** Nhóm súng: quyết định ô đeo, dáng cầm, tiếng nổ. */
@@ -77,7 +78,7 @@ export interface Boost {
 }
 
 /** Sơ tốc đầu nòng (m/s), gần với súng thật. */
-const VELOCITY: Record<string, number> = { rpg7: 115, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, dp28: 840, s686: 380, s1897: 360, sks: 800, kar98k: 760, awm: 945 };
+const VELOCITY: Record<string, number> = { rpg7: 115, igla: 60, p92: 360, deagle: 420, ump45: 300, vector: 350, m416: 880, akm: 715, scar: 870, m249: 915, dp28: 840, s686: 380, s1897: 360, sks: 800, kar98k: 760, awm: 945 };
 
 /** Hệ số trúng đầu từ bảng sát thương thân / đầu (bảng 5.1 trong kế hoạch): damage × headshot = sát thương đầu. */
 const head = (body: number, headDamage: number) => headDamage / body;
@@ -109,6 +110,9 @@ export const WEAPONS: readonly WeaponDef[] = [
   w({ id: "kar98k", name: "Kar98k", class: "sniper", ammo: "762", mag: 5, rpm: 48, damage: 79, headshot: head(79, 197), range: 400, hipSpread: 0.05, adsSpread: 0.0008, recoil: 0.06, recoilSide: 0.01, auto: false, reload: 3.8, zoom: 1.5, price: 3800, speed: 0.95 }),
   // RPG-7: một quả mỗi lần nạp; rời ống chậm (115 m/s) rồi động cơ đẩy lên 295 m/s, võng theo trọng lực.
   w({ id: "rpg7", name: "RPG-7", class: "launcher", ammo: "rocket", mag: 1, rpm: 40, damage: 0, range: 160, hipSpread: 0.04, adsSpread: 0.006, recoil: 0.05, recoilSide: 0.01, auto: false, reload: 3.4, zoom: 1.4, price: 2200, speed: 0.88, headshot: 1, explosive: { radius: 4.5, damage: 110, armor: 380 }, boost: { vmax: 295, accel: 400 } }),
+  // IGLA: tên lửa vác vai phòng không tầm nhiệt. Ngắm giữ tâm lên trực thăng ~1,5 giây để khoá rồi bắn: tên lửa tự
+  // đuổi theo (aircraft.ts). Không khoá thì bay thẳng như rocket. Sát thương nổ vào người nhỏ (đầu nổ cận đích).
+  w({ id: "igla", name: "Tên lửa vác vai IGLA", class: "launcher", ammo: "missile", mag: 1, rpm: 30, damage: 0, range: 520, hipSpread: 0.03, adsSpread: 0.004, recoil: 0.04, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.8, price: 2600, speed: 0.88, headshot: 1, explosive: { radius: 3.5, damage: 70, armor: 470 }, boost: { vmax: 240, accel: 300 } }),
   // AWM: trúng đầu 250, mũ cấp 3 cũng không đỡ nổi (một phát gục).
   w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, extMag: 7, rpm: 40, damage: 105, headshot: head(105, 250), range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, rare: true }),
 ];

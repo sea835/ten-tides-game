@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
-import { BOAT, HMG, JEEP, MOUNT, SEATS, isEmplacement, mapForMode, mountMuzzle, rayBody, seatPos, vehicleSpec, vehicleStep, type TankPose, type VehicleKind } from "@tentides/content";
+import { BOAT, HMG, JEEP, MOUNT, RHIB, SEATS, isBoat, isEmplacement, mapForMode, mountMuzzle, rayBody, seatPos, vehicleSpec, vehicleStep, type TankPose, type VehicleKind } from "@tentides/content";
 import { Messages, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -19,6 +19,8 @@ import { carrierHud, seatOwner, WreckFire } from "./vehicleParts.tsx";
 // Ngồi trên xe: ghế lái thì W/S ga phanh, A/D bẻ lái (máy mình tự lái, khớp va chạm với server, gửi vị trí 15 lần mỗi
 // giây); ghế xạ thủ thì chuột xoay đại liên, chuột trái bắn (server dò lại từng phát), chuột phải ngắm gần; ghế khác
 // chỉ ngồi nhìn quanh. Phím 1–5 đổi ghế (ghế trống), F xuống xe.
+// Xuồng cao tốc (RHIB, 4 ghế, đại liên M2 trên mũi): phao hơi hai bên mạn, máy đuôi; chạy nhanh thì lướt, mũi nảy
+// lên xuống theo sóng, tung bọt hai bên mũi.
 
 const SEND_INTERVAL = 1 / 15;
 const AIM_INTERVAL = 1 / 10;
@@ -72,6 +74,14 @@ const G = {
   bWind: B(1.3, 0.42, 0.06),
   bMotor: B(0.36, 1.0, 0.42),
   bStripe: B(0.02, 0.28, 0.9),
+  rTube: new CylinderGeometry(0.36, 0.36, 5.6, 12),
+  rTubeBow: new SphereGeometry(0.36, 12, 8),
+  rHull: B(1.7, 0.5, 6.2),
+  rDeck: B(1.6, 0.06, 5.4),
+  rConsole: B(0.8, 0.85, 0.65),
+  rWind: B(0.85, 0.32, 0.05),
+  rMotor: B(0.42, 1.0, 0.5),
+  rStripe: B(0.02, 0.18, 1.2),
   pedestal: new CylinderGeometry(0.07, 0.1, 1, 8),
   gunBody: B(0.2, 0.22, 0.62),
   gunBarrel: new CylinderGeometry(0.045, 0.05, MOUNT.barrel, 8),
@@ -85,6 +95,7 @@ G.gunBarrel.rotateX(Math.PI / 2);
 G.gunBarrel.translate(0, 0, MOUNT.barrel / 2);
 G.bBow.rotateY(Math.PI / 4);
 G.bBow.scale(0.95, 1, 1.35);
+G.rTube.rotateX(Math.PI / 2);
 
 /** Đại liên trên giá xoay: nhóm `yaw` quay quanh trục đứng, nhóm `pitch` ngẩng nòng. Gốc ở trụ xoay. */
 function MountedGun({ yaw, pitch, wreck }: { yaw: React.RefObject<Group | null>; pitch: React.RefObject<Group | null>; wreck: boolean }) {
@@ -168,6 +179,35 @@ function BoatModel({ yaw, pitch, color, wreck }: { yaw: React.RefObject<Group | 
   );
 }
 
+const TUBE = new MeshStandardMaterial({ color: "#2c2f30", roughness: 0.85 });
+
+function RhibModel({ yaw, pitch, color, wreck }: { yaw: React.RefObject<Group | null>; pitch: React.RefObject<Group | null>; color: string; wreck: boolean }) {
+  const hull = wreck ? WRECK : GREY_DARK;
+  const tube = wreck ? WRECK : TUBE;
+  const mount = SEATS.rhib.mount;
+  return (
+    <group>
+      <mesh geometry={G.rHull} material={hull} position={[0, 0.05, -0.1]} castShadow receiveShadow />
+      <mesh geometry={G.rDeck} material={wreck ? WRECK : DECK} position={[0, 0.36, -0.3]} receiveShadow />
+      {[1, -1].map((s) => (
+        <group key={s}>
+          {/* Phao hơi chạy dọc mạn, mũi bo tròn khép vào nhau. */}
+          <mesh geometry={G.rTube} material={tube} position={[s * 0.95, 0.42, -0.4]} castShadow />
+          <mesh geometry={G.rTubeBow} material={tube} position={[s * 0.62, 0.48, 2.55]} scale={[1, 1, 1.6]} castShadow />
+          {!wreck && <mesh geometry={G.rStripe} material={teamMat(color)} position={[s * 1.32, 0.5, 0.4]} />}
+        </group>
+      ))}
+      <mesh geometry={G.rConsole} material={hull} position={[0, 0.8, -1.05]} castShadow />
+      <mesh geometry={G.rWind} material={GLASS} position={[0, 1.36, -0.78]} rotation-x={-0.45} />
+      <mesh geometry={G.rMotor} material={STEEL} position={[0, 0.35, -3.35]} castShadow />
+      <mesh geometry={G.pedestal} material={STEEL} position={[0, (mount[1] + 0.4) / 2, mount[2]]} scale={[1, mount[1] - 0.4, 1]} />
+      <group position={[mount[0], mount[1], mount[2]]}>
+        <MountedGun yaw={yaw} pitch={pitch} wreck={wreck} />
+      </group>
+    </group>
+  );
+}
+
 /** Người ngồi trên xe: khối thân và đầu, áo theo màu đội. */
 function Rider({ at, color }: { at: readonly [number, number, number]; color: string }) {
   return (
@@ -185,7 +225,7 @@ const _e = new Euler(0, 0, 0, "YXZ");
 const wrap = (d: number) => Math.atan2(Math.sin(d), Math.cos(d));
 
 export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: string; v: VehicleState; teamColor: (team: string) => string }) {
-  const kind = (v.kind === "boat" ? "boat" : "jeep") as Exclude<VehicleKind, "tank">;
+  const kind = (v.kind === "boat" || v.kind === "rhib" ? v.kind : "jeep") as Exclude<VehicleKind, "tank">;
   const spec = vehicleSpec(kind);
   const { world: physics, rapier } = useRapier();
   const root = useRef<Group>(null);
@@ -195,13 +235,13 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
   const riders = useRef<Group>(null);
   const [wreck, setWreck] = useState(v.hp <= 0);
   const [color, setColor] = useState(teamColor(v.team));
-  const anim = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY, turret: v.turret, pitch: v.pitch, tiltX: 0, tiltZ: 0, bounce: 0, roll: 0, px: v.x, pz: v.z, speed: 0 });
+  const anim = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY, turret: v.turret, pitch: v.pitch, tiltX: 0, tiltZ: 0, bounce: 0, roll: 0, px: v.x, pz: v.z, speed: 0, spray: 0 });
   const engine = useRef<ReturnType<typeof motorEngine> | null>(null);
 
   useEffect(() => {
     const body = physics.createRigidBody(rapier.RigidBodyDesc.kinematicPositionBased().setTranslation(v.x, v.y, v.z));
     const [hw, hh, hl] = spec.half;
-    physics.createCollider(rapier.ColliderDesc.cuboid(hw - 0.05, hh * 0.8, hl - 0.1).setTranslation(0, hh * 0.8 + (kind === "boat" ? 0 : 0.25), 0), body);
+    physics.createCollider(rapier.ColliderDesc.cuboid(hw - 0.05, hh * 0.8, hl - 0.1).setTranslation(0, hh * 0.8 + (isBoat(kind) ? 0 : 0.25), 0), body);
     carrierBodies.set(id, body);
     return () => {
       carrierBodies.delete(id);
@@ -261,6 +301,24 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
         a.roll += (Math.sign(fwd) * moved) / 0.45;
         for (const w of wheels.current.children) w.rotation.x = a.roll;
       }
+    } else if (kind === "rhib") {
+      // Xuồng cao tốc: chạy nhanh thì lướt (mũi ngóc lên, thân nhô khỏi nước), nảy lên đập xuống theo từng ngọn sóng.
+      const plane = Math.min(1, Math.abs(a.speed) / RHIB.forward);
+      const slam = Math.abs(Math.sin(t * 4.2 + a.x * 0.13 + a.z * 0.07));
+      a.tiltX += (-0.11 * plane + (slam - 0.6) * 0.09 * plane + Math.sin(t * 1.5 + a.x * 0.05) * 0.03 - a.tiltX) * Math.min(1, dt * 6);
+      a.tiltZ = Math.sin(t * 1.3 + a.z * 0.05) * 0.04 * (wreck ? 2.5 : 1);
+      y = (wreck ? -0.5 : 0) + Math.sin(t * 1.9 + a.x * 0.1) * 0.07 + plane * 0.18 + slam * slam * 0.22 * plane;
+      // Bọt nước tung hai bên mũi khi lướt nhanh.
+      if (plane > 0.4 && !wreck) {
+        a.spray -= dt * plane * 18;
+        while (a.spray < 0) {
+          a.spray += 1;
+          const side = Math.random() < 0.5 ? 1 : -1;
+          const bx = a.x + s * 2.2 + co * side * 1.1;
+          const bz = a.z + co * 2.2 - s * side * 1.1;
+          effects.impacts.push({ x: bx, y: 0.05, z: bz, nx: co * side * 0.6, ny: 0.7, nz: -s * side * 0.6, born: t, blood: false, noHole: true, surface: "water" });
+        }
+      }
     } else {
       // Thuyền: dập dềnh theo sóng, chạy nhanh thì mũi ngóc lên.
       const plane = Math.min(1, Math.abs(a.speed) / BOAT.forward);
@@ -283,7 +341,7 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
     }
     const body = carrierBodies.get(id);
     if (body) {
-      body.setNextKinematicTranslation({ x: a.x, y: kind === "boat" ? 0 : a.y, z: a.z });
+      body.setNextKinematicTranslation({ x: a.x, y: isBoat(kind) ? 0 : a.y, z: a.z });
       _q.setFromEuler(_e.set(0, a.rotY, 0));
       body.setNextKinematicRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w });
     }
@@ -301,7 +359,7 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
   const seats = SEATS[kind].seats;
   return (
     <group ref={root}>
-      {kind === "jeep" ? <JeepModel yaw={yaw} pitch={pitch} wheels={wheels} color={color} wreck={wreck} /> : <BoatModel yaw={yaw} pitch={pitch} color={color} wreck={wreck} />}
+      {kind === "jeep" ? <JeepModel yaw={yaw} pitch={pitch} wheels={wheels} color={color} wreck={wreck} /> : kind === "rhib" ? <RhibModel yaw={yaw} pitch={pitch} color={color} wreck={wreck} /> : <BoatModel yaw={yaw} pitch={pitch} color={color} wreck={wreck} />}
       <group ref={riders}>
         {seats.map((at, i) => (
           <Rider key={i} at={[at[0], at[1] - 0.35, at[2]]} color={color} />
@@ -385,7 +443,8 @@ export function CarrierSeat({ room }: { room: IslandRoom }) {
     const vid = me?.alive && me.vehicle ? me.vehicle : "";
     const v = vid ? room.state.vehicles.get(vid) : undefined;
     // Xe tăng, vũ khí cố định có bộ điều khiển riêng (Vehicles.tsx, Emplacements.tsx).
-    if (!v || v.hp <= 0 || v.kind === "tank" || isEmplacement(v.kind)) {
+    // Trực thăng: Heli.tsx.
+    if (!v || v.hp <= 0 || v.kind === "tank" || v.kind === "heli" || isEmplacement(v.kind)) {
       if (cdrive.vid) {
         // Vừa xuống xe (hay xe nổ): trả camera, FOV về cho nhân vật.
         cdrive.vid = "";
@@ -457,8 +516,8 @@ export function CarrierSeat({ room }: { room: IslandRoom }) {
     if (cdrive.gunner) {
       const m = mountMuzzle(kind, p, 0, 0).pivot;
       target.set(m[0], m[1] + 0.85, m[2]);
-    } else target.set(p.x, p.y + (kind === "boat" ? 2.2 : 2.4), p.z);
-    const dist = cdrive.gunner ? (zoom ? 0.01 : 3.6) : kind === "boat" ? 10.5 : 8.5;
+    } else target.set(p.x, p.y + (isBoat(kind) ? 2.2 : 2.4), p.z);
+    const dist = cdrive.gunner ? (zoom ? 0.01 : 3.6) : kind === "boat" ? 10.5 : kind === "rhib" ? 9 : 8.5;
     const horizontal = Math.cos(view.pitch) * dist;
     pos.set(target.x + Math.sin(view.yaw) * horizontal, target.y + Math.sin(view.pitch) * dist, target.z + Math.cos(view.yaw) * horizontal);
     const floor = Math.max(map.world.heightAt(pos.x, pos.z), 0) + 0.5;
@@ -636,7 +695,7 @@ export function useVehicleFx(room: IslandRoom) {
 /** Dòng nhắc lên xe chở quân: loại xe và ghế sẽ ngồi. */
 export function carrierPrompt(kind: string, seatIndex: number): string {
   if (isEmplacement(kind)) return kind === "mortar" ? "Vào vị trí cối 82mm" : "Vào ổ đại liên";
-  const k = kind === "boat" ? "boat" : "jeep";
-  const what = k === "boat" ? "Lên thuyền" : "Lên xe trinh sát";
+  const k = kind === "boat" || kind === "rhib" || kind === "heli" ? kind : "jeep";
+  const what = k === "heli" ? "Lên trực thăng" : k === "rhib" ? "Lên xuồng cao tốc" : k === "boat" ? "Lên thuyền" : "Lên xe trinh sát";
   return `${what} · ${SEATS[k].names[seatIndex] ?? ""}`;
 }

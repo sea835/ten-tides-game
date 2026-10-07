@@ -408,9 +408,17 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
                 <line x2={Math.sin(v.rotY) * r * 1.9} y2={Math.cos(v.rotY) * r * 1.9} style={{ stroke: fill, strokeWidth: r * 0.45 }} />
               </g>
             );
+          // Trực thăng: dấu thập (thân + cánh quạt); xuồng cao tốc: thoi nhỏ.
+          if (v.kind === "heli")
+            return (
+              <g key={`v${i}`} transform={`translate(${v.x} ${v.z}) rotate(${(-v.rotY * 180) / Math.PI})`} className="bm-heli">
+                <circle r={r * 1.25} style={{ fill: "none", stroke: fill, strokeWidth: r * 0.3 }} />
+                <path d={`M0,${-r * 1.4} L0,${r * 1.6} M${-r},0 L${r},0`} style={{ stroke: fill, strokeWidth: r * 0.45 }} />
+              </g>
+            );
           if (v.kind === "mortar") return <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.3} L${v.x + r * 1.15},${v.z + r} L${v.x - r * 1.15},${v.z + r} Z`} className="bm-tank bm-emplace" style={{ fill }} />;
-          return v.kind === "boat" ? (
-            <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.4} L${v.x + r},${v.z} L${v.x},${v.z + r * 1.4} L${v.x - r},${v.z} Z`} className="bm-tank" style={{ fill }} />
+          return v.kind === "boat" || v.kind === "rhib" ? (
+            <path key={`v${i}`} d={`M${v.x},${v.z - r * 1.4} L${v.x + r},${v.z} L${v.x},${v.z + r * 1.4} L${v.x - r},${v.z} Z`} className="bm-tank" style={{ fill }} transform={v.kind === "rhib" ? `translate(${v.x * 0.3} ${v.z * 0.3}) scale(0.7)` : undefined} />
           ) : (
             <rect key={`v${i}`} x={v.x - r} y={v.z - r} width={2 * r} height={2 * r} rx={v.kind === "tank" ? 0 : r * 0.4} className="bm-tank" style={{ fill }} />
           );

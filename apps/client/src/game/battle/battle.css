@@ -2097,3 +2097,80 @@
 .b-killcam ~ .b-killer.war {
   top: 150px;
 }
+
+/* Trực thăng: số liệu bay, tâm rocket (chữ thập chấm), cảnh báo bị khoá / tên lửa bay tới. */
+.b-heli-gauges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.b-heli-gauges b {
+  font-variant-numeric: tabular-nums;
+}
+.b-heli-rocket {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 2px solid rgba(255, 200, 80, 0.9);
+  border-radius: 3px;
+  transform: rotate(45deg);
+  box-shadow: 0 0 2px #000;
+}
+.b-heli-rocket.empty {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-style: dashed;
+}
+.b-heli-alert {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+  background: rgba(200, 140, 20, 0.8);
+  text-shadow: 0 1px 2px #000;
+}
+.b-heli-alert.lvl2 {
+  background: rgba(220, 60, 30, 0.85);
+  animation: b-tracks-blink 0.35s ease-in-out infinite alternate;
+}
+.b-heli-alert.lvl3 {
+  background: rgba(240, 20, 20, 0.92);
+  font-size: 17px;
+  animation: b-tracks-blink 0.18s ease-in-out infinite alternate;
+}
+/* IGLA: khung khoá mục tiêu (vàng: đang khoá, đỏ: đã khoá), dòng nhắc dưới tâm. */
+.b-aa {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.b-aa-box {
+  position: absolute;
+  width: 54px;
+  height: 54px;
+  border: 2px solid #ffd23a;
+  box-shadow: 0 0 3px #000;
+  transition: transform 0.08s linear;
+}
+.b-aa-box.locked {
+  border-color: #ff3b2f;
+  border-width: 3px;
+}
+.b-aa-label {
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 12.5px;
+  font-weight: 700;
+}

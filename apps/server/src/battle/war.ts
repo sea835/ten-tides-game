@@ -1,4 +1,4 @@
-import { CLASSES, MAX_HP, ROLES, WAR_BASES, WATER_LEVEL, WEAPON, classOfRole, floorBelow, insideBox, isSoldierClass, warSquadLeader, type SquadRole } from "@tentides/content";
+import { CLASSES, MAX_HP, ROLES, WAR_BASES, WATER_LEVEL, WEAPON, classOfRole, floorBelow, launcherExtras, insideBox, isSoldierClass, warSquadLeader, type SquadRole } from "@tentides/content";
 import { FlagState, Messages, WAR_TICKETS_DEFAULT, type CorrectMessage, type PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, ammoOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -213,7 +213,8 @@ export class War {
     addAmmo(p.kit, "9mm", 30);
     receive(p.kit, "armor:2", []);
     receive(p.kit, "helmet:2", []);
-    for (const extra of spec.extras) receive(p.kit, extra, []);
+    // Kỹ Thuật chọn IGLA phòng không thì mang IGLA thay RPG-7.
+    for (const extra of launcherExtras(spec.extras, !p.bot && p.gear.aa && classOfRole(role) === "engineer")) receive(p.kit, extra, []);
     p.kit.active = "primary1";
     p.role = role;
     this.room.gadgets.equip(p, classOfRole(role));

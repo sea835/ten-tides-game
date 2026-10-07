@@ -1,6 +1,6 @@
 import { Room, matchMaker, type Client } from "@colyseus/core";
 import { ADRENALINE, AT_MINE, isSoldierClass, squadSlots, withDynamicSlots } from "@tentides/content";
-import { GadgetMessage, PickClassMessage, PingMessage, RadioMessage, SquadBoardMessage } from "@tentides/protocol";
+import { AaLockMessage, GadgetMessage, PickClassMessage, PingMessage, RadioMessage, SquadBoardMessage } from "@tentides/protocol";
 import { Comms } from "./comms.ts";
 import { Gadgets, SANDBAG_SLOTS } from "./gadgets.ts";
 import {
@@ -368,8 +368,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     });
 
     // Sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới.
-    this.onMessage(Messages.pickClass, PickClassMessage, (client, { cls }) => {
+    this.onMessage(Messages.pickClass, PickClassMessage, (client, { cls, aa }) => {
       const p = this.state.players.get(this.playerOf(client) ?? "");
+      // IGLA thay RPG (Kỹ Thuật): đổi lúc nào cũng được, có hiệu lực từ lần hồi sinh tới.
+      if (p && aa !== undefined) p.gear.aa = aa;
       if (p && this.state.phase === "lobby") p.gear.cls = cls;
     });
 
@@ -429,6 +431,15 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.mortarFire, MortarFireMessage, (client, m) => {
       const id = this.playerOf(client);
       if (id) this.vehicles.emplacements.fire(id, m.turret, m.elev);
+    });
+    // Trực thăng: phi công thả pháo sáng; người cầm IGLA báo đang ngắm khoá (air.ts).
+    this.onMessage(Messages.heliFlare, (client) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.air.flare(id);
+    });
+    this.onMessage(Messages.aaLock, AaLockMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.air.lock(id, m.vid);
     });
 
     this.onMessage(Messages.squadOrder, SquadOrderMessage, (client, m) => {
@@ -1069,6 +1080,12 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     setMag(kit, slot, mag - 1);
     p.shots = (p.shots + 1) % 65536;
     this.cancelHeal(id);
+    // Tên lửa vác vai IGLA: khoá chín thì tên lửa tự đuổi trực thăng (air.ts).
+    if (def.id === "igla") {
+      this.vehicles.air.fireMissile(id, o, rays[0] ?? [0, 0, 1]);
+      this.bots.onShot(id, p.x, p.z, 120);
+      return;
+    }
     // Súng phóng đạn nổ (RPG): không dò trúng người, phóng quả đạn nổ theo hướng tia đầu tiên.
     if (def.explosive) {
       const r0 = rays[0]!;
@@ -1381,7 +1398,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return;
     if (this.state.phase === "ended") return;
-    if (this.state.battleMode === "solo" && WEAPON.get(item)?.class === "launcher") return this.reject(client, "Chế độ sinh tồn không có xe tăng, không bán súng chống tăng.");
+    if (this.state.battleMode === "solo" && WEAPON.get(item)?.class === "launcher" && item !== "igla") return this.reject(client, "Chế độ sinh tồn không có xe tăng, không bán súng chống tăng.");
     const price = priceOf(item);
     if (price === null) return this.reject(client, "Món này không bán.");
     if (p.kit.money < price) return this.reject(client, "Không đủ tiền.");
