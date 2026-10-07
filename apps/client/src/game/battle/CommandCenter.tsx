@@ -324,7 +324,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
               </span>
               <button className={`cc-toggle ${s.vehicles ? "on" : ""}`} role="switch" aria-checked={s.vehicles} disabled={!isHost} onClick={() => send({ vehicles: !s.vehicles })}>
                 <i />
-                <span>{s.vehicles ? "Bật: xe tăng, xe jeep, thuyền" : "Tắt: chỉ có bộ binh"}</span>
+                <span>{s.vehicles ? "Bật: xe tăng, xe jeep, thuyền, xuồng, trực thăng" : "Tắt: chỉ có bộ binh"}</span>
               </button>
               {s.mode === "solo" && <small className="cc-note">Sinh Tồn Sa Trường không có xe tăng.</small>}
             </div>

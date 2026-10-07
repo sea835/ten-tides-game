@@ -110,6 +110,7 @@ export function GadgetHud({ room }: { room: IslandRoom }) {
 export function ClassPicker({ room }: { room: IslandRoom }) {
   const cls = useRoomSnapshot(room, (s) => s.players.get(myId(room))?.gear.cls ?? "");
   const mode = useRoomSnapshot(room, (s) => s.battleMode);
+  const aa = useRoomSnapshot(room, (s) => s.players.get(myId(room))?.gear.aa ?? false);
   if (mode !== "war" && mode !== "squad") return null;
   const pick = (c: SoldierClass) => room.send(Messages.pickClass, { cls: c });
   const current = isSoldierClass(cls) ? cls : "assault";
@@ -129,6 +130,17 @@ export function ClassPicker({ room }: { room: IslandRoom }) {
           );
         })}
       </div>
+      {current === "engineer" && (
+        <div className="g-picker-list">
+          {/* Kỹ Thuật: ống phóng chống tăng hay tên lửa vác vai phòng không (diệt trực thăng). */}
+          {([false, true] as const).map((on) => (
+            <button key={String(on)} className={aa === on ? "on" : ""} aria-pressed={aa === on} onClick={() => room.send(Messages.pickClass, { cls: "engineer", aa: on })}>
+              <b>{on ? "🚀 Tên lửa vác vai IGLA" : "⊳ RPG-7"}</b>
+              <small>{on ? "Ngắm giữ tâm ~1,5 giây khoá trực thăng rồi bắn: tên lửa tự đuổi theo" : "Đạn nổ chống tăng, phá xe, phá tường"}</small>
+            </button>
+          ))}
+        </div>
+      )}
       <p className="muted">Phím {GADGET_KEY_LABEL}: rút khí tài (bấm lần nữa đổi khí tài thứ hai) · chuột trái: dùng</p>
     </div>
   );

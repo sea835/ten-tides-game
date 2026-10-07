@@ -3,6 +3,7 @@ import {
   AMMO_BOX,
   AT_MINE,
   CLASSES,
+  launcherExtras,
   GADGETS,
   M203,
   REPAIR,
@@ -110,7 +111,7 @@ export class Gadgets {
     receive(p.kit, gun, []);
     addAmmo(p.kit, def.ammo, def.mag * (def.class === "lmg" ? 2 : 4));
     receive(p.kit, `sight:${classSight(spec, gun)}`, []);
-    for (const extra of spec.extras) receive(p.kit, extra, []);
+    for (const extra of launcherExtras(spec.extras, cls === "engineer" && p.gear.aa)) receive(p.kit, extra, []);
     if (spec.outfit) p.kit.outfit = spec.outfit;
     p.kit.active = "primary1";
     this.equip(p, cls);

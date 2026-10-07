@@ -716,6 +716,30 @@ const GUNS: Record<string, GunSpec> = {
     action: () => [],
     mag: () => [cyl("steel", 0.06, 0.05, [0, 0.1, 0.68], { segs: 14, r2: 0.03 })],
   },
+  // IGLA: ống phóng phòng không dài thẳng màu ô liu, đầu dò tầm nhiệt tròn ở mũi ống, khối nguồn / tay cầm dưới
+  // ống, kính ngắm khung bên trái. Bắn đi thì nắp mũi ("mag") biến mất tới khi nạp ống mới.
+  igla: {
+    muzzle: [0, 0.09, 0.82],
+    sight: 0.17,
+    support: [0.0, 0.03, 0.26],
+    stock: 0.62,
+    eject: [0, 0.09, -0.6],
+    travel: 0,
+    parts: () => [
+      cyl("olive", 0.04, 1.42, [0, 0.09, 0.1], { segs: 14 }),
+      cyl("olive", 0.046, 0.12, [0, 0.09, -0.56], { segs: 14, r2: 0.052, open: true }),
+      cyl("poly", 0.045, 0.06, [0, 0.09, 0.3], { segs: 14 }),
+      box("poly", 0.07, 0.09, 0.2, [0, 0.005, 0.12]),
+      cyl("poly", 0.022, 0.16, [0, -0.02, 0.27], { segs: 10 }),
+      grip("poly", 0.034),
+      ...trigger(0.035, 0.03),
+      box("metal", 0.012, 0.06, 0.12, [-0.055, 0.15, 0.05]),
+      box("metal", 0.03, 0.03, 0.03, [-0.055, 0.19, 0.0]),
+      post(0.17, 0.4, 0.13),
+    ],
+    action: () => [],
+    mag: () => [cyl("poly", 0.042, 0.04, [0, 0.09, 0.83], { segs: 14, r2: 0.03 }), sph("steel", 0.03, [0, 0.09, 0.85], [1, 1, 0.6], undefined, [10, 8])],
+  },
   // AWM: khung báng xanh ô liu có lỗ ngón cái, nòng to với hãm nẩy, ống ngắm lớn, chân chống.
   awm: {
     muzzle: [0, 0.1, 0.78],

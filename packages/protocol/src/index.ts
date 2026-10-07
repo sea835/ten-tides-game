@@ -119,6 +119,8 @@ export const GearState = schema(
     tp: t.uint16().default(0),
     /** Đang mặc giáp Juggernaut (chịu đòn gấp ba, đi chậm, vác Minigun); gục là mất. */
     jugg: t.boolean().default(false),
+    /** Kỹ Thuật mang tên lửa phòng không IGLA thay RPG-7 (lần hồi sinh tới). */
+    aa: t.boolean().default(false),
   },
   "GearState",
 );
@@ -549,6 +551,17 @@ export const VehicleState = schema(
     seats: t.map("string"),
     /** Xe tăng đứt xích: còn bao nhiêu giây (làm tròn lên) mới chạy lại được; 0 là xích lành. */
     tracks: t.uint8().default(0),
+    /** Trực thăng: hướng, góc ngẩng súng cửa phải (ghế 2; súng cửa trái dùng `turret`/`pitch`). */
+    turret2: t.float32().default(0),
+    pitch2: t.float32().default(0),
+    /** Trực thăng: góc chúc mũi (dương là chúc xuống), nghiêng cánh (dương là nghiêng phải). */
+    tilt: t.float32().default(0),
+    roll: t.float32().default(0),
+    /** Trực thăng: rocket mũi, lượt pháo sáng còn lại. */
+    rockets: t.uint8().default(0),
+    flares: t.uint8().default(0),
+    /** Cảnh báo cho tổ lái trực thăng: 0 yên, 1 đang bị ngắm khoá, 2 đã bị khoá, 3 tên lửa đang bay tới. */
+    alert: t.uint8().default(0),
   },
   "VehicleState",
 );
@@ -893,7 +906,7 @@ export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "p
 export const GadgetMessage = z.object({ use: z.enum(GADGET_IDS), o: vec3.optional(), d: vec3.optional(), target: z.string().max(64).optional() });
 export type GadgetMessage = z.infer<typeof GadgetMessage>;
 /** Ở sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới. */
-export const PickClassMessage = z.object({ cls: z.enum(SOLDIER_CLASSES) });
+export const PickClassMessage = z.object({ cls: z.enum(SOLDIER_CLASSES), aa: z.boolean().optional() });
 export const BattleBuyMessage = z.object({ item: z.string().max(40) });
 export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke", "flash"]), o: vec3, v: vec3 });
 /** Đâm dao: người bị đâm (máy mình dò trước, server kiểm tra lại tầm với, hướng, tường). Không trúng ai thì để trống. */
@@ -925,7 +938,19 @@ export const BattleSettingsMessage = z
   .partial();
 export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
 /** Lái xe tăng: vị trí, hướng thân, hướng tháp pháo, góc nòng (máy người lái tự tính, server kiểm tra tốc độ). */
-export const VehicleMoveMessage = z.object({ x: finite, y: finite, z: finite, rotY: finite, turret: finite, pitch: z.number().min(-1).max(1), moving: z.boolean() });
+export const VehicleMoveMessage = z.object({
+  x: finite,
+  y: finite,
+  z: finite,
+  rotY: finite,
+  turret: finite,
+  pitch: z.number().min(-1).max(1),
+  moving: z.boolean(),
+  /** Trực thăng: góc chúc mũi, nghiêng cánh, tốc độ va chạm máy phi công vừa tính (m/s, 0 là không va chạm). */
+  tilt: z.number().min(-1).max(1).optional(),
+  roll: z.number().min(-1).max(1).optional(),
+  impact: z.number().min(0).max(200).optional(),
+});
 export type VehicleMoveMessage = z.infer<typeof VehicleMoveMessage>;
 /** Bắn pháo xe tăng theo hướng tháp pháo, góc nòng hiện tại. */
 export const TankFireMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1) });
@@ -960,6 +985,25 @@ export interface MortarFxMessage {
   vy: number;
   vz: number;
   t: number;
+}
+/** Người cầm IGLA đang giữ tâm ngắm lên trực thăng `vid` (gửi đều đặn ~5 lần / giây khi ngắm khoá). */
+export const AaLockMessage = z.object({ vid: id });
+export type AaLockMessage = z.infer<typeof AaLockMessage>;
+/**
+ * Server báo mọi người hiệu ứng trên không: tên lửa vừa phóng / đang bay ("missile": vị trí hiện tại, vị trí trước
+ * đó, tốc độ — máy khác vẽ đoạn khói), tên lửa nổ / tắt ("end"), trực thăng thả pháo sáng ("flare": vị trí, vận tốc
+ * trực thăng).
+ */
+export interface AirFxMessage {
+  kind: "missile" | "end" | "flare";
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  px: number;
+  py: number;
+  pz: number;
+  speed: number;
 }
 /** Server báo mọi người: đạn nảy khỏi giáp trước, xe tăng đứt xích (để vẽ tia lửa, khói, phát tiếng). */
 export interface VehicleFxMessage {
@@ -1179,6 +1223,10 @@ export const Messages = {
   vehicleAim: "vehicleAim",
   vehicleGun: "vehicleGun",
   vehicleFx: "vehicleFx",
+  /** Trực thăng: phi công thả pháo sáng; người cầm IGLA báo đang ngắm khoá; server báo hiệu ứng trên không. */
+  heliFlare: "heliFlare",
+  aaLock: "aaLock",
+  airFx: "airFx",
   /** Vũ khí cố định: pháo thủ cối bắn; server báo hiệu ứng đạn cối. */
   mortarFire: "mortarFire",
   mortarFx: "mortarFx",

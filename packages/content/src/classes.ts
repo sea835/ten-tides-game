@@ -91,7 +91,7 @@ export const CLASSES: Record<SoldierClass, ClassDef> = {
     id: "engineer",
     name: "Kỹ Thuật",
     icon: "✹",
-    info: "Vector / UMP45 + RPG-7 · Mỏ lết sửa xe, mìn chống tăng",
+    info: "Vector / UMP45 + RPG-7 (hoặc IGLA phòng không) · Mỏ lết sửa xe, mìn chống tăng",
     role: "antitank",
     guns: ["vector", "ump45"],
     sight: "reddot",
@@ -107,6 +107,15 @@ export function isSoldierClass(c: string): c is SoldierClass {
 /** Lớp lính của một vai trò máy / lựa chọn hồi sinh: súng trường → Đột Kích, bắn tỉa → Bắn Tỉa, súng máy → Quân Nhu, chống tăng (và lái tăng) → Kỹ Thuật. */
 export function classOfRole(role: string): SoldierClass {
   return role === "sniper" ? "recon" : role === "support" ? "support" : role === "antitank" || role === "tanker" ? "engineer" : "assault";
+}
+
+/**
+ * Kỹ Thuật chọn mang tên lửa vác vai phòng không IGLA thay RPG-7 (`aa`): đổi ống phóng và đạn trong danh sách đồ
+ * mang theo, các món khác giữ nguyên.
+ */
+export function launcherExtras(extras: readonly string[], aa: boolean): string[] {
+  if (!aa) return [...extras];
+  return extras.map((e) => (e === "rpg7" ? "igla" : e.startsWith("ammo:rocket") ? "ammo:missile:2" : e));
 }
 
 /** Ống ngắm cho khẩu `gun` của lớp. */

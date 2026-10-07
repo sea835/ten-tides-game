@@ -12,6 +12,8 @@ import { localPosition, shake } from "../shared.ts";
 import { playCannon, playCannonReady, tankEngine } from "../sound/guns.ts";
 import { effects, getBattleHud, menuOpen, seat, setBattleHud } from "./runtime.ts";
 import { Carrier, CarrierSeat, useVehicleFx } from "./Carriers.tsx";
+import { Flares, Heli, HeliSeat, useAirFx } from "./Heli.tsx";
+import { AirDefense } from "./AirDefense.tsx";
 import { Emplacement, EmplacementSeat, MortarShells } from "./Emplacements.tsx";
 import { nearInfo, seatOwner, WreckFire } from "./vehicleParts.tsx";
 import { sampleTrack, trackRoom, vehicleTracks } from "../netInterp.ts";
@@ -492,11 +494,15 @@ export function Vehicles({ room }: { room: IslandRoom }) {
   useVehicleFx(room);
   // Ghi băng vị trí xe từng gói server để nội suy (netInterp.ts).
   useEffect(() => trackRoom(room), [room]);
+  useAirFx(room);
   return (
     <>
-      {list.map(([id, v]) => (v.kind === "tank" ? <Tank key={id} room={room} id={id} v={v} /> : isEmplacement(v.kind) ? <Emplacement key={id} id={id} v={v} /> : <Carrier key={id} room={room} id={id} v={v} teamColor={teamColor} />))}
+      {list.map(([id, v]) => (v.kind === "tank" ? <Tank key={id} room={room} id={id} v={v} /> : isEmplacement(v.kind) ? <Emplacement key={id} id={id} v={v} /> : v.kind === "heli" ? <Heli key={id} room={room} id={id} v={v} teamColor={teamColor} /> : <Carrier key={id} room={room} id={id} v={v} teamColor={teamColor} />))}
       <TankDriver room={room} />
       <CarrierSeat room={room} />
+      <HeliSeat room={room} />
+      <AirDefense room={room} />
+      <Flares />
       <EmplacementSeat room={room} teamColor={teamColor} />
       <MortarShells room={room} />
     </>
