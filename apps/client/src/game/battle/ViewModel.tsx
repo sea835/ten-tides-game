@@ -20,11 +20,16 @@ import { SIGHTS, WEAPON, gadgetIn, type SightId } from "@tentides/content";
 import { myId, type IslandRoom } from "../../net.ts";
 import { camoTexture } from "../camo.ts";
 import { DRAW_ON_TOP_GLSL, GunModel, KnifeModel, MagModel, ThrowableModel, actionTravel, aimLineHeight, drawOnTop, ejectPort, hasMag, magCenter, muzzleOffset, opticHeight, railMount, supportOffset, viewMaterial } from "../GunModel.tsx";
-import { view } from "../input.ts";
+import { isTyping, view } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun } from "./Shooter.tsx";
 import { getSettings } from "../settings.ts";
-import { effects, eject, hitStopScale, muzzle, recoil, stance } from "./runtime.ts";
+import { effects, eject, hitStopScale, muzzle, recoil, seat, stance } from "./runtime.ts";
+import { localPosition } from "../shared.ts";
+import { viewGlint } from "../viewGlint.ts";
+import { BarrelFx, barrelFxHook, type BarrelFxApi } from "./BarrelFx.tsx";
+import { INSPECT_DUR, cancelInspect, cancelsInspect, inspect, inspectPose, newPose, startInspect } from "./viewInspect.ts";
+import { landKick, newInertia, resetInertia, updateInertia } from "./viewInertia.ts";
 
 // Súng trước mặt khi nhìn bằng mắt (góc thứ nhất): cầm thấp bên phải, lắc theo bước chân, trễ theo cú xoay chuột,
 // giật như lò xo khi bắn (báng lùi vào vai, nòng hất lên, lệch ngang, nghiêng), nhún khi đáp đất; ngắm thì nâng
@@ -73,6 +78,8 @@ export function ViewPass({ post }: { post: boolean }) {
       cam.fov = baseFov;
       cam.updateProjectionMatrix();
     }
+    // Khí nóng đầu nòng: chép nền quanh đầu nòng trước khi vẽ súng (BarrelFx).
+    barrelFxHook.beforeView?.(gl, cam);
     camera.layers.set(VIEW_LAYER);
     gl.clearDepth();
     gl.render(scene, camera);
@@ -121,6 +128,10 @@ const THROWN_SLOTS = ["frag", "smoke", "flash", "mine", "syringe", "binoculars",
 const slot0 = (s: string) => s === "gadget1" || s === "gadget2";
 const _v = new Vector3();
 const _w = new Vector3();
+const _vel = new Vector3();
+const _lastPos = new Vector3();
+const _camInv = new Quaternion();
+const pose = newPose();
 
 export function ViewModel({ room }: { room: IslandRoom }) {
   const g = useRef<Group>(null);
@@ -136,20 +147,21 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     bob: 0,
     wall: 0,
     sprint: 0,
-    yawLag: 0,
-    pitchLag: 0,
-    lastYaw: 0,
-    lastPitch: 0,
     fired: 0,
     actionAt: -1e9,
     back: { x: 0, v: 0 } as Spring,
     rise: { x: 0, v: 0 } as Spring,
     side: { x: 0, v: 0 } as Spring,
     roll: { x: 0, v: 0 } as Spring,
-    land: { x: 0, v: 0 } as Spring,
     lastLand: 0,
     reloadWas: false,
+    /** Quán tính súng (lia chuột, đi lại, bay, đáp đất). */
+    inertia: newInertia(),
+    hadPos: false,
+    /** Món đang cầm lúc bắt đầu ngắm nghía (đổi món là huỷ). */
+    inspectHeld: "",
   });
+  const fx = useRef<BarrelFxApi>(null);
   const held = useRoomSnapshot(room, (st) => {
     const p = st.players.get(myId(room));
     const k = p?.kit;
@@ -182,6 +194,13 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const st = s.current;
     const now = performance.now();
+    // Vận tốc của mình (toạ độ thế giới), từ vị trí hai khung liền nhau; dịch chuyển tức thời thì bỏ qua.
+    if (st.hadPos && rawDt > 1e-4) {
+      _vel.subVectors(localPosition, _lastPos).divideScalar(rawDt);
+      if (_vel.lengthSq() > 400) _vel.set(0, 0, 0);
+    } else _vel.set(0, 0, 0);
+    _lastPos.copy(localPosition);
+    st.hadPos = true;
     const scoped = stance.aiming && stance.scoped;
     const show = !!held && stance.firstPerson && !scoped;
     m.visible = show;
@@ -191,8 +210,13 @@ export function ViewModel({ room }: { room: IslandRoom }) {
       muzzle.valid = false;
       eject.valid = false;
       st.fired = recoil.fired;
-      st.lastYaw = view.yaw;
-      st.lastPitch = view.pitch;
+      resetInertia(st.inertia, view.yaw, view.pitch);
+      st.hadPos = false;
+      if (inspect.at) cancelInspect();
+      inspect.weight = 0;
+      inspect.request = false;
+      viewGlint.value.w = 0;
+      fx.current?.update(dt, now / 1000, camera, false);
       return;
     }
     // Cả bộ đi theo camera; các món bên trong đặt theo toạ độ camera (−z là phía trước).
@@ -213,10 +237,42 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     const meleeK = meleeT < 0.5 ? meleeT / 0.5 : 1;
     const meleeOn = meleeK < 1;
 
+    // Ngắm nghía (phím I): chỉ khi cầm súng, đứng yên tay (không ngắm, thay đạn, chạy, rút súng, đâm dao). Mọi việc
+    // khác (bắn, ngắm, thay đạn, chạy, đổi món) huỷ ngay.
+    const reloadingNow = gun.reloadUntil > now;
+    const insT = inspect.hold >= 0 ? inspect.hold : (now - inspect.at) / 1000;
+    if (inspect.request) {
+      inspect.request = false;
+      if (def && !stance.aiming && !reloadingNow && !stance.sprinting && raise < 0.05 && !meleeOn && !inspect.at) {
+        startInspect(now);
+        st.inspectHeld = held;
+      }
+    }
+    if (
+      inspect.at &&
+      (insT >= INSPECT_DUR ||
+        recoil.fired !== st.fired ||
+        stance.aiming ||
+        reloadingNow ||
+        stance.sprinting ||
+        stance.swapAt > inspect.at ||
+        stance.meleeAt > inspect.at ||
+        held !== st.inspectHeld)
+    )
+      cancelInspect();
+    if (inspect.at) inspectPose(insT, pose);
+    else inspect.weight *= Math.exp(-dt * 28);
+    if (!inspect.at && inspect.weight < 0.002) inspect.weight = 0;
+    const insW = inspect.weight;
+    // Vệt sáng quét qua kim loại (toạ độ camera): nguồn sáng ảo lướt ngang trước mặt.
+    viewGlint.value.set(pose.sweep, 0.45, 0.85, 0).normalize();
+    viewGlint.value.w = pose.glint * insW;
+
     // Phát bắn mới: đá lò xo (mạnh hơn khi bắn từ hông), khoá nòng lùi về rồi lao lên.
     if (recoil.fired !== st.fired) {
       const n = recoil.fired - st.fired;
       st.fired = recoil.fired;
+      if (def) fx.current?.shot(now / 1000, n, def.class === "sniper" || def.class === "shotgun" || def.class === "dmr");
       const p = recoil.power * n * (1 - st.aim * 0.3);
       st.back.v += 2.4 * p;
       st.rise.v += 4.6 * p;
@@ -224,22 +280,23 @@ export function ViewModel({ room }: { room: IslandRoom }) {
       st.roll.v += (Math.random() - 0.5) * 6 * p;
       st.actionAt = now;
     }
-    if (stance.land > st.lastLand + 0.05) st.land.v -= stance.land * 2.2;
+    // Đáp đất: nhún theo độ nặng cú rơi (LocalPlayer tính từ vận tốc rơi).
+    if (stance.land > st.lastLand + 0.05) landKick(st.inertia, stance.land);
     st.lastLand = stance.land;
     step(st.back, dt, 300, 24);
     step(st.rise, dt, 220, 20);
     step(st.side, dt, 200, 20);
     step(st.roll, dt, 170, 17);
-    step(st.land, dt, 140, 14);
-    st.yawLag += (view.yaw - st.lastYaw) * 0.6;
-    st.pitchLag += (view.pitch - st.lastPitch) * 0.6;
-    st.lastYaw = view.yaw;
-    st.lastPitch = view.pitch;
-    st.yawLag = Math.max(-0.3, Math.min(0.3, st.yawLag)) * Math.exp(-dt * 12);
-    st.pitchLag = Math.max(-0.3, Math.min(0.3, st.pitchLag)) * Math.exp(-dt * 12);
+    // Quán tính: vận tốc đổi sang toạ độ camera (x phải, y lên, z lùi).
+    _camInv.copy(camera.quaternion).invert();
+    _w.copy(_vel).applyQuaternion(_camInv);
+    const it = st.inertia;
+    updateInertia(it, dt, view.yaw, view.pitch, _w.x, _vel.y, _w.z, st.aim, stance.airborne);
+    // Nhịp bước: ngang theo nhịp chân, lên xuống gấp đôi (hình số 8), nghiêng nhẹ theo bước. Ngắm thì gần như đứng yên.
     const bobAmt = (0.008 + Math.min(1, stance.speed / 7) * 0.02) * (1 - st.aim * 0.85) * (stance.moving && !stance.airborne ? 1 : 0.15);
-    const bobX = Math.sin(st.bob) * bobAmt + st.yawLag * 0.3 * (1 - st.aim);
-    const bobY = (Math.abs(Math.cos(st.bob)) - 0.5) * bobAmt + st.pitchLag * 0.2 * (1 - st.aim) + st.land.x * 0.05;
+    const bobX = Math.sin(st.bob) * bobAmt + it.x;
+    const bobY = (Math.abs(Math.cos(st.bob)) - 0.5) * bobAmt + it.y;
+    const bobRoll = Math.sin(st.bob) * bobAmt * 1.6;
 
     // ---------------------------------------------------------------- súng
     const gg = gunG.current;
@@ -252,19 +309,21 @@ export function ViewModel({ room }: { room: IslandRoom }) {
         const tiltK = reloading ? ramp(r, 0, 0.12) * (1 - ramp(r, 0.86, 1)) : 0;
         const lower = Math.max(raise, meleeOn ? bump(meleeK, 0, 1) * 0.9 : 0);
         const hip = 1 - st.aim;
+        // Ngắm nghía: cộng tư thế (đã hoà theo insW); súng lục nhỏ thì đưa vào giữa ít hơn.
+        const ip = insW * (def.class === "pistol" ? 0.75 : 1);
         gg.position.set(
-          HIP.x * hip + bobX + st.side.x * 0.025 - st.wall * 0.06 - st.sprint * 0.06 - tiltK * 0.06 + lower * 0.05,
-          HIP.y * hip - sight * st.aim + bobY - st.wall * 0.06 - st.sprint * 0.03 + tiltK * 0.03 - lower * 0.32,
-          HIP.z * hip - (def.class === "pistol" ? 0.3 : 0.4) * st.aim + st.back.x * 0.07 + st.wall * 0.24 + st.sprint * 0.06 + tiltK * 0.05,
+          HIP.x * hip + bobX + st.side.x * 0.025 - st.wall * 0.06 - st.sprint * 0.06 - tiltK * 0.06 + lower * 0.05 + pose.px * ip,
+          HIP.y * hip - sight * st.aim + bobY - st.wall * 0.06 - st.sprint * 0.03 + tiltK * 0.03 - lower * 0.32 + pose.py * ip,
+          HIP.z * hip - (def.class === "pistol" ? 0.3 : 0.4) * st.aim + st.back.x * 0.07 + st.wall * 0.24 + st.sprint * 0.06 + tiltK * 0.05 + it.z + pose.pz * ip,
         );
         // Nòng hất lên khi giật, chúc xuống khi rút súng; sát tường dựng lên; thay đạn thì nghiêng súng (lật cửa
         // băng đạn về phía mình) và ngóc nòng.
         q.identity();
-        tilt.setFromAxisAngle(axisX, st.rise.x * 0.11 + st.wall * 1.05 - st.land.x * 0.08 + tiltK * 0.2 - lower * 0.9);
+        tilt.setFromAxisAngle(axisX, st.rise.x * 0.11 + st.wall * 1.05 + it.rx + tiltK * 0.2 - lower * 0.9 + pose.rx * insW);
         q.multiply(tilt);
-        tilt.setFromAxisAngle(axisY, st.side.x * 0.05 + st.sprint * 0.55 + st.wall * 0.25 + lower * 0.3);
+        tilt.setFromAxisAngle(axisY, st.side.x * 0.05 + st.sprint * 0.55 + st.wall * 0.25 + lower * 0.3 + it.ry + pose.ry * insW);
         q.multiply(tilt);
-        tilt.setFromAxisAngle(axisZ, st.roll.x * 0.07 + st.sprint * 0.25 + st.wall * 0.35 + tiltK * 0.55);
+        tilt.setFromAxisAngle(axisZ, st.roll.x * 0.07 + st.sprint * 0.25 + st.wall * 0.35 + tiltK * 0.55 + it.rz + bobRoll + pose.rz * insW);
         q.multiply(tilt);
         gg.quaternion.copy(q);
         gg.rotateY(Math.PI);
@@ -311,6 +370,9 @@ export function ViewModel({ room }: { room: IslandRoom }) {
             _v.x += down * 0.08;
             if (r > 0.62 && r < 0.76) _v.y += 0.02 * bump(r, 0.62, 0.76);
           }
+          // Ngắm nghía: tay trái vuốt dọc ốp lót tay về phía đầu nòng rồi lùi về, nhấc nhẹ khỏi ốp.
+          _v.z += pose.hand * insW;
+          _v.y += pose.hand * insW * 0.12;
           lg.position.copy(_v);
           if (spareMag.current) spareMag.current.visible = reloading && withMag && r > 0.36 && r < 0.62;
         }
@@ -409,7 +471,42 @@ export function ViewModel({ room }: { room: IslandRoom }) {
       muzzle.valid = false;
       eject.valid = false;
     }
+    // Khí nóng, khói nòng (sau khi đã đặt đầu nòng, cửa thoát vỏ của khung này).
+    fx.current?.update(dt, now / 1000, camera, !!def);
   });
+
+  // Phím I: ngắm nghía súng; bấm chuột, lăn chuột hay phím việc khác thì huỷ ngay (không chờ khung hình sau).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e) || seat.id) return;
+      if (e.code === "KeyI") {
+        if (!e.repeat) inspect.request = true;
+      } else if (inspect.at && cancelsInspect(e.code)) cancelInspect();
+    };
+    const onCancel = () => {
+      if (inspect.at) cancelInspect();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onCancel);
+    window.addEventListener("wheel", onCancel, { passive: true });
+    if (import.meta.env.DEV) {
+      // Dev: thử ngắm nghía khi không có bàn phím (window.__tentides.inspect()).
+      const w = window as unknown as { __tentides?: Record<string, unknown> };
+      w.__tentides ??= {};
+      w.__tentides.inspect = () => {
+        inspect.request = true;
+      };
+      w.__tentides.inspectState = inspect;
+      w.__tentides.barrelFx = fx;
+    }
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onCancel);
+      window.removeEventListener("wheel", onCancel);
+      cancelInspect();
+      viewGlint.value.w = 0;
+    };
+  }, []);
 
   return (
     <group ref={g}>
@@ -454,6 +551,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
           <HoldingHand outfit={outfit} />
         </group>
       </group>
+      <BarrelFx api={fx} layer={VIEW_LAYER} />
     </group>
   );
 }

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Lobby } from "./Lobby.tsx";
 import { canResume, forgetLastRoom, resumeRoom, wasKicked, type IslandRoom } from "./net.ts";
 import { GunsmithHost } from "./gunsmith/GunsmithHost.tsx";
+import { installUiSounds } from "./game/sound/ui.ts";
 
 // Phần chơi (three.js, vật lý Rapier, hậu kỳ, toàn bộ cảnh và HUD trận) tải riêng: sảnh chờ mở ngay không phải đợi
 // mấy MB mã 3D. Tải trước ngầm khi sảnh rảnh, nên lúc vào phòng gần như không phải chờ.
@@ -31,6 +32,9 @@ export function App() {
       live = false;
     };
   }, [resuming]);
+
+  // Tiếng giao diện (rê chuột, bấm nút, lắp trang bị) cho cả sảnh lẫn trong trận.
+  useEffect(() => installUiSounds(), []);
 
   useEffect(() => {
     const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));

@@ -96,7 +96,7 @@ import {
   VoiceMessages,
 } from "@tentides/protocol";
 import { applyProgress, applySkins, resolveIdentity, type Identity } from "../account.ts";
-import { isPlausibleMove } from "../movement.ts";
+import { isPlausibleMove, sanitizeGait } from "../movement.ts";
 import { randomRoomCode } from "../roomCode.ts";
 import { Airdrops } from "./airdrops.ts";
 import { Destruction } from "./destruction.ts";
@@ -289,6 +289,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       p.aimPitch = move.aimPitch ?? 0;
       // Nghiêng người: lượng tử 1/8 cho khỏi đồng bộ từng chút; nằm sấp, đang bơi thì không nghiêng.
       p.lean = p.prone || p.swimming ? 0 : Math.round((move.lean ?? 0) * 8) / 8;
+      // Dáng nhất thời (trượt, lao người, trên không) chỉ để máy khác diễn lại; lao người phải kèm nằm sấp.
+      p.gait = sanitizeGait(move.gait ?? 0, p.prone);
     });
 
     this.onMessage(Messages.start, (client) => {
@@ -717,6 +719,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       p.maxHp = MAX_HP;
       p.kills = 0;
       p.crouching = p.aiming = p.prone = false;
+      p.gait = 0;
       p.lean = 0;
       const outfit = p.kit.outfit;
       resetKit(p.kit, START_MONEY);
@@ -1054,6 +1057,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       else p.team = p.role = p.vehicle = "";
       void id;
       p.prone = p.crouching = false;
+      p.gait = 0;
       p.lean = 0;
       const outfit = p.kit.outfit;
       resetKit(p.kit, START_MONEY);
@@ -1370,6 +1374,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     p.hp = 0;
     p.moving = false;
     p.prone = p.crouching = false;
+    p.gait = 0;
     p.lean = 0;
     this.timers.delete(id);
     // Đồ rơi quanh chỗ gục.

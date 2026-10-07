@@ -1,5 +1,7 @@
 import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, type Texture, type WebGLProgramParametersWithUniforms } from "three";
+import { injectGlint } from "./viewGlint.ts";
 import { SKIN, type SkinDef, type SkinFinish, type SkinPattern } from "@tentides/content";
+import { VIEW_WET_GLSL, VIEW_WET_PARS_GLSL, wetUniforms } from "./atmosphere.ts";
 
 // Vật liệu skin súng: thay vật liệu của từng bộ phận súng (khoá GunModel: metal, poly, wood...) bằng vật liệu theo skin.
 // Vân (rằn ri, vằn hổ, tổ ong, điểm ảnh, sợi carbon, thép damascus) sinh tại chỗ bằng canvas, không cần file ảnh.
@@ -622,12 +624,21 @@ function patch(m: MeshStandardMaterial, look: SkinLook, onTop: boolean) {
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
       .replace("#include <begin_vertex>", `#include <begin_vertex>\n${VERTEX_BODY}`);
-    if (onTop) shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n  ${DRAW_ON_TOP_GLSL}`);
+    if (onTop) {
+      shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n  ${DRAW_ON_TOP_GLSL}`);
+      // Súng trước mặt ướt mưa, nước (atmosphere.ts).
+      shader.uniforms.uViewWet = wetUniforms.uViewWet;
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\n${VIEW_WET_PARS_GLSL}`)
+        .replace("#include <metalnessmap_fragment>", `#include <metalnessmap_fragment>\n${VIEW_WET_GLSL}`);
+    }
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${FRAGMENT_HEAD}`)
       .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_COLOR}`)
       .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${FRAGMENT_ROUGH}`)
       .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${FRAGMENT_EMISSIVE}`);
+    // Súng trước mặt: vệt sáng quét khi ngắm nghía (khoe skin).
+    if (onTop) injectGlint(shader);
   };
   const key = `tenskin:${Object.keys(defines).sort().join(",")}${onTop ? ":top" : ""}`;
   m.customProgramCacheKey = () => key;

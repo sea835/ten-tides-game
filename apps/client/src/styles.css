@@ -52,6 +52,29 @@
   --font-ui: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-story: "Lora Variable", Georgia, "Times New Roman", serif;
 
+  /* Ngôn ngữ thiết kế "kính mờ quân sự" (Tactical Glassmorphism) cho sảnh, menu, bảng tổng kết: nền tối #0a0e14,
+     kính mờ blur(16px), viền gradient phát sáng mảnh (xanh cyan phe Xanh, đỏ crimson phe Đỏ, vàng đồ Huyền thoại).
+     HUD trong trận không dùng kính mờ (làm mờ cảnh 3D mỗi khung hình rất tốn), chỉ menu mở lên mới dùng. */
+  --tac-bg: #0a0e14;
+  --glass: rgba(12, 17, 25, 0.62);
+  --glass-strong: rgba(10, 14, 20, 0.84);
+  --glass-blur: blur(16px) saturate(1.25);
+  --glass-line: rgba(160, 220, 255, 0.14);
+  --cyan: #00f2fe;
+  --cyan-2: #4facfe;
+  --crimson: #ff0844;
+  --crimson-2: #ffb199;
+  --gold: #ffd700;
+  --gold-2: #ffae00;
+  /* Viền gradient mảnh: đặt làm nền "border-box" dưới nền "padding-box" (giữ được bo góc). */
+  --edge-cyan: linear-gradient(135deg, rgba(0, 242, 254, 0.7), rgba(0, 242, 254, 0.08) 35%, rgba(79, 172, 254, 0.05) 65%, rgba(0, 242, 254, 0.55));
+  --edge-crimson: linear-gradient(135deg, rgba(255, 8, 68, 0.75), rgba(255, 8, 68, 0.08) 35%, rgba(255, 8, 68, 0.05) 65%, rgba(255, 8, 68, 0.55));
+  --edge-gold: linear-gradient(135deg, rgba(255, 215, 0, 0.85), rgba(255, 174, 0, 0.12) 35%, rgba(255, 174, 0, 0.08) 65%, rgba(255, 215, 0, 0.7));
+  --glow-cyan: 0 0 0 1px rgba(0, 242, 254, 0.06), 0 0 28px rgba(0, 242, 254, 0.1);
+  /* Chakra Petch có dấu tiếng Việt; Rajdhani chỉ chữ Latin nên chỉ dùng cho số, mã phòng, toạ độ. */
+  --font-display: "Chakra Petch", "Be Vietnam Pro", system-ui, sans-serif;
+  --font-num: "Rajdhani", "Chakra Petch", "Be Vietnam Pro", system-ui, sans-serif;
+
   font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.4;
@@ -113,17 +136,17 @@ summary:focus-visible {
   outline-offset: 2px;
 }
 button.primary {
-  background: linear-gradient(180deg, #ffcd62, #e79d22);
-  border-color: #ffd98a;
-  color: var(--accent-ink);
+  background: linear-gradient(180deg, #ffe45c, var(--gold) 45%, var(--gold-2));
+  border-color: #ffe98a;
+  color: #1c1400;
   font-weight: 700;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.45) inset,
-    0 6px 18px rgba(242, 180, 65, 0.25);
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 6px 18px rgba(255, 196, 0, 0.25);
 }
 button.primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffd87e, #f0a92f);
-  border-color: #ffe2a3;
+  background: linear-gradient(180deg, #fff07a, #ffe02e 45%, #ffbe1a);
+  border-color: #fff0a8;
 }
 button.ghost {
   background: transparent;
@@ -376,87 +399,6 @@ kbd {
   display: grid;
   place-items: center;
   padding: 32px 16px;
-}
-.sea {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, #141f3b 0%, #3b3358 26%, #9a5a6c 44%, #f0a262 56%, #f7c983 58%);
-}
-.sea::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 58%;
-  bottom: 0;
-  background: linear-gradient(180deg, #2b6f8a 0%, #103a52 40%, #07131c 100%);
-}
-.sun {
-  position: absolute;
-  left: 50%;
-  top: 58%;
-  width: 220px;
-  height: 220px;
-  margin: -110px 0 0 -110px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #fff1c2 0 34%, #ffc56b 35% 46%, rgba(255, 170, 90, 0.35) 47%, transparent 70%);
-}
-.isle {
-  position: absolute;
-  top: calc(58% - 78px);
-  left: 64%;
-  width: 300px;
-  height: 80px;
-  background: #2a1d33;
-  clip-path: polygon(0 100%, 18% 70%, 34% 62%, 46% 12%, 52% 4%, 58% 14%, 70% 58%, 86% 72%, 100% 100%);
-  z-index: 1;
-}
-.wave {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 2;
-  background-repeat: repeat-x, no-repeat;
-  background-size:
-    640px 48px,
-    100% calc(100% - 46px);
-  background-position:
-    0 0,
-    0 100%;
-  animation: drift 26s linear infinite;
-}
-.wave.w1 {
-  bottom: 0;
-  height: 40%;
-  opacity: 0.55;
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 48'><path d='M0 30 Q 80 6 160 30 T 320 30 T 480 30 T 640 30 V48 H0 Z' fill='%23216a88'/></svg>"),
-    linear-gradient(#216a88, #216a88);
-}
-.wave.w2 {
-  bottom: 0;
-  height: 28%;
-  opacity: 0.85;
-  animation-duration: 19s;
-  animation-direction: reverse;
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 48'><path d='M0 30 Q 80 8 160 30 T 320 30 T 480 30 T 640 30 V48 H0 Z' fill='%23123f58'/></svg>"),
-    linear-gradient(#123f58, #0b2738);
-}
-.wave.w3 {
-  bottom: 0;
-  height: 15%;
-  animation-duration: 14s;
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 48'><path d='M0 30 Q 80 10 160 30 T 320 30 T 480 30 T 640 30 V48 H0 Z' fill='%230a2232'/></svg>"),
-    linear-gradient(#0a2232, #07131c);
-}
-@keyframes drift {
-  to {
-    background-position:
-      640px 0,
-      0 100%;
-  }
 }
 .lobby-inner {
   position: relative;
@@ -4107,56 +4049,130 @@ details.more > .hint {
   background: linear-gradient(180deg, #a8321f, #6e1f15);
 }
 
-/* Sảnh mở đầu kiểu Frontline: trời chiến trường ám khói, chữ quân sự, nút vàng hổ phách. */
-.lobby.frontline .sea {
-  background: linear-gradient(180deg, #0d1512 0%, #1d2a22 30%, #4a4a33 48%, #b0703a 56%, #e0a25a 58%);
-}
-.lobby.frontline .sea::after {
-  background: linear-gradient(180deg, #2c3a2c 0%, #172219 40%, #090e0b 100%);
-}
-.lobby.frontline .isle {
-  background: #121a14;
+/* Sảnh mở đầu kiểu Frontline, ngôn ngữ kính mờ quân sự: nhân vật 3D trên bục làm nền (StudioBackdrop), bảng kính mờ
+   viền gradient cyan, chữ Chakra Petch, nút vàng. Màn hình rộng: bảng dạt sang phải nhường chỗ cho nhân vật. */
+.lobby.frontline {
+  background: var(--tac-bg);
 }
 .lobby.frontline h1 {
-  font-family: var(--font-ui);
-  font-size: clamp(38px, 10vw, 58px);
-  font-weight: 900;
+  font-family: var(--font-display);
+  font-size: clamp(38px, 10vw, 60px);
+  font-weight: 700;
   white-space: nowrap;
-  letter-spacing: 0.1em;
-  color: #eef0e6;
+  letter-spacing: 0.12em;
+  color: #f1f7ff;
   text-shadow:
-    0 2px 0 #3c4a2a,
-    0 8px 30px rgba(242, 180, 65, 0.35);
+    0 0 1px rgba(0, 242, 254, 0.8),
+    0 2px 0 rgba(0, 0, 0, 0.6),
+    0 8px 34px rgba(0, 242, 254, 0.35);
 }
 .lobby.frontline .frontline-sub {
-  font-weight: 800;
-  font-size: 14px;
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: 15px;
   letter-spacing: 0.7em;
-  color: #f2b441;
+  color: var(--gold);
   margin-right: -0.7em;
+  text-shadow: 0 0 14px rgba(255, 215, 0, 0.45);
 }
 .lobby.frontline .kicker {
-  color: #b9cfa0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 11.5px;
+  color: var(--cyan);
 }
 .lobby.frontline .tagline {
   font-family: var(--font-ui);
   font-style: normal;
   font-size: 15px;
-  color: #e6e3d4;
+  color: #dfe8f2;
+}
+.lobby.frontline .facts li {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: rgba(10, 14, 20, 0.55);
+  border-color: rgba(0, 242, 254, 0.22);
+}
+.lobby.frontline .facts li svg {
+  color: var(--cyan);
 }
 .lobby.frontline .lobby-card {
-  background: rgba(10, 15, 12, 0.82);
-  border-color: rgba(186, 214, 170, 0.22);
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--glass), var(--glass)) padding-box,
+    var(--edge-cyan) border-box;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    var(--glow-cyan);
+  backdrop-filter: var(--glass-blur);
 }
-.lobby.frontline .battle-button {
-  background: linear-gradient(180deg, #ffd27a, #f2b441);
-  border-color: rgba(255, 210, 122, 0.6);
-  color: #221603;
-  font-weight: 800;
+/* Góc khung ngắm của bảng. */
+.lobby.frontline .lobby-card::before,
+.lobby.frontline .lobby-card::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cyan);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.lobby.frontline .lobby-card::before {
+  left: -5px;
+  top: -5px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.lobby.frontline .lobby-card::after {
+  right: -5px;
+  bottom: -5px;
+  border-left: 0;
+  border-top: 0;
+}
+.lobby.frontline .lobby-card input {
+  background: rgba(5, 8, 12, 0.55);
+  border-color: rgba(0, 242, 254, 0.2);
+}
+.lobby.frontline .lobby-card input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.15);
+}
+.lobby.frontline .lobby-card .label,
+.lobby.frontline .divider {
+  font-family: var(--font-display);
   letter-spacing: 0.04em;
 }
+.lobby.frontline .join .code {
+  font-family: var(--font-num);
+  font-size: 20px;
+}
+.lobby.frontline .battle-button {
+  background: linear-gradient(180deg, #ffe45c, var(--gold) 45%, var(--gold-2));
+  border-color: rgba(255, 228, 92, 0.8);
+  color: #1c1400;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow:
+    0 8px 26px rgba(255, 196, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
 .lobby.frontline .battle-button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffe09a, #f5c05a);
+  background: linear-gradient(180deg, #fff07a, #ffe02e 45%, #ffbe1a);
+  box-shadow:
+    0 10px 32px rgba(255, 196, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+@media (min-width: 1000px) {
+  .lobby.studio-lobby {
+    place-items: center end;
+    padding-right: max(32px, 6vw);
+  }
 }
 
 /* Bảng số liệu hiệu năng (F3). */

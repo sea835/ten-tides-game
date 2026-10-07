@@ -66,7 +66,7 @@ export function FrameDriver() {
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
       const settings = getGraphics();
-      const cap = focused && !renderHints.idle ? settings.fpsCap : Math.min(settings.fpsCap || BACKGROUND_FPS, BACKGROUND_FPS);
+      const cap = focused && !renderHints.idle && !renderHints.covered ? settings.fpsCap : Math.min(settings.fpsCap || BACKGROUND_FPS, BACKGROUND_FPS);
       if (cap > 0) {
         const interval = 1000 / cap;
         const elapsed = t - last;
@@ -100,7 +100,7 @@ export function FrameDriver() {
       perfStats.textures = gl.info.memory.textures;
       perfStats.programs = gl.info.programs?.length ?? 0;
 
-      if (settings.adaptive && focused && !renderHints.idle && document.visibilityState === "visible") {
+      if (settings.adaptive && focused && !renderHints.idle && !renderHints.covered && document.visibilityState === "visible") {
         const goal = cap > 0 ? cap : 60;
         // Chậm vì CPU (logic, React) thì hạ độ phân giải cũng vô ích.
         const gpuBound = perfStats.cpuMs < (1000 / goal) * 0.6;

@@ -5,6 +5,7 @@ import { myId, type IslandRoom } from "../net.ts";
 import { useRoomSnapshot } from "../game/useRoomSnapshot.ts";
 import { CallingCard } from "./CallingCard.tsx";
 import { RankBadge } from "./RankBadge.tsx";
+import { VictoryPodium } from "./VictoryPodium.tsx";
 import "./progress.css";
 
 // Bảng vinh danh sau trận: ba thẻ MVP (Hạ gục, Chiếm cứ điểm, Hỗ trợ) trên bục, thẻ tên và quân hàm của người được
@@ -73,6 +74,7 @@ export function MatchShowcase({ room, summary }: { room: IslandRoom; summary: Ma
   const rows = all ? summary.rows : summary.rows.filter((_, i) => i < LIMIT || i === mine);
   return (
     <div className="mvp-show">
+      <VictoryPodium room={room} summary={summary} />
       <div className="mvp-podium">
         {PODIUM.filter((k) => war || k !== "captures").map((kind) => {
           const e = summary.mvp.find((m) => m.kind === kind);

@@ -9,6 +9,15 @@ import "@fontsource/be-vietnam-pro/latin-400.css";
 import "@fontsource/be-vietnam-pro/latin-500.css";
 import "@fontsource/be-vietnam-pro/latin-600.css";
 import "@fontsource/be-vietnam-pro/latin-700.css";
+// Chữ quân sự: Chakra Petch (có dấu tiếng Việt) cho tiêu đề, nhãn; Rajdhani (chỉ chữ Latin) cho con số, mã, toạ độ.
+import "@fontsource/chakra-petch/vietnamese-500.css";
+import "@fontsource/chakra-petch/vietnamese-600.css";
+import "@fontsource/chakra-petch/vietnamese-700.css";
+import "@fontsource/chakra-petch/latin-500.css";
+import "@fontsource/chakra-petch/latin-600.css";
+import "@fontsource/chakra-petch/latin-700.css";
+import "@fontsource/rajdhani/latin-600.css";
+import "@fontsource/rajdhani/latin-700.css";
 import "@fontsource-variable/lora/wght.css";
 import "@fontsource-variable/lora/wght-italic.css";
 import { App } from "./App.tsx";

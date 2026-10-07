@@ -5,6 +5,7 @@ import { myId, type IslandRoom } from "../net.ts";
 import { useRoomSnapshot } from "../game/useRoomSnapshot.ts";
 import { CallingCard } from "./CallingCard.tsx";
 import { RankBadge } from "./RankBadge.tsx";
+import { noteXp, resetMatchXp } from "./matchXp.ts";
 import "./progress.css";
 
 // Phần quân hàm trong trận: băng rôn thẻ tên của kẻ vừa hạ mình ("Bạn bị hạ bởi ..."), dòng "+100 XP" khi được
@@ -69,9 +70,15 @@ export function XpFeed({ room }: { room: IslandRoom }) {
   const [lines, setLines] = useState<XpLine[]>([]);
   const seq = useRef(0);
   const lastRank = useRef(0);
+  // XP trận này cho màn vinh danh cuối trận: xoá khi về sảnh / chuẩn bị trận mới.
+  const phase = useRoomSnapshot(room, (s) => s.phase);
+  useEffect(() => {
+    if (phase === "lobby" || phase === "prep") resetMatchXp();
+  }, [phase]);
   useEffect(() => {
     lastRank.current = room.state.players.get(myId(room))?.badge.rank ?? 0;
     return room.onMessage(Messages.xp, (m: XpMessage) => {
+      noteXp(m);
       const add: XpLine[] = [{ id: ++seq.current, text: isXpKind(m.kind) ? XP_LABEL[m.kind] : m.kind, amount: m.amount }];
       if (lastRank.current > 0 && m.rank > lastRank.current) add.push({ id: ++seq.current, text: "", amount: 0, rankUp: m.rank });
       lastRank.current = m.rank;

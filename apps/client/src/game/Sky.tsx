@@ -15,6 +15,7 @@ import {
   type Texture,
   type WebGLRenderTarget,
 } from "three";
+import { reflectionHidden } from "./reflection.ts";
 import { localEnv, weatherFx } from "./shared.ts";
 
 /**
@@ -164,6 +165,13 @@ function skyMaterial() {
 export function SkyDome() {
   const mesh = useRef<Mesh>(null);
   const material = useMemo(skyMaterial, []);
+  // Ảnh phản chiếu trên mặt nước không cần vòm trời (shader nước tự tính bầu trời phản chiếu).
+  useEffect(() => {
+    const m = mesh.current;
+    if (!m) return;
+    reflectionHidden.add(m);
+    return () => void reflectionHidden.delete(m);
+  }, []);
   useFrame(({ camera, clock }, dt) => {
     const m = mesh.current;
     if (m) {

@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { IcosahedronGeometry, MeshStandardMaterial, type BufferGeometry } from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { TRAMPLE_GLSL, trampleUniforms } from "./trample.ts";
 
 // Tiện ích chung cho cảnh vật: số ngẫu nhiên cố định theo seed (cây cỏ đặt giống nhau trên mọi máy),
 // nhiễu mịn, và gió làm cây cỏ lay.
@@ -43,19 +44,21 @@ export const windStrength = { value: 1 };
  * MeshStandardMaterial lay theo gió: đỉnh càng cao (theo y cục bộ) càng lắc nhiều.
  * `upNormals`: lá mỏng vẽ hai mặt thì giữ nguyên pháp tuyến hướng lên cho cả mặt sau
  * (mặc định three.js lật pháp tuyến mặt sau xuống đất, làm lá tối sẫm).
+ * `trample`: khóm cỏ thấp dạt ra, rạp xuống khi người, xe đi qua hay bom nổ gần (trample.ts).
  */
-export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMaterial>[0], amount: number, from = 0, upNormals = false) {
+export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMaterial>[0], amount: number, from = 0, upNormals = false, trample = false) {
   const m = new MeshStandardMaterial(params);
   // Mỗi bộ tham số là một shader riêng; không có khoá này three.js gộp chung theo mã nguồn hàm bên dưới.
-  m.customProgramCacheKey = () => `sway:${amount}:${from}:${upNormals}`;
+  m.customProgramCacheKey = () => `sway:${amount}:${from}:${upNormals}:${trample}`;
   m.onBeforeCompile = (shader) => {
     if (upNormals) {
       shader.fragmentShader = shader.fragmentShader.replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\n  normal = normalize( vNormal );");
     }
     shader.uniforms.uWind = wind;
     shader.uniforms.uWindStrength = windStrength;
+    if (trample) Object.assign(shader.uniforms, trampleUniforms);
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nuniform float uWind;\nuniform float uWindStrength;")
+      .replace("#include <common>", `#include <common>\nuniform float uWind;\nuniform float uWindStrength;\n${trample ? TRAMPLE_GLSL : ""}`)
       .replace(
         "#include <begin_vertex>",
         /* glsl */ `#include <begin_vertex>
@@ -70,7 +73,22 @@ export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMa
         float gust = 1.0 + (uWindStrength - 1.0) * 0.35;
         float sway = min(k * k * ${amount.toFixed(3)}, 0.12 + k * 0.05) * gust;
         transformed.x += sin(uWind * 1.3 + phase) * sway;
-        transformed.z += cos(uWind * 1.1 + phase * 1.7) * sway * 0.6;`,
+        transformed.z += cos(uWind * 1.1 + phase * 1.7) * sway * 0.6;${
+          trample
+            ? /* glsl */ `
+        #ifdef USE_INSTANCING
+        {
+          // Đẩy theo toạ độ thế giới của gốc khóm, đổi về hệ toạ độ của khóm (khóm chỉ xoay quanh trục đứng, co giãn đều).
+          mat3 tenIm = mat3( modelMatrix ) * mat3( instanceMatrix );
+          vec2 tenBase = ( modelMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xz;
+          vec3 tenTr = tenTrample( tenBase + ( tenIm * vec3( position.x, 0.0, position.z ) ).xz );
+          vec3 tenLocal = transpose( tenIm ) * vec3( tenTr.x, 0.0, tenTr.y ) / max( dot( tenIm[ 0 ], tenIm[ 0 ] ), 1e-4 );
+          transformed.xz += tenLocal.xz * k * 0.9;
+          transformed.y -= k * 0.55 * tenTr.z;
+        }
+        #endif`
+            : ""
+        }`,
       );
   };
   return m;
