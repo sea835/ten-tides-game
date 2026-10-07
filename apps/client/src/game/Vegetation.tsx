@@ -319,8 +319,17 @@ function Instances({ spots, geometry, material, tint, heightScale = false, cast 
 }) {
   const chunks = useMemo(() => chunked(spots), [spots]);
   const meshes = useRef(new Map<string, InstancedMesh>());
+  // Chỗ camera lần xét gần nhất: đi chưa quá 2 m thì giữ nguyên (khỏi duyệt lại hàng trăm ô mỗi khung hình),
+  // nhưng cứ 30 khung hình vẫn xét lại một lần (ô vừa dựng lại, tầm nhìn đổi theo mức đồ họa).
+  const seen = useRef({ x: Infinity, z: Infinity, frames: 0 });
   useFrame(({ camera }) => {
     if (!farthest) return;
+    const last = seen.current;
+    const { x, z } = camera.position;
+    if (++last.frames < 30 && Math.abs(x - last.x) < 2 && Math.abs(z - last.z) < 2) return;
+    last.x = x;
+    last.z = z;
+    last.frames = 0;
     const limit = farthest + CELL * 0.71;
     for (const c of chunks) {
       const m = meshes.current.get(c.key);

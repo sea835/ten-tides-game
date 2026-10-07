@@ -13,6 +13,7 @@ import { motorEngine, playRicochet, playTrackSnap } from "../sound/motors.ts";
 import { bodies, effects, getBattleHud, localBody, menuOpen, seat, setBattleHud } from "./runtime.ts";
 import { BULLET_GROUPS } from "./surface.ts";
 import { carrierHud, seatOwner, WreckFire } from "./vehicleParts.tsx";
+import { sampleTrack, vehicleTracks } from "../netInterp.ts";
 
 // Xe trinh sát bọc thép (4 ghế, đại liên trên thùng xe) và thuyền tuần tra (5 ghế, súng máy mũi): vẽ mô hình khối
 // thấp (cùng kiểu xe tăng), người ngồi trên ghế, đại liên xoay theo xạ thủ; hộp va chạm để người, đạn không xuyên.
@@ -196,6 +197,7 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
   const [wreck, setWreck] = useState(v.hp <= 0);
   const [color, setColor] = useState(teamColor(v.team));
   const anim = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY, turret: v.turret, pitch: v.pitch, tiltX: 0, tiltZ: 0, bounce: 0, roll: 0, px: v.x, pz: v.z, speed: 0 });
+  const interp = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY });
   const engine = useRef<ReturnType<typeof motorEngine> | null>(null);
 
   useEffect(() => {
@@ -222,9 +224,11 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
     const dt = Math.min(rawDt, 0.05);
     const a = anim.current;
     const mine = cdrive.vid === id;
-    // Xe mình đang ngồi: lấy tư thế bộ điều khiển đã tính (lái thì dự đoán, ngồi thì nội suy); xe khác nội suy.
-    const src = mine ? cdrive.pose : v;
-    const k = mine ? 1 : Math.min(1, dt * 10);
+    // Xe mình đang ngồi: lấy tư thế bộ điều khiển đã tính (lái thì dự đoán, ngồi thì nội suy); xe khác nội suy Hermite
+    // giữa các gói server (netInterp.ts), chưa có băng thì kéo dần về trạng thái mới nhất.
+    const smooth = !mine && sampleTrack(vehicleTracks, id, interp.current);
+    const src = mine ? cdrive.pose : smooth ? interp.current : v;
+    const k = mine || smooth ? 1 : Math.min(1, dt * 10);
     a.x += (src.x - a.x) * k;
     a.y += (src.y - a.y) * k;
     a.z += (src.z - a.z) * k;
