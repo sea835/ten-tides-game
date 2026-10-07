@@ -366,7 +366,6 @@ export function Vegetation({ world }: { world: World }) {
 
   const spots = useMemo(() => {
     const { inland, clearOfPoints, grassy, scatter, fillPatches } = place;
-    const heightAt = world.heightAt;
     const zoneAt = world.zoneAt;
     // Đảo lớn hơn (bản đồ Battleground) thì rải nhiều hơn theo diện tích để độ dày như nhau.
     const area = Math.min(3.2, ((world.extent ?? 112) / 112) ** 2);

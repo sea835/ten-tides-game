@@ -13,7 +13,6 @@ import {
   ShaderMaterial,
   Vector3,
   type Group,
-  type Mesh,
   type PerspectiveCamera,
 } from "three";
 import { SIGHTS, WEAPON, gadgetIn, type SightId } from "@tentides/content";
@@ -96,7 +95,6 @@ export function ViewPass({ post }: { post: boolean }) {
   return null;
 }
 const flashPos = new Vector3();
-const offset = new Vector3();
 const q = new Quaternion();
 const tilt = new Quaternion();
 const axisX = new Vector3(1, 0, 0);

@@ -1039,16 +1039,6 @@ export const playBolt = safe(() => {
   v.done();
 });
 
-/** Đổi súng / rút súng: vải sột soạt rồi tiếng kim loại. */
-export const playDraw = safe(() => {
-  const v = voice("local", 0.4);
-  if (!v) return;
-  v.noise(0, { type: "bandpass", freq: 2200, freqEnd: 3500, q: 0.8, attack: 0.04, decay: 0.12, peak: 0.3 });
-  clack(v, 0.14, 2400, 0.55);
-  clack(v, 0.22, 1600, 0.7);
-  v.done();
-});
-
 // ---------------------------------------------------------------------------- trúng đích, bị bắn
 
 /** Dấu trúng: tiếng tích ngắn; trúng đầu là tiếng "keng" kim loại; hạ gục thêm cú thụp xác nhận. */
@@ -1700,72 +1690,6 @@ export const playSpoon = safe((at: Place) => {
 function reloadClass(weaponId: string): WeaponClass {
   return WEAPON.get(weaponId)?.class ?? "ar";
 }
-
-/** Bước tháo băng (hoặc bẻ nòng shotgun, mở khóa nòng súng bắn tỉa, mở nắp trung liên). */
-export const playMagOut = safe((weaponId: string) => {
-  const cls = reloadClass(weaponId);
-  const v = voice("local", cls === "pistol" ? 0.42 : 0.5);
-  if (!v) return;
-  if (cls === "shotgun") {
-    clack(v, 0, 1500, 0.8);
-    slide(v, 0.03, 1100, 600, 0.12, 0.3);
-  } else if (cls === "sniper") {
-    clack(v, 0, 2100, 0.5);
-    slide(v, 0.07, 1200, 2400, 0.14, 0.45);
-  } else {
-    if (cls === "lmg") clack(v, 0, 1900, 0.6); // mở nắp
-    magOut(v, cls === "lmg" ? 0.12 : 0);
-    // Băng cũ rơi / cất vào túi.
-    v.noise(0.25, { brown: true, type: "lowpass", freq: 900, decay: 0.08, peak: 0.25 });
-  }
-  v.done();
-});
-
-/** Bước lắp băng (shotgun và súng bắn tỉa: nạp một viên, gọi lại cho mỗi viên). */
-export const playMagIn = safe((weaponId: string) => {
-  const cls = reloadClass(weaponId);
-  const v = voice("local", cls === "pistol" ? 0.42 : 0.5);
-  if (!v) return;
-  if (cls === "shotgun") {
-    slide(v, 0, 700, 1400, 0.07, 0.3);
-    clack(v, 0.07, 1300, 0.5);
-  } else if (cls === "sniper") {
-    clack(v, 0, rand(2800, 3300), 0.4);
-  } else {
-    magIn(v, 0, cls === "lmg" ? 0.8 : cls === "pistol" ? 1.2 : 1);
-    if (cls === "lmg") {
-      // Đặt dây đạn rồi đóng nắp.
-      slide(v, 0.2, 2500, 3500, 0.2, 0.2);
-      clack(v, 0.45, 1500, 1);
-    }
-  }
-  v.done();
-});
-
-/** Bước lên đạn (kéo khóa nòng, nhả khóa trượt, đóng nòng shotgun, đẩy khóa nòng súng bắn tỉa). */
-export const playBoltRack = safe((weaponId: string) => {
-  const cls = reloadClass(weaponId);
-  const v = voice("local", cls === "pistol" ? 0.42 : 0.5);
-  if (!v) return;
-  switch (cls) {
-    case "pistol":
-      clack(v, 0, 2400, 0.9); // nhả khóa trượt
-      v.osc(0, { freq: 260, freqEnd: 130, decay: 0.04, peak: 0.25 });
-      break;
-    case "shotgun":
-      clack(v, 0, 1200, 1);
-      v.osc(0, { freq: 170, freqEnd: 80, decay: 0.08, peak: 0.5 });
-      break;
-    case "sniper":
-      slide(v, 0, 2300, 1300, 0.12, 0.4);
-      clack(v, 0.14, 1800, 0.9);
-      v.osc(0.14, { freq: 210, freqEnd: 100, decay: 0.05, peak: 0.35 });
-      break;
-    default:
-      charge(v, 0);
-  }
-  v.done();
-});
 
 /** Cơ khí sau mỗi phát (khóa trượt súng lục, bệ khóa nòng súng trường): tiếng lách cách khẽ, chỉ cho người bắn. */
 export const playShotMechanics = safe((weaponId: string) => {

@@ -3,7 +3,6 @@ import { Crosshair as CrossIcon, LogOut, Settings as Gear, ShoppingCart, Skull, 
 import {
   AMMO,
   ARMOR,
-  BATTLE_SITES,
   FLASH,
   HEALS,
   HELMETS,

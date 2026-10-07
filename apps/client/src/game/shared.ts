@@ -71,9 +71,6 @@ export const knock = { vx: 0, vz: 0 };
 /** Mảnh lắp ghép (sàn, vách, cầu thang, tháp canh): `level` là tầng đang ngắm, `lift` là số tầng lăn chuột nâng thêm. */
 export const buildGhost = { x: 0, z: 0, rot: 0, turn: 0, ok: false, kind: "", level: 0, lift: 0 };
 
-/** Leo cây: LocalPlayer vừa bấm E xin leo cây này, chờ server đồng ý. */
-export const climbRequest = { treeId: "" };
-
 /** Vừa đánh hay ném theo hướng camera: LocalPlayer quay người về hướng này một lúc. */
 export const localAim = { yaw: 0, at: 0 };
 

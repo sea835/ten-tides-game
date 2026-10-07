@@ -5,8 +5,8 @@ import { Vector3 } from "three";
 import { DUAL_MAG_RELOAD, HEALS, LEAN, MELEE, RICOCHET, SIGHTS, WEAPON, boxSpan, caliberOf, mapForMode, penetrableBy, penetration, ricochet, withAttachments, bulletAt, bulletSteps, rayBody, weaponDrop, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
-import { clampPitch, getCameraView, toggleCameraView } from "../camera.ts";
-import { isTyping, keys, look, view } from "../input.ts";
+import { clampPitch, toggleCameraView } from "../camera.ts";
+import { isTyping, look, view } from "../input.ts";
 import { getSettings } from "../settings.ts";
 import { localAim, localMotion, localPosition, shake } from "../shared.ts";
 import { playArmorHit, playDryFire, playHeal, playHitMarker, playHurt, playReload, playThrow, playGunshot, playBolt, playKnifeHit, playKnifeSwing, playPinPull, playPump, playRicochet, playShotMechanics, playSpoon, playWeaponSwap } from "../sound/guns.ts";
@@ -539,7 +539,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     }
 
     // Hướng camera, trục ngang.
-    const { o, d, p, right, fwd } = tmp.current;
+    const { right, fwd } = tmp.current;
     camera.getWorldDirection(fwd);
     right.set(-fwd.z, 0, fwd.x).normalize();
 

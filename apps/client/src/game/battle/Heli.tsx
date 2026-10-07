@@ -774,7 +774,3 @@ export function Flares() {
   return <primitive object={mesh} />;
 }
 
-/** Dòng nhắc lên trực thăng: ghế sẽ ngồi. */
-export function heliPrompt(seatIndex: number): string {
-  return `Lên trực thăng · ${SEATS.heli.names[seatIndex] ?? ""}`;
-}

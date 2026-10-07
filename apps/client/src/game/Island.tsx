@@ -1,30 +1,27 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { CuboidCollider, CylinderCollider, HeightfieldCollider, RigidBody } from "@react-three/rapier";
+import { CuboidCollider, HeightfieldCollider, RigidBody } from "@react-three/rapier";
 import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   Color,
-  CylinderGeometry,
   DoubleSide,
   MeshStandardMaterial,
   Object3D,
-  SphereGeometry,
   Vector3,
   type Group,
   type InstancedMesh,
   type Mesh,
   type PointLight,
 } from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { ANCHORS, CAVE, MAP_HALF_SIZE, TREASURE_SITES, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
 import { sky } from "./shared.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { Vegetation } from "./Vegetation.tsx";
 import { Water, waterUniforms } from "./Water.tsx";
-import { WindClock, grain, mulberry32, patch, swayMaterial } from "./nature.ts";
+import { WindClock, grain, mulberry32, patch } from "./nature.ts";
 import { Structures } from "./Structures.tsx";
 import { Points } from "./Points.tsx";
 import { Wildlife } from "./Wildlife.tsx";

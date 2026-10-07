@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Callbacks } from "@colyseus/sdk";
-import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
+import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, Vector3, type Group, type PerspectiveCamera } from "three";
 import { TANK, TEAM_COLORS, isEmplacement, mapForMode, cannonMuzzle, cannonPitch, tankGround, vehicleSpec, vehicleStep, type TankPose } from "@tentides/content";
 import { Messages, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";

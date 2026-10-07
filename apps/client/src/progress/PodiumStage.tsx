@@ -5,6 +5,7 @@ import { Character, type Motion } from "../game/Character.tsx";
 import { pulseNeon } from "../game/skinMaterials.ts";
 import { getGraphics, targetDpr } from "../game/graphics.ts";
 import { Environment, LightCone, blobTexture } from "../studio/stageParts.tsx";
+import { StageLoop } from "../studio/stageLoop.tsx";
 
 // Bục vinh danh 3D cuối trận: ba người điểm cao nhất đứng trên bục 1-2-3 với dáng ăn mừng (hạng nhất chĩa súng lên
 // trời bắn mừng, hạng nhì đứng lắc vai, hạng ba giương súng thủ thế), mưa giấy kim tuyến, đèn rọi từng bục. Camera
@@ -222,7 +223,9 @@ function NeonPulse() {
 
 export default function PodiumStage({ heroes, skip, labels }: { heroes: PodiumHero[]; skip: boolean; labels: RefObject<(HTMLDivElement | null)[]> }) {
   return (
-    <Canvas dpr={Math.min(1.5, targetDpr(getGraphics()))} camera={{ fov: 32, near: 0.1, far: 80, position: [0, 1.6, 9] }} gl={{ antialias: true, powerPreference: "low-power" }}>
+    <Canvas frameloop="never" dpr={Math.min(1.25, targetDpr(getGraphics()))} camera={{ fov: 32, near: 0.1, far: 80, position: [0, 1.6, 9] }} gl={{ antialias: true, alpha: false, powerPreference: "low-power" }}>
+      {/* Máy quay lia liên tục: 60 khung cho mượt, nhưng không vẽ theo màn 144 Hz. */}
+      <StageLoop fps={60} />
       <color attach="background" args={["#05080d"]} />
       <fog attach="fog" args={["#05080d", 9, 24]} />
       <Environment intensity={0.4} />

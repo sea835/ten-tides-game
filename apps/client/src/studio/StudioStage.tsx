@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { AdditiveBlending, BackSide, CanvasTexture, Color, SRGBColorSpace, ShaderMaterial, type Group, type PerspectiveCamera } from "three";
 import { Character, type Motion } from "../game/Character.tsx";
@@ -6,6 +6,8 @@ import { pulseNeon } from "../game/skinMaterials.ts";
 import { getGraphics, targetDpr } from "../game/graphics.ts";
 import { Dust, Environment, LightCone, blobTexture } from "./stageParts.tsx";
 import type { StudioLook, StudioSet, StudioSpin } from "./studioTypes.ts";
+import { StageLoop } from "./stageLoop.tsx";
+import { useDecorPaused } from "./decorPause.ts";
 
 // Sân khấu 3D của sảnh chờ: nhân vật của người chơi (rằn ri, mũ áo giáp, súng đã lắp skin) đứng trên bục kim loại,
 // trong phòng chỉ huy tác chiến hoặc trên bãi biển lúc hoàng hôn. Đèn ven (rim light) chiếu từ sau lưng tách dáng người
@@ -352,8 +354,14 @@ function Hero({ look, spin }: { look: StudioLook; spin: StudioSpin }) {
 }
 
 export default function StudioStage({ look, set, spin }: { look: StudioLook; set: StudioSet; spin: StudioSpin }) {
+  const paused = useDecorPaused();
+  // Đang kéo xoay hay nhân vật còn quay theo quán tính: vẽ mượt 60 khung; đứng yên làm nền thì 30 là đủ.
+  const boost = useCallback(() => spin.dragging || Math.abs(spin.vel) > 0.05 || performance.now() - spin.touched < 600, [spin]);
   return (
-    <Canvas dpr={Math.min(1.5, targetDpr(getGraphics()))} camera={{ fov: FOV, near: 0.1, far: 200, position: [0, CAM_Y, DIST] }} gl={{ antialias: true, powerPreference: "low-power" }}>
+    // Nền sảnh không cần nét như trong trận: vẽ tối đa 1,25 điểm ảnh mỗi điểm CSS (màn Retina 2x vẽ ít hơn 2,5 lần).
+    // Canvas đục (alpha: false): trình duyệt khỏi phải trộn trong suốt với trang web phía dưới mỗi khung.
+    <Canvas frameloop="never" dpr={Math.min(1.25, targetDpr(getGraphics()))} camera={{ fov: FOV, near: 0.1, far: 200, position: [0, CAM_Y, DIST] }} gl={{ antialias: true, alpha: false, powerPreference: "low-power" }}>
+      <StageLoop fps={30} boost={boost} paused={paused} />
       <Environment intensity={set === "command" ? 0.35 : 0.45} />
       <CameraRig spin={spin} />
       {set === "command" ? <CommandRoom /> : <SunsetBeach />}

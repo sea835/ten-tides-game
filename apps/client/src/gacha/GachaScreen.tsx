@@ -4,6 +4,7 @@ import { GACHA, RARITY, SKIN, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS, WEAPON, rar
 import { ApiError, equipSkin, refreshProfile, rollGacha, useAccount, type RollOutcome } from "../account/account.ts";
 import { SkinSwatch } from "./SkinSwatch.tsx";
 import { gachaBuildUp, playUi } from "../game/sound/ui.ts";
+import { useDecorPause } from "../studio/decorPause.ts";
 import "./gacha.css";
 
 // Màn Kho súng · Gacha: quay skin (1 hoặc 10 lượt, có bảo hiểm), lật thẻ theo độ hiếm, kho skin theo từng khẩu và lắp skin.
@@ -12,6 +13,8 @@ const weaponName = (id: string) => WEAPON.get(id)?.name ?? id.toUpperCase();
 const rarityVar = (r: SkinRarity) => ({ "--rarity": RARITY[r].color }) as CSSProperties;
 
 export function GachaScreen({ onClose }: { onClose: () => void }) {
+  // Bảng phủ kín sảnh: nền 3D phía sau thôi vẽ (kính mờ khỏi phải làm mờ lại mỗi khung).
+  useDecorPause();
   const account = useAccount();
   const [tab, setTab] = useState<"roll" | "inventory">("roll");
   const [busy, setBusy] = useState(false);

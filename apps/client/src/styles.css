@@ -87,6 +87,20 @@
   box-sizing: border-box;
 }
 
+/* Kính mờ chỉ bật ở đồ hoạ Cao (graphics.ts đặt html[data-glass]). backdrop-filter trên cảnh 3D đang chạy bắt trình
+   duyệt làm mờ lại cả vùng phía sau mỗi khung hình: trên Windows và card tích hợp, riêng việc này đã làm sảnh giật.
+   Tắt đi thì nền kính đục hơn một chút để chữ vẫn dễ đọc. */
+html[data-glass="off"] {
+  --glass: rgba(12, 17, 25, 0.86);
+  --glass-strong: rgba(10, 14, 20, 0.94);
+}
+html[data-glass="off"] *,
+html[data-glass="off"] *::before,
+html[data-glass="off"] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 html,
 body,
 #root {
@@ -504,6 +518,10 @@ kbd {
   inset: 0;
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 16px;
+  padding: 16px;
+  text-align: center;
   background: #0d1418;
   color: #cfd8dc;
   font-size: 1.1rem;

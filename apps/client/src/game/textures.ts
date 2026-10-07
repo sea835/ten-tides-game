@@ -559,39 +559,72 @@ function faceted(m: MeshStandardMaterial): boolean {
   return !!m.userData.faceted || (m.emissiveIntensity > 0.2 && m.emissive.r + m.emissive.g + m.emissive.b > 0.05);
 }
 
+/** Bỏ tô phẳng, làm mịn hình và phủ vân cho các vật liệu chuẩn của một khối (chưa phủ thì phủ, có rồi thì thôi). */
+function detailMesh(mesh: Mesh) {
+  const list: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  let smooth = list.length > 0 && !mesh.userData.faceted;
+  for (const m of list) {
+    if (!(m instanceof MeshStandardMaterial)) {
+      smooth = false;
+      continue;
+    }
+    if (faceted(m)) smooth = false;
+    else if (m.flatShading) {
+      m.flatShading = false;
+      m.needsUpdate = true;
+    }
+    if (skip(m)) continue;
+    const declared = m.userData.detail as DetailKind | undefined;
+    const group = declared ? null : ancestorKind(mesh);
+    const kind = declared ?? group ?? (m.vertexColors ? "leaf" : guessKind(m.color));
+    applyDetail(m, {
+      kind,
+      space: group || m.userData.detailSpace === "object" ? "object" : "world",
+      splat: !!m.userData.detailSplat,
+      strength: m.userData.detailStrength as number | undefined,
+      bump: m.userData.detailBump as number | undefined,
+    });
+  }
+  if (smooth) smoothMesh(mesh);
+}
+
 /**
  * Quét cảnh: bỏ kiểu tô phẳng low-poly (pháp tuyến mượt, tô mượt), rồi phủ vân cho mọi vật liệu chuẩn chưa có:
  * vật liệu tự khai báo `userData.detail`, hoặc nằm dưới nhóm có khai báo, hoặc đoán theo màu. Gọi định kỳ
- * (vật mới xuất hiện thì lần quét sau có vân).
+ * (vật mới xuất hiện thì lần quét sau có vân) và trước khi dịch sẵn shader.
  */
 export function detailScene(root: Object3D) {
   root.traverse((o) => {
-    if (!(o as Mesh).isMesh) return;
-    const mesh = o as Mesh;
-    const list: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    let smooth = list.length > 0 && !mesh.userData.faceted;
-    for (const m of list) {
-      if (!(m instanceof MeshStandardMaterial)) {
-        smooth = false;
-        continue;
-      }
-      if (faceted(m)) smooth = false;
-      else if (m.flatShading) {
-        m.flatShading = false;
-        m.needsUpdate = true;
-      }
-      if (skip(m)) continue;
-      const declared = m.userData.detail as DetailKind | undefined;
-      const group = declared ? null : ancestorKind(mesh);
-      const kind = declared ?? group ?? (m.vertexColors ? "leaf" : guessKind(m.color));
-      applyDetail(m, {
-        kind,
-        space: group || m.userData.detailSpace === "object" ? "object" : "world",
-        splat: !!m.userData.detailSplat,
-        strength: m.userData.detailStrength as number | undefined,
-        bump: m.userData.detailBump as number | undefined,
-      });
-    }
-    if (smooth) smoothMesh(mesh);
+    if ((o as Mesh).isMesh) detailMesh(o as Mesh);
   });
+}
+
+// ---------------------------------------------------------------------------- phủ vân trước lần vẽ đầu
+
+const hooked = new WeakSet<Mesh>();
+const hookScenes = new Set<Object3D>();
+const baseBeforeRender = Mesh.prototype.onBeforeRender;
+
+/**
+ * Phủ vân cho khối của cảnh `scene` ngay trước lần vẽ đầu tiên của nó. Trước đây vật mới xuất hiện được vẽ (và dịch
+ * shader) bằng vật liệu gốc, tới lần quét cảnh sau (1,5 giây) mới được vá vân và phải dịch shader lần nữa: mỗi loại
+ * vật mới làm khựng hai lần. Trên Windows (ANGLE dịch GLSL sang HLSL rồi qua trình biên dịch Direct3D) mỗi lần dịch
+ * có thể mất cả trăm ms, nên đây là một nguồn giật lớn giữa trận. Móc vào Mesh.prototype.onBeforeRender (three gọi
+ * ngay trước khi chọn shader cho khối), mỗi khối chỉ xử lý một lần. Móc dùng chung mọi canvas (nền 3D của menu vẽ
+ * cùng lúc với trận) nên chỉ xử lý khối đang vẽ trong cảnh đã đăng ký. Trả về hàm gỡ móc.
+ */
+export function installDetailHook(scene: Object3D): () => void {
+  if (hookScenes.size === 0) {
+    Mesh.prototype.onBeforeRender = function (this: Mesh, _renderer: unknown, target: Object3D) {
+      if (!hooked.has(this) && hookScenes.has(target)) {
+        hooked.add(this);
+        detailMesh(this);
+      }
+    };
+  }
+  hookScenes.add(scene);
+  return () => {
+    hookScenes.delete(scene);
+    if (hookScenes.size === 0) Mesh.prototype.onBeforeRender = baseBeforeRender;
+  };
 }
