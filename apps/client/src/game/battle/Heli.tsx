@@ -27,6 +27,8 @@ import {
   SEATS,
   clampDoor,
   heliGround,
+  clampRocketAim,
+  heliRocketAim,
   heliRocketMuzzle,
   heliStep,
   mapForMode,
@@ -50,7 +52,8 @@ import { seatOwner, WreckFire } from "./vehicleParts.tsx";
 // súng máy cửa hông), cánh quạt chính và cánh đuôi quay theo vòng tua, bụi / bọt nước bốc lên khi bay sát mặt đất.
 // Ngồi trên trực thăng: phi công tự bay trên máy mình (heliStep, gửi vị trí 15 lần mỗi giây): W/S chúc mũi / ngóc
 // mũi, A/D quay đầu, Q/E nghiêng cánh trượt ngang, Space kéo cần lên, Shift (hay Ctrl) hạ cần; chuột trái bắn rocket
-// mũi, X thả pháo sáng, C đổi camera buồng lái / sau đuôi. Xạ thủ cửa hông: chuột xoay súng (trong cung cửa), chuột
+// mũi về tâm màn hình (trong nón quanh mũi; thân tự quay đầu theo chuột, giữ Alt để nhìn tự do), X thả pháo sáng, C đổi
+// camera buồng lái / sau đuôi. Xạ thủ cửa hông: chuột xoay súng (trong cung cửa), chuột
 // trái bắn, chuột phải ngắm gần. Ghế phụ chỉ ngồi nhìn. Phím 1–4 đổi ghế, F nhảy ra. Cảnh báo bị khoá: còi trong
 // buồng lái + chữ trên HUD (heliHud). Tên lửa IGLA bay (đoạn khói theo gói server) và pháo sáng vẽ ở đây luôn.
 
@@ -382,6 +385,9 @@ const hdrive = {
   nextRocket: 0,
   flareAt: 0,
   warnAt: 0,
+  /** Hướng ngắm rocket của phi công (theo tâm màn hình, cập nhật mỗi khung hình). */
+  rocketYaw: 0,
+  rocketPitch: 0,
 };
 
 const _tmp = { target: new Vector3(), pos: new Vector3(), dir: new Vector3(), aim: new Vector3(), up: new Vector3(), o: new Vector3() };
@@ -487,9 +493,15 @@ export function HeliSeat({ room }: { room: IslandRoom }) {
     const now = performance.now();
     if (mySeat === 0) {
       const k = (code: string) => (!typing && keys.has(code) ? 1 : 0);
+      // Lái bằng chuột: không bấm A/D thì thân tự quay đầu về hướng camera (giữ Alt để nhìn quanh tự do).
+      let yaw = k("KeyD") - k("KeyA");
+      if (!yaw && !k("AltLeft") && !k("AltRight")) {
+        const diff = wrap(view.yaw + Math.PI - hdrive.pose.rotY);
+        if (Math.abs(diff) > 0.02 && Math.abs(diff) < 2.4) yaw = Math.max(-1, Math.min(1, -diff * 2.2));
+      }
       const input = {
         pitch: k("KeyW") - k("KeyS"),
-        yaw: k("KeyD") - k("KeyA"),
+        yaw,
         strafe: k("KeyE") - k("KeyQ"),
         lift: k("Space") - Math.max(k("ShiftLeft"), k("ControlLeft")),
       };
@@ -502,7 +514,7 @@ export function HeliSeat({ room }: { room: IslandRoom }) {
       // Rocket mũi: giữ chuột trái, bắn đều theo nhịp (server chặn bắn dồn, đếm rocket).
       if (hdrive.fireHeld && now >= hdrive.nextRocket && v.rockets > 0 && room.state.phase === "battle") {
         hdrive.nextRocket = now + HELI.rocketGap * 1000;
-        room.send(Messages.tankFire, { turret: 0, pitch: 0 });
+        room.send(Messages.tankFire, { turret: hdrive.rocketYaw, pitch: Math.max(-1, Math.min(1, hdrive.rocketPitch)) });
         shake.amount = Math.min(0.5, shake.amount + 0.12);
       }
     } else {
@@ -564,7 +576,7 @@ export function HeliSeat({ room }: { room: IslandRoom }) {
       const pivot = mountMuzzle("heli", p, 0, 0, mySeat).pivot;
       const wantYaw = clampDoor(mySeat, p.rotY, Math.atan2(aim.x - pivot[0], aim.z - pivot[2]));
       const wantPitch = Math.max(DOOR_PITCH.down, Math.min(DOOR_PITCH.up, Math.atan2(aim.y - pivot[1], Math.hypot(aim.x - pivot[0], aim.z - pivot[2]))));
-      const turn = 3.4 * dt;
+      const turn = 6 * dt;
       hdrive.gunYaw = clampDoor(mySeat, p.rotY, hdrive.gunYaw + Math.max(-turn, Math.min(turn, wrap(wantYaw - hdrive.gunYaw))));
       hdrive.gunPitch += Math.max(-turn, Math.min(turn, wantPitch - hdrive.gunPitch));
       const mz = mountMuzzle("heli", p, hdrive.gunYaw, hdrive.gunPitch, mySeat);
@@ -590,10 +602,23 @@ export function HeliSeat({ room }: { room: IslandRoom }) {
       }
     } else heliHud.aimOn = false;
 
-    // Tâm rocket của phi công: chỗ rocket sẽ bay tới (theo mũi) trên màn hình.
+    // Phi công ngắm rocket theo tâm màn hình: hướng từ giữa hai ống tới điểm camera nhìn vào, kẹp vào nón quanh mũi;
+    // tâm rocket trên màn hình là chỗ rocket sẽ bay tới (trùng tâm màn hình khi mục tiêu nằm trong nón).
     if (mySeat === 0) {
-      const r = heliRocketMuzzle(p, 0);
-      up.set(p.x + r.d[0] * 180, p.y + 1 + r.d[1] * 180, p.z + r.d[2] * 180).project(cam);
+      cam.getWorldDirection(dir);
+      const hit = physics.castRay(new rapier.Ray(cam.position, dir), 600, true, undefined, BULLET_GROUPS, undefined, undefined, skipOwn);
+      aim.copy(cam.position).addScaledVector(dir, hit ? Math.max(hit.timeOfImpact, 12) : 400);
+      const m0 = heliRocketMuzzle(p, 0).o;
+      const m1 = heliRocketMuzzle(p, 1).o;
+      const ox = (m0[0] + m1[0]) / 2;
+      const oy = (m0[1] + m1[1]) / 2;
+      const oz = (m0[2] + m1[2]) / 2;
+      const want = clampRocketAim(p.rotY, Math.atan2(aim.x - ox, aim.z - oz), Math.atan2(aim.y - oy, Math.hypot(aim.x - ox, aim.z - oz)));
+      hdrive.rocketYaw = want.yaw;
+      hdrive.rocketPitch = want.pitch;
+      const reach = Math.max(20, Math.min(400, aim.distanceTo(_tmp.o.set(ox, oy, oz))));
+      const r = heliRocketAim(p, 0, want.yaw, want.pitch);
+      up.set(ox + r.d[0] * reach, oy + r.d[1] * reach, oz + r.d[2] * reach).project(cam);
       heliHud.rocketOn = up.z < 1;
       heliHud.rocketX = (up.x + 1) / 2;
       heliHud.rocketY = (1 - up.y) / 2;

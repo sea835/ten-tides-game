@@ -8,7 +8,7 @@ import { playLockBeep } from "../sound/air.ts";
 import { menuOpen, stance } from "./runtime.ts";
 
 // Tên lửa vác vai IGLA phía người bắn: cầm IGLA, ngắm (chuột phải) giữ tâm lên trực thăng địch đang bay trong tầm thì
-// bắt đầu khoá: khung vuông vàng quanh mục tiêu, bíp ngắt quãng, báo server đều đặn (aaLock); giữ đủ ~1,5 giây thì
+// bắt đầu khoá: khung vuông vàng quanh mục tiêu, bíp ngắt quãng, báo server đều đặn (aaLock); giữ đủ ~2,4 giây thì
 // khung đỏ, bíp cao liên tục — bắn lúc này tên lửa tự đuổi theo. Server tự tính lại thời gian khoá, tầm, đường ngắm.
 
 /** Trạng thái khoá cho HUD đọc mỗi khung hình. */

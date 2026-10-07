@@ -136,7 +136,7 @@ export function ClassPicker({ room }: { room: IslandRoom }) {
           {([false, true] as const).map((on) => (
             <button key={String(on)} className={aa === on ? "on" : ""} aria-pressed={aa === on} onClick={() => room.send(Messages.pickClass, { cls: "engineer", aa: on })}>
               <b>{on ? "🚀 Tên lửa vác vai IGLA" : "⊳ RPG-7"}</b>
-              <small>{on ? "Ngắm giữ tâm ~1,5 giây khoá trực thăng rồi bắn: tên lửa tự đuổi theo" : "Đạn nổ chống tăng, phá xe, phá tường"}</small>
+              <small>{on ? "Ngắm giữ tâm ~2,4 giây khoá trực thăng rồi bắn: tên lửa tự đuổi theo" : "Đạn nổ chống tăng, phá xe, phá tường"}</small>
             </button>
           ))}
         </div>

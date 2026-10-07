@@ -112,7 +112,7 @@ export const WEAPONS: readonly WeaponDef[] = [
   w({ id: "rpg7", name: "RPG-7", class: "launcher", ammo: "rocket", mag: 1, rpm: 40, damage: 0, range: 160, hipSpread: 0.04, adsSpread: 0.006, recoil: 0.05, recoilSide: 0.01, auto: false, reload: 3.4, zoom: 1.4, price: 2200, speed: 0.88, headshot: 1, explosive: { radius: 4.5, damage: 110, armor: 380 }, boost: { vmax: 295, accel: 400 } }),
   // IGLA: tên lửa vác vai phòng không tầm nhiệt. Ngắm giữ tâm lên trực thăng ~1,5 giây để khoá rồi bắn: tên lửa tự
   // đuổi theo (aircraft.ts). Không khoá thì bay thẳng như rocket. Sát thương nổ vào người nhỏ (đầu nổ cận đích).
-  w({ id: "igla", name: "Tên lửa vác vai IGLA", class: "launcher", ammo: "missile", mag: 1, rpm: 30, damage: 0, range: 520, hipSpread: 0.03, adsSpread: 0.004, recoil: 0.04, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.8, price: 2600, speed: 0.88, headshot: 1, explosive: { radius: 3.5, damage: 70, armor: 470 }, boost: { vmax: 240, accel: 300 } }),
+  w({ id: "igla", name: "Tên lửa vác vai IGLA", class: "launcher", ammo: "missile", mag: 1, rpm: 30, damage: 0, range: 400, hipSpread: 0.03, adsSpread: 0.004, recoil: 0.04, recoilSide: 0.01, auto: false, reload: 6.5, zoom: 1.8, price: 3600, speed: 0.85, headshot: 1, explosive: { radius: 3.5, damage: 70, armor: 390 }, boost: { vmax: 175, accel: 220 } }),
   // AWM: trúng đầu 250, mũ cấp 3 cũng không đỡ nổi (một phát gục).
   w({ id: "awm", name: "AWM", class: "sniper", ammo: "300", mag: 5, extMag: 7, rpm: 40, damage: 105, headshot: head(105, 250), range: 500, hipSpread: 0.05, adsSpread: 0.0005, recoil: 0.07, recoilSide: 0.01, auto: false, reload: 4.2, zoom: 1.5, price: 0, speed: 0.93, rare: true }),
 ];

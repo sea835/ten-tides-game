@@ -10,7 +10,7 @@ import {
   heliGround,
   heliMoveOk,
   heliProbe,
-  heliRocketMuzzle,
+  heliRocketAim,
   lockReady,
   missileStep,
   raycastBoxes,
@@ -120,8 +120,8 @@ export class Air {
     return true;
   }
 
-  /** Phi công bắn một quả rocket mũi (luân phiên hai ống). */
-  rocket(pid: string, vid: string, v: VehicleState) {
+  /** Phi công bắn một quả rocket mũi (luân phiên hai ống) theo hướng ngắm `yaw`, `pitch` (kẹp vào nón quanh mũi). */
+  rocket(pid: string, vid: string, v: VehicleState, yaw: number, pitch: number) {
     if (v.driver !== pid || v.hp <= 0 || v.rockets <= 0 || !this.room.fighting()) return;
     const now = Date.now();
     if (now < (this.rocketAt.get(vid) ?? 0)) return;
@@ -129,7 +129,7 @@ export class Air {
     v.rockets -= 1;
     const k = this.pod.get(vid) ?? 0;
     this.pod.set(vid, k + 1);
-    const { o, d } = heliRocketMuzzle(v, k);
+    const { o, d } = heliRocketAim(v, k, yaw, pitch);
     // Tản nhẹ.
     const spread = HYDRA.hipSpread;
     d[0] += (Math.random() - 0.5) * spread;

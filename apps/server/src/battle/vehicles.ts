@@ -507,7 +507,7 @@ export class Vehicles {
     const vid = p?.vehicle ?? "";
     const v = vid ? s.vehicles.get(vid) : undefined;
     // Phi công trực thăng bắn rocket mũi (cùng gói bắn pháo).
-    if (p && v && p.alive && v.kind === "heli") return this.air.rocket(pid, vid, v);
+    if (p && v && p.alive && v.kind === "heli") return this.air.rocket(pid, vid, v, turret, pitch);
     if (!p || !v || !p.alive || v.kind !== "tank" || v.driver !== pid || v.hp <= 0 || !this.room.fighting()) return;
     const now = Date.now();
     if (now < (this.readyAt.get(vid) ?? 0)) return;
