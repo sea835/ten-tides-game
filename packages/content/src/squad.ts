@@ -71,6 +71,13 @@ export const PRONE = {
 export const PRONE_SPEED = 1.25;
 export const PRONE_TIME = 0.55;
 
+/**
+ * Lao người nằm sấp (dolphin dive: đang chạy nước rút bấm Z): bật lên chừng `lift` m/s, bay ra trước với tốc độ chạy
+ * nhân `boost`, chạm đất thì trượt khuỷu tay chừng `slide` m (khởi đầu không quá `slideSpeed` m/s) rồi nằm hẳn.
+ * Hạ súng chừng `time` giây. Tốc độ không vượt mức server cho phép (MAX_RUN_SPEED × MAX_SPEED_BOOST).
+ */
+export const DIVE = { lift: 3.6, boost: 1.05, slide: 1.5, slideSpeed: 5.5, time: 0.85 } as const;
+
 /** Khoảng cách gần nhất giữa tia (o, d đơn vị, từ 0) và đoạn thẳng [a, b]: trả tham số t trên tia và khoảng cách. */
 function raySegment(o: V3, d: V3, a: V3, b: V3): { t: number; dist: number } {
   const ux = b[0] - a[0];

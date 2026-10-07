@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Callbacks } from "@colyseus/sdk";
 import { MeshBasicMaterial, OctahedronGeometry, type Group } from "three";
-import type { PlayerState } from "@tentides/protocol";
+import { GAIT, type PlayerState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
@@ -15,7 +15,8 @@ import { replay, replayPose } from "./battle/replay.ts";
 import { physicsProbe } from "./battle/surface.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { localPosition } from "./shared.ts";
-import { playFootstep } from "./sound/guns.ts";
+import { playFootstep, playLand } from "./sound/guns.ts";
+import { groundProbe } from "./character/motionFx.ts";
 import { FarSoldier } from "./battle/FarSoldier.tsx";
 
 /** Dấu đồng đội (chiến trường): hình thoi xanh sáng, không bị sương mù làm mờ. */
@@ -163,6 +164,9 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
   const wall = useRef({ value: 0, at: 0 });
   // Thay đạn, rút súng của người khác: server chỉ báo cờ đang thay đạn và món đang cầm, máy mình tự đếm thời gian.
   const anim = useRef({ reloadAt: 0, reloading: false, weapon: "", swapAt: 0 });
+  // Nhảy, rơi của người khác: server báo cờ đang trên không (gait), vận tốc đứng đo từ vị trí đang vẽ.
+  const jump = useRef({ air: false, jumps: 0, pending: 0, vy: 0, minVy: 0, y: player.y });
+  const ground = useMemo(() => groundProbe(currentWorld(room)), [room]);
   const motion = useMemo(() => {
     const m: Motion = { moving: false };
     return () => {
@@ -198,6 +202,15 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       const sk = Math.min(1, (now - an.swapAt) / 500);
       m.swap = 1 - sk * sk * (3 - 2 * sk);
       m.moving = src.moving;
+      // Trượt, lao người, nhảy (chỉ có khi xem trực tiếp; killcam không ghi dáng này).
+      const gait = src === player ? player.gait : 0;
+      m.sliding = (gait & GAIT.kind) === GAIT.slide;
+      m.diving = (gait & GAIT.kind) === GAIT.dive;
+      m.airborne = (gait & GAIT.air) !== 0;
+      m.vy = jump.current.vy;
+      m.jumps = jump.current.jumps;
+      // Chạy nước rút: không có cờ riêng, đoán theo tốc độ thật (đi bộ 5,6 m/s, chạy 7,3–8,6 m/s tuỳ súng).
+      m.running = (speedNow.current > 6.9 && !src.crouching && !src.prone && !src.aiming) || m.sliding;
       m.swimming = player.swimming;
       m.crouching = src.crouching;
       m.prone = src.prone;
@@ -253,6 +266,26 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
         speedNow.current += (Math.min(15, v) - speedNow.current) * Math.min(1, dt * 8);
       }
       lastPos.current = { x: r.position.x, z: r.position.z };
+      // Vận tốc đứng (làm mượt) và cú nhảy: vừa lên không mà đang đi lên là nhảy (diễn nhún lấy đà); vừa chạm đất
+      // sau cú rơi mạnh thì tiếng dậm chân.
+      const j = jump.current;
+      j.vy += ((r.position.y - j.y) / dt - j.vy) * Math.min(1, dt * 12);
+      j.y = r.position.y;
+      const air = (player.gait & GAIT.air) !== 0 && player.alive;
+      if (air && !j.air) {
+        j.pending = 0.25;
+        j.minVy = 0;
+      }
+      if (j.pending > 0) {
+        j.pending -= dt;
+        if (j.vy > 1.2) {
+          j.jumps++;
+          j.pending = 0;
+        }
+      }
+      if (air) j.minVy = Math.min(j.minVy, j.vy);
+      else if (j.air && j.minVy < -6 && Math.hypot(player.x - localPosition.x, player.z - localPosition.z) < 50) playLand({ x: r.position.x, y: r.position.y, z: r.position.z }, Math.min(1, (-j.minVy - 3.5) / 9));
+      j.air = air;
     }
     const st = steps.current;
     const speed = Math.hypot(player.x - st.x, player.z - st.z) / Math.max(dt, 1e-3);
@@ -274,7 +307,7 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       {far ? (
         <FarSoldier ref={avatar} outfit={look.outfit} pose={pose} gun={!!look.weapon} band={player.team === "blue" || player.team === "red" ? player.color : undefined} />
       ) : (
-        <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} atts={look.atts} gunSkin={look.skin} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} motion={motion} />
+        <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} atts={look.atts} gunSkin={look.skin} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} ground={ground} motion={motion} />
       )}
       {/* Đồng đội: dấu tên trên đầu (luôn thấy, để biết ai là người mình). */}
       {/* Chiến trường (49 đồng đội): dấu hình thoi trên đầu vẽ bằng một khối nhỏ, nhẹ hơn nhãn chữ. */}

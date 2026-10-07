@@ -19,6 +19,11 @@ export const localMotion = {
   aimPitch: 0,
   /** Nghiêng người (Q/E): −1 trái … 1 phải. */
   lean: 0,
+  /** Trên không (nhảy, rơi), vận tốc đứng, bộ đếm cú nhảy, đang lao người nằm sấp: Character diễn nhún, co chân, lao. */
+  airborne: false,
+  vy: 0,
+  jumps: 0,
+  diving: false,
   firing: 0,
   /** Súng dí sát vật cản (0–1): dựng nòng lên. */
   wall: 0,

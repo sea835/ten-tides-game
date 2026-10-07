@@ -178,6 +178,11 @@ export const PlayerState = schema(
     aimPitch: t.float32().default(0),
     /** Nghiêng người (Q/E): −1 trái … 1 phải, lượng tử hoá theo 1/8 (thân trên, đầu lệch sang bên; dò đạn trúng theo đó). */
     lean: t.float32().default(0),
+    /**
+     * Dáng di chuyển nhất thời để máy khác diễn lại (gói gọn một byte): 2 bit thấp là 0 bình thường, 1 đang trượt,
+     * 2 đang lao người nằm sấp (dolphin dive); bit 4 là đang ở trên không (nhảy, rơi). Xem `GAIT`.
+     */
+    gait: t.uint8().default(0),
     /** Bộ đếm phát bắn, để máy khác diễn giật súng, chớp lửa đầu nòng. */
     shots: t.uint16().default(0),
     /** Là máy (bot) do server điều khiển. */
@@ -710,6 +715,9 @@ export type JoinOptions = z.infer<typeof JoinOptions>;
 const finite = z.number();
 const id = z.string().max(64);
 
+/** Các bit của `PlayerState.gait`: hai bit thấp là kiểu di chuyển (trượt, lao người), bit 4 là đang ở trên không. */
+export const GAIT = { slide: 1, dive: 2, kind: 3, air: 4 } as const;
+
 /** Client gửi lên khoảng 15 lần/giây khi đang di chuyển. */
 export const MoveMessage = z.object({
   x: finite,
@@ -726,6 +734,8 @@ export const MoveMessage = z.object({
   aimPitch: z.number().min(-2).max(2).optional(),
   /** Nghiêng người (Q trái / E phải), −1..1. */
   lean: z.number().min(-1).max(1).optional(),
+  /** Dáng di chuyển nhất thời: trượt, lao người, trên không (xem `GAIT`). */
+  gait: z.number().int().min(0).max(7).optional(),
 });
 export type MoveMessage = z.infer<typeof MoveMessage>;
 
