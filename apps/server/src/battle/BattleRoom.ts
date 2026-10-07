@@ -1,7 +1,8 @@
 import { Room, matchMaker, type Client } from "@colyseus/core";
-import { squadSlots } from "@tentides/content";
-import { PingMessage, RadioMessage, SquadBoardMessage } from "@tentides/protocol";
+import { ADRENALINE, AT_MINE, isSoldierClass, squadSlots, withDynamicSlots } from "@tentides/content";
+import { GadgetMessage, PickClassMessage, PingMessage, RadioMessage, SquadBoardMessage } from "@tentides/protocol";
 import { Comms } from "./comms.ts";
+import { Gadgets, SANDBAG_SLOTS } from "./gadgets.ts";
 import {
   ARMOR,
   FLASH,
@@ -80,6 +81,7 @@ import {
   VehicleSeatMessage,
   VehicleAimMessage,
   VehicleGunMessage,
+  MortarFireMessage,
   MAX_BATTLE_BOTS,
   WAR_MAX_PER_SIDE,
   type BoomMessage,
@@ -87,6 +89,7 @@ import {
   type CorrectMessage,
   type HitMessage,
   type HurtMessage,
+  type MatchSummaryMessage,
   type KnockMessage,
   type ShotMessage,
   VoiceMessages,
@@ -98,6 +101,7 @@ import { Airdrops } from "./airdrops.ts";
 import { Destruction } from "./destruction.ts";
 import { Bots } from "./bots.ts";
 import { MatchRewards } from "./rewards.ts";
+import { MatchStats } from "./mvp.ts";
 import { Vehicles } from "./vehicles.ts";
 import { DEFAULT_BOTS, applyBattleSettings, clampBots } from "./settings.ts";
 import { War, type Side } from "./war.ts";
@@ -170,6 +174,8 @@ interface Mine {
   armIn: number;
   /** Đã bị giẫm: nổ sau chừng này giây. */
   fuse: number;
+  /** Mìn chống tăng (lính Kỹ Thuật): chỉ xe địch cán qua mới nổ. */
+  at?: boolean;
 }
 
 interface Timed {
@@ -202,6 +208,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private rand = Math.random;
   /** Thưởng xu sau trận cho người có tài khoản. */
   private rewards = new MatchRewards((id, msg) => this.clientOf(id)?.send(Messages.xp, msg));
+  /** Số liệu vinh danh MVP (hạ gục, trợ giúp, chiếm cứ điểm, hỗ trợ) và bảng tổng kết trận vừa xong (gửi lại người vào sau). */
+  stats = new MatchStats();
+  private summary: MatchSummaryMessage | null = null;
   bots!: Bots;
   vehicles!: Vehicles;
   war!: War;
@@ -229,6 +238,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         return room.map;
       },
       broadcast: (type, message) => room.broadcast(type, message),
+      dynamic: (i, left) => room.gadgets.sandbagHit(i, left),
       crush: (id, amount, by) => {
         const dealt = room.damage(id, amount, "blast", by, "collapse");
         if (dealt && by && by !== id) room.clientOf(by)?.send(Messages.hit, { kind: dealt.killed ? "kill" : "body", armor: dealt.armor, amount: Math.round(dealt.amount) } satisfies HitMessage);
@@ -237,6 +247,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private weatherLeft = WEATHER_MIN;
   /** Giọng nói: chuyển gói bắt tay WebRTC giữa những người thật trong phòng. */
   voice = new VoiceRelay(this);
+  /** Khí tài của bốn lớp lính (gadgets.ts). */
+  gadgets = new Gadgets(this);
 
   async onCreate() {
     this.roomId = await this.uniqueRoomCode();
@@ -256,7 +268,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (p.vehicle) return;
       const now = Date.now();
       const elapsed = now - (this.lastMoveAt.get(id) ?? now);
-      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half)) {
+      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half, p.gear.boost > 0 ? ADRENALINE.speed : 1)) {
         client.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
         return;
       }
@@ -330,6 +342,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const kit = p.kit;
       if (isGunSlot(slot) && !kit[slot]) return;
       if ((slot === "frag" || slot === "smoke" || slot === "mine") && kit[slot] <= 0) return;
+      if ((slot === "gadget1" || slot === "gadget2") && !this.gadgets.canHold(p, slot)) return;
       kit.active = slot;
       this.cancelTimer(id);
     });
@@ -347,6 +360,17 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.melee, MeleeMessage, (client, msg) => {
       const id = this.playerOf(client);
       if (id) this.melee(id, msg.yaw, msg.target);
+    });
+
+    this.onMessage(Messages.gadget, GadgetMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.gadgets.use(id, m);
+    });
+
+    // Sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới.
+    this.onMessage(Messages.pickClass, PickClassMessage, (client, { cls }) => {
+      const p = this.state.players.get(this.playerOf(client) ?? "");
+      if (p && this.state.phase === "lobby") p.gear.cls = cls;
     });
 
     this.onMessage(Messages.placeMine, (client) => {
@@ -400,6 +424,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.vehicleGun, VehicleGunMessage, (client, m) => {
       const id = this.playerOf(client);
       if (id) this.vehicles.gun(id, m);
+    });
+    // Vũ khí cố định: pháo thủ cối bắn (emplacements.ts).
+    this.onMessage(Messages.mortarFire, MortarFireMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id) this.vehicles.emplacements.fire(id, m.turret, m.elev);
     });
 
     this.onMessage(Messages.squadOrder, SquadOrderMessage, (client, m) => {
@@ -478,9 +507,20 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         client.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
       });
     if (process.env.BATTLE_DEV === "1")
-      this.onMessage("devKill", (client) => {
+      this.onMessage("devKill", (client, raw: unknown) => {
         const id = this.playerOf(client);
-        if (id && this.state.players.get(id)?.alive) this.kill(id, "", "zone", false);
+        // `by`: giả làm người này hạ mình (thử killcam, bảng vinh danh).
+        const by = typeof (raw as { by?: unknown })?.by === "string" ? (raw as { by: string }).by : "";
+        if (id && this.state.players.get(id)?.alive) this.kill(id, this.state.players.has(by) ? by : "", by ? "m416" : "zone", false);
+      });
+    // Thử nghiệm: kết thúc trận ngay (chiến trường: phe mình thắng; còn lại: mình hạ hết người khác) để xem bảng vinh danh.
+    if (process.env.BATTLE_DEV === "1")
+      this.onMessage("devEnd", (client) => {
+        const id = this.playerOf(client);
+        const p = id && this.state.players.get(id);
+        if (!id || !p || this.state.phase !== "battle") return;
+        if (this.state.battleMode === "war") return this.endWar(p.team === "red" ? "red" : "blue");
+        for (const [other, q] of this.state.players) if (this.state.phase === "battle" && other !== id && q.alive && !(p.team && q.team === p.team)) this.kill(other, id, "m416", false);
       });
 
     this.clock.setInterval(() => this.tick(TICK_MS / 1000), TICK_MS);
@@ -530,6 +570,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     }
     this.sessions.set(client.sessionId, playerId);
     this.lastMoveAt.set(playerId, Date.now());
+    this.stats.track(playerId);
+    if (this.state.phase === "ended" && this.summary) client.send(Messages.matchSummary, this.summary);
     if (!this.state.hostId || this.state.players.get(this.state.hostId)?.bot) this.state.hostId = playerId;
     this.sendMines(playerId);
   }
@@ -559,6 +601,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   onDispose() {
     // Phòng đóng giữa trận: ghi nốt XP đang chờ.
     this.rewards.dispose();
+    this.stats.dispose();
   }
 
   onLeave(client: Client) {
@@ -585,7 +628,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private setupMap(seed: number) {
     this.state.worldSeed = seed;
     // Bản riêng của phòng (mặt nạ khối vỡ, cây đổ riêng), không đụng bản đồ trong cache dùng chung.
-    this.map = withDestruction(mapForMode(this.state.battleMode, seed));
+    // Thêm chỗ trống cuối danh sách khối cho bao cát dựng giữa trận.
+    this.gadgets.clear();
+    this.map = withDynamicSlots(withDestruction(mapForMode(this.state.battleMode, seed)), SANDBAG_SLOTS);
     this.destruction.reset();
     this.rand = makeRand(seed ^ Date.now());
     for (const p of this.state.players.values()) this.placeAtSpawn(p);
@@ -621,6 +666,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.timers.clear();
     this.vehicles.clear();
     this.airdrops.clear();
+    this.gadgets.clear();
     this.destruction.reset();
     const squad = s.battleMode === "squad";
     const war = s.battleMode === "war";
@@ -643,7 +689,14 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const outfit = p.kit.outfit;
       resetKit(p.kit, START_MONEY);
       p.kit.outfit = outfit;
+      // Lớp lính: Đồng đội thì đội trưởng (người) mang đồ, khí tài của lớp đã chọn ở sảnh; sinh tồn solo thì không.
+      const cls = p.gear.cls;
+      if (squad && !p.bot && isSoldierClass(cls)) this.gadgets.loadout(p, cls);
+      else if (!war) this.gadgets.equip(p, "");
+      p.gear.cls = cls;
     }
+    // Vũ khí cố định (ổ đại liên, cối) đặt trước xe cộ để xe tránh chỗ; luôn có, không theo công tắc xe cơ giới.
+    this.vehicles.emplacements.setup();
     if (war) this.war.start(clampBots("war", s.bots || WAR_MAX_PER_SIDE));
     else if (squad) this.placeTeams();
     else for (const p of s.players.values()) this.placeAtSpawn(p);
@@ -656,10 +709,13 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.bots.warm();
     this.spawnLoot(this.map.loot);
     this.rollSky();
-    // Vùng an toàn phủ cả đảo; vòng kế tiếp chọn khi vào trận.
-    s.zone.x = s.zone.nx = 0;
-    s.zone.z = s.zone.nz = 0;
-    s.zone.r = s.zone.nr = 260;
+    // Vùng an toàn phủ cả đảo; vòng kế tiếp chọn khi vào trận. Chiến trường không có vùng bo: war.start đã đặt
+    // vùng 2000 m phủ cả bản đồ (trước đây bị đặt lại 260 m ở đây, căn cứ hai phe nằm ngoài vùng).
+    if (!war) {
+      s.zone.x = s.zone.nx = 0;
+      s.zone.z = s.zone.nz = 0;
+      s.zone.r = s.zone.nr = 260;
+    }
     s.zone.stage = 0;
     s.zone.shrinking = false;
     s.zone.dps = 0;
@@ -670,6 +726,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     s.winner = "";
     this.entrants = squad || war ? new Set([...s.players.values()].map((p) => p.team)).size : s.players.size;
     this.rewards.begin(s.players);
+    this.stats.begin(s.players.keys());
+    this.summary = null;
     this.updateAlive();
   }
 
@@ -798,6 +856,13 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     s.phaseDuration = Math.ceil(this.phaseLeft);
     // Thưởng xu cho người có tài khoản: phe thắng hạng nhất, phe thua hạng nhì.
     this.rewards.finish(s.players, winner, "war");
+    this.sendSummary(winner, "war");
+  }
+
+  /** Hết trận: gửi mọi người bảng vinh danh MVP và bảng điểm đầy đủ. */
+  private sendSummary(winner: string, mode: string) {
+    this.summary = this.stats.summary(this.state.players, winner, mode);
+    this.broadcast(Messages.matchSummary, this.summary);
   }
 
   /** Báo mọi người: phe `side` vừa chiếm cứ điểm `name`. */
@@ -918,6 +983,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     }
     if (s.battleMode === "war") this.war.tick(dt);
     this.tickTimers(dt);
+    this.gadgets.tick(dt);
     this.tickThrown(dt);
     this.tickMines(dt);
     for (const p of s.players.values()) if (p.blind > 0) p.blind = Math.max(0, p.blind - dt);
@@ -941,6 +1007,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.bots.clear();
     this.vehicles.clear();
     this.airdrops.clear();
+    this.gadgets.clear();
     this.destruction.reset();
     s.flags.clear();
     for (const [id, p] of s.players) {
@@ -1081,7 +1148,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     for (const h of hits) {
       const d = dirs[h.ray];
       const target = this.state.players.get(h.target);
-      if (!d || !target || !target.alive || target.vehicle || h.target === id || hitRay.has(h.ray)) continue;
+      if (!d || !target || !target.alive || (target.vehicle && !this.vehicles.emplacements.exposed(target)) || h.target === id || hitRay.has(h.ray)) continue;
       // Không bắn trúng đồng đội.
       if (p.team && target.team === p.team) continue;
       if (h.d > maxRange) continue;
@@ -1133,7 +1200,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     });
     for (const [target, hit] of dealt) {
       const result = this.damage(target, hit.amount, hit.head ? "head" : "body", id, weaponId, [p.x, p.z]);
-      if (result) this.clientOf(id)?.send(Messages.hit, { kind: result.killed ? "kill" : hit.head ? "head" : "body", armor: result.armor, amount: Math.round(result.amount) } satisfies HitMessage);
+      if (result) this.clientOf(id)?.send(Messages.hit, { kind: result.killed ? "kill" : hit.head ? "head" : "body", armor: result.armor, amount: Math.round(result.amount), ...(result.killed && hit.head ? { head: 1 as const } : {}) } satisfies HitMessage);
       this.bots.onHurt(target, id);
     }
   }
@@ -1215,7 +1282,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return null;
     // Ngồi trong xe tăng: đạn, mảnh nổ không tới (xe chịu thay); chỉ vùng độc vẫn làm mất máu.
-    if (p.vehicle && part !== "zone") return null;
+    // Xạ thủ vũ khí cố định thì lộ người ra ngoài, trúng như đi bộ.
+    if (p.vehicle && part !== "zone" && !this.vehicles.emplacements.exposed(p)) return null;
     const kit = p.kit;
     let amount = raw;
     let armor = false;
@@ -1238,6 +1306,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const hurt: HurtMessage = { x: from?.[0] ?? p.x, z: from?.[1] ?? p.z, amount: Math.round(amount), armor };
     this.clientOf(id)?.send(Messages.hurt, hurt);
     this.cancelHeal(id);
+    this.stats.onDamage(id, attacker);
     const killed = p.hp <= 0;
     if (killed) this.kill(id, attacker, weapon, part === "head");
     return { amount, armor, killed };
@@ -1267,11 +1336,13 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Chiến trường: tiền giữ qua các lần hồi sinh.
     resetKit(p.kit, this.state.battleMode === "war" ? p.kit.money : 0);
     const k = this.state.players.get(killer);
-    if (k && killer !== id && !(k.team && k.team === p.team)) {
+    const credited = !!k && killer !== id && !(k.team && k.team === p.team);
+    if (k && credited) {
       k.kills += 1;
       k.kit.money += KILL_REWARD;
       this.rewards.xp.award(killer, headshot ? "headshot" : "kill");
     }
+    this.stats.onKill(id, killer, credited, this.state.players);
     const entry = new KillState();
     entry.killer = killer;
     entry.victim = id;
@@ -1301,6 +1372,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     s.phaseDuration = Math.ceil(this.phaseLeft);
     s.zone.dps = 0;
     this.rewards.finish(s.players, s.winner, s.battleMode || "solo");
+    this.sendSummary(s.winner, s.battleMode || "solo");
   }
 
   // -------------------------------------------------------------------------- đồ
@@ -1559,7 +1631,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Sức nổ làm hư, thủng tường gần đó, gãy cây; nổ đủ nhiều thì sập nhà.
     this.destruction.blast(x, y, z, radius, maxDamage, owner);
     for (const [id, p] of this.state.players) {
-      if (!p.alive || p.vehicle) continue;
+      if (!p.alive || (p.vehicle && !this.vehicles.emplacements.exposed(p))) continue;
       const cx = p.x;
       const cy = p.y + (p.prone ? 0.25 : p.crouching ? 0.7 : 1.1);
       const cz = p.z;
@@ -1585,8 +1657,16 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.sendMines(id);
   }
 
+  /** Gài mìn ở (x, y, z) cho người `owner` (`at`: mìn chống tăng của lính Kỹ Thuật). */
+  plantMine(owner: string, x: number, y: number, z: number, at = false): boolean {
+    if (!this.fighting()) return false;
+    this.mines.push({ x, y, z, owner, armIn: at ? AT_MINE.arm : MINE.arm, fuse: -1, at });
+    this.sendMines(owner);
+    return true;
+  }
+
   private sendMines(id: string) {
-    const own = this.mines.filter((m) => m.owner === id && m.fuse < 0).map((m) => ({ x: m.x, y: m.y, z: m.z }));
+    const own = this.mines.filter((m) => m.owner === id && m.fuse < 0).map((m) => ({ x: m.x, y: m.y, z: m.z, ...(m.at ? { at: true } : {}) }));
     this.clientOf(id)?.send(Messages.myMines, own);
   }
 
@@ -1602,15 +1682,18 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         continue;
       }
       if (m.fuse < 0) {
+        const owner = m.at ? this.state.players.get(m.owner) : undefined;
         for (const v of this.state.vehicles.values()) {
           if (v.hp <= 0 || v.driver === m.owner || !v.moving) continue;
-          if (Math.hypot(v.x - m.x, v.z - m.z) < 2.6) {
+          // Mìn chống tăng: xe phe mình cán qua thì không nổ.
+          if (m.at && owner?.team && v.team === owner.team) continue;
+          if (Math.hypot(v.x - m.x, v.z - m.z) < (m.at ? AT_MINE.trigger : 2.6)) {
             m.fuse = 0.2;
             this.broadcast(Messages.mineClick, { x: m.x, y: m.y, z: m.z });
             break;
           }
         }
-        if (m.fuse >= 0) continue;
+        if (m.fuse >= 0 || m.at) continue;
         for (const [id, p] of this.state.players) {
           if (!p.alive || p.vehicle || id === m.owner) continue;
           if (Math.hypot(p.x - m.x, p.z - m.z) < MINE.trigger && Math.abs(p.y - m.y) < 1.2) {
@@ -1625,7 +1708,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (m.fuse <= 0) exploded.add(m);
     }
     for (const m of exploded) {
-      this.explode(m.x, m.y + 0.2, m.z, "mine", m.owner, MINE.radius, MINE.damage);
+      if (m.at) this.gadgets.atBlast(m.x, m.y, m.z, m.owner);
+      else this.explode(m.x, m.y + 0.2, m.z, "mine", m.owner, MINE.radius, MINE.damage);
       if (this.mines.includes(m)) {
         this.mines = this.mines.filter((x) => x !== m);
         this.sendMines(m.owner);

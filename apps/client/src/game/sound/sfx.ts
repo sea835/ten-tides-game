@@ -251,7 +251,9 @@ export const TRIM: Record<string, number> = {
 /** Phát một tiếng động (không vị trí thì nghe như ở ngay tai). */
 export function play(name: SoundName, opts: { at?: Place; volume?: number; bus?: Bus; delay?: number; hearing?: number } = {}) {
   const recipe = RECIPES[name];
-  const out = recipe && audio.output(opts.bus ?? "sfx", (opts.volume ?? 1) * (TRIM[name] ?? 1), opts.at, opts.hearing);
+  // Bước chân, bơi, leo: mức ưu tiên 1 ở bộ giới hạn tiếng (voices.ts); còn lại suy theo khoảng cách.
+  const prio = name.startsWith("step_") || name === "swim" || name === "climb" ? 1 : undefined;
+  const out = recipe && audio.output(opts.bus ?? "sfx", (opts.volume ?? 1) * (TRIM[name] ?? 1), opts.at, opts.hearing, prio);
   if (!out) return;
   recipe(out, audio.ctx!.currentTime + (opts.delay ?? 0));
 }

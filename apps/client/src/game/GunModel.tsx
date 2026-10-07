@@ -16,6 +16,8 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { skinMaterial, skinViewMaterial } from "./skinMaterials.ts";
+import { withRim } from "./character/rim.ts";
+import { withRelief, type ReliefKind } from "./character/relief.ts";
 
 // Mô hình 3D dựng bằng khối cho chế độ Battleground: súng (cầm trên tay và nằm dưới đất), đạn, giáp, mũ, lựu đạn,
 // bom khói, mìn, băng gạc, hộp cứu thương, tiền. Mỗi mô hình gộp các khối cùng vật liệu thành một hình (ít lệnh vẽ),
@@ -64,8 +66,8 @@ const MATS: Record<string, MatDef> = {
   plate: { color: "#3c4130", rough: 0.7, detail: "none" },
   strap: { color: "#232420", rough: 0.9, detail: "fabric" },
   helmet1: { color: "#5e5c3e", rough: 0.9, detail: "fabric" },
-  helmet2: { color: "#56603f", rough: 0.7, detail: "none" },
-  helmet3: { color: "#39402f", rough: 0.6, detail: "none" },
+  helmet2: { color: "#56603f", metal: 0.15, rough: 0.66, detail: "none" },
+  helmet3: { color: "#39402f", metal: 0.15, rough: 0.58, detail: "none" },
   visor: { color: "#1c2a33", metal: 0.6, rough: 0.1, opacity: 0.55, detail: "none", double: true },
   // Hộp đạn: màu theo cỡ đạn cho dễ nhận ra.
   "ammo:9mm": { color: "#c9a33a", rough: 0.7, detail: "none" },
@@ -98,9 +100,23 @@ export function gearMaterial(key: string, opacity = 1): MeshStandardMaterial {
   if (alpha < 1) m.depthWrite = false;
   m.userData.detail = d.detail ?? "none";
   m.userData.detailSpace = "object";
+  // Áo giáp, mũ: viền sáng như người mặc, nổi gân bề mặt (sợi Kevlar, gốm lục giác, mũ sắt trầy xước).
+  const relief = GEAR_RELIEF[key];
+  if (relief) withRelief(withRim(m), relief[0], relief[1]);
   matCache.set(id, m);
   return m;
 }
+
+const GEAR_RELIEF: Record<string, [ReliefKind, number]> = {
+  vest1: ["kevlar", 1],
+  vest2: ["kevlar", 1],
+  vest3: ["kevlar", 0.8],
+  pouch: ["kevlar", 0.7],
+  plate: ["ceramic", 1],
+  helmet1: ["wrinkle", 0.6],
+  helmet2: ["scuff", 1],
+  helmet3: ["scuff", 1],
+};
 
 /**
  * Vật liệu cho súng trước mặt (góc thứ nhất): nén độ sâu về sát mặt kính camera nên súng luôn vẽ đè lên tường,
@@ -839,6 +855,23 @@ function attachmentParts(weaponId: string, att: string): Part[] {
       const c = magCenter(weaponId);
       return [box("red", 0.02, 0.012, 0.03, [c[0], c[1] - (pistol ? 0.08 : 0.14), c[2]])];
     }
+    case "m203": {
+      // Ống phóng lựu M203 dưới ốp lót tay (lính Đột Kích): nòng 40 mm, khối khoá nòng, vòng cò riêng, thước ngắm bậc
+      // thang gập bên trái.
+      if (pistol) return [];
+      const y = sy - 0.052;
+      const z0 = sz - 0.07;
+      return [
+        cyl("metal", 0.024, 0.3, [0, y, z0 + 0.15], { segs: 16 }),
+        cyl("poly", 0.0175, 0.012, [0, y, z0 + 0.3], { segs: 14, open: true }),
+        box("metal", 0.04, 0.034, 0.1, [0, y + 0.006, z0 - 0.02]),
+        box("metal", 0.022, 0.016, 0.24, [0, y + 0.028, z0 + 0.12]),
+        box("metal", 0.008, 0.035, 0.008, [0, y - 0.03, z0 - 0.035]),
+        box("metal", 0.008, 0.008, 0.06, [0, y - 0.046, z0 - 0.01]),
+        box("metal", 0.006, 0.026, 0.008, [0, y - 0.022, z0 - 0.005]),
+        box("metal", 0.004, 0.03, 0.022, [0.03, y + 0.05, z0 + 0.02]),
+      ];
+    }
     default:
       return [];
   }
@@ -1060,6 +1093,10 @@ function vestParts(level: number): Part[] {
   // Tấm chắn trước và sau.
   parts.push(box("plate", big ? 0.28 : 0.25, big ? 0.3 : 0.26, 0.03, [0, 0.28, 0.148]));
   parts.push(box("plate", big ? 0.28 : 0.25, big ? 0.3 : 0.26, 0.03, [0, 0.28, -0.148]));
+  // Dải vải MOLLE sau lưng: các hàng đai khâu chặn thành từng ô để móc túi.
+  for (const y of big ? [0.19, 0.25, 0.31, 0.37] : [0.22, 0.29, 0.36]) {
+    for (let i = 0; i < 5; i++) parts.push(box("strap", 0.044, 0.02, 0.006, [-0.1 + i * 0.05, y, -0.166]));
+  }
   // Túi băng đạn phía trước bụng, nắp túi sẫm hơn.
   const rows = big ? [0.13, 0.22] : [0.14];
   for (const y of rows) {
@@ -1191,6 +1228,60 @@ const LOOT: Record<string, () => Part[]> = {
     cyl("olive", 0.1, 0.04, [0, 0.02, 0], { axis: "y", r2: 0.105, segs: 18 }),
     cyl("poly", 0.036, 0.016, [0, 0.046, 0], { axis: "y", segs: 12 }),
     torus("poly", 0.08, 0.006, [0, 0.04, 0], [Math.PI / 2, 0, 0]),
+  ],
+  // ---- khí tài lớp lính
+  // Bơm tiêm Adrenaline: ống trong suốt có thuốc đỏ, pít-tông, kim, nắp cam (cầm dọc trục y).
+  syringe: () => [
+    cyl("lens", 0.012, 0.11, [0, 0.06, 0], { axis: "y", segs: 12 }),
+    cyl("red", 0.009, 0.07, [0, 0.045, 0], { axis: "y", segs: 10 }),
+    cyl("poly", 0.004, 0.06, [0, 0.14, 0], { axis: "y", segs: 6 }),
+    cyl("poly", 0.014, 0.006, [0, 0.172, 0], { axis: "y", segs: 12 }),
+    box("poly", 0.04, 0.006, 0.012, [0, 0.117, 0]),
+    cyl("steel", 0.0015, 0.03, [0, -0.01, 0], { axis: "y", segs: 4 }),
+    cyl("red", 0.006, 0.016, [0, 0.003, 0], { axis: "y", segs: 8 }),
+  ],
+  // Ống nhòm: hai ống bọc cao su ô liu, cầu nối, núm chỉnh tiêu cự, kính vật trước (+z).
+  binoculars: () => [
+    cyl("olive", 0.026, 0.12, [0.034, 0, 0], { segs: 14 }),
+    cyl("olive", 0.026, 0.12, [-0.034, 0, 0], { segs: 14 }),
+    cyl("poly", 0.029, 0.03, [0.034, 0, 0.05], { segs: 14 }),
+    cyl("poly", 0.029, 0.03, [-0.034, 0, 0.05], { segs: 14 }),
+    cyl("lens", 0.022, 0.004, [0.034, 0, 0.066], { segs: 14 }),
+    cyl("lens", 0.022, 0.004, [-0.034, 0, 0.066], { segs: 14 }),
+    cyl("poly", 0.018, 0.02, [0.034, 0, -0.068], { segs: 12 }),
+    cyl("poly", 0.018, 0.02, [-0.034, 0, -0.068], { segs: 12 }),
+    box("poly", 0.04, 0.016, 0.07, [0, 0.008, -0.01]),
+    cyl("metal", 0.009, 0.024, [0, 0.022, -0.02], { axis: "x", segs: 10 }),
+  ],
+  // Hộp tiếp đạn dã chiến: thùng gỗ sơn ô liu, đai sắt, sọc vàng, quai xách hai bên, vài hộp đạn trên nắp.
+  ammobox: () => [
+    box("ammobox", 0.5, 0.3, 0.34, [0, 0.15, 0]),
+    box("metal", 0.51, 0.025, 0.35, [0, 0.03, 0]),
+    box("metal", 0.51, 0.025, 0.35, [0, 0.27, 0]),
+    box("brass", 0.18, 0.05, 0.352, [0, 0.16, 0]),
+    box("poly", 0.02, 0.03, 0.12, [0.26, 0.2, 0]),
+    box("poly", 0.02, 0.03, 0.12, [-0.26, 0.2, 0]),
+    box("ammo:556", 0.16, 0.08, 0.1, [-0.1, 0.34, 0.06]),
+    box("ammo:762", 0.16, 0.08, 0.1, [0.1, 0.34, -0.05], [0, 0.3, 0]),
+  ],
+  // Bao cát gấp gọn cầm tay (lúc chưa dựng).
+  sandbag: () => [sph("tan", 0.11, [0, 0.06, 0], [1.3, 0.55, 1]), box("strap", 0.03, 0.012, 0.2, [0, 0.12, 0])],
+  // Mỏ lết: cán thép dẹt, đầu hàm có vít chỉnh, chuôi bọc cao su đỏ (cán theo trục y).
+  repair: () => [
+    box("steel", 0.022, 0.24, 0.01, [0, 0.06, 0]),
+    box("steel", 0.06, 0.04, 0.014, [0, 0.2, 0]),
+    box("steel", 0.016, 0.034, 0.014, [0.022, 0.235, 0]),
+    box("steel", 0.016, 0.03, 0.014, [-0.018, 0.232, 0]),
+    cyl("metal", 0.008, 0.026, [0, 0.19, 0], { axis: "x", segs: 8 }),
+    box("red", 0.028, 0.1, 0.016, [0, -0.02, 0]),
+  ],
+  // Mìn chống tăng: đĩa to dày ô liu, nắp nén giữa, sọc vàng quanh thân, quai xách.
+  atmine: () => [
+    cyl("olive", 0.16, 0.08, [0, 0.04, 0], { axis: "y", r2: 0.165, segs: 20 }),
+    cyl("brass", 0.161, 0.014, [0, 0.05, 0], { axis: "y", segs: 20 }),
+    cyl("poly", 0.06, 0.02, [0, 0.088, 0], { axis: "y", segs: 14 }),
+    torus("poly", 0.12, 0.007, [0, 0.081, 0], [Math.PI / 2, 0, 0]),
+    box("strap", 0.012, 0.03, 0.08, [0.165, 0.05, 0]),
   ],
   // Băng gạc: cuộn vải trắng nằm nghiêng, một đoạn duỗi ra.
   bandage: () => [cyl("white", 0.035, 0.07, [0, 0.035, 0], { axis: "x", segs: 14 }), box("white", 0.06, 0.004, 0.09, [0, 0.002, 0.07])],

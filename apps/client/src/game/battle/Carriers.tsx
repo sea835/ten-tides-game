@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
-import { BOAT, HMG, JEEP, MOUNT, SEATS, mapForMode, mountMuzzle, rayBody, seatPos, vehicleSpec, vehicleStep, type TankPose, type VehicleKind } from "@tentides/content";
+import { BOAT, HMG, JEEP, MOUNT, SEATS, isEmplacement, mapForMode, mountMuzzle, rayBody, seatPos, vehicleSpec, vehicleStep, type TankPose, type VehicleKind } from "@tentides/content";
 import { Messages, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -13,6 +13,7 @@ import { motorEngine, playRicochet, playTrackSnap } from "../sound/motors.ts";
 import { bodies, effects, getBattleHud, localBody, menuOpen, seat, setBattleHud } from "./runtime.ts";
 import { BULLET_GROUPS } from "./surface.ts";
 import { carrierHud, seatOwner, WreckFire } from "./vehicleParts.tsx";
+import { sampleTrack, vehicleTracks } from "../netInterp.ts";
 
 // Xe trinh sát bọc thép (4 ghế, đại liên trên thùng xe) và thuyền tuần tra (5 ghế, súng máy mũi): vẽ mô hình khối
 // thấp (cùng kiểu xe tăng), người ngồi trên ghế, đại liên xoay theo xạ thủ; hộp va chạm để người, đạn không xuyên.
@@ -196,6 +197,7 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
   const [wreck, setWreck] = useState(v.hp <= 0);
   const [color, setColor] = useState(teamColor(v.team));
   const anim = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY, turret: v.turret, pitch: v.pitch, tiltX: 0, tiltZ: 0, bounce: 0, roll: 0, px: v.x, pz: v.z, speed: 0 });
+  const interp = useRef({ x: v.x, y: v.y, z: v.z, rotY: v.rotY });
   const engine = useRef<ReturnType<typeof motorEngine> | null>(null);
 
   useEffect(() => {
@@ -222,9 +224,11 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
     const dt = Math.min(rawDt, 0.05);
     const a = anim.current;
     const mine = cdrive.vid === id;
-    // Xe mình đang ngồi: lấy tư thế bộ điều khiển đã tính (lái thì dự đoán, ngồi thì nội suy); xe khác nội suy.
-    const src = mine ? cdrive.pose : v;
-    const k = mine ? 1 : Math.min(1, dt * 10);
+    // Xe mình đang ngồi: lấy tư thế bộ điều khiển đã tính (lái thì dự đoán, ngồi thì nội suy); xe khác nội suy Hermite
+    // giữa các gói server (netInterp.ts), chưa có băng thì kéo dần về trạng thái mới nhất.
+    const smooth = !mine && sampleTrack(vehicleTracks, id, interp.current);
+    const src = mine ? cdrive.pose : smooth ? interp.current : v;
+    const k = mine || smooth ? 1 : Math.min(1, dt * 10);
     a.x += (src.x - a.x) * k;
     a.y += (src.y - a.y) * k;
     a.z += (src.z - a.z) * k;
@@ -384,7 +388,8 @@ export function CarrierSeat({ room }: { room: IslandRoom }) {
     const me = room.state.players.get(mid);
     const vid = me?.alive && me.vehicle ? me.vehicle : "";
     const v = vid ? room.state.vehicles.get(vid) : undefined;
-    if (!v || v.hp <= 0 || v.kind === "tank") {
+    // Xe tăng, vũ khí cố định có bộ điều khiển riêng (Vehicles.tsx, Emplacements.tsx).
+    if (!v || v.hp <= 0 || v.kind === "tank" || isEmplacement(v.kind)) {
       if (cdrive.vid) {
         // Vừa xuống xe (hay xe nổ): trả camera, FOV về cho nhân vật.
         cdrive.vid = "";
@@ -571,7 +576,7 @@ type Rapier = ReturnType<typeof useRapier>["rapier"];
  * Một phát đại liên: lệch chút trong nón toả, dò tường / xe bằng tia vật lý (bỏ qua xe mình), dò người máy mình đang
  * vẽ; gửi server kiểm tra lại, tự vẽ vệt đạn, lửa đầu nòng, tiếng súng của mình.
  */
-function fireMounted(room: IslandRoom, mz: { o: [number, number, number]; d: [number, number, number] }, skipOwn: (c: { parent(): { handle: number } | null }) => boolean, physics: Physics, rapier: Rapier) {
+export function fireMounted(room: IslandRoom, mz: { o: [number, number, number]; d: [number, number, number] }, skipOwn: (c: { parent(): { handle: number } | null }) => boolean, physics: Physics, rapier: Rapier) {
   const { right, up } = _tmp;
   const d = _ray.d.set(mz.d[0], mz.d[1], mz.d[2]);
   right.set(d.z, 0, -d.x).normalize();
@@ -634,6 +639,7 @@ export function useVehicleFx(room: IslandRoom) {
 
 /** Dòng nhắc lên xe chở quân: loại xe và ghế sẽ ngồi. */
 export function carrierPrompt(kind: string, seatIndex: number): string {
+  if (isEmplacement(kind)) return kind === "mortar" ? "Vào vị trí cối 82mm" : "Vào ổ đại liên";
   const k = kind === "boat" ? "boat" : "jeep";
   const what = k === "boat" ? "Lên thuyền" : "Lên xe trinh sát";
   return `${what} · ${SEATS[k].names[seatIndex] ?? ""}`;

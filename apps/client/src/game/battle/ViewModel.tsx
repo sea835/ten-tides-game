@@ -16,7 +16,7 @@ import {
   type Mesh,
   type PerspectiveCamera,
 } from "three";
-import { SIGHTS, WEAPON, type SightId } from "@tentides/content";
+import { SIGHTS, WEAPON, gadgetIn, type SightId } from "@tentides/content";
 import { myId, type IslandRoom } from "../../net.ts";
 import { camoTexture } from "../camo.ts";
 import { DRAW_ON_TOP_GLSL, GunModel, KnifeModel, MagModel, ThrowableModel, actionTravel, aimLineHeight, drawOnTop, ejectPort, hasMag, magCenter, muzzleOffset, opticHeight, railMount, supportOffset, viewMaterial } from "../GunModel.tsx";
@@ -24,7 +24,7 @@ import { view } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun } from "./Shooter.tsx";
 import { getSettings } from "../settings.ts";
-import { effects, eject, muzzle, recoil, stance } from "./runtime.ts";
+import { effects, eject, hitStopScale, muzzle, recoil, stance } from "./runtime.ts";
 
 // Súng trước mặt khi nhìn bằng mắt (góc thứ nhất): cầm thấp bên phải, lắc theo bước chân, trễ theo cú xoay chuột,
 // giật như lò xo khi bắn (báng lùi vào vai, nòng hất lên, lệch ngang, nghiêng), nhún khi đáp đất; ngắm thì nâng
@@ -117,7 +117,8 @@ function ramp(t: number, a: number, b: number): number {
   return k * k * (3 - 2 * k);
 }
 
-const THROWN_SLOTS = ["frag", "smoke", "flash", "mine"];
+const THROWN_SLOTS = ["frag", "smoke", "flash", "mine", "syringe", "binoculars", "ammobox", "sandbag", "repair", "atmine"];
+const slot0 = (s: string) => s === "gadget1" || s === "gadget2";
 const _v = new Vector3();
 const _w = new Vector3();
 
@@ -153,13 +154,17 @@ export function ViewModel({ room }: { room: IslandRoom }) {
     const p = st.players.get(myId(room));
     const k = p?.kit;
     if (!k || !p.alive) return "";
-    const slot = k.active;
+    // Khí tài lớp lính: M203 thì cầm súng trường chính (ống phóng dưới nòng); khí tài khác cầm như đồ ném.
+    const gadget = (slot0(k.active) && st.battleMode !== "solo" && gadgetIn(p.gear.cls, k.active)) || "";
+    const slot = gadget === "m203" ? "primary1" : k.active;
     const w = slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "";
     const sg = slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "";
-    const at = slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "";
+    let at = slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "";
+    // Lính Đột Kích: ống phóng lựu M203 lắp dưới nòng súng trường.
+    if (p.gear.cls === "assault" && st.battleMode !== "solo" && WEAPON.get(w)?.class === "ar") at = at ? `${at},m203` : "m203";
     // Skin súng đang lắp cho khẩu này (tài khoản), để súng trước mặt cũng mang skin.
     const sk = w ? (p.skins.get(w) ?? "") : "";
-    return `${slot}|${w}|${sg}|${k.outfit}|${at}|${sk}`;
+    return `${gadget && gadget !== "m203" ? gadget : slot}|${w}|${sg}|${k.outfit}|${at}|${sk}`;
   });
   const [slot = "", weapon = "", sightId = "", outfit = "woodland", atts = "", skin = ""] = held.split("|");
   const def = WEAPON.get(weapon);
@@ -173,7 +178,8 @@ export function ViewModel({ room }: { room: IslandRoom }) {
   useFrame(({ camera }, rawDt) => {
     const m = g.current;
     if (!m) return;
-    const dt = Math.min(rawDt, 0.05);
+    // Hitstop (phát hạ bằng súng khóa nòng): súng trên tay khựng lại một nhịp; camera vẫn theo chuột như thường.
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const st = s.current;
     const now = performance.now();
     const scoped = stance.aiming && stance.scoped;
@@ -441,7 +447,7 @@ export function ViewModel({ room }: { room: IslandRoom }) {
         </group>
         <group ref={throwG} visible={false}>
           {thrown && (
-            <group position={[0, 0.02, 0.02]}>
+            <group position={[0, 0.02, 0.02]} scale={thrown === "ammobox" ? 0.5 : thrown === "atmine" ? 0.7 : 1}>
               <ThrowableModel id={thrown} view />
             </group>
           )}

@@ -9,13 +9,15 @@ import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { WEAPON, withAttachments } from "@tentides/content";
+import { WEAPON, gadgetIn, isEmplacement, withAttachments } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
+import { replay, replayPose } from "./battle/replay.ts";
 import { physicsProbe } from "./battle/surface.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { localPosition } from "./shared.ts";
 import { playFootstep } from "./sound/guns.ts";
 import { FarSoldier } from "./battle/FarSoldier.tsx";
+import { playerTracks, sampleTrack, trackRoom } from "./netInterp.ts";
 
 /** Dấu đồng đội (chiến trường): hình thoi xanh sáng, không bị sương mù làm mờ. */
 const MATE_GEO = new OctahedronGeometry(0.16, 0);
@@ -40,6 +42,13 @@ function useBubble(playerId: string): string | null {
   return age < BUBBLE_MS ? last!.text : null;
 }
 
+/** Ngồi trong xe (không thấy thân, không bắn trúng được); xạ thủ vũ khí cố định (ổ đại liên, cối) thì lộ người ra ngoài. */
+function hiddenInVehicle(room: IslandRoom, player: PlayerState): boolean {
+  if (!player.vehicle) return false;
+  const v = room.state.vehicles.get(player.vehicle);
+  return !v || !isEmplacement(v.kind);
+}
+
 function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: string; player: PlayerState; carrying: boolean }) {
   const world = currentWorld(room);
   const battle = room.state.mode === "battle";
@@ -52,20 +61,32 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
   // Ngồi trong lõi đám cỏ cao là đang nấp: giấu bảng tên (bản đồ nhỏ cũng giấu chấm).
   const [pose, setPose] = useState<"stand" | "sit" | "hidden">("stand");
   const bubble = useBubble(id);
+  const interp = useMemo(() => ({ x: 0, y: 0, z: 0, rotY: 0 }), []);
 
   useFrame((_, dt) => {
     const g = root.current;
     if (!g) return;
-    // Nội suy về vị trí mới nhất từ server để chuyển động mượt dù chỉ nhận 15 gói/giây.
-    const t = Math.min(1, dt * 12);
-    g.position.x += (player.x - g.position.x) * t;
-    g.position.y += (player.y - g.position.y) * t;
-    g.position.z += (player.z - g.position.z) * t;
-    if (avatar.current) {
-      const current = avatar.current.rotation.y;
-      const diff = Math.atan2(Math.sin(player.rotY - current), Math.cos(player.rotY - current));
-      avatar.current.rotation.y = current + diff * t;
+    // Killcam đang chiếu: đứng đúng chỗ, đúng tư thế trong băng ghi (xem battle/replay.ts).
+    const rp = battle ? replayPose(id) : null;
+    if (!rp && sampleTrack(playerTracks, id, interp)) {
+      // Nội suy Hermite giữa các gói server, vẽ lùi một chút (netInterp.ts): mượt dù mạng rung.
+      g.position.set(interp.x, interp.y, interp.z);
+      if (avatar.current) avatar.current.rotation.y = interp.rotY;
+    } else {
+      // Chưa có băng (vừa vào): kéo dần về vị trí mới nhất.
+      const src = rp ?? player;
+      const t = replay.snap ? 1 : Math.min(1, dt * 12);
+      g.position.x += (src.x - g.position.x) * t;
+      g.position.y += (src.y - g.position.y) * t;
+      g.position.z += (src.z - g.position.z) * t;
+      if (avatar.current) {
+        const current = avatar.current.rotation.y;
+        const diff = Math.atan2(Math.sin(src.rotY - current), Math.cos(src.rotY - current));
+        avatar.current.rotation.y = current + diff * t;
+      }
     }
+    if (rp) g.visible = rp.alive;
+    else if (battle && replay.snap) g.visible = player.alive && !player.vehicle;
     if (player.connected !== connected) setConnected(player.connected);
     if (player.alive !== alive) setAlive(player.alive);
     if (player.held !== held) setHeld(player.held);
@@ -85,7 +106,7 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
       b.prone = player.prone;
       b.lean = player.lean;
       b.rotY = avatar.current ? avatar.current.rotation.y : player.rotY;
-      b.alive = player.alive && !player.vehicle;
+      b.alive = player.alive && !hiddenInVehicle(room, player);
       b.team = player.team;
     }
     if (nextPose !== pose) setPose(nextPose);
@@ -123,7 +144,7 @@ const DETAIL_FAR = 16;
 function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandRoom; id: string; player: PlayerState; root: RefObject<Group | null>; avatar: RefObject<Group | null>; alive: boolean }) {
   // Ở xa: hình người rút gọn; ngồi trong xe tăng: không vẽ người.
   const [far, setFar] = useState(false);
-  const [inTank, setInTank] = useState(!!player.vehicle);
+  const [inTank, setInTank] = useState(hiddenInVehicle(room, player));
   const [pose, setPose] = useState<"stand" | "crouch" | "prone">("stand");
   const shadow = useRef({ on: true, detail: true, at: 0 });
   const war = useRoomSnapshot(room, (s) => s.battleMode === "war");
@@ -133,13 +154,18 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
   });
   const look = useRoomSnapshot(room, () => {
     const k = player.kit;
-    const slot = k.active;
+    // Khí tài lớp lính: M203 thì cầm súng trường chính; khí tài khác cầm trên tay phải như đồ ném.
+    const gadget = room.state.battleMode !== "solo" && (k.active === "gadget1" || k.active === "gadget2") ? gadgetIn(player.gear.cls, k.active) : "";
+    const slot = gadget === "m203" ? "primary1" : k.active;
     const weapon = slot === "primary1" || slot === "primary2" || slot === "pistol" ? k[slot] : "";
+    let atts = slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "";
+    // Lính Đột Kích: ống phóng lựu M203 dưới nòng súng trường.
+    if (player.gear.cls === "assault" && room.state.battleMode !== "solo" && WEAPON.get(weapon)?.class === "ar") atts = atts ? `${atts},m203` : "m203";
     return {
       weapon,
-      atts: slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "",
+      atts,
       skin: weapon ? (player.skins.get(weapon) ?? "") : "",
-      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
+      sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "", throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : gadget && gadget !== "m203" ? gadget : "", knife: slot === "", outfit: k.outfit, armor: k.armor, helmet: k.helmet };
   });
   // Súng người khác chạm tường: dò tia từ ngực theo hướng họ ngắm (vài lần mỗi giây, chỉ khi ở gần).
   const wall = useRef({ value: 0, at: 0 });
@@ -164,6 +190,7 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       }
       m.wall = w.value;
       m.speed = speedNow.current;
+      const src = replayPose(id) ?? player;
       const an = anim.current;
       const k = player.kit;
       const def = WEAPON.get(look.weapon);
@@ -178,19 +205,19 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
       }
       const sk = Math.min(1, (now - an.swapAt) / 500);
       m.swap = 1 - sk * sk * (3 - 2 * sk);
-      m.moving = player.moving;
+      m.moving = src.moving;
       m.swimming = player.swimming;
-      m.crouching = player.crouching;
-      m.prone = player.prone;
-      m.aiming = player.aiming;
-      m.aimPitch = player.aimPitch;
-      m.lean = player.lean;
-      m.firing = player.shots;
+      m.crouching = src.crouching;
+      m.prone = src.prone;
+      m.aiming = src.aiming;
+      m.aimPitch = src.aimPitch;
+      m.lean = src.lean;
+      m.firing = src.shots;
       m.act = player.act;
       m.actN = player.actN;
       return m;
     };
-  }, [player, look.weapon]);
+  }, [player, look.weapon, id]);
   // Tiếng bước chân: nhịp theo tốc độ đi thật (đo từ vị trí), mặt đất bê tông hay cỏ; ngồi xổm thì rón rén.
   const steps = useRef({ acc: 0, x: player.x, z: player.z });
   // Tốc độ thật (đo từ vị trí đang vẽ, làm mượt) để chân bước khớp tốc độ, không lướt.
@@ -223,7 +250,8 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
         }
       }
     }
-    if (!!player.vehicle !== inTank) setInTank(!!player.vehicle);
+    const hidden = hiddenInVehicle(room, player);
+    if (hidden !== inTank) setInTank(hidden);
     const nextPose = player.prone ? "prone" : player.crouching ? "crouch" : "stand";
     if (nextPose !== pose) setPose(nextPose);
     if (r && dt > 0) {
@@ -274,6 +302,8 @@ export function RemotePlayers({ room }: { room: IslandRoom }) {
   const [others, setOthers] = useState<[string, PlayerState][]>([]);
   const carrier = useRoomSnapshot(room, (s) => (s.treasureSafe ? "" : s.treasureCarrier));
 
+  // Ghi băng vị trí từng gói server để nội suy (netInterp.ts).
+  useEffect(() => trackRoom(room), [room]);
   useEffect(() => {
     const callbacks = Callbacks.get(room);
     const refresh = () =>

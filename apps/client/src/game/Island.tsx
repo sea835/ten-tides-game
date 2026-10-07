@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { CuboidCollider, CylinderCollider, RigidBody, TrimeshCollider } from "@react-three/rapier";
+import { CuboidCollider, CylinderCollider, HeightfieldCollider, RigidBody } from "@react-three/rapier";
 import {
   BoxGeometry,
   BufferAttribute,
@@ -36,23 +36,11 @@ import { detailed } from "./textures.ts";
 import { GrassField } from "./Grass.tsx";
 import { Flame } from "./Flame.tsx";
 import { useProfile } from "./graphics.ts";
+import { FINE, terrainField, terrainGrids, type TerrainGrid } from "./terrainField.ts";
 
 // ---------------------------------------------------------------------------
 // Địa hình
 // ---------------------------------------------------------------------------
-
-/** Địa hình chia thành từng ô vuông cạnh chừng này mét (để camera cắt bớt phần ngoài tầm nhìn). */
-const CHUNK = 48;
-/** Độ mịn: ô có đất liền hay đáy nông thì 2 m một đỉnh; ô toàn biển sâu thì 6 m (6 chia hết cho 2 nên mép khớp nhau). */
-const FINE = 2;
-const COARSE = 6;
-/**
- * Cạnh (theo số ô CHUNK) của mỗi khối va chạm. Ô vẽ vẫn giữ nguyên 48 m để cắt bớt phần ngoài
- * tầm nhìn, nhưng ô va chạm gộp lại: 100 `TrimeshCollider` riêng lẻ nghĩa là 100 cây BVH cùng
- * bước trong `world.step()` mỗi khung hình. Gộp theo khối 3×3 ô (144 m) còn 16 collider mà
- * hình học va chạm giống hệt.
- */
-const COLLIDER_BLOCK = 3;
 
 const C = {
   deepBed: new Color("#1d4f5a"),
@@ -175,147 +163,52 @@ function splatAt(world: World, x: number, z: number, h: number, slope: number): 
 
 interface TerrainChunk {
   geometry: BufferGeometry;
-  colliderVertices: Float32Array;
-  colliderIndices: Uint32Array;
-  /** Toạ độ ô (theo lưới CHUNK) để gom về khối va chạm. */
-  cx: number;
-  cz: number;
-}
-
-/** Một khối va chạm gồm nhiều ô: đỉnh và tam giác đã nối lại thành một lưới. */
-interface TerrainCollider {
-  vertices: Float32Array;
-  indices: Uint32Array;
 }
 
 /**
- * Dựng địa hình từ world.heightAt() theo từng ô: ô có đất hay đáy nông dùng lưới mịn, ô toàn biển sâu dùng lưới thưa.
- * Mép ô mịn giáp ô thưa được nắn thẳng theo ô thưa để không hở khe. Mỗi ô dùng chung một lưới cho va chạm
- * và cho hình vẽ; màu, pháp tuyến và trọng số vân tính theo đỉnh nên mặt đất chuyển mượt.
+ * Dựng hình vẽ địa hình từ lưới độ cao của từng ô (terrainField.ts: ô có đất hay đáy nông dùng lưới mịn,
+ * ô toàn biển sâu dùng lưới thưa). Màu, pháp tuyến và trọng số vân tính theo đỉnh nên mặt đất chuyển mượt.
  */
-function buildTerrain(world: World): TerrainChunk[] {
-  const half = world.half ?? MAP_HALF_SIZE;
-  const count = Math.round((half * 2) / CHUNK);
-  const origin = -half;
-  // Ô nào toàn biển sâu (lấy mẫu dày theo lưới thưa, cả mép).
-  const coarse: boolean[][] = [];
-  for (let cx = 0; cx < count; cx++) {
-    coarse.push([]);
-    for (let cz = 0; cz < count; cz++) {
-      let deep = true;
-      for (let i = 0; i <= CHUNK / FINE && deep; i += 1) {
-        for (let j = 0; j <= CHUNK / FINE && deep; j += 1) {
-          if (world.heightAt(origin + cx * CHUNK + i * FINE, origin + cz * CHUNK + j * FINE) > -7) deep = false;
-        }
-      }
-      coarse[cx]!.push(deep);
-    }
-  }
-  const isCoarse = (cx: number, cz: number) => cx >= 0 && cz >= 0 && cx < count && cz < count && coarse[cx]![cz]!;
-
+function buildTerrain(world: World, grids: readonly TerrainGrid[]): TerrainChunk[] {
   const chunks: TerrainChunk[] = [];
   const tint = new Color();
-  for (let cx = 0; cx < count; cx++) {
-    for (let cz = 0; cz < count; cz++) {
-      const step = coarse[cx]![cz] ? COARSE : FINE;
-      const cells = CHUNK / step;
-      const x0 = origin + cx * CHUNK;
-      const z0 = origin + cz * CHUNK;
-      const verts = new Float32Array((cells + 1) * (cells + 1) * 3);
-      const heightOn = (x: number, z: number) => world.heightAt(x, z);
-      for (let j = 0; j <= cells; j++) {
-        for (let i = 0; i <= cells; i++) {
-          const x = x0 + i * step;
-          const z = z0 + j * step;
-          let y = heightOn(x, z);
-          // Mép giáp ô thưa: lấy nội suy giữa hai đỉnh của ô thưa để hai bên khớp nhau.
-          if (step === FINE) {
-            const snap = (t: number, a: [number, number], b: [number, number]) => {
-              const k = (t % COARSE) / COARSE;
-              return k === 0 ? heightOn(...a) : heightOn(...a) * (1 - k) + heightOn(...b) * k;
-            };
-            const tx = i * FINE;
-            const tz = j * FINE;
-            const floorX = x0 + Math.floor(tx / COARSE) * COARSE;
-            const floorZ = z0 + Math.floor(tz / COARSE) * COARSE;
-            if ((i === 0 && isCoarse(cx - 1, cz)) || (i === cells && isCoarse(cx + 1, cz))) y = snap(tz, [x, floorZ], [x, floorZ + COARSE]);
-            else if ((j === 0 && isCoarse(cx, cz - 1)) || (j === cells && isCoarse(cx, cz + 1))) y = snap(tx, [floorX, z], [floorX + COARSE, z]);
-          }
-          verts.set([x, y, z], (j * (cells + 1) + i) * 3);
-        }
-      }
-      const indices = new Uint32Array(cells * cells * 6);
-      let k = 0;
-      for (let j = 0; j < cells; j++) {
-        for (let i = 0; i < cells; i++) {
-          const a = j * (cells + 1) + i;
-          const b = a + 1;
-          const c = a + (cells + 1);
-          const d = c + 1;
-          indices.set([a, c, b, b, c, d], k);
-          k += 6;
-        }
-      }
-      // Lưới dùng chung đỉnh: pháp tuyến và màu nội suy mượt giữa các đỉnh (không còn tô phẳng từng mặt).
-      const grid = new BufferGeometry();
-      grid.setAttribute("position", new BufferAttribute(verts, 3));
-      grid.setIndex(new BufferAttribute(indices, 1));
-      const count = (cells + 1) * (cells + 1);
-      const normals = new Float32Array(count * 3);
-      const colors = new Float32Array(count * 3);
-      const splat = new Float32Array(count * 4);
-      const e = FINE;
-      for (let v = 0; v < count; v++) {
-        const x = verts[v * 3]!;
-        const y = verts[v * 3 + 1]!;
-        const z = verts[v * 3 + 2]!;
-        // Pháp tuyến tính thẳng từ độ cao thế giới nên hai ô cạnh nhau khớp nhau, không lộ đường nối.
-        const nx = heightOn(x - e, z) - heightOn(x + e, z);
-        const nz = heightOn(x, z - e) - heightOn(x, z + e);
-        const len = Math.hypot(nx, 2 * e, nz);
-        normals[v * 3] = nx / len;
-        normals[v * 3 + 1] = (2 * e) / len;
-        normals[v * 3 + 2] = nz / len;
-        const slope = 1 - (2 * e) / len;
-        faceColor(world, tint, x, z, y, slope);
-        // Lệch màu rất nhẹ theo chỗ, cho đỡ phẳng lì.
-        tint.multiplyScalar(0.96 + 0.06 * grain(x, z));
-        tint.toArray(colors, v * 3);
-        splat.set(splatAt(world, x, z, y, slope), v * 4);
-      }
-      grid.setAttribute("normal", new BufferAttribute(normals, 3));
-      grid.setAttribute("color", new BufferAttribute(colors, 3));
-      grid.setAttribute("splat", new BufferAttribute(splat, 4));
-      grid.userData.smooth = true;
-      grid.computeBoundingSphere();
-      chunks.push({ geometry: grid, colliderVertices: verts, colliderIndices: indices, cx, cz });
+  const heightOn = (x: number, z: number) => world.heightAt(x, z);
+  for (const { verts, indices, cells } of grids) {
+    // Lưới dùng chung đỉnh: pháp tuyến và màu nội suy mượt giữa các đỉnh (không còn tô phẳng từng mặt).
+    const grid = new BufferGeometry();
+    grid.setAttribute("position", new BufferAttribute(verts, 3));
+    grid.setIndex(new BufferAttribute(indices, 1));
+    const count = (cells + 1) * (cells + 1);
+    const normals = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const splat = new Float32Array(count * 4);
+    const e = FINE;
+    for (let v = 0; v < count; v++) {
+      const x = verts[v * 3]!;
+      const y = verts[v * 3 + 1]!;
+      const z = verts[v * 3 + 2]!;
+      // Pháp tuyến tính thẳng từ độ cao thế giới nên hai ô cạnh nhau khớp nhau, không lộ đường nối.
+      const nx = heightOn(x - e, z) - heightOn(x + e, z);
+      const nz = heightOn(x, z - e) - heightOn(x, z + e);
+      const len = Math.hypot(nx, 2 * e, nz);
+      normals[v * 3] = nx / len;
+      normals[v * 3 + 1] = (2 * e) / len;
+      normals[v * 3 + 2] = nz / len;
+      const slope = 1 - (2 * e) / len;
+      faceColor(world, tint, x, z, y, slope);
+      // Lệch màu rất nhẹ theo chỗ, cho đỡ phẳng lì.
+      tint.multiplyScalar(0.96 + 0.06 * grain(x, z));
+      tint.toArray(colors, v * 3);
+      splat.set(splatAt(world, x, z, y, slope), v * 4);
     }
+    grid.setAttribute("normal", new BufferAttribute(normals, 3));
+    grid.setAttribute("color", new BufferAttribute(colors, 3));
+    grid.setAttribute("splat", new BufferAttribute(splat, 4));
+    grid.userData.smooth = true;
+    grid.computeBoundingSphere();
+    chunks.push({ geometry: grid });
   }
   return chunks;
-}
-
-/**
- * Gộp đỉnh/tam giác của các ô cạnh nhau thành vài khối lớn hơn để va chạm.
- * Mỗi `TrimeshCollider` là một cây BVH riêng được duyệt mỗi bước vật lý; 100 cây (một cây mỗi
- * ô 48 m) tốn nhiều hơn 16 cây (mỗi khối 3×3 ô) trong khi hình học va chạm hoàn toàn giống nhau.
- */
-function buildTerrainColliders(chunks: TerrainChunk[], count: number): TerrainCollider[] {
-  const blocks = Math.ceil(count / COLLIDER_BLOCK);
-  const out: (TerrainCollider & { v: number[]; i: number[]; base: number })[] = [];
-  for (let bx = 0; bx < blocks; bx++) {
-    for (let bz = 0; bz < blocks; bz++) out.push({ vertices: new Float32Array(0), indices: new Uint32Array(0), v: [], i: [], base: 0 });
-  }
-  for (const c of chunks) {
-    const b = out[Math.floor(c.cx / COLLIDER_BLOCK) * blocks + Math.floor(c.cz / COLLIDER_BLOCK)]!;
-    b.base = b.v.length / 3;
-    for (let n = 0; n < c.colliderVertices.length; n++) b.v.push(c.colliderVertices[n]!);
-    for (let n = 0; n < c.colliderIndices.length; n++) b.i.push(c.colliderIndices[n]! + b.base);
-  }
-  for (const b of out) {
-    b.vertices = Float32Array.from(b.v);
-    b.indices = Uint32Array.from(b.i);
-  }
-  return out;
 }
 
 /**
@@ -397,11 +290,12 @@ const LANDMARK_ANCHORS = new Set(["shipwreck", "jungle_ruin", "cliff_nest", "hot
 
 export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   const clearings = useMemo(() => grassClearings(room, world), [room, world]);
-  const chunks = useMemo(() => buildTerrain(world), [world]);
+  const grids = useMemo(() => terrainGrids(world), [world]);
+  const chunks = useMemo(() => buildTerrain(world, grids), [world, grids]);
   const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
-  // 100 ô vẽ (mỗi ô một draw call, cắt bớt phần ngoài tầm nhìn) nhưng chỉ ~16 collider.
-  // Số ô theo cạnh bản đồ đang dựng (bản đồ chiến trường rộng hơn MAP_HALF_SIZE).
-  const colliders = useMemo(() => buildTerrainColliders(chunks, Math.round(((world.half ?? MAP_HALF_SIZE) * 2) / CHUNK)), [chunks, world]);
+  // 100 ô vẽ (mỗi ô một draw call, cắt bớt phần ngoài tầm nhìn) nhưng va chạm chỉ một heightfield phủ cả bản đồ
+  // (bản đồ chiến trường rộng hơn MAP_HALF_SIZE): dựng ~1 ms thay vì ~130 ms cho 25 trimesh 212 000 tam giác.
+  const field = useMemo(() => terrainField(grids, world.half ?? MAP_HALF_SIZE), [grids, world]);
   // Số lá cỏ do mức chất lượng quyết định (0 ở "low"): mỗi bụi là một vòng lặp 32 phép tính trên
   // vertex, 100 000 bụi là khoảng 22 triệu phép tính mỗi khung hình.
   const grass = useProfile().grass;
@@ -416,9 +310,7 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   useEffect(() => () => chunks.forEach((c) => c.geometry.dispose()), [chunks]);
   return (
     <RigidBody type="fixed" colliders={false}>
-      {colliders.map((c, i) => (
-        <TrimeshCollider key={`col${i}`} args={[c.vertices, c.indices]} />
-      ))}
+      <HeightfieldCollider args={[field.nrows, field.ncols, field.heights as unknown as number[], field.scale]} />
       {chunks.map((c, i) => (
         <mesh key={i} geometry={c.geometry} material={material} receiveShadow />
       ))}

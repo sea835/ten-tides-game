@@ -1,6 +1,34 @@
-# TEN TIDES
+# TEN TIDES: FRONTLINE
 
-Game co-op 3D sống sót 10 ngày trên đảo, chạy trên trình duyệt. Mô tả thiết kế đầy đủ ở [PROJECT.md](PROJECT.md).
+Game bắn súng chiến trường 3D chạy trên trình duyệt: Đại Chiến 50v50 chiếm cứ điểm A–G, Chỉ Huy Tiểu Đội (dẫn 5 lính AI)
+và Sinh Tồn Sa Trường (battle royale). Không cần cài đặt, mọi âm thanh tổng hợp bằng Web Audio, công trình phá huỷ được.
+Chế độ co-op sinh tồn 10 ngày cũ đã được **lưu trữ** (ẩn khỏi sảnh, mã vẫn giữ nguyên, mở bằng `?survival=1`); mô tả
+thiết kế cũ ở [PROJECT.md](PROJECT.md), phần mô tả cũ của nó ở cuối mục này.
+
+### Frontline: những gì đã có
+
+- **Sảnh tác chiến**: ba chế độ, chủ phòng chỉnh quân số 10–100, thời tiết (nắng, mưa bão, sương mù, tuyết, ban đêm),
+  số vé 150–500, bật/tắt xe cơ giới; chọn phe, chọn lớp lính; nút **Kho Quân Nhu (Gunsmith)**.
+- **4 lớp lính**: Đột Kích (bơm tiêm adrenaline, phóng lựu M203), Bắn Tỉa (ghillie, ống nhòm đánh dấu địch cho cả đội
+  15 s), Quân Nhu (hòm tiếp đạn, bao cát cơ động), Kỹ Thuật (mỏ lết sửa xe, mìn chống tăng). Phím **0** lấy khí tài
+  (bấm lại đổi món), chuột trái dùng, chuột phải ngắm ống nhòm / M203.
+- **Khí tài**: xe tăng (giáp trước / hông / đuôi, đứt xích, xác xe cháy chặn đạn), xe jeep 4 chỗ có đại liên, thuyền
+  tuần tra 5 chỗ, ổ đại liên cố định, pháo cối 82 mm (thước cự ly, điểm rơi dự đoán). **F** lên / xuống, **1–5** đổi ghế.
+- **Bản đồ 50v50**: sông chảy giữa bản đồ (cầu ở E, cầu trong thị trấn, hai chỗ lội), 7 cứ điểm theo kế hoạch, hồi sinh
+  ở căn cứ, cứ điểm phe mình hay cạnh đội trưởng; giữ hơn 4/7 cứ điểm thì đối phương mất 1 vé mỗi 3 giây.
+- **Bắn súng**: thông số theo bảng đạn đạo, S1897, DP-28, RPG tăng tốc, xuyên vách theo cỡ đạn và vật liệu, đạn nảy
+  trên kim loại, chân chống, hộp đạn kép; tường vỡ, nhà sập, cây gãy; máu bắn tung toé.
+- **Giao tiếp**: chuột giữa đánh dấu (bấm đúp: nguy hiểm), giữ **`** mở vòng khẩu lệnh radio, voice chat theo khoảng
+  cách (giữ **L** nói, giữ **U** bộ đàm đội), ở chế độ Tiểu Đội gục thì **1–5** nhập vào lính còn sống.
+- **Sau khi gục**: killcam 5 giây từ góc kẻ bắn (Space bỏ qua), xem trận (Q/E đổi người, Space bay tự do); hết trận có
+  bảng vinh danh MVP (hạ gục, chiếm cứ điểm, hỗ trợ).
+- **Tiến trình**: 30 cấp quân hàm (Binh Nhì → Đại Tướng) theo XP, skin rằn ri và huyền thoại, thẻ tên, huy hiệu,
+  Gunsmith 3D lưu bộ phụ kiện và skin theo súng (cần tài khoản, PostgreSQL).
+- **Đồ hoạ, âm thanh**: biển stylized có bọt sóng ven bờ, bom khói dày, vụ nổ có cột khói đen, ánh chớp đầu nòng, sấm
+  chớp, tuyết đọng; tiếng nổ siêu thanh, đạn rít sát tai, tiếng vọng theo địa hình, ù tai khi nổ gần.
+- **Mạng**: tải lại trang (F5) hay rớt mạng dưới 45 giây thì vào lại đúng trận, đúng phe, đúng súng.
+
+### Chế độ sinh tồn (đã lưu trữ)
 
 Hiện tại: **graybox giai đoạn 1** với phần lớn tính năng của MVP.
 

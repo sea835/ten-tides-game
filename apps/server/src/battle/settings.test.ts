@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { isEmplacement } from "@tentides/content";
 import { BattleSettingsMessage, IslandState, PlayerState, WAR_TICKETS_MAX, WAR_TICKETS_MIN } from "@tentides/protocol";
 import { BattleRoom } from "./BattleRoom.ts";
 import { Bots } from "./bots.ts";
 import { Vehicles } from "./vehicles.ts";
 import { War } from "./war.ts";
 import { applyBattleSettings, clampBots, clampTickets, convertBots } from "./settings.ts";
+
+/** Số xe cơ giới (bỏ qua vũ khí cố định — ổ đại liên, cối — luôn có dù tắt xe). */
+const motorized = (room: BattleRoom) => [...room.state.vehicles.values()].filter((v) => !isEmplacement(v.kind)).length;
 
 function makeRoom(mode: "solo" | "squad" | "war", setup: (s: IslandState) => void) {
   const room = new BattleRoom();
@@ -82,13 +86,13 @@ describe("cài đặt phòng: vào trận", () => {
     });
     expect(room.state.ticketsBlue).toBe(420);
     expect(room.state.ticketsRed).toBe(420);
-    expect(room.state.vehicles.size).toBe(0);
+    expect(motorized(room)).toBe(0);
     expect([...room.state.players.values()].some((p) => p.role === "tanker")).toBe(false);
     // Hết giờ hồi xe tăng cũng không có xe mới.
     (room as unknown as { beginBattle: () => void }).beginBattle();
     const r = room as unknown as { tick: (dt: number) => void };
     for (let k = 0; k < 20 * 60; k++) r.tick(0.05);
-    expect(room.state.vehicles.size).toBe(0);
+    expect(motorized(room)).toBe(0);
   });
 
   it("bật xe thì chiến trường vẫn có xe tăng như cũ", () => {
@@ -104,7 +108,7 @@ describe("cài đặt phòng: vào trận", () => {
       s.bots = 10;
       s.settings.vehiclesEnabled = false;
     });
-    expect(room.state.vehicles.size).toBe(0);
+    expect(motorized(room)).toBe(0);
     expect([...room.state.players.values()].some((p) => p.role === "tanker")).toBe(false);
   });
 

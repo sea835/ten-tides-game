@@ -8,6 +8,7 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { getBattleHud, setBattleHud, useBattleHud } from "./runtime.ts";
 import { tankHud } from "./Vehicles.tsx";
 import { CarrierHud } from "./CarrierHud.tsx";
+import { EmplacementHud } from "./EmplacementHud.tsx";
 import { carrierPrompt } from "./Carriers.tsx";
 import { carrierHud, nearInfo } from "./vehicleParts.tsx";
 import { RADIO_KEY_LABEL, emptyTankAlong } from "./comms.ts";
@@ -267,6 +268,7 @@ export function TankHud() {
   return (
     <>
     <CarrierHud />
+    <EmplacementHud />
     <div ref={root} className="b-tank" style={{ display: "none" }}>
       <div className="b-tank-cross" />
       <div ref={ring} className="b-tank-ring" />

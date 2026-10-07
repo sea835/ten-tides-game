@@ -27,8 +27,8 @@ import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { LEAN, PRONE_SPEED, PRONE_TIME, WEAPON } from "@tentides/content";
-import { bodies, getBattleHud, hitStopScale, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
+import { ADRENALINE, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
+import { bodies, getBattleHud, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
 import { gun, gun as shooterGun } from "./battle/runtime.ts";
 import { playLand } from "./sound/guns.ts";
@@ -425,7 +425,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const col = collider.current;
     const controller = controllerRef.current;
     if (!rb || !col || !controller) return;
-    const dt = Math.min(rawDt, 0.05) * hitStopScale();
+    // Không nhân hitstop: khựng hình chỉ áp cho hình ảnh, di chuyển của mình mà khựng thì giống lag.
+    const dt = Math.min(rawDt, 0.05);
     const s = sim.current;
     // Đang lái xe tăng: thân đi theo xe, ẩn nhân vật; camera, điều khiển do Vehicles lo.
     if (seat.id) {
@@ -540,7 +541,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const baseSpeed = s.swimming ? (running ? SWIM_SPRINT_SPEED : SWIM_SPEED) : landSpeed;
     if (s.swimming) s.hop = 0;
     if (battle) s.hop = Math.min(s.hop, 0.3);
-    const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
+    // Bơm Adrenaline (lính Đột Kích): chạy nhanh hơn một phần tư trong lúc thuốc còn tác dụng (server nới mức kiểm tra).
+    const adrenaline = battle && !s.swimming && (sheet?.gear?.boost ?? 0) > 0 ? ADRENALINE.speed : 1;
+    const speed = Math.min(TOP_SPEED, baseSpeed * (1 + s.hop)) * adrenaline * (sheet?.overweight ? OVERWEIGHT_SPEED : 1);
 
     // Hướng "tới" là hướng camera đang nhìn, chiếu xuống mặt phẳng ngang.
     // Chóng mặt thì đi loạng choạng: hướng đi bị lệch qua lệch lại.
@@ -1271,16 +1274,21 @@ function BattleLook({ room, children }: { room: IslandRoom; children: (look: { w
   const look = useRoomSnapshot(room, (s) => {
     const k = s.players.get(myId(room))?.kit;
     if (!k) return { weapon: "", sight: "", atts: "", skin: "", throwable: "", knife: false, outfit: "woodland", armor: 0, helmet: 0 };
-    const slot = k.active;
+    const me = s.players.get(myId(room));
+    // Khí tài lớp lính: M203 thì cầm súng trường chính (ống phóng dưới nòng), khí tài khác cầm như đồ ném.
+    const cls = s.battleMode !== "solo" ? (me?.gear.cls ?? "") : "";
+    const gadget = k.active === "gadget1" || k.active === "gadget2" ? gadgetIn(cls, k.active) : "";
+    const slot = gadget === "m203" ? "primary1" : k.active;
     const gunSlot = slot === "primary1" || slot === "primary2" || slot === "pistol";
     const weapon = gunSlot ? k[slot] : "";
-    const me = s.players.get(myId(room));
+    let atts = slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "";
+    if (cls === "assault" && WEAPON.get(weapon)?.class === "ar") atts = atts ? `${atts},m203` : "m203";
     return {
       weapon,
       sight: slot === "primary1" ? k.sight1 : slot === "primary2" ? k.sight2 : slot === "pistol" ? k.sightP : "",
-      atts: slot === "primary1" ? k.att1 : slot === "primary2" ? k.att2 : slot === "pistol" ? k.attP : "",
+      atts,
       skin: weapon ? (me?.skins.get(weapon) ?? "") : "",
-      throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : "",
+      throwable: ["frag", "smoke", "flash", "mine"].includes(slot) ? slot : gadget && gadget !== "m203" ? gadget : "",
       knife: slot === "",
       outfit: k.outfit,
       armor: k.armor,

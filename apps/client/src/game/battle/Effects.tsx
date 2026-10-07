@@ -29,8 +29,9 @@ import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMine
 import { closestApproach, flybyTiming, type Approach } from "../sound/acoustics.ts";
 import { setAcousticMap } from "../sound/environment.ts";
 import { mapForMode } from "@tentides/content";
-import { WEAPON } from "@tentides/content";
-import { bodies, effects, getBattleHud, setBattleHud, stance } from "./runtime.ts";
+import { M203, WEAPON } from "@tentides/content";
+import { playLauncher } from "../sound/gadgets.ts";
+import { bodies, effects, getBattleHud, hitStopScale, setBattleHud, stance } from "./runtime.ts";
 import { BulletHoles } from "./Decals.tsx";
 import { Casings } from "./Casings.tsx";
 import { Blood, sprayBlood } from "./Blood.tsx";
@@ -40,6 +41,7 @@ import { windStrength } from "../nature.ts";
 import { forEachSmoke, SmokeShells } from "./SmokeShell.tsx";
 import { Debris, spawnDebris } from "./Debris.tsx";
 import { MuzzleLights } from "./MuzzleLights.tsx";
+import { LootModel } from "../GunModel.tsx";
 
 // Hiệu ứng của trận đấu: tường vùng an toàn (màn xanh cao vút, vân chạy), vòng kế tiếp vẽ trên mặt đất,
 // bom khói (khối khói đặc hình vòm che kín tầm nhìn — SmokeShell.tsx — cộng hàng chục cụm khói mềm cuộn quanh mép),
@@ -91,7 +93,9 @@ function ZoneWall({ room }: { room: IslandRoom }) {
     const z = room.state.zone;
     const m = wall.current;
     if (!m) return;
-    const on = room.state.phase === "battle" && z.r > 0.5;
+    // Chiến trường không có vùng bo (server đặt bán kính 2000 m phủ cả bản đồ): không vẽ tường. Trước đây tường
+    // vẫn vẽ, bị ép về mặt phẳng xa nên thành mấy vệt sọc ngang tối ở tầm xa.
+    const on = room.state.phase === "battle" && room.state.battleMode !== "war" && z.r > 0.5 && z.r < 1000;
     m.visible = on;
     m.position.set(z.x, -20, z.z);
     m.scale.set(z.r, 160, z.r);
@@ -234,7 +238,7 @@ function Puffs() {
     [],
   );
   useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const m = mesh.current;
     if (!m) return;
     // Gió thổi khói nổ, khói đạn trôi đi (bão thì trôi nhanh). Khói của bom khói đứng yên tại chỗ để khớp với
@@ -507,7 +511,7 @@ function Blasts() {
   const sparkGeo = useMemo(() => new PlaneGeometry(1, 1), []);
   const seen = useRef(new WeakSet<object>());
   useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const now = performance.now() / 1000;
     let brightest = 0;
     let n = 0;
@@ -669,7 +673,7 @@ const plumes: Plume[] = [];
 
 function Plumes() {
   useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05) * hitStopScale();
     const now = performance.now() / 1000;
     for (let i = plumes.length - 1; i >= 0; i--) {
       const p = plumes[i]!;
@@ -1018,6 +1022,16 @@ function useShots(room: IslandRoom) {
         if (m.id !== myId(room)) playCannon({ x: ox, y: oy, z: oz }, false);
         return;
       }
+      if (m.w === "m203") {
+        // Phóng lựu M203 (lính Đột Kích): quả 40 mm bay chậm theo đường cong, tiếng "bụp" trầm (nổ do tin "boom" lo).
+        const [ex, ey, ez] = m.e[0] ?? m.o;
+        effects.tracers.push({ ox, oy, oz, ex, ey, ez, born: now, mine: m.id === myId(room), speed: M203.velocity, trail: "shell" });
+        if (m.id !== myId(room)) {
+          effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
+          playLauncher({ x: ox, y: oy, z: oz });
+        }
+        return;
+      }
       const launcher = WEAPON.get(m.w);
       if (launcher?.explosive) {
         // RPG: quả đạn có lửa đuôi và vệt khói dài; khói phụt ngược ra sau ống phóng.
@@ -1152,10 +1166,10 @@ function Grenade({ p }: { p: ProjectileState }) {
 }
 
 function MyMines({ room }: { room: IslandRoom }) {
-  const [mines, setMines] = useState<{ x: number; y: number; z: number }[]>([]);
+  const [mines, setMines] = useState<{ x: number; y: number; z: number; at?: boolean }[]>([]);
   useEffect(
     () =>
-      room.onMessage(Messages.myMines, (list: { x: number; y: number; z: number }[]) => {
+      room.onMessage(Messages.myMines, (list: { x: number; y: number; z: number; at?: boolean }[]) => {
         setMines(list);
         setBattleHud({ myMines: list });
       }),
@@ -1164,7 +1178,13 @@ function MyMines({ room }: { room: IslandRoom }) {
   void getBattleHud;
   return (
     <>
-      {mines.map((m, i) => (
+      {mines.map((m, i) =>
+        m.at ? (
+          // Mìn chống tăng (lính Kỹ Thuật): đĩa to, chỉ mình thấy.
+          <group key={i} position={[m.x, m.y - 0.02, m.z]}>
+            <LootModel id="atmine" />
+          </group>
+        ) : (
         <group key={i} position={[m.x, m.y + 0.03, m.z]}>
           <mesh castShadow>
             <cylinderGeometry args={[0.16, 0.18, 0.07, 16]} />
@@ -1175,7 +1195,8 @@ function MyMines({ room }: { room: IslandRoom }) {
             <meshBasicMaterial color="#ff3020" toneMapped={false} />
           </mesh>
         </group>
-      ))}
+        ),
+      )}
     </>
   );
 }

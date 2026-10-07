@@ -11,6 +11,8 @@ import { armband, bedroll, belt, body as bodyShapes, chestRig, pack, rucksack, t
 import { beardGeometry, face, hairGeometry } from "./character/head.ts";
 import { looks } from "./character/looks.ts";
 import { withRim } from "./character/rim.ts";
+import { withRelief } from "./character/relief.ts";
+import { BeltDangles, GunSling, HeadRig, TorsoDangles } from "./character/accessories.tsx";
 
 export interface Motion {
   moving: boolean;
@@ -126,7 +128,7 @@ function camoMat(outfit: string, tint: string, opacity: number): MeshStandardMat
   const key = `camo|${outfit}|${tint}|${opacity}`;
   let m = mats.get(key);
   if (!m) {
-    m = withRim(new MeshStandardMaterial({ color: tint, map: camoTexture(outfit), roughness: 0.92, transparent: opacity < 1, opacity }), outfit === "ghillie" ? 0.3 : 1);
+    m = withRelief(withRim(new MeshStandardMaterial({ color: tint, map: camoTexture(outfit), roughness: 0.92, transparent: opacity < 1, opacity }), outfit === "ghillie" ? 0.3 : 1), "wrinkle");
     mats.set(key, m);
   }
   return m;
@@ -138,6 +140,8 @@ function fabricMat(kind: FabricKind, color: string, opacity: number, rough = 0.9
   let m = mats.get(key);
   if (!m) {
     m = withRim(new MeshStandardMaterial({ color, map: fabricTexture(kind), roughness: rough, transparent: opacity < 1, opacity }));
+    // Vải (không phải da thuộc): nếp nhăn tự nhiên.
+    if (kind !== "leather") withRelief(m, "wrinkle", 0.8);
     mats.set(key, m);
   }
   return m;
@@ -820,7 +824,8 @@ export function Character({
               </group>
             )}
             {right && throwable && !gunId && (
-              <group position={[0, -0.085, 0.02]}>
+              // Khí tài to (hộp tiếp đạn, mìn chống tăng) cầm thu nhỏ cho khỏi che cả người.
+              <group position={[0, -0.085, 0.02]} scale={throwable === "ammobox" ? 0.55 : throwable === "atmine" ? 0.7 : 1}>
                 <ThrowableModel id={throwable} />
               </group>
             )}
@@ -879,6 +884,7 @@ export function Character({
         </group>
         <P g={beltShape.gear} m={gear} />
         <P g={beltShape.metal} m={metal} />
+        {soldier && <BeltDangles gear={gear} />}
         {/* Nửa thân trên: xoay quanh eo. */}
         <group ref={torso} position={[0, WAIST_Y, 0]}>
           <P g={shirtShape.cloth} m={shirt} />
@@ -900,11 +906,13 @@ export function Character({
             </>
           )}
           {ghil && <mesh geometry={ghil.torso} material={strandM} castShadow />}
+          {soldier && <TorsoDangles armor={armor} pack={look.pack} gear={gear} metal={sole} opacity={o} />}
           {arm(1)}
           {arm(-1)}
           {/* Cổ và đầu: sọ, hàm, mũi, tai, mí mắt (một khối da), mắt, lông mày, môi, tóc, râu. */}
           <P g={B.neck} m={skin} />
           <group ref={head} position={[0, NECK_Y, 0]}>
+            <HeadRig skin={skin} motion={motion}>
             <P g={F.skin} m={skin} />
             <P g={F.eyes} m={eyeWhite} t />
             <P g={F.irises} m={iris} t />
@@ -919,12 +927,14 @@ export function Character({
               </group>
             )}
             {ghil && <mesh geometry={ghil.head} material={strandM} castShadow />}
+            </HeadRig>
           </group>
         </group>
         {/* Súng: cầm hai tay (vị trí và hướng đặt mỗi khung hình). */}
         {gunId && (
           <group ref={gun} name="weapon" visible={false}>
             <GunModel weaponId={gunId} sight={sight} atts={atts} skin={gunSkin} opacity={o} />
+            <GunSling weaponId={gunId} material={gear} />
           </group>
         )}
         {/* Choáng: sao vàng bay vòng quanh đầu. Chóng mặt: vòng xoáy. */}

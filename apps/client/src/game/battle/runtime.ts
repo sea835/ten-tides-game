@@ -193,14 +193,25 @@ export const gun = {
 /**
  * Đóng băng hình ảnh thật ngắn khi trúng đạn / hạ đối thủ (hitstop). Đây là công cụ chuẩn để tạo
  * cảm giác "đòn" — thiếu nó thì phát bắn và cả cú hạ đều mềm.
- * Các vòng lặp mô phỏng nhân `hitStop.scale` vào `dt`; HUD và âm thanh thì không nhân, để vẫn nghe rõ.
+ * Chỉ các vòng lặp thuần hình ảnh nhân `hitStopScale()` vào `dt`: súng trên tay (ViewModel), hiệu ứng (khói, tia
+ * lửa), hoạt ảnh nhân vật khác (Character). Di chuyển / vật lý của chính mình và góc nhìn chuột thì KHÔNG nhân —
+ * đứng hình ở đó cảm giác như giật lag. HUD và âm thanh cũng không nhân, để vẫn nghe rõ.
  */
 export const hitStop = { until: 0, scale: 1 };
 
-/** Bật đóng băng cho tới `now + ms`. */
-export function stopHit(ms: number) {
-  hitStop.until = performance.now() + ms;
+/**
+ * Bật đóng băng cho tới `now + ms` với hệ số `scale` (1 = chỉ đánh dấu, không chậm). Lần đóng băng thật đang chạy
+ * không bị lần nhẹ hơn ghi đè (tin trúng đến sau phát hạ không được cắt ngang cú khựng).
+ */
+export function stopHit(ms: number, scale = 1) {
+  const now = performance.now();
+  if (now < hitStop.until && hitStop.scale < scale) return;
+  hitStop.until = now + ms;
+  hitStop.scale = scale;
 }
+
+/** Súng trường khóa nòng (AWM, Kar98k): phát hạ gục khựng hình 40ms ở 15% tốc độ cho cảm giác uy lực. */
+export const SNIPER_KILL_STOP = { ms: 40, scale: 0.15, weapons: ["awm", "kar98k"] as readonly string[] };
 
 /** Hệ số thời gian cho khung hình hiện tại (1 = bình thường, 0.1 = đứng hình). */
 export function hitStopScale(): number {

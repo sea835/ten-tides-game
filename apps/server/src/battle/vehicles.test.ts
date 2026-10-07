@@ -80,7 +80,8 @@ describe("xe tăng: giáp theo góc, đứt xích, xác xe cháy", () => {
     room.vehicles.move("drv", { x: v.x + Math.sin(v.rotY) * 1.5, y: v.y, z: v.z + Math.cos(v.rotY) * 1.5, rotY: v.rotY, turret: 0, pitch: 0, moving: true });
     expect(v.x).toBe(before.x);
     room.vehicles.move("drv", { x: v.x, y: v.y, z: v.z, rotY: v.rotY + 0.3, turret: 0, pitch: 0, moving: false });
-    expect(v.rotY).toBeCloseTo(spot.rotY + 0.3, 5);
+    // rotY nén 16 bit, đọc ra trong [0, 2π): so theo hiệu đã gói vòng, sai số dưới một bước lượng tử.
+    expect(Math.atan2(Math.sin(v.rotY - spot.rotY - 0.3), Math.cos(v.rotY - spot.rotY - 0.3))).toBeCloseTo(0, 3);
     tick(room, TRACKS_SECONDS + 0.2);
     expect(v.tracks).toBe(0);
   });

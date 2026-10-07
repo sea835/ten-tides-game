@@ -317,6 +317,40 @@ function cut(rings: Ring[], lo: number, hi: number, capLo: boolean, capHi: boole
   return out;
 }
 
+/**
+ * Khớp liền mạch: cắt khúc chi ở [lo, hi] rồi bịt mỗi đầu khớp bằng chỏm bán cầu tâm đúng ở trục khớp (bán kính theo
+ * mặt cắt tại đó). Chi xoay quanh trục khớp thì chỏm cầu chỉ trượt trên chính mặt cầu của nó: gập gối 120°, giơ tay
+ * quá đầu vẫn tròn trịa, không hở khe, không lộ mép bịt phẳng. `domeLo` / `domeHi` chọn đầu nào là khớp (đầu kia bịt
+ * dẹt như cũ, giấu trong giày, găng...).
+ */
+function capped(rings: Ring[], lo: number, hi: number, domeLo: boolean, domeHi: boolean): Ring[] {
+  const at = (y: number): Ring => ({ y, w: ringAt(rings, y, "w"), f: ringAt(rings, y, "f"), b: ringAt(rings, y, "b") });
+  const dome = (y: number, dir: 1 | -1): Ring[] => {
+    const r = at(y);
+    const f = r.f ?? r.w;
+    const b = r.b ?? f;
+    const R = (r.w + f + b) / 3;
+    const out: Ring[] = [];
+    // Năm vòng theo góc vĩ độ (đỉnh chỏm khép kín); thứ tự từ mép vào đỉnh.
+    for (let k = 1; k <= 5; k++) {
+      const t = (k / 5) * (Math.PI / 2);
+      const c = k === 5 ? 0 : Math.cos(t);
+      out.push({ y: y + dir * R * Math.sin(t), w: r.w * c, f: f * c, b: b * c });
+    }
+    return out;
+  };
+  const sorted = [...rings].sort((a, b) => b.y - a.y);
+  const out: Ring[] = [];
+  if (domeHi) out.push(...dome(hi, 1).reverse());
+  else out.push({ y: hi + 0.004, w: 0 });
+  out.push(at(hi));
+  for (const r of sorted) if (r.y < hi - 1e-4 && r.y > lo + 1e-4 && r.w > 0) out.push(r);
+  out.push(at(lo));
+  if (domeLo) out.push(...dome(lo, -1));
+  else out.push({ y: lo - 0.004, w: 0 });
+  return out;
+}
+
 /** Nới rộng ống tay áo, ống quần một chút (vải phủ ngoài da). */
 const loose = (rings: Ring[], k: number, add = 0): Ring[] => rings.map((r) => (r.w > 0 ? { ...r, w: r.w * k + add, f: (r.f ?? r.w) * k + add, b: (r.b ?? r.f ?? r.w) * k + add } : r));
 
@@ -460,6 +494,20 @@ function boot(tall: boolean): { upper: BufferGeometry; sole: BufferGeometry } {
 
 // ---------------------------------------------------------------------------- cơ thể
 
+/** Trục khớp gối (toạ độ đùi) và khuỷu (toạ độ cánh tay trên): cùng số đo THIGH, UPPER trong Character.tsx. */
+const KNEE_Y = -0.43;
+const ELBOW_Y = -0.29;
+/** Khớp vai (toạ độ eo) và khớp hông (toạ độ thân), như SHOULDER_X/Y, HIP_X/Y trong Character.tsx. */
+export const SHOULDER: V3 = [0.195, 0.44, 0];
+const HIP: V3 = [0.095, 0.93, 0];
+
+/** Bán trục của mặt cắt tại y (để làm cầu khớp vừa khít ống chi). */
+const radiiAt = (rings: Ring[], y: number, k = 1): V3 => {
+  const w = ringAt(rings, y, "w");
+  const d = (ringAt(rings, y, "f") + ringAt(rings, y, "b")) / 2;
+  return [w * k, ((w + d) / 2) * k, d * k];
+};
+
 /** Mọi hình của thân người (không kể đầu), dựng một lần khi cần. */
 function makeBody() {
   const thighPants = loose(THIGH, 1.04);
@@ -468,28 +516,34 @@ function makeBody() {
   const foreSleeve = loose(FOREARM, 1.08, 0.003);
   const tall = boot(true);
   const low = boot(false);
+  const thighShape = () => loft(capped(thighPants, KNEE_Y, 0, true, true), 14);
+  // Cầu khớp hông (trong khối hông): đùi gập 120° khi ngồi xổm, nằm bò thì mặt trên đùi vẫn liền vào hông.
+  const hipBall = (side: 1 | -1) => ellipsoid(radiiAt(thighPants, 0, 0.97), [side * HIP[0], HIP[1], HIP[2]], undefined, [14, 10]);
 
   /** Túi hộp bên hông đùi (ngoài): thân túi, nắp túi. */
   const cargo = (side: 1 | -1) => {
     const x = side * (ringAt(thighPants, -0.2, "w") + 0.012);
     return merge([
-      loft(thighPants, 14),
+      thighShape(),
       block(0.026, 0.12, 0.1, [x, -0.21, 0.004], [0, 0, side * 0.04]),
       block(0.03, 0.03, 0.106, [x + side * 0.004, -0.148, 0.004], [0, 0, side * 0.04]),
+      // Nếp gấp xếp giữa túi (túi phồng được), cúc bấm nắp túi.
+      block(0.03, 0.09, 0.012, [x + side * 0.003, -0.215, 0.004], [0, 0, side * 0.04]),
+      ellipsoid([0.006, 0.006, 0.006], [x + side * 0.019, -0.152, 0.004], undefined, [6, 4]),
     ]);
   };
 
   return {
     torso: loft(TORSO, 22, 2.5),
-    pelvis: loft(PELVIS, 20, 2.3),
+    pelvis: merge([loft(PELVIS, 20, 2.3), hipBall(1), hipBall(-1)]),
     butt: merge([ellipsoid([0.085, 0.085, 0.085], [-0.068, 0, -0.03], undefined, [10, 6]), ellipsoid([0.085, 0.085, 0.085], [0.068, 0, -0.03], undefined, [10, 6])]),
-    thigh: loft(thighPants, 14),
+    thigh: thighShape(),
     thighCargoL: cargo(1),
     thighCargoR: cargo(-1),
     /** Gối và cả ống quần tới mắt cá (lính: nhét vào giày). */
-    shinFull: merge([ellipsoid([0.06, 0.062, 0.062], [0, 0, 0.006]), loft(shinPants, 16)]),
+    shinFull: merge([ellipsoid([0.06, 0.062, 0.062], [0, 0, 0.006]), loft(capped(shinPants, -0.42, 0, false, true), 16)]),
     /** Dân thường: quần xắn tới giữa bắp chân (gấu cuộn), dưới là da. */
-    shinRolled: merge([ellipsoid([0.06, 0.062, 0.062], [0, 0, 0.006]), loft(cut(shinPants, -0.24, 0.03, false, true), 16), roll(shinPants, -0.235, 0.034, 0.008)]),
+    shinRolled: merge([ellipsoid([0.06, 0.062, 0.062], [0, 0, 0.006]), loft(capped(shinPants, -0.24, 0, false, true), 16), roll(shinPants, -0.235, 0.034, 0.008)]),
     shinSkin: loft(cut(SHIN, -0.44, -0.225, true, false), 14),
     /** Đệm gối lính: mảnh cong trước gối, dây đai sau khoeo. */
     kneePad: merge([
@@ -509,19 +563,19 @@ function makeBody() {
     soleLow: low.sole,
 
     /** Tay áo liền vai phủ cả cánh tay trên (tay áo dài hoặc xắn dưới khuỷu). */
-    upperSleeve: loft(upperSleeve, 14),
+    upperSleeve: loft(capped(upperSleeve, ELBOW_Y, 0, true, true), 14),
     /** Tay áo xắn trên khuỷu: vải tới gần khuỷu, cuộn gấu. */
-    upperRolled: merge([loft(cut(upperSleeve, -0.235, 0.035, false, true), 14), roll(upperSleeve, -0.23, 0.036, 0.009)]),
-    upperSkin: loft(cut(UPPER_ARM, -0.325, -0.21, true, false), 12),
+    upperRolled: merge([loft(capped(upperSleeve, -0.235, 0, false, true), 14), roll(upperSleeve, -0.23, 0.036, 0.009)]),
+    upperSkin: loft(capped(UPPER_ARM, ELBOW_Y, -0.21, true, false), 12),
     elbowSkin: ellipsoid([0.042, 0.044, 0.042], [0, 0, 0]),
     elbowSleeve: ellipsoid([0.047, 0.048, 0.047], [0, 0, 0]),
     /** Cẳng tay trần. */
-    foreSkin: loft(FOREARM, 12),
+    foreSkin: loft(capped(FOREARM, -0.25, 0, false, true), 12),
     /** Tay áo xắn ngay dưới khuỷu: phần vải trên, gấu cuộn; phần da dưới. */
-    foreRolled: merge([loft(cut(foreSleeve, -0.075, 0.03, false, true), 14), roll(foreSleeve, -0.075, 0.034, 0.008)]),
+    foreRolled: merge([loft(capped(foreSleeve, -0.075, 0, false, true), 14), roll(foreSleeve, -0.075, 0.034, 0.008)]),
     foreSkinLow: loft(cut(FOREARM, -0.275, -0.06, true, false), 12),
     /** Tay áo dài tới cổ tay, cổ tay áo bó. */
-    foreSleeve: merge([loft(cut(foreSleeve, -0.235, 0.03, false, true), 14), roll(foreSleeve, -0.228, 0.028, 0.004)]),
+    foreSleeve: merge([loft(capped(foreSleeve, -0.235, 0, false, true), 14), roll(foreSleeve, -0.228, 0.028, 0.004)]),
     handL: hand(-1, false),
     handR: hand(1, false),
     gloveL: hand(-1, true),
@@ -558,6 +612,9 @@ export function top(kind: Top): { cloth: BufferGeometry; trim: BufferGeometry } 
   const cloth: BufferGeometry[] = [loft(TORSO, 22, 2.5)];
   const trim: BufferGeometry[] = [];
   const front = (y: number) => ringAt(TORSO, y, "f");
+  // Cầu khớp vai (vải áo): tay giơ quá đầu khi nằm bắn, vung tay khi chạy thì nách, đầu vai vẫn liền với thân.
+  const sleeve = loose(UPPER_ARM, 1.04, 0.002);
+  for (const s of [-1, 1]) cloth.push(ellipsoid(radiiAt(sleeve, 0, 0.96), [s * SHOULDER[0], SHOULDER[1], SHOULDER[2]], undefined, [14, 10]));
   // Túi ngực hai bên, nắp túi (áo lính nghiêng theo ngực, có nắp dán).
   const pocket = (x: number, y: number, w: number, h: number) => {
     const z = front(y) - Math.abs(x) * 0.12;
@@ -625,7 +682,17 @@ export function belt(soldier: boolean) {
     2.2,
   );
   const gear: BufferGeometry[] = [band];
-  const metal: BufferGeometry[] = [block(0.05, 0.036, 0.01, [0, 1.0, rz + 0.008])];
+  // Khoá thắt lưng: khung kim loại dập (hai thanh ngang, hai má bên), mặt khoá nổi giữa, hai ngạnh cài; cạnh vát bắt nắng.
+  const bz = rz + 0.009;
+  const metal: BufferGeometry[] = [
+    block(0.058, 0.006, 0.009, [0, 1.0175, bz]),
+    block(0.058, 0.006, 0.009, [0, 0.9825, bz]),
+    block(0.007, 0.041, 0.01, [0.0255, 1.0, bz]),
+    block(0.007, 0.041, 0.01, [-0.0255, 1.0, bz]),
+    block(0.036, 0.024, 0.007, [0, 1.0, bz + 0.002]),
+    block(0.006, 0.014, 0.006, [0.012, 1.0, bz + 0.0055], [0, 0, 0.25]),
+    block(0.006, 0.014, 0.006, [-0.012, 1.0, bz + 0.0055], [0, 0, -0.25]),
+  ];
   if (soldier) {
     // Túi băng đạn bên trái, túi đồ phía sau, túi xả vỏ đạn bên hông trái sau.
     for (const a of [0.85, 1.12]) gear.push(around(rx, rz, a, 0.975, merge([block(0.042, 0.085, 0.034, [0, 0, 0]), block(0.046, 0.022, 0.038, [0, 0.036, 0.002])]), 0.02));
@@ -703,9 +770,8 @@ export function pack(kind: 1 | 2 | 3) {
   } else if (kind === 2) {
     // Bộ đàm trong túi sau lưng lệch trái, ăng-ten dẻo vươn lên quá vai.
     gear.push(block(0.09, 0.17, 0.06, [0.07, 0.3, -0.165]));
+    // Ăng-ten dẻo dựng riêng trong character/accessories.tsx (rung lắc theo quán tính).
     metal.push(block(0.07, 0.03, 0.05, [0.07, 0.4, -0.165]));
-    metal.push(capsule(new Vector3(0.09, 0.41, -0.165), new Vector3(0.1, 0.62, -0.19), 0.0035, 4, 1));
-    metal.push(capsule(new Vector3(0.1, 0.62, -0.19), new Vector3(0.105, 0.78, -0.22), 0.0028, 4, 1));
     straps(0.03);
   } else {
     // Túi nước dẹt sát lưng, ống hút vắt qua vai phải.

@@ -20,6 +20,8 @@ export interface DestructionHost {
   broadcast(type: string, message: unknown): void;
   /** Gây sát thương lên người (sập nhà đè). */
   crush(id: string, amount: number, attacker: string): void;
+  /** Công sự dựng giữa trận (chỗ trống từ `index.dynamicFrom`) mất độ bền: còn `left` (0–1), 0 là vỡ. */
+  dynamic?(i: number, left: number): void;
 }
 
 interface Building {
@@ -64,6 +66,18 @@ export class Destruction {
     this.host.state.stumps.clear();
   }
 
+  /** Công sự vừa dựng ở chỗ trống `i`: đặt độ bền mới (đầy). */
+  setDurability(i: number, hp: number) {
+    if (i < 0 || i >= this.hp.length) return;
+    this.hp[i] = hp;
+    this.full[i] = hp;
+  }
+
+  private isDynamic(i: number): boolean {
+    const from = this.host.map.index.dynamicFrom;
+    return from !== undefined && i >= from;
+  }
+
   /** Khối `i` chịu `amount` sát thương (đạn, nổ). `by`: người gây ra (để tính công khi nhà sập đè người). */
   hitBox(i: number, amount: number, by = "") {
     const full = this.full[i] ?? 0;
@@ -73,6 +87,11 @@ export class Destruction {
     this.hp[i] = hp;
     if (hp <= 0) {
       this.breakBox(i, by);
+      return;
+    }
+    // Công sự dựng giữa trận: không nằm trong bản đồ của client, báo riêng (bao cát nứt dần trong `traps`).
+    if (this.isDynamic(i)) {
+      this.host.dynamic?.(i, hp / full);
       return;
     }
     const level = Math.max(1, Math.min(254, Math.round((1 - hp / full) * 254)));
@@ -87,6 +106,10 @@ export class Destruction {
     if (!dead || dead[i]) return;
     dead[i] = 1;
     this.hp[i] = 0;
+    if (this.isDynamic(i)) {
+      this.host.dynamic?.(i, 0);
+      return;
+    }
     this.host.state.broken.set(String(i), BROKEN);
     const b = this.host.map.index.boxes[i]!;
     if (b.building === undefined) return;

@@ -97,6 +97,29 @@ export const BadgeState = schema(
 );
 export type BadgeState = SchemaType<typeof BadgeState>;
 
+/** Lớp lính (chiến trường, đội trưởng chế độ Đồng đội): Đột Kích, Bắn Tỉa, Quân Nhu, Kỹ Thuật. Trùng với content. */
+export const SOLDIER_CLASSES = ["assault", "recon", "support", "engineer"] as const;
+export type SoldierClassId = (typeof SOLDIER_CLASSES)[number];
+/** Khí tài theo lớp lính (trùng với GADGETS trong content). */
+export const GADGET_IDS = ["syringe", "m203", "binoculars", "ammobox", "sandbag", "repair", "atmine"] as const;
+export type GadgetIdName = (typeof GADGET_IDS)[number];
+
+/**
+ * Lớp lính và khí tài của một người (gom một ref: schema PlayerState gần chạm trần số trường). Sinh tồn solo không có
+ * lớp lính (rỗng). `n1`, `n2`: số lượt còn lại của khí tài ô 1, ô 2 (khí tài không tính lượt như ống nhòm, mỏ lết thì 0).
+ */
+export const GearState = schema(
+  {
+    cls: t.string().default(""),
+    n1: t.uint8().default(0),
+    n2: t.uint8().default(0),
+    /** Bơm Adrenaline: còn bao nhiêu giây chạy nhanh (server cho phép tốc độ cao hơn trong lúc này). */
+    boost: t.float32().default(0),
+  },
+  "GearState",
+);
+export type GearState = SchemaType<typeof GearState>;
+
 export const PlayerState = schema(
   {
     name: t.string().default(""),
@@ -106,7 +129,11 @@ export const PlayerState = schema(
     x: t.float32().default(0),
     y: t.float32().default(0),
     z: t.float32().default(0),
-    rotY: t.float32().default(0),
+    /**
+     * Hướng quay (radian). Nén 16 bit trên đường truyền (~0,0055°/bước, 2 byte thay vì 4): đọc ra luôn nằm trong
+     * [0, 2π) — so góc thì dùng hiệu đã gói vòng (atan2(sin, cos)), đừng trừ thẳng.
+     */
+    rotY: t.angle().default(0),
     moving: t.boolean().default(false),
     /** Đang ngồi (nghỉ, hoặc nấp trong cỏ cao). */
     sitting: t.boolean().default(false),
@@ -151,8 +178,8 @@ export const PlayerState = schema(
     /** Đang nằm sấp (bắn nằm): thấp nhất, khó thấy, khó trúng, đi bò rất chậm. */
     prone: t.boolean().default(false),
     aiming: t.boolean().default(false),
-    /** Góc ngắm lên xuống (radian, dương là ngẩng lên), để máy khác thấy nòng súng chĩa đúng hướng. */
-    aimPitch: t.float32().default(0),
+    /** Góc ngắm lên xuống (radian, dương là ngẩng lên), để máy khác thấy nòng súng chĩa đúng hướng. Nén 16 bit trong [−2, 2]. */
+    aimPitch: t.quantized({ min: -2, max: 2 }).default(0),
     /** Nghiêng người (Q/E): −1 trái … 1 phải, lượng tử hoá theo 1/8 (thân trên, đầu lệch sang bên; dò đạn trúng theo đó). */
     lean: t.float32().default(0),
     /** Bộ đếm phát bắn, để máy khác diễn giật súng, chớp lửa đầu nòng. */
@@ -172,6 +199,8 @@ export const PlayerState = schema(
     respawn: t.float32().default(0),
     /** Quân hàm, thẻ tên, huy hiệu (gom một ref cho đỡ tốn chỗ: schema giới hạn số trường). */
     badge: t.ref(BadgeState).default(() => new BadgeState()),
+    /** Lớp lính, số lượt khí tài, Adrenaline (GearState). */
+    gear: t.ref(GearState).default(() => new GearState()),
   },
   "PlayerState",
 );
@@ -372,13 +401,20 @@ export const CreatureState = schema(
 );
 export type CreatureState = SchemaType<typeof CreatureState>;
 
-/** Bẫy đã sập: chỉ lúc này mới công khai chỗ đặt bẫy. */
+/**
+ * Bẫy đã sập: chỉ lúc này mới công khai chỗ đặt bẫy. Battleground dùng lại map này (IslandState đã chạm trần số
+ * trường) cho khí tài đặt xuống đất: hộp tiếp đạn, bờ bao cát (`defId`), hướng, phe, người đặt, độ bền còn lại (%).
+ */
 export const TrapState = schema(
   {
     defId: t.string().default(""),
     x: t.float32().default(0),
     y: t.float32().default(0),
     z: t.float32().default(0),
+    rot: t.float32().default(0),
+    team: t.string().default(""),
+    owner: t.string().default(""),
+    hp: t.uint8().default(100),
   },
   "TrapState",
 );
@@ -488,9 +524,11 @@ export const VehicleState = schema(
     x: t.float32().default(0),
     y: t.float32().default(0),
     z: t.float32().default(0),
-    rotY: t.float32().default(0),
-    turret: t.float32().default(0),
-    pitch: t.float32().default(0),
+    /** Hướng thân, hướng tháp pháo / súng (radian, nén 16 bit, đọc ra trong [0, 2π) như PlayerState.rotY). */
+    rotY: t.angle().default(0),
+    turret: t.angle().default(0),
+    /** Góc nòng (radian, nén 16 bit trong [−1,6; 1,6]: đủ cho cối ngẩng 85°, số 0 giữ đúng 0). */
+    pitch: t.quantized({ min: -1.6, max: 1.6 }).default(0),
     hp: t.int16().default(0),
     team: t.string().default(""),
     /** Người đang lái (và bắn); rỗng là xe bỏ trống. */
@@ -840,7 +878,15 @@ export const FireMessage = z.object({
   hits: z.array(z.object({ target: id, part: z.enum(["head", "body"]), d: z.number().min(0).max(1000), ray: z.int().min(0).max(11) })).max(12),
 });
 export type FireMessage = z.infer<typeof FireMessage>;
-export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "pistol", "frag", "smoke", "flash", "mine", ""]) });
+export const SwitchMessage = z.object({ slot: z.enum(["primary1", "primary2", "pistol", "frag", "smoke", "flash", "mine", "gadget1", "gadget2", ""]) });
+/**
+ * Dùng khí tài lớp lính: bơm tiêm, đặt hộp đạn / bao cát / mìn chống tăng thì chỉ cần `use`; M203 kèm đầu nòng `o`,
+ * hướng `d`; ống nhòm kèm `target` (id người, hay "v:<id xe>"); mỏ lết kèm `target` là id xe đang sửa.
+ */
+export const GadgetMessage = z.object({ use: z.enum(GADGET_IDS), o: vec3.optional(), d: vec3.optional(), target: z.string().max(64).optional() });
+export type GadgetMessage = z.infer<typeof GadgetMessage>;
+/** Ở sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới. */
+export const PickClassMessage = z.object({ cls: z.enum(SOLDIER_CLASSES) });
 export const BattleBuyMessage = z.object({ item: z.string().max(40) });
 export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke", "flash"]), o: vec3, v: vec3 });
 /** Đâm dao: người bị đâm (máy mình dò trước, server kiểm tra lại tầm với, hướng, tường). Không trúng ai thì để trống. */
@@ -880,8 +926,8 @@ export type TankFireMessage = z.infer<typeof TankFireMessage>;
 /** Đổi ghế trên xe đang ngồi (0 là ghế lái). */
 export const VehicleSeatMessage = z.object({ seat: z.int().min(0).max(4) });
 export type VehicleSeatMessage = z.infer<typeof VehicleSeatMessage>;
-/** Xạ thủ đại liên xoay súng (hướng thế giới, góc ngẩng). */
-export const VehicleAimMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1) });
+/** Xạ thủ đại liên xoay súng (hướng thế giới, góc ngẩng; cối ngẩng tới 85° nên cho tới 1,6 rad). */
+export const VehicleAimMessage = z.object({ turret: finite, pitch: z.number().min(-1).max(1.6) });
 export type VehicleAimMessage = z.infer<typeof VehicleAimMessage>;
 /** Xạ thủ đại liên bắn một phát: đầu nòng, hướng tia, người máy mình thấy trúng (server kiểm tra lại như súng cầm tay). */
 export const VehicleGunMessage = z.object({
@@ -890,6 +936,24 @@ export const VehicleGunMessage = z.object({
   hits: z.array(z.object({ target: id, part: z.enum(["head", "body"]), d: z.number().min(0).max(1000), ray: z.int().min(0).max(0) })).max(1),
 });
 export type VehicleGunMessage = z.infer<typeof VehicleGunMessage>;
+/** Pháo thủ cối bắn một phát: phương vị (thế giới) và góc ngẩng (server kẹp về 45°–85°). */
+export const MortarFireMessage = z.object({ turret: finite, elev: z.number().min(0).max(1.6) });
+export type MortarFireMessage = z.infer<typeof MortarFireMessage>;
+/**
+ * Server báo mọi người: cối vừa bắn ("fire": đầu nòng, vận tốc ban đầu — máy khác tự vẽ quả đạn bay cầu vồng) hay
+ * đạn cối sắp rơi ("whistle": chỗ rơi dự đoán, còn `t` giây — tiếng rít cho người quanh đó).
+ */
+export interface MortarFxMessage {
+  kind: "fire" | "whistle";
+  vid: string;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  t: number;
+}
 /** Server báo mọi người: đạn nảy khỏi giáp trước, xe tăng đứt xích (để vẽ tia lửa, khói, phát tiếng). */
 export interface VehicleFxMessage {
   kind: "ricochet" | "tracks";
@@ -908,18 +972,20 @@ export const SquadBoardMessage = z.object({ vid: id });
 /** Đánh dấu (chuột giữa): chỗ thường, địch (kèm người bị đánh dấu), nguy hiểm (bấm đúp). */
 export const PING_KINDS = ["spot", "enemy", "danger"] as const;
 export type PingKind = (typeof PING_KINDS)[number];
+/** Dấu hiện trên HUD: ba loại người chơi tự đánh, cộng dấu "spotted" do ống nhòm trinh sát (server tạo, thoi đỏ 15 s). */
+export type PingShownKind = PingKind | "spotted";
 /** Mỗi người đánh dấu tối đa 1 lần / khoảng này (ms), không xa hơn tầm này (m). */
 export const PING_MIN_INTERVAL_MS = 500;
 export const PING_MAX_DISTANCE = 450;
 /** Dấu tồn tại bao lâu (ms) theo loại. */
-export const PING_TTL_MS: Record<PingKind, number> = { spot: 8000, enemy: 6000, danger: 8000 };
+export const PING_TTL_MS: Record<PingShownKind, number> = { spot: 8000, enemy: 6000, danger: 8000, spotted: 15000 };
 export const PingMessage = z.object({ kind: z.enum(PING_KINDS), x: finite, y: finite, z: finite, target: id.optional() });
 export type PingMessage = z.infer<typeof PingMessage>;
 /** Server chuyển dấu tới đồng đội (solo thì chỉ mình thấy). Dấu địch: vị trí là chỗ người đó lúc đánh dấu. */
 export interface PingBroadcast {
   from: string;
   name: string;
-  kind: PingKind;
+  kind: PingShownKind;
   x: number;
   y: number;
   z: number;
@@ -963,6 +1029,10 @@ export interface HitMessage {
   kind: "body" | "head" | "kill";
   armor: boolean;
   amount: number;
+  /** Chỉ có khi `kind` là "kill": phát hạ gục trúng đầu (tiếng chuông kim loại, đầu lâu viền vàng). */
+  head?: 1;
+  /** Chỉ có khi `kind` là "kill" do phá nổ xe: số người trên xe chết theo (0 = xe trống, không tính mạng). */
+  crew?: number;
 }
 /** Server báo riêng người bị trúng: từ hướng nào, mất bao nhiêu. */
 export interface HurtMessage {
@@ -1063,6 +1133,9 @@ export const Messages = {
   vehicleAim: "vehicleAim",
   vehicleGun: "vehicleGun",
   vehicleFx: "vehicleFx",
+  /** Vũ khí cố định: pháo thủ cối bắn; server báo hiệu ứng đạn cối. */
+  mortarFire: "mortarFire",
+  mortarFx: "mortarFx",
   squadOrder: "squadOrder",
   possess: "possess",
   squadBoard: "squadBoard",
@@ -1075,7 +1148,43 @@ export const Messages = {
   flag: "flag",
   /** Server báo riêng: vừa được cộng XP (XpMessage). */
   xp: "xp",
+  /** Server báo mọi người lúc hết trận: bảng vinh danh MVP và bảng điểm đầy đủ (MatchSummaryMessage). */
+  matchSummary: "matchSummary",
+  /** Dùng khí tài lớp lính (GadgetMessage); chọn lớp lính ở sảnh (PickClassMessage). */
+  gadget: "gadget",
+  pickClass: "pickClass",
 } as const;
+
+/** Một dòng bảng điểm cuối trận. `support` là tiếp tế, sửa xe, hồi sinh đồng đội; `score` để xếp hạng. */
+export interface MatchSummaryRow {
+  id: string;
+  name: string;
+  team: string;
+  bot: boolean;
+  rank: number;
+  card: string;
+  emblem: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  captures: number;
+  support: number;
+  score: number;
+}
+/** MVP Hạ gục, MVP Chiếm cứ điểm, MVP Hỗ trợ (hỗ trợ = trợ giúp hạ gục + tiếp tế, sửa xe...). */
+export type MvpKind = "kills" | "captures" | "support";
+export interface MvpEntry {
+  kind: MvpKind;
+  id: string;
+  value: number;
+}
+/** Hết trận: chế độ, bên thắng (id người, id đội hay phe), MVP từng hạng mục (thiếu là không ai đạt), bảng điểm đã xếp. */
+export interface MatchSummaryMessage {
+  mode: string;
+  winner: string;
+  mvp: MvpEntry[];
+  rows: MatchSummaryRow[];
+}
 
 /** Vừa được cộng XP: loại sự kiện (XpKind trong content), số XP, tổng XP trận này, quân hàm hiện tại. */
 export interface XpMessage {

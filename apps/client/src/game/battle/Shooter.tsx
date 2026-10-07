@@ -16,14 +16,16 @@ import { sprayBlood } from "./Blood.tsx";
 import { wreck } from "./Wreckage.tsx";
 import { ejectPort, muzzleOffset } from "../GunModel.tsx";
 import { scratchRay, scratchRayFrom } from "../scratch.ts";
+import { gadgetFrame, gadgetSlots, heldGadget } from "./gadgets.ts";
+import { confirmKill } from "./killConfirm.ts";
 
 // Bắn súng trên máy mình: chuột trái bắn (giữ để bắn liên thanh), chuột phải ngắm (ống ngắm thì phóng to),
 // R thay đạn, 1–3 đổi súng, 4–6 lựu đạn / bom khói / mìn, 7–8 băng gạc / hộp cứu thương, lăn chuột đổi món,
-// X cất súng, B mở cửa hàng, Tab bảng điểm.
+// X cất súng, B mở cửa hàng, Tab bảng điểm, 0 rút khí tài lớp lính (bấm lần nữa đổi khí tài thứ hai).
 // Mỗi phát: tia từ camera qua tâm ngắm tìm điểm muốn bắn, rồi tia thật từ đầu nòng tới điểm đó (lệch theo độ toả),
 // dò trúng người khác theo đúng chỗ họ đang hiện trên màn hình mình, gửi server kiểm tra lại.
 
-type Slot = "primary1" | "primary2" | "pistol" | "frag" | "smoke" | "flash" | "mine" | "";
+type Slot = "primary1" | "primary2" | "pistol" | "frag" | "smoke" | "flash" | "mine" | "gadget1" | "gadget2" | "";
 const THROWN = ["frag", "smoke", "flash"] as const;
 const isThrown = (slot: string): slot is (typeof THROWN)[number] => (THROWN as readonly string[]).includes(slot);
 const GUN_SLOTS = ["primary1", "primary2", "pistol"] as const;
@@ -176,6 +178,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (!k || !alive()) return;
       if (slot && (GUN_SLOTS as readonly string[]).includes(slot) && !(k as unknown as Record<string, string>)[slot]) return;
       if ((isThrown(slot) || slot === "mine") && k[slot] <= 0) return;
+      if ((slot === "gadget1" || slot === "gadget2") && !gadgetSlots(room, room.state.players.get(myId(room))).some((g) => g.slot === slot && g.left !== 0)) return;
       stance.cookAt = 0;
       gun.cancelReload?.();
       gun.cancelReload = null;
@@ -189,7 +192,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const cycle = (step: number) => {
       const k = kit();
       if (!k) return;
-      const list: Slot[] = [...GUN_SLOTS.filter((s) => (k as unknown as Record<string, string>)[s]), ...(["frag", "smoke", "flash", "mine"] as const).filter((s) => k[s] > 0)];
+      const gadgets = gadgetSlots(room, room.state.players.get(myId(room))).filter((g) => g.left !== 0).map((g) => g.slot);
+      const list: Slot[] = [...GUN_SLOTS.filter((s) => (k as unknown as Record<string, string>)[s]), ...(["frag", "smoke", "flash", "mine"] as const).filter((s) => k[s] > 0), ...gadgets];
       if (!list.length) return;
       const i = list.indexOf(k.active as Slot);
       switchTo(list[(i + step + list.length) % list.length]!);
@@ -213,6 +217,14 @@ export function Shooter({ room }: { room: IslandRoom }) {
           return switchTo("flash");
         case "Digit7":
           return switchTo("mine");
+        case "Digit0": {
+          // Khí tài lớp lính: rút ô 1; đang cầm ô 1 thì đổi sang ô 2 (nếu lớp có).
+          const k = kit();
+          const usable = gadgetSlots(room, room.state.players.get(myId(room))).filter((g) => g.left !== 0);
+          if (!k || !usable.length) return;
+          const i = usable.findIndex((g) => g.slot === k.active);
+          return switchTo(usable[(i + 1) % usable.length]!.slot);
+        }
         case "KeyX":
           // Cất súng: cầm dao.
           return switchTo("");
@@ -288,7 +300,8 @@ export function Shooter({ room }: { room: IslandRoom }) {
       if (e.button === 2) input.current.aimHeld = false;
     };
     const onWheel = (e: WheelEvent) => {
-      if (!locked() || menuOpen()) return;
+      // Ngồi xe, vũ khí cố định: lăn chuột không đổi súng (cối dùng để chỉnh góc ngẩng).
+      if (!locked() || menuOpen() || seat.id) return;
       cycle(Math.sign(e.deltaY));
     };
     const onMenu = (e: MouseEvent) => {
@@ -323,7 +336,11 @@ export function Shooter({ room }: { room: IslandRoom }) {
       while (localMarks.length && at - localMarks[0]! > 1000) localMarks.shift();
       const confirmed = localMarks.length > 0;
       if (confirmed) localMarks.shift();
-      if (h.kind === "kill" || (!confirmed && at - lastMarkerAt > HITMARKER_COOLDOWN)) {
+      // Hạ gục: tiếng xác nhận riêng (chuông kim loại nếu trúng đầu), đầu lâu, chuỗi hạ, khựng hình súng tỉa (killConfirm.ts).
+      if (h.kind === "kill") {
+        lastMarkerAt = at;
+        confirmKill(h);
+      } else if (!confirmed && at - lastMarkerAt > HITMARKER_COOLDOWN) {
         playHitMarker(h.kind);
         lastMarkerAt = at;
       }
@@ -491,6 +508,20 @@ export function Shooter({ room }: { room: IslandRoom }) {
     stance.zoom = def ? zoomOf(def, sight) : 1;
     stance.scoped = !!sight && SIGHTS[sight as SightId]?.scope === true;
     stance.holdFire = inp.fire;
+
+    // Khí tài lớp lính (gadgets.ts): bơm tiêm, M203, ống nhòm, hộp đạn, bao cát, mỏ lết, mìn chống tăng.
+    const gadget = heldGadget(room, me);
+    if (gadget) {
+      const buffered = inp.firePressedAt > 0 && now - inp.firePressedAt <= BUFFER_INPUT;
+      const pressed = inp.firePressed || buffered;
+      if (pressed && now >= gun.readyAt) {
+        inp.firePressed = false;
+        inp.firePressedAt = 0;
+      }
+      inp.fireAfterReload = false;
+      gadgetFrame(room, me, gadget, camera, { pressed, held: inp.fire, aim: getSettings().toggleAim ? inp.aimToggle : inp.aimHeld }, now, now >= gun.readyAt);
+      return;
+    }
 
     // Độ toả: ngắm thì chụm, đi lại, nhảy thì toả; bắn liền nhiều phát thì toả dần (hồi lại khi thả cò).
     bloom.current = Math.max(0, bloom.current - dt * 0.12);

@@ -3,6 +3,7 @@
 // Trình duyệt chỉ cho phát tiếng sau lần bấm chuột hay phím đầu tiên, nên bộ máy tự bật khi đó.
 
 import { duckAt, type Duck } from "./acoustics.ts";
+import { defaultPriority, voices, type VoicePriority, type VoiceSlot } from "./voices.ts";
 
 export type Bus = "sfx" | "ambience" | "music" | "ui";
 
@@ -59,6 +60,8 @@ class AudioEngine {
   brown!: AudioBuffer;
   /** Vị trí và hướng nhìn của người nghe (camera), Soundscape ghi mỗi khung hình. */
   readonly listener = { x: 0, y: 0, z: 0, yaw: 0 };
+  /** Bộ giới hạn tiếng toàn cục (để xem số tiếng đang phát / bị cướp qua window.__tentides.audio.voices). */
+  readonly voices = voices;
   settings = readSetting();
   private listeners = new Set<() => void>();
 
@@ -233,29 +236,60 @@ class AudioEngine {
   /**
    * Đầu ra cho một tiếng động: có vị trí thì nhỏ dần theo khoảng cách và lệch trái phải; quá xa thì trả về null
    * (khỏi tổng hợp tiếng không ai nghe). `volume` là độ to gốc.
+   * Mỗi tiếng (trừ bus "ui") xin chỗ ở bộ giới hạn tiếng toàn cục (voices.ts) trước khi dựng nút; `prio` bỏ trống thì
+   * suy theo bus và khoảng cách, `seconds` là độ dài ước chừng (để biết tiếng nào sắp hết mà cướp trước).
    */
-  output(bus: Bus, volume: number, at?: Place, hearing = HEARING): AudioNode | null {
+  output(bus: Bus, volume: number, at?: Place, hearing = HEARING, prio?: VoicePriority, seconds = 2): AudioNode | null {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== "running" || this.settings.muted) return null;
     let gain = volume;
     let pan = 0;
+    let dist: number | null = null;
     if (at) {
       const dx = at.x - this.listener.x;
       const dz = at.z - this.listener.z;
       const d = Math.hypot(dx, dz, (at.y - this.listener.y) * 0.5);
       if (d > hearing) return null;
+      dist = d;
       gain *= Math.pow(1 - d / hearing, 1.7);
       // Trục phải của camera: (cos yaw, −sin yaw).
       if (d > 0.5) pan = Math.max(-0.85, Math.min(0.85, ((dx * Math.cos(this.listener.yaw) - dz * Math.sin(this.listener.yaw)) / d) * 0.85));
     }
     if (gain < 0.005) return null;
+    const now = ctx.currentTime;
+    const level = prio ?? defaultPriority(bus, dist);
+    const admission = bus === "ui" ? null : voices.admit(level, gain, now);
+    if (admission && !admission.ok) return null;
     const g = ctx.createGain();
     g.gain.value = gain;
     const p = ctx.createStereoPanner();
     p.pan.value = pan;
     g.connect(p).connect(this.bus(bus));
+    let slot: VoiceSlot | null = null;
+    if (admission) {
+      const end = now + seconds;
+      slot = {
+        prio: level,
+        level: gain,
+        end,
+        score: (t) => gain * Math.max(0, Math.min(1, (end - t) / seconds)),
+        kill: () => {
+          // Bị cướp chỗ: hạ về 0 trong 30 ms (không tách tiếng) rồi tháo.
+          const t = ctx.currentTime;
+          g.gain.cancelScheduledValues(t);
+          g.gain.setValueAtTime(g.gain.value, t);
+          g.gain.linearRampToValueAtTime(0, t + 0.03);
+          setTimeout(() => {
+            g.disconnect();
+            p.disconnect();
+          }, 60);
+        },
+      };
+      voices.add(slot, admission.victim);
+    }
     // Tự dọn nút sau vài giây (mọi tiếng động đều ngắn hơn thế).
     setTimeout(() => {
+      if (slot) voices.remove(slot);
       g.disconnect();
       p.disconnect();
     }, 8000);

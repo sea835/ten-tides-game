@@ -22,6 +22,7 @@ import { BATTLE_TIMES, MAX_BATTLE_BOTS, MIN_BATTLE_BOTS, Messages, WAR_MAX_PER_S
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { openGunsmith } from "../../gunsmith/openGunsmith.ts";
+import { ClassPicker } from "./GadgetHud.tsx";
 import { SIDE_NAME } from "./WarHud.tsx";
 import "./command.css";
 
@@ -247,6 +248,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
                 </li>
               </ul>
             )}
+            <ClassPicker room={room} />
             <button className="cc-armory" onClick={() => openGunsmith()}>
               <Wrench size={18} aria-hidden />
               <span>
@@ -345,7 +347,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
               <Keyboard size={15} aria-hidden /> Phím điều khiển
             </summary>
             <p className="b-keys">
-              WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe (trên xe: 1–5 đổi ghế) · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · L (giữ) nói · U (giữ) bộ đàm · ` (giữ) vòng khẩu lệnh · chuột giữa đánh dấu (bấm đúp: nguy hiểm) · Đồng đội: Y tới điểm / lên xe tăng đang nhìn, G giữ chốt, H theo sau · gục ở chế độ tiểu đội: 1–5 nhập vào đồng đội
+              WASD đi · Shift chạy · C ngồi xổm (đang chạy: trượt) · Z nằm sấp · Space nhảy · Chuột trái bắn · Chuột phải ngắm · R thay đạn · 1–3 súng · X cất súng (cầm dao) · V đâm dao · 4 lựu đạn · 5 bom khói · 6 bom choáng · 7 mìn (giữ chuột trái rút chốt, thả ra ném; giữ thêm chuột phải thì ném thấp) · 8–9 hồi máu · 0 khí tài lớp lính (bấm lần nữa đổi khí tài thứ hai) · Q/E (giữ) nghiêng trái / phải · F nhặt, lên / xuống xe (trên xe: 1–5 đổi ghế) · B cửa hàng · Tab bảng điểm · T đổi góc nhìn · L (giữ) nói · U (giữ) bộ đàm · ` (giữ) vòng khẩu lệnh · chuột giữa đánh dấu (bấm đúp: nguy hiểm) · Đồng đội: Y tới điểm / lên xe tăng đang nhìn, G giữ chốt, H theo sau · gục ở chế độ tiểu đội: 1–5 nhập vào đồng đội
             </p>
           </details>
         </footer>
