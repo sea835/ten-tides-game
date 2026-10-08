@@ -5,12 +5,13 @@
 // bay đuổi có giới hạn góc quay) và pháo sáng mồi bẫy.
 
 import { boxesNear, type BattleMap } from "./battle.ts";
-import { WEAPON, type WeaponDef } from "./battleItems.ts";
+import { WEAPON, type WeaponDef, weaponDrop } from "./battleItems.ts";
 import { tankGround, type TankPose } from "./squad.ts";
 
 /** Thông số trực thăng. Gốc toạ độ ở đáy càng đáp, giữa thân; mũi theo hướng rotY như xe. */
 export const HELI = {
-  hp: 760,
+  /** Máu: chịu được 2 tên lửa IGLA (phát thứ 3 thì rơi), 4–5 quả RPG. */
+  hp: 1000,
   /** Nửa kích thước hộp thân (ngang, cao, dọc) để dò đạn, nổ; không tính đuôi mảnh và cánh quạt. */
   half: [1.15, 1.2, 3.3] as const,
   /** Bán kính bấm F lên trực thăng (đứng cạnh cửa). */
@@ -46,10 +47,15 @@ export const HELI = {
   safeSink: 5.5,
   crashSpeed: 17,
   /** Rocket mũi: số quả mỗi lần nạp, giãn cách hai quả (s); pháo sáng: số lượt, chờ giữa hai lượt (s). */
-  rockets: 14,
-  rocketGap: 0.28,
+  rockets: 32,
+  rocketGap: 0.22,
   flares: 6,
   flareCooldown: 4,
+  /**
+   * Vùng trời an toàn quanh sân đỗ nhà (m): máy của địch không nhắm trực thăng trong vùng này (đang cất cánh, hạ
+   * cánh, nạp đạn thì không bị bắn hạ từ xa ngay khi vừa rời đất).
+   */
+  safeRadius: 150,
   /** Đáp trong bán kính này quanh sân đỗ nhà (m) thì được nạp lại rocket, pháo sáng (mỗi `rearmEvery` giây một đợt). */
   rearmRadius: 16,
   rearmEvery: 1.2,
@@ -307,15 +313,24 @@ export const HYDRA: WeaponDef = {
   ...WEAPON.get("rpg7")!,
   id: "hydra",
   name: "Rocket trực thăng",
-  velocity: 140,
-  hipSpread: 0.012,
-  adsSpread: 0.012,
-  range: 400,
+  velocity: 200,
+  hipSpread: 0.006,
+  adsSpread: 0.006,
+  range: 800,
   price: 0,
   rare: true,
-  explosive: { radius: 4.2, damage: 100, armor: 240 },
-  boost: { vmax: 330, accel: 450 },
+  explosive: { radius: 4.6, damage: 100, armor: 240 },
+  boost: { vmax: 480, accel: 650 },
 };
+
+/**
+ * Điểm cần ngắm để rocket (rơi theo trọng lực) chạm đúng điểm (x, y, z) khi bắn từ (ox, oy, oz): nâng điểm ngắm lên
+ * đúng độ rơi ở cự ly đó. Dùng chung cho phi công người (tâm ngắm) và máy lái.
+ */
+export function rocketLead(ox: number, oy: number, oz: number, x: number, y: number, z: number): [number, number, number] {
+  const d = Math.hypot(x - ox, y - oy, z - oz);
+  return [x, y + weaponDrop(HYDRA, d), z];
+}
 if (!WEAPON.has(HYDRA.id)) (WEAPON as Map<string, WeaponDef>).set(HYDRA.id, HYDRA);
 
 /**

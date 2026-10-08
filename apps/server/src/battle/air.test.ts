@@ -199,6 +199,8 @@ describe("IGLA: khoá mục tiêu, cảnh báo, tên lửa, pháo sáng", () => 
     expect(v.alert).toBe(1);
     hold(room, vid, IGLA_LOCK.time);
     expect(v.alert).toBe(2);
+    // Hết pháo sáng (không tự thả được): tên lửa đuổi trúng.
+    v.flares = 0;
     // Bắn qua đường bắn chung (BattleRoom.fire): hướng hơi lệch, tên lửa tự bẻ về mục tiêu.
     const o: [number, number, number] = [shooter.x, shooter.y + 1.5, shooter.z];
     const d = [v.x - o[0], v.y + 10 - o[1], v.z + 15 - o[2]];
@@ -211,6 +213,18 @@ describe("IGLA: khoá mục tiêu, cảnh báo, tên lửa, pháo sáng", () => 
     expect(room.vehicles.air.flying.length).toBe(0);
     expect(v.hp).toBeLessThanOrEqual(HELI.hp - MISSILE.armor);
     expect(v.alert).toBe(0);
+  });
+
+  it("tên lửa bay tới gần mà phi công chưa thả pháo sáng: tự thả, tên lửa bị mồi, trực thăng không mất máu", () => {
+    const { room, vid, v } = setup();
+    hold(room, vid, IGLA_LOCK.time + 0.1);
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const flares = v.flares;
+    room.vehicles.air.fireMissile("aa", [v.x - 118, v.y - 40, v.z], [0.94, 0.33, 0]);
+    expect(room.vehicles.air.flying[0]!.target).toBe(vid);
+    tick(room, 4);
+    expect(v.flares).toBe(flares - 1);
+    expect(v.hp).toBe(HELI.hp);
   });
 
   it("chưa khoá đủ lâu thì tên lửa bay thẳng, không đuổi; đồng đội không khoá được trực thăng phe mình", () => {

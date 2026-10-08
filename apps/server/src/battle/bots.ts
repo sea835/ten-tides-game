@@ -1,4 +1,4 @@
-import { HELI, IGLA_LOCK, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WAR_BASES, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
+import { HELI, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WAR_BASES, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -30,6 +30,8 @@ const NAMES = [
 const LOADOUTS = ["m416", "akm", "scar", "ump45", "vector", "sks", "s686", "s1897", "dp28", "m416", "akm"];
 /** Tầm nhìn (m) theo vai trò; lái tăng nhìn từ tháp pháo, xa hơn. */
 const SIGHT: Record<string, number> = { "": 75, leader: 85, rifle: 85, support: 85, sniper: 150, tanker: 160 };
+/** Tầm máy dùng IGLA khoá trực thăng (m), ngắn hơn tầm tối đa của người chơi. */
+const BOT_AA_RANGE = 260;
 /** Đội hình mũi tên sau lưng đội trưởng: (ngang, dọc) theo hướng đội trưởng nhìn, dương là bên phải / phía trước. */
 const SLOTS: readonly [number, number][] = [
   [-4, -4],
@@ -189,6 +191,8 @@ export class Bots {
   /** Máy lái trực thăng (heliPilot.ts); lúc mỗi trực thăng bắt đầu bỏ trống (giây trận). */
   readonly pilots: HeliPilots;
   private heliIdle = new Map<string, number>();
+  /** Máy đang (hay vừa) khoá IGLA vào trực thăng nào, tới lúc nào (giây trận). */
+  private aaClaim = new Map<string, { by: string; until: number }>();
 
   constructor(private readonly room: BattleRoom) {
     this.pilots = new HeliPilots(room);
@@ -253,6 +257,7 @@ export class Bots {
     this.commands.clear();
     this.pilots.clear();
     this.heliIdle.clear();
+    this.aaClaim.clear();
     this.nameSeq = 0;
   }
 
@@ -483,6 +488,13 @@ export class Bots {
     return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0, path: null, pathI: 0, pgx: x, pgz: z, replan: false, progX: x, progZ: z, progT: 0, stuckN: 0, unstick: 0, ux: x, uz: z, lookYaw: 0, lookAt: 0, tacKey: "", tacX: x, tacZ: z, tacKind: "", shots: 0, lostAt: -99, hurtAt: -99, retreat: 0, rx: x, rz: z, smokeCd: 0 };
   }
 
+  /** Trực thăng còn trong vùng trời an toàn quanh sân đỗ nhà (đang cất, hạ cánh, nạp đạn): máy không nhắm vào. */
+  heliShielded(v: { kind: string; x: number; z: number }, vid: string): boolean {
+    if (v.kind !== "heli") return false;
+    const home = this.room.vehicles.air.homeOf(vid);
+    return !!home && Math.hypot(v.x - home.x, v.z - home.z) < HELI.safeRadius;
+  }
+
   /** Hai người có phải địch của nhau không (cùng đội thì không). */
   hostile(a: PlayerState, b: PlayerState): boolean {
     return a !== b && !(a.team && a.team === b.team);
@@ -561,7 +573,7 @@ export class Bots {
     // Pháo xe tăng không ngóc lên bắn trực thăng đang bay.
     const airborne = (o: PlayerState) => {
       const v = o.vehicle ? s.vehicles.get(o.vehicle) : undefined;
-      return !!v && v.kind === "heli" && v.y - this.height(v.x, v.z) > 6;
+      return !!v && v.kind === "heli" && (v.y - this.height(v.x, v.z) > 6 || this.heliShielded(v, o.vehicle));
     };
     const usable = (o: PlayerState) => o.alive && this.hostile(p, o) && ((tanks && !airborne(o)) || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
     const cur = b.target ? s.players.get(b.target) : undefined;
@@ -1101,7 +1113,7 @@ export class Bots {
           if (!driver || !this.hostile(p, driver)) continue;
           const d = Math.hypot(v.x - p.x, v.z - p.z);
           // RPG không điều khiển: chỉ bắn trực thăng đang lơ lửng thấp (đáp, cất cánh) trong tầm gần.
-          if (v.kind === "heli" && (v.y - this.height(v.x, v.z) > 10 || d > 90)) continue;
+          if (v.kind === "heli" && (v.y - this.height(v.x, v.z) > 10 || d > 90 || this.heliShielded(v, driver.vehicle))) continue;
           if (d > bestD || d < 8 || !this.visible(eye, v.x, v.y + 1.4, v.z)) continue;
           b.at = v.driver;
           bestD = d;
@@ -1173,13 +1185,18 @@ export class Bots {
         for (const [vid, v] of s.vehicles) {
           if (v.kind !== "heli" || v.hp <= 0 || !v.driver) continue;
           const driver = s.players.get(v.driver);
-          if (!driver || !this.hostile(p, driver) || Math.hypot(v.x - p.x, v.z - p.z) > IGLA_LOCK.range * 0.9) continue;
+          // Máy chỉ khoá trong tầm gần hơn người (260 m), không đụng trực thăng còn trong vùng trời nhà, và mỗi trực
+          // thăng chỉ một máy khoá cùng lúc (không bị cả chục tên lửa từ khắp nơi bay tới một lúc).
+          if (!driver || !this.hostile(p, driver) || Math.hypot(v.x - p.x, v.z - p.z) > BOT_AA_RANGE || this.heliShielded(v, vid)) continue;
+          const claim = this.aaClaim.get(vid);
+          if (claim && claim.by !== id && claim.until > this.time) continue;
           const was = kit.active;
           kit.active = slot;
           const ok = air.canLock(id, vid);
           kit.active = was;
           if (ok) {
             b.at = vid;
+            this.aaClaim.set(vid, { by: id, until: this.time + 6 });
             break;
           }
         }
@@ -1212,7 +1229,9 @@ export class Bots {
     if (air.lockReadyFor(id)) {
       const cp = Math.cos(p.aimPitch);
       this.room.fire(id, "igla", o, [[Math.sin(p.rotY) * cp, Math.sin(p.aimPitch), Math.cos(p.rotY) * cp]], []);
-      b.atScan = 4 + Math.random() * 3;
+      // Bắn xong thì giữ lượt khoá trực thăng này thêm một lúc (máy khác không khoá tiếp ngay), tự mình nghỉ lâu.
+      this.aaClaim.set(b.at, { by: id, until: this.time + 14 });
+      b.atScan = 12 + Math.random() * 6;
       b.at = "";
     }
     return true;

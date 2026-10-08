@@ -28,6 +28,7 @@ import {
   clampDoor,
   heliGround,
   clampRocketAim,
+  rocketLead,
   heliRocketAim,
   heliRocketMuzzle,
   heliStep,
@@ -606,17 +607,21 @@ export function HeliSeat({ room }: { room: IslandRoom }) {
     // tâm rocket trên màn hình là chỗ rocket sẽ bay tới (trùng tâm màn hình khi mục tiêu nằm trong nón).
     if (mySeat === 0) {
       cam.getWorldDirection(dir);
-      const hit = physics.castRay(new rapier.Ray(cam.position, dir), 600, true, undefined, BULLET_GROUPS, undefined, undefined, skipOwn);
-      aim.copy(cam.position).addScaledVector(dir, hit ? Math.max(hit.timeOfImpact, 12) : 400);
+      const hit = physics.castRay(new rapier.Ray(cam.position, dir), 900, true, undefined, BULLET_GROUPS, undefined, undefined, skipOwn);
+      aim.copy(cam.position).addScaledVector(dir, hit ? Math.max(hit.timeOfImpact, 12) : 800);
       const m0 = heliRocketMuzzle(p, 0).o;
       const m1 = heliRocketMuzzle(p, 1).o;
       const ox = (m0[0] + m1[0]) / 2;
       const oy = (m0[1] + m1[1]) / 2;
       const oz = (m0[2] + m1[2]) / 2;
       const want = clampRocketAim(p.rotY, Math.atan2(aim.x - ox, aim.z - oz), Math.atan2(aim.y - oy, Math.hypot(aim.x - ox, aim.z - oz)));
-      hdrive.rocketYaw = want.yaw;
-      hdrive.rocketPitch = want.pitch;
-      const reach = Math.max(20, Math.min(400, aim.distanceTo(_tmp.o.set(ox, oy, oz))));
+      // Bắn: ngẩng thêm đúng độ rơi của rocket ở cự ly đó, để rocket rơi trúng chỗ tâm ngắm chỉ (trước đây ngắm thẳng
+      // nên ở 200–400 m rocket cắm xuống đất trước mục tiêu vài mét).
+      const lead = rocketLead(ox, oy, oz, aim.x, aim.y, aim.z);
+      const fire = clampRocketAim(p.rotY, Math.atan2(lead[0] - ox, lead[2] - oz), Math.atan2(lead[1] - oy, Math.hypot(lead[0] - ox, lead[2] - oz)));
+      hdrive.rocketYaw = fire.yaw;
+      hdrive.rocketPitch = fire.pitch;
+      const reach = Math.max(20, Math.min(800, aim.distanceTo(_tmp.o.set(ox, oy, oz))));
       const r = heliRocketAim(p, 0, want.yaw, want.pitch);
       up.set(ox + r.d[0] * reach, oy + r.d[1] * reach, oz + r.d[2] * reach).project(cam);
       heliHud.rocketOn = up.z < 1;
