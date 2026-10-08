@@ -21,6 +21,8 @@ import { Trails } from "./Trails.tsx";
 import { WaypointTracker } from "./Waypoint.tsx";
 import { Weather } from "./Weather.tsx";
 import { DayCycle } from "./DayCycle.tsx";
+import { StaticSun } from "./StaticShadows.tsx";
+import { installStaticShadows } from "./staticShadow.ts";
 import { Atmosphere } from "./Atmosphere.tsx";
 import { cloudUniforms, installHeightFog, wetUniforms } from "./atmosphere.ts";
 import { weatherUniforms } from "./textures.ts";
@@ -54,6 +56,7 @@ const HORIZON = "#c4e4f3";
 
 // Sương mù bám độ cao cho mọi vật liệu: phải cài trước khi dựng shader đầu tiên.
 installHeightFog();
+installStaticShadows();
 
 /** Móc debug khi dev: xem room, vị trí, hướng nhìn và camera trong console trình duyệt. */
 function DebugHook({ room }: { room: IslandRoom }) {
@@ -159,22 +162,25 @@ function ShadowScheduler({ hz }: { hz: number }) {
 
 function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null>; profile: Profile; quality: string }) {
   const e = profile.shadowExtent;
+  // Cùng một nhóm, mặt trời đứng trước đèn giữ bóng tĩnh: shader dựa vào thứ tự này (xem staticShadow.ts).
   return (
-    <directionalLight
-      ref={sun}
-      intensity={2.2}
-      castShadow
-      key={quality}
-      shadow-mapSize={[profile.shadowMap, profile.shadowMap]}
-      shadow-bias={-0.0003}
-      shadow-normalBias={0.04}
-      shadow-radius={profile.shadowRadius}
-      shadow-camera-left={-e}
-      shadow-camera-right={e}
-      shadow-camera-top={e}
-      shadow-camera-bottom={-e}
-      shadow-camera-far={180}
-    />
+    <group key={quality}>
+      <directionalLight
+        ref={sun}
+        intensity={2.2}
+        castShadow
+        shadow-mapSize={[profile.shadowMap, profile.shadowMap]}
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.04}
+        shadow-radius={profile.shadowRadius}
+        shadow-camera-left={-e}
+        shadow-camera-right={e}
+        shadow-camera-top={e}
+        shadow-camera-bottom={-e}
+        shadow-camera-far={180}
+      />
+      <StaticSun sun={sun} profile={profile} />
+    </group>
   );
 }
 

@@ -18,6 +18,7 @@ import { mapOf, type BattleBox, type World } from "@tentides/content";
 import { Messages, type CollapseMessage } from "@tentides/protocol";
 import type { IslandRoom } from "../../net.ts";
 import { useProfile } from "../graphics.ts";
+import { refreshSoon } from "../staticShadow.ts";
 import { localPosition, shake } from "../shared.ts";
 import { playCrumble } from "../sound/guns.ts";
 import { effects } from "./runtime.ts";
@@ -244,6 +245,8 @@ export function Wreckage({ room, world }: { room: IslandRoom; world: World }) {
         if (inst) {
           inst.mesh.setMatrixAt(inst.local, ZERO);
           inst.mesh.instanceMatrix.needsUpdate = true;
+          // Khối sập: bóng tĩnh vẽ lại ngay (khỏi còn bóng của bức tường đã mất).
+          refreshSoon();
         }
         wreck.removeCollider?.(i);
         if (dead) dead[i] = 1;
@@ -261,6 +264,7 @@ export function Wreckage({ room, world }: { room: IslandRoom; world: World }) {
         if (inst) {
           inst.mesh.setMatrixAt(inst.local, boxMatrix(b, _m));
           inst.mesh.instanceMatrix.needsUpdate = true;
+          refreshSoon();
         }
         wreck.restoreCollider?.(i);
         if (dead) dead[i] = 0;

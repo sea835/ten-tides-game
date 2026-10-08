@@ -13,6 +13,7 @@ import { fireMounted } from "./Carriers.tsx";
 import { effects, getBattleHud, localBody, menuOpen, seat, setBattleHud } from "./runtime.ts";
 import { BULLET_GROUPS } from "./surface.ts";
 import { emplacementHud, seatOwner, WreckFire } from "./vehicleParts.tsx";
+import { StaticShadowRoot } from "../StaticShadows.tsx";
 
 // Vũ khí cố định (ổ đại liên sau vòng bao cát, cối 82 ly trên giá hai chân): vẽ mô hình khối, hộp va chạm (người,
 // đạn không xuyên bao cát); xạ thủ là nhân vật thật (RemotePlayers vẽ, bắn trúng được vì lộ nửa người trên).
@@ -82,12 +83,13 @@ function Sandbags({ r, rows, gap, wreck, front = 0 }: { r: number; rows: number;
     }
     return out;
   }, [r, rows, gap, front]);
+  // Ụ bao cát không bao giờ dịch chuyển: bóng vẽ sẵn vào bản đồ bóng tĩnh (mỗi ụ vài chục khối).
   return (
-    <>
+    <StaticShadowRoot>
       {bags.map((b, i) => (
         <mesh key={i} geometry={G.bag} material={wreck ? WRECK : b.dark ? SANDBAG_DARK : SANDBAG} position={[b.x, b.y, b.z]} rotation-y={b.ry + Math.PI / 2} castShadow receiveShadow />
       ))}
-    </>
+    </StaticShadowRoot>
   );
 }
 
