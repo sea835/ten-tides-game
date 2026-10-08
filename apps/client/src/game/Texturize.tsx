@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useProfile } from "./graphics.ts";
-import { detailScene, installDetailHook, setDetailEnabled } from "./textures.ts";
-import { compileNew } from "./shaderPrep.ts";
+import { installDetailHook, setDetailEnabled } from "./textures.ts";
+import { scanScene } from "./shaderPrep.ts";
 
 /**
  * Phủ vân cho cảnh: vật mới được vá ngay trước lần vẽ đầu (installDetailHook), cộng một lần quét định kỳ cho vật đổi
@@ -18,12 +18,11 @@ export function Texturize() {
   useEffect(() => setDetailEnabled(detail), [detail]);
   useEffect(() => installDetailHook(scene), [scene]);
   useFrame(({ scene, camera, clock }) => {
-    // 1,5 giây thay vì 0,5: `detailScene` duyệt toàn bộ cây cảnh (hàng nghìn vật thể) mỗi lần,
-    // và thường không có gì mới xuất hiện giữa hai lần quét sát nhau.
+    // 4 giây một lượt: vật mới đã được vá ngay trước lần vẽ đầu (installDetailHook), lượt quét này chỉ còn bắt vật đổi
+    // vật liệu giữa chừng và dịch sẵn shader cho vật chưa lọt vào tầm nhìn; mỗi lượt duyệt cả cây cảnh (vài nghìn vật).
     if (clock.elapsedTime < next.current) return;
-    next.current = clock.elapsedTime + 1.5;
-    detailScene(scene);
-    compileNew(gl, scene, camera);
+    next.current = clock.elapsedTime + 4;
+    scanScene(gl, scene, camera);
   });
   return null;
 }

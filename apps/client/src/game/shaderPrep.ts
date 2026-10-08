@@ -1,5 +1,5 @@
-import type { Camera, DirectionalLight, Material, Object3D, Scene, WebGLRenderer } from "three";
-import { detailScene } from "./textures.ts";
+import type { Camera, DirectionalLight, Material, Mesh, Object3D, Scene, WebGLRenderer } from "three";
+import { detailMesh, detailScene } from "./textures.ts";
 
 // Dịch sẵn shader để khỏi khựng hình giữa trận. three.js dịch shader của một vật liệu ngay lần đầu vẽ nó, và lần
 // dịch đó chặn cả khung hình. Trên Windows, Chrome/Edge/Firefox vẽ WebGL qua ANGLE → Direct3D 11: mỗi shader phải dịch
@@ -27,22 +27,23 @@ export function prepareScene(gl: WebGLRenderer, scene: Scene, camera: Camera): P
 let busy = false;
 
 /**
- * Dịch sẵn shader cho vật vừa xuất hiện trong cảnh mà chưa từng được vẽ (đồ rơi mới, người mới vào, xe mới...). Ít
- * vật thì dịch từng vật (gom ánh sáng từ cả cảnh), nhiều thì dịch lại cả cảnh một lượt.
+ * Một lượt duyệt cảnh: phủ vân cho khối đổi vật liệu giữa chừng, rồi dịch sẵn shader cho vật vừa xuất hiện mà chưa
+ * từng được vẽ (đồ rơi mới, người mới vào, xe mới...). Ít vật thì dịch từng vật (gom ánh sáng từ cả cảnh), nhiều thì
+ * dịch lại cả cảnh một lượt. Trước đây là hai lượt duyệt riêng (vài nghìn vật mỗi lượt).
  */
-export function compileNew(gl: WebGLRenderer, scene: Scene, camera: Camera) {
-  if (busy) return;
+export function scanScene(gl: WebGLRenderer, scene: Scene, camera: Camera) {
   const fresh: Object3D[] = [];
   let many = false;
   scene.traverse((o) => {
-    if (many) return;
+    if ((o as { isMesh?: boolean }).isMesh) detailMesh(o as Mesh);
+    if (busy || many) return;
     if (!(o as { isMesh?: boolean }).isMesh && !(o as { isPoints?: boolean }).isPoints && !(o as { isLine?: boolean }).isLine) return;
     if (materialsOf(o).some((m) => needsProgram(gl, m))) {
       fresh.push(o);
       if (fresh.length > 24) many = true;
     }
   });
-  if (fresh.length === 0) return;
+  if (busy || fresh.length === 0) return;
   busy = true;
   const done = () => {
     busy = false;

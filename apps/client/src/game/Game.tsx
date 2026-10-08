@@ -59,13 +59,15 @@ installHeightFog();
 function DebugHook({ room }: { room: IslandRoom }) {
   const camera = useThree((s) => s.camera);
   const scene = useThree((s) => s.scene);
+  // Kho trạng thái R3F (renderer, danh sách vòng cập nhật useFrame) để đo hiệu năng trong console.
+  const r3f = useThree((s) => s.get);
   const world = useWorld(room);
   useEffect(() => {
     if (import.meta.env.DEV) {
       const w = window as unknown as { __tentides?: Record<string, unknown> };
-      w.__tentides = { ...(w.__tentides ?? {}), room, look, localPosition, camera, scene, anchors: ANCHORS, world, debugCam, weatherFx, audio, atmosphere: { cloudUniforms, wetUniforms, weatherUniforms, trampleUniforms } };
+      w.__tentides = { ...(w.__tentides ?? {}), room, look, localPosition, camera, scene, r3f, anchors: ANCHORS, world, debugCam, weatherFx, audio, atmosphere: { cloudUniforms, wetUniforms, weatherUniforms, trampleUniforms } };
     }
-  }, [room, camera, scene, world]);
+  }, [room, camera, scene, r3f, world]);
   return null;
 }
 
