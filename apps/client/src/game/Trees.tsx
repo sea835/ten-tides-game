@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CylinderCollider, RigidBody } from "@react-three/rapier";
 import {
@@ -22,6 +22,7 @@ import { grain, mulberry32, swayMaterial } from "./nature.ts";
 import { detailed } from "./textures.ts";
 import { frondStrip, frondTexture, leafCluster, leafClusterTexture, leafMaterial } from "./foliage.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
+import { refreshSoon } from "./staticShadow.ts";
 
 // Cây leo được, chặt được: dừa và cây rừng tán rộng của bản đồ (trừ cây đã bị đốn, chỉ còn gốc),
 // cộng cây mới trồng lớn dần. Cây bị đốn thì đổ rạp xuống theo hướng nhát chặt cuối.
@@ -372,6 +373,9 @@ interface FallingTree extends TreeLike {
   y: number;
 }
 
+/** Cây đang đổ chuyển động từng khung: bóng vẽ vào bản đồ động, không vào bản đồ tĩnh. */
+const FALLING = { dynamicShadow: true };
+
 /** Cây đang đổ: xoay quanh gốc theo hướng nhát chặt cuối, rơi nhanh dần, nảy nhẹ rồi lún mất. */
 function Falling({ tree, dir, onDone }: { tree: FallingTree; dir: number; onDone: () => void }) {
   const pivot = useRef<Group>(null);
@@ -393,7 +397,7 @@ function Falling({ tree, dir, onDone }: { tree: FallingTree; dir: number; onDone
   });
   const m = tree.kind === "palm" ? palmMatrices({ ...tree, x: 0, z: 0 }, 0, 1) : null;
   return (
-    <group position={[tree.x, tree.y, tree.z]} rotation-y={dir}>
+    <group position={[tree.x, tree.y, tree.z]} rotation-y={dir} userData={FALLING}>
       <group ref={pivot}>
         {m ? (
           <group rotation-y={-dir}>
@@ -446,6 +450,8 @@ export function Trees({ room, world }: { room: IslandRoom; world: World }) {
   const palms = useMemo(() => world.trees.filter((t) => t.kind === "palm" && !felled.has(t.id)), [world, felled]);
   const broad = useMemo(() => world.trees.filter((t) => t.kind === "broadleaf" && !felled.has(t.id)), [world, felled]);
   const stumps = useMemo(() => world.trees.filter((t) => felled.has(t.id)), [world, felled]);
+  // Cây vừa đổ biến khỏi rừng: bóng tĩnh vẽ lại ngay.
+  useEffect(() => refreshSoon(), [felled]);
   const palmChunks = useMemo(() => forestChunks(palms), [palms]);
   const broadChunks = useMemo(() => forestChunks(broad), [broad]);
   const [falling, setFalling] = useState<{ key: number; tree: FallingTree; dir: number }[]>([]);

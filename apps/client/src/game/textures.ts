@@ -560,7 +560,7 @@ function faceted(m: MeshStandardMaterial): boolean {
 }
 
 /** Bỏ tô phẳng, làm mịn hình và phủ vân cho các vật liệu chuẩn của một khối (chưa phủ thì phủ, có rồi thì thôi). */
-function detailMesh(mesh: Mesh) {
+export function detailMesh(mesh: Mesh) {
   const list: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   let smooth = list.length > 0 && !mesh.userData.faceted;
   for (const m of list) {

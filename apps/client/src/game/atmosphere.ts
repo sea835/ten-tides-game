@@ -128,11 +128,14 @@ float tenCloudShade( vec2 xz ) {
 `;
 
 let litChunk: string | null = null;
+let litFrom: string | null = null;
 /**
  * Mẩu `lights_fragment_begin` của three.js có thêm bóng mây trên đèn hướng (mặt trời, mặt trăng). `xz` là biểu thức
- * GLSL ra toạ độ thế giới của điểm đang tô.
+ * GLSL ra toạ độ thế giới của điểm đang tô. Dựng lại nếu mẩu gốc đã bị vá sau đó (bóng tĩnh cài lúc vào trận).
  */
 export function cloudLightsChunk(xz: string): string {
+  if (litFrom !== ShaderChunk.lights_fragment_begin) litChunk = null;
+  litFrom = ShaderChunk.lights_fragment_begin;
   litChunk ??= ShaderChunk.lights_fragment_begin.replace(
     "getDirectionalLightInfo( directionalLight, directLight );",
     "getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= tenCloud;",

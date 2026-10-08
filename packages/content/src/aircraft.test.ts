@@ -4,6 +4,9 @@ import {
   CLASSES,
   DOOR_ARC,
   HELI,
+  HYDRA,
+  projectileAt,
+  rocketLead,
   IGLA_LOCK,
   MISSILE,
   RHIB,
@@ -234,9 +237,38 @@ describe("rocket trực thăng ngắm theo chuột", () => {
     expect(clampRocketAim(0, 0, -2).pitch).toBe(ROCKET_CONE.down);
   });
 
-  it("IGLA: hai phát mới hạ được trực thăng còn nguyên máu", () => {
-    expect(MISSILE.armor).toBeLessThan(HELI.hp);
-    expect(MISSILE.armor * 2).toBeGreaterThanOrEqual(HELI.hp);
+  it("IGLA: trực thăng còn nguyên máu chịu được hai phát, ba phát thì rơi", () => {
+    expect(MISSILE.armor * 2).toBeLessThan(HELI.hp);
+    expect(MISSILE.armor * 3).toBeGreaterThanOrEqual(HELI.hp);
     expect(MISSILE.vmax).toBeGreaterThan(HELI.maxSpeed * 3);
   });
 });
+
+describe("rocket trực thăng: ngắm bù rơi", () => {
+  it("ngắm theo rocketLead thì rocket rơi trúng mục tiêu ở 100–700 m (ngắm thẳng thì trượt)", () => {
+    const o: [number, number, number] = [0, 60, 0];
+    for (const dist of [100, 300, 500, 700]) {
+      const t: [number, number, number] = [dist * 0.8, 2, dist * 0.6];
+      const aim = (p: readonly number[]) => {
+        const dx = p[0]! - o[0];
+        const dy = p[1]! - o[1];
+        const dz = p[2]! - o[2];
+        const l = Math.hypot(dx, dy, dz);
+        return [dx / l, dy / l, dz / l] as [number, number, number];
+      };
+      const along = (d: [number, number, number]) => {
+        // Điểm của đường bay ở cùng khoảng cách ngang với mục tiêu.
+        const horiz = Math.hypot(t[0], t[2]);
+        const s = horiz / Math.hypot(d[0], d[2]);
+        return projectileAt(o, d, HYDRA.velocity, s, HYDRA.boost);
+      };
+      const led = along(aim(rocketLead(o[0], o[1], o[2], ...t)));
+      const straight = along(aim(t));
+      expect(Math.abs(led[1] - t[1])).toBeLessThan(1.2);
+      if (dist >= 300) expect(Math.abs(straight[1] - t[1])).toBeGreaterThan(1.5);
+    }
+    expect(HYDRA.range).toBeGreaterThanOrEqual(700);
+    expect(HELI.rockets).toBeGreaterThanOrEqual(30);
+  });
+});
+

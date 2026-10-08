@@ -1,4 +1,5 @@
 import {
+  HYDRA,
   HMG,
   MOUNT,
   TANK,
@@ -525,7 +526,8 @@ export class Vehicles {
   launch(owner: string, o: [number, number, number], d: [number, number, number], velocity: number, spec: { radius: number; damage: number; armor: number }, weapon: string, skip = "", boost?: Boost) {
     const s = this.room.state;
     const shooter = s.players.get(owner);
-    const max = 450;
+    // Rocket trực thăng bay xa hơn RPG (tầm HYDRA.range), các loại khác 450 m.
+    const max = weapon === HYDRA.id ? HYDRA.range : 450;
     const steps = bulletSteps(velocity, max);
     let hitS = max;
     let direct = "";

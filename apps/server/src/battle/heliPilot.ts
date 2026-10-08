@@ -1,4 +1,4 @@
-import { HELI, ROCKET_CONE, heliCrashDamage, heliGround, heliStep, type HeliMotion } from "@tentides/content";
+import { HELI, ROCKET_CONE, heliCrashDamage, heliGround, heliStep, rocketLead, type HeliMotion } from "@tentides/content";
 import type { PlayerState, VehicleState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 
@@ -15,7 +15,7 @@ const CRUISE = 42;
 const ATTACK_ALT = 32;
 /** Bán kính lượn vòng quanh khu vực giao tranh, tầm bắt đầu bắn, tầm nhìn tìm địch. */
 const ORBIT = 85;
-const FIRE_RANGE = 150;
+const FIRE_RANGE = 260;
 const SPOT_RANGE = 190;
 /** Mỗi loạt rocket, nghỉ giữa hai loạt (giây). */
 const SALVO = 4;
@@ -153,9 +153,10 @@ export class HeliPilots {
         gz = t.z - (dz / d) * keep;
         maxSpeed = 20;
         const ty = t.y + (t.vehicle ? 1.2 : 0.8);
-        // Bù rơi đạn rocket rất ít (bay nhanh), lệch chút ít theo khoảng cách.
-        fireYaw = face + (Math.random() - 0.5) * 0.025;
-        firePitch = Math.atan2(ty - (v.y + 0.5), d) + (Math.random() - 0.5) * 0.02;
+        // Bù rơi đạn rocket (như tâm ngắm của phi công người), lệch chút ít.
+        const lead = rocketLead(v.x, v.y + 0.5, v.z, t.x, ty, t.z);
+        fireYaw = face + (Math.random() - 0.5) * 0.02;
+        firePitch = Math.atan2(lead[1] - (v.y + 0.5), d) + (Math.random() - 0.5) * 0.015;
         break;
       }
       case "home": {

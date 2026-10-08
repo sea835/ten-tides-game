@@ -281,6 +281,15 @@ export class Air {
         if (v.alert) v.alert = 0;
         continue;
       }
+      // Hệ thống tự vệ: tên lửa đã bay tới gần (dưới 220 m) mà phi công chưa thả pháo sáng thì tự thả (còn pháo sáng,
+      // hết thời gian chờ). Trước đây phi công mới tập bay chưa kịp nghe còi đã bị tên lửa hạ ngay sau khi cất cánh.
+      if (v.driver && v.alert >= 3 && v.flares > 0 && !this.flareBurn.has(vid)) {
+        for (const m of this.missiles)
+          if (m.target === vid && Math.hypot(m.x - v.x, m.y - v.y, m.z - v.z) < 220) {
+            this.flare(v.driver);
+            break;
+          }
+      }
       let ground = heliGround(map, v.x, v.z);
       // Bỏ trống trên không: mặt đỗ thật bên dưới (nóc nhà, bệ bê tông) chứ không chỉ mặt đất.
       if (!v.driver && v.y - ground > 0.05) ground = heliProbe(map, v.x, v.y, v.z, v.rotY).floor;

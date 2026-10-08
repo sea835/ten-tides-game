@@ -40,6 +40,10 @@ import { physicsProbe } from "./surface.ts";
 import { windStrength } from "../nature.ts";
 import { forEachSmoke, SmokeShells } from "./SmokeShell.tsx";
 import { Debris, spawnDebris } from "./Debris.tsx";
+import { MAX_EMBERS, blastPush, emberRing, emberVertex, embers, particleClock, puffRing, puffUniforms, puffVertex, puffs, setSmokeClears } from "./gpuParticles.ts";
+
+// Khói, tia lửa dùng chung (các nơi khác thêm hạt qua đây như trước).
+export { MAX_EMBERS, embers, puffs, type Ember, type Puff } from "./gpuParticles.ts";
 import { MuzzleLights } from "./MuzzleLights.tsx";
 import { LootModel } from "../GunModel.tsx";
 
@@ -161,24 +165,6 @@ function puff(): CanvasTexture {
   return puffTexture;
 }
 
-/** Hạt khói quay mặt về camera; màu, độ đậm từng hạt theo thuộc tính riêng. */
-const puffVertex = /* glsl */ `
-  attribute vec4 aTint;
-  varying vec2 vUv;
-  varying vec4 vTint;
-  #include <fog_pars_vertex>
-  void main() {
-    vUv = uv;
-    vTint = aTint;
-    vec3 center = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    float size = length(instanceMatrix[0].xyz);
-    vec4 mv = viewMatrix * modelMatrix * vec4(center, 1.0);
-    mv.xy += position.xy * size;
-    gl_Position = projectionMatrix * mv;
-    vec4 mvPosition = mv;
-    #include <fog_vertex>
-  }
-`;
 const puffFragment = /* glsl */ `
   uniform sampler2D uMap;
   varying vec2 vUv;
@@ -193,42 +179,15 @@ const puffFragment = /* glsl */ `
   }
 `;
 
-const MAX_PUFFS = 900;
-
-export interface Puff {
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  size: number;
-  grow: number;
-  life: number;
-  age: number;
-  r: number;
-  g: number;
-  b: number;
-  alpha: number;
-  /** Khói dày (bom khói): không mờ dần theo tuổi cho tới gần cuối. */
-  dense: boolean;
-}
-
-export const puffs: Puff[] = [];
-
+/**
+ * Khói, bụi chung của trận: hạt tính trên GPU (gpuParticles.ts). Mỗi khung chỉ chạy đồng hồ hạt, đặt gió, tải lên các
+ * ô vừa ghi; trước đây CPU tích phân và ghép ma trận cho tới 900 hạt mỗi khung.
+ */
 function Puffs() {
-  const mesh = useRef<InstancedMesh>(null);
-  const dummy = useMemo(() => new Object3D(), []);
-  const tint = useMemo(() => new InstancedBufferAttribute(new Float32Array(MAX_PUFFS * 4), 4), []);
-  const geometry = useMemo(() => {
-    const g = new PlaneGeometry(1, 1);
-    g.setAttribute("aTint", tint);
-    return g;
-  }, [tint]);
   const material = useMemo(
     () =>
       new ShaderMaterial({
-        uniforms: { uMap: { value: puff() }, fogColor: { value: new Color() }, fogNear: { value: 1 }, fogFar: { value: 1000 } },
+        uniforms: { ...puffUniforms, uMap: { value: puff() }, fogColor: { value: new Color() }, fogNear: { value: 1 }, fogFar: { value: 1000 } },
         vertexShader: puffVertex,
         fragmentShader: puffFragment,
         transparent: true,
@@ -237,77 +196,30 @@ function Puffs() {
       }),
     [],
   );
+  useEffect(() => () => puffRing.clear(), []);
   useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05) * hitStopScale();
-    const m = mesh.current;
-    if (!m) return;
-    // Gió thổi khói nổ, khói đạn trôi đi (bão thì trôi nhanh). Khói của bom khói đứng yên tại chỗ để khớp với
-    // vùng che tầm nhìn của server.
-    const drift = 0.9 * windStrength.value * dt;
-    let n = 0;
-    for (let i = puffs.length - 1; i >= 0; i--) {
-      const p = puffs[i]!;
-      p.age += dt;
-      if (p.age >= p.life) {
-        puffs.splice(i, 1);
-        continue;
-      }
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.z += p.vz * dt;
-      if (!p.dense) {
-        // Càng lên cao gió càng mạnh (cột khói nghiêng dần theo chiều gió).
-        const lift = Math.min(2, 0.5 + p.age * 0.3);
-        p.x += WIND_X * drift * lift;
-        p.z += WIND_Z * drift * lift;
-      }
-      // Chậm dần theo thời gian (không theo số khung hình).
-      const drag = Math.exp(-dt * (p.dense ? 0.55 : 1.2));
-      p.vx *= drag;
-      p.vz *= drag;
-      if (p.dense) p.vy *= drag;
-      p.size += p.grow * dt;
-      // Quá hạn mức thì bỏ hẳn cụm cũ, không chỉ bỏ qua phần vẽ: trước đây mảng phình vô hạn
-      // nên mọi cụm vẫn được tích phân mỗi khung hình dù không hiện, và hiệu ứng mới bị đẩy ra.
-      if (n >= MAX_PUFFS) {
-        puffs.splice(i, 1);
-        continue;
-      }
-      const k = p.age / p.life;
-      const alpha = p.dense ? p.alpha * Math.min(1, p.age * 1.5) * (1 - Math.max(0, k - 0.8) / 0.2) : p.alpha * (1 - k);
-      dummy.position.set(p.x, p.y, p.z);
-      dummy.scale.setScalar(p.size);
-      dummy.updateMatrix();
-      m.setMatrixAt(n, dummy.matrix);
-      tint.setXYZW(n, p.r, p.g, p.b, alpha);
-      n++;
-    }
-    m.count = n;
-    m.instanceMatrix.needsUpdate = true;
-    tint.needsUpdate = true;
+    // Đồng hồ hạt (dùng chung cho tia lửa): chạy chậm lại khi hitstop như trước.
+    particleClock.value += Math.min(rawDt, 0.05) * hitStopScale();
+    // Gió thổi khói nổ, khói đạn trôi đi (bão thì trôi nhanh). Khói bom khói (dày) đứng yên để khớp vùng che tầm nhìn.
+    const drift = 0.9 * windStrength.value;
+    puffUniforms.uWind.value.set(WIND_X * drift, WIND_Z * drift);
+    puffRing.flush();
   });
-  return <instancedMesh ref={mesh} args={[geometry, material, MAX_PUFFS]} frustumCulled={false} renderOrder={6} />;
+  return <mesh geometry={puffRing.geometry} material={material} frustumCulled={false} renderOrder={6} />;
 }
 
 /** Bom khói trong state: thả thêm cụm khói liên tục cho tới khi hết giờ. */
 function SmokeEmitters({ room }: { room: IslandRoom }) {
   const acc = useRef(new Map<string, number>());
   useFrame((_, dt) => {
+    const clears: [number, number, number, number][] = [];
     forEachSmoke(room, (key, smoke) => {
       let a = (acc.current.get(key) ?? 0) + dt;
-      // Vừa bị lựu đạn thổi thủng: khoảng trống quanh chỗ nổ, khói bị đẩy ra mép, co dần rồi khói lấp lại.
+      // Vừa bị lựu đạn thổi thủng: khoảng trống quanh chỗ nổ (shader đẩy khói trong vòng ra mép, mỏng đi), co dần rồi
+      // khói lấp lại.
       if (smoke.clear > 0) {
-        const r = SMOKE_CLEAR.radius * Math.min(1, smoke.clear / (SMOKE_CLEAR.seconds * 0.6));
-        for (const p of puffs) {
-          if (!p.dense) continue;
-          const dx = p.x - smoke.cx;
-          const dz = p.z - smoke.cz;
-          const dd = Math.hypot(dx, dz) || 1;
-          if (dd >= r) continue;
-          p.vx += (dx / dd) * 10 * dt;
-          p.vz += (dz / dd) * 10 * dt;
-          p.alpha = Math.max(0.05, p.alpha - dt * 0.8);
-        }
+        const k = Math.min(1, smoke.clear / (SMOKE_CLEAR.seconds * 0.6));
+        clears.push([smoke.cx, smoke.cz, SMOKE_CLEAR.radius * k, 0.8 * k]);
       }
       const rate = (smoke.timeLeft > 3 ? 14 : 3) * (smoke.clear > 0 ? 0.25 : 1);
       while (a > 1 / rate) {
@@ -335,26 +247,13 @@ function SmokeEmitters({ room }: { room: IslandRoom }) {
       }
       acc.current.set(key, a);
     });
+    setSmokeClears(clears);
   });
   return null;
 }
 
 // ---------------------------------------------------------------------------- nổ
 
-/** Tia lửa, mảnh vụn nóng đỏ văng ra từ vụ nổ (rơi theo trọng lực, tắt dần). */
-export interface Ember {
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  age: number;
-  life: number;
-  size: number;
-}
-export const embers: Ember[] = [];
-export const MAX_EMBERS = 360;
 /** Mỗi vụ nổ vẽ chừng này cầu lửa con (lệch nhau, nở trễ nhau) cho cầu lửa cuồn cuộn, không tròn trịa. */
 const FIREBALLS = 7;
 /** Tầng lửa thứ hai: vài cuộn lửa đỏ sẫm bốc lên sau (như nấm lửa), nguội dần thành khói đen của cột khói. */
@@ -376,7 +275,6 @@ function Blasts() {
   const light = useRef<PointLight>(null);
   const fire = useRef<InstancedMesh>(null);
   const ring = useRef<InstancedMesh>(null);
-  const sparks = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
   const fireMat = useMemo(
     () =>
@@ -470,16 +368,9 @@ function Blasts() {
   const sparkMat = useMemo(
     () =>
       new ShaderMaterial({
-        vertexShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            vec3 center = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-            float size = length(instanceMatrix[0].xyz);
-            vec4 mv = viewMatrix * vec4(center, 1.0);
-            mv.xy += position.xy * size;
-            gl_Position = projectionMatrix * mv;
-          }`,
+        // Tia lửa tính trên GPU (gpuParticles.ts): bay theo trọng lực, chậm dần, nhỏ dần.
+        uniforms: { uTime: particleClock },
+        vertexShader: emberVertex,
         fragmentShader: /* glsl */ `
           varying vec2 vUv;
           void main() {
@@ -508,10 +399,8 @@ function Blasts() {
     g.setAttribute("aK", ringK);
     return g;
   }, [ringK]);
-  const sparkGeo = useMemo(() => new PlaneGeometry(1, 1), []);
   const seen = useRef(new WeakSet<object>());
-  useFrame((_, rawDt) => {
-    const dt = Math.min(rawDt, 0.05) * hitStopScale();
+  useFrame(() => {
     const now = performance.now() / 1000;
     let brightest = 0;
     let n = 0;
@@ -618,35 +507,8 @@ function Blasts() {
       rm.instanceMatrix.needsUpdate = true;
       ringK.needsUpdate = true;
     }
-    // Tia lửa: bay theo trọng lực, chạm đất thì nảy nhẹ, tắt dần.
-    const sm = sparks.current;
-    let sn = 0;
-    for (let i = embers.length - 1; i >= 0; i--) {
-      const e = embers[i]!;
-      e.age += dt;
-      if (e.age >= e.life) {
-        embers.splice(i, 1);
-        continue;
-      }
-      e.vy -= 9.8 * dt;
-      const drag = Math.exp(-dt * 1.2);
-      e.vx *= drag;
-      e.vz *= drag;
-      e.x += e.vx * dt;
-      e.y += e.vy * dt;
-      e.z += e.vz * dt;
-      if (sm && sn < MAX_EMBERS) {
-        dummy.position.set(e.x, e.y, e.z);
-        dummy.scale.setScalar(e.size * (1 - e.age / e.life) * 2.2);
-        dummy.updateMatrix();
-        sm.setMatrixAt(sn, dummy.matrix);
-        sn++;
-      }
-    }
-    if (sm) {
-      sm.count = sn;
-      sm.instanceMatrix.needsUpdate = true;
-    }
+    // Tia lửa: GPU tự tính (gpuParticles.ts), ở đây chỉ tải lên các tia vừa thêm.
+    emberRing.flush();
     if (light.current) light.current.intensity = brightest * 520;
   });
   return (
@@ -654,7 +516,7 @@ function Blasts() {
       <pointLight ref={light} color="#ffa24a" distance={55} decay={1.5} intensity={0} />
       <instancedMesh ref={fire} args={[geometry, fireMat, MAX_FIRE]} frustumCulled={false} renderOrder={7} />
       <instancedMesh ref={ring} args={[ringGeo, ringMat, 16]} frustumCulled={false} renderOrder={6} />
-      <instancedMesh ref={sparks} args={[sparkGeo, sparkMat, MAX_EMBERS]} frustumCulled={false} renderOrder={8} />
+      <mesh geometry={emberRing.geometry} material={sparkMat} frustumCulled={false} renderOrder={8} />
     </>
   );
 }
@@ -738,18 +600,9 @@ function useBooms(room: IslandRoom) {
           puffs.push({ x: b.x, y: b.y + 0.3, z: b.z, vx: (Math.random() - 0.5) * 2, vy: 0.6 + Math.random(), vz: (Math.random() - 0.5) * 2, size: 0.8, grow: 1.2, life: 2.5, age: 0, r: 0.85, g: 0.85, b: 0.85, alpha: 0.35, dense: false });
         return;
       }
-      // Sức ép thổi bạt khói gần đó ra xung quanh (server giữ khoảng trống một lúc, SmokeEmitters lo phần còn lại).
-      for (const p of puffs) {
-        if (!p.dense) continue;
-        const dx = p.x - b.x;
-        const dz = p.z - b.z;
-        const dd = Math.hypot(dx, dz) || 1;
-        if (dd > SMOKE_CLEAR.radius * 1.6) continue;
-        const push = 14 * (1 - dd / (SMOKE_CLEAR.radius * 1.6));
-        p.vx += (dx / dd) * push;
-        p.vz += (dz / dd) * push;
-        p.vy += push * 0.3;
-      }
+      // Sức ép thổi bạt khói gần đó ra xung quanh (shader tính; server giữ khoảng trống một lúc, SmokeEmitters lo phần
+      // còn lại).
+      blastPush(b.x, b.z, SMOKE_CLEAR.radius * 1.6);
       shake.amount = Math.min(1.4, shake.amount + Math.max(0, 1.3 - d / 30));
       // Đất đá văng tung toé, cột khói đen tiếp tục bốc lên vài giây sau (cao chừng 20 m, trôi theo gió).
       spawnDebris(b.x, b.y, b.z, big);

@@ -36,6 +36,7 @@ import { GrassField } from "./Grass.tsx";
 import { Flame } from "./Flame.tsx";
 import { useProfile } from "./graphics.ts";
 import { FINE, terrainField, terrainGrids, type TerrainGrid } from "./terrainField.ts";
+import { StaticShadowRoot } from "./StaticShadows.tsx";
 
 // ---------------------------------------------------------------------------
 // Địa hình
@@ -502,9 +503,11 @@ export function Island({ room, world }: { room: IslandRoom; world: World }) {
       <WindClock />
       <Terrain room={room} world={world} />
       <Water world={world} tidal />
-      <Trees room={room} world={world} />
-      <Vegetation world={world} />
-      <Structures world={world} />
+      <StaticShadowRoot>
+        <Trees room={room} world={world} />
+        <Vegetation world={world} />
+        <Structures world={world} />
+      </StaticShadowRoot>
       <Points room={room} world={world} />
       <Wildlife room={room} />
       <SeaLife world={world} />

@@ -17,7 +17,7 @@ import { muzzleOffset } from "./GunModel.tsx";
 import { localPosition } from "./shared.ts";
 import { playFootstep, playLand } from "./sound/guns.ts";
 import { groundProbe } from "./character/motionFx.ts";
-import { FarCrowd, OUTFIT_COLOR, setCrowd, setMateMark } from "./battle/FarCrowd.tsx";
+import { FarCrowd, OUTFIT_COLOR, SHADOW_BUDGET, crowdRank, fullBudget, setCrowd, setMateMark, setRemoteRoot } from "./battle/FarCrowd.tsx";
 import { playerTracks, sampleTrack, trackRoom } from "./netInterp.ts";
 
 
@@ -131,7 +131,10 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
 }
 
 /** Battleground: người khác mang súng, giáp, mũ, áo ngụy trang; gục thì biến mất (đồ rơi lại); không hiện tên. */
-/** Xa hơn chừng này (m) thì vẽ hình người rút gọn; gần lại dưới mức kia thì vẽ lại đầy đủ (hai mức để khỏi chập chờn). */
+/**
+ * Xa hơn chừng này (m) thì vẽ hình người rút gọn; gần lại dưới mức kia thì vẽ lại đầy đủ (hai mức để khỏi chập chờn).
+ * Ngoài khoảng cách còn giới hạn số người vẽ đầy đủ (fullBudget, hạng gần camera).
+ */
 const LOD_FAR = 55;
 const LOD_NEAR = 47;
 /** Xa hơn chừng này thì thôi đổ bóng (bóng người ở xa gần như không thấy mà tốn gấp đôi lệnh vẽ). */
@@ -140,11 +143,16 @@ const SHADOW_FAR = 32;
 const DETAIL_FAR = 16;
 
 function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandRoom; id: string; player: PlayerState; root: RefObject<Group | null>; avatar: RefObject<Group | null>; alive: boolean }) {
-  // Ở xa: hình người rút gọn; ngồi trong xe tăng: không vẽ người.
-  const [far, setFar] = useState(false);
+  // Ở xa: hình người rút gọn; ngồi trong xe tăng: không vẽ người. Mới vào thì vẽ trong đám đông trước, được xếp hạng
+  // gần camera mới dựng nhân vật đầy đủ (khỏi dựng cả trăm nhân vật cùng lúc khi vào trận).
+  const [far, setFar] = useState(true);
   const [inTank, setInTank] = useState(hiddenInVehicle(room, player));
   const [pose, setPose] = useState<"stand" | "crouch" | "prone">("stand");
   const shadow = useRef({ on: true, detail: true, at: 0 });
+  // Nhân vật đầy đủ dựng mới thì mọi khối mặc định đổ bóng, hiện chi tiết: tính lại từ đầu.
+  useEffect(() => {
+    shadow.current = { on: true, detail: true, at: 0 };
+  }, [far]);
   const war = useRoomSnapshot(room, (s) => s.battleMode === "war");
   const mate = useRoomSnapshot(room, (s) => {
     const me = s.players.get(myId(room));
@@ -238,15 +246,20 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
     // Mức chi tiết theo khoảng cách tới camera.
     if (r) {
       const d = camera.position.distanceTo(r.position);
-      // Trận đông (chiến trường 100 người): vẽ đầy đủ ở gần hơn.
+      // Trận đông (chiến trường 100 người): vẽ đầy đủ ở gần hơn. Dù gần, chỉ vài người gần camera nhất (theo mức đồ
+      // hoạ) được vẽ nhân vật đầy đủ; còn lại vẽ chung trong đám đông instanced (FarCrowd): lúc xuất phát vài chục đồng
+      // đội đứng quanh căn cứ không còn thành hàng nghìn lệnh vẽ.
       const crowd = room.state.players.size > 60 ? 0.65 : 1;
-      if (!far && d > LOD_FAR * crowd) setFar(true);
-      else if (far && d < LOD_NEAR * crowd) setFar(false);
+      const rank = crowdRank(id);
+      const budget = fullBudget();
+      if (!far && (d > LOD_FAR * crowd || rank >= budget + 2)) setFar(true);
+      else if (far && d < LOD_NEAR * crowd && rank < budget) setFar(false);
       const now = performance.now();
       const sh = shadow.current;
       if (!far && avatar.current && now - sh.at > 400) {
         sh.at = now;
-        const want = d < SHADOW_FAR;
+        // Bóng đổ riêng chỉ cho vài người gần nhất (bóng của đám đông vẽ chung một lệnh).
+        const want = d < SHADOW_FAR && rank < SHADOW_BUDGET;
         const detail = d < DETAIL_FAR;
         if (want !== sh.on || detail !== sh.detail) {
           sh.on = want;
@@ -307,6 +320,12 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
     const onDeck = player.y > currentWorld(room).heightAt(player.x, player.z) + 0.8;
     playFootstep({ x: player.x, y: player.y, z: player.z }, onDeck ? "metal" : ground && ground !== "dirt" ? "concrete" : "grass", run && !player.crouching && !player.prone);
   });
+  // Đăng ký nhóm gốc để xếp hạng ai gần camera nhất.
+  useEffect(() => {
+    if (!root.current) return;
+    setRemoteRoot(id, root.current);
+    return () => setRemoteRoot(id, null);
+  }, [id, root]);
   // Ở xa: vẽ chung trong đám đông instanced (FarCrowd), ở đây chỉ còn nhóm rỗng giữ vị trí, hướng nhìn.
   const band = player.team === "blue" || player.team === "red" ? player.color : undefined;
   useEffect(() => {
