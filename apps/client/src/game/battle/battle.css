@@ -450,6 +450,56 @@
   background: rgba(0, 0, 0, 0.55);
   pointer-events: auto;
 }
+/* Bản đồ chỉ huy (chiến trường, M): chọn lính, giao vùng. */
+.b-cmdmap .b-map {
+  cursor: crosshair;
+  touch-action: none;
+}
+.bm-selected {
+  fill: none;
+  stroke: #ffe45c;
+}
+.bm-select-box {
+  fill: rgba(255, 228, 92, 0.12);
+  stroke: #ffe45c;
+  stroke-dasharray: 4 3;
+}
+.bm-order-area {
+  fill: rgba(255, 90, 74, 0.14);
+  stroke: #ff5a4a;
+  stroke-dasharray: 6 4;
+}
+.bm-order-area.hold {
+  fill: rgba(61, 139, 255, 0.14);
+  stroke: #3d8bff;
+}
+.bm-order-area.preview {
+  stroke-dasharray: 2 3;
+}
+.bm-order-count {
+  fill: #fff;
+  font-weight: 700;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.7);
+  stroke-width: 0.6px;
+}
+.b-cmd-help {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  max-width: min(80vh, 80vw);
+  color: #e8eef2;
+  font-size: 12.5px;
+}
+.b-cmd-help b {
+  color: #ffe45c;
+}
+.b-cmd-help button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
 .b-feed {
   display: flex;
   flex-direction: column;

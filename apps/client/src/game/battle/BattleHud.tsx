@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type Ref, type SVGProps } from "react";
 import { Crosshair as CrossIcon, LogOut, Settings as Gear, ShoppingCart, Skull, Trophy, Users, X } from "lucide-react";
 import {
   AMMO,
@@ -56,6 +56,7 @@ import type { MatchSummaryMessage } from "@tentides/protocol";
 import { ClassIcon, GadgetHud, GadgetSlots } from "./GadgetHud.tsx";
 import "./battle.css";
 import { KillSkulls } from "./KillSkulls.tsx";
+import { WarCommandMap } from "./WarCommand.tsx";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
 // bản đồ nhỏ, la bàn, tâm ngắm co giãn theo độ toả, dấu trúng, hướng bị bắn, ống ngắm, cửa hàng (B),
@@ -287,8 +288,9 @@ function Compass() {
   const last = useRef(NaN);
   useLive(
     () => {
-      // Hướng nhìn: bắc (−z) là 0°. Chỉ chỉnh DOM khi hướng đổi quá một phần mười độ.
-      const heading = ((((-look.yaw + Math.PI) * 180) / Math.PI) % 360 + 360) % 360;
+      // Hướng nhìn: bắc (−z, phía trên bản đồ) là 0°, đông (+x) là 90°. look.yaw = 0 là nhìn về −z (hướng nhìn
+      // −sin, −cos), quay sang +x thì yaw giảm. Trước đây cộng thừa π nên la bàn chỉ ngược (nhìn bắc hiện "N").
+      const heading = ((((-look.yaw * 180) / Math.PI) % 360) + 360) % 360;
       if (Math.abs(heading - last.current) < 0.1) return;
       last.current = heading;
       for (let n = 0; n < COMPASS_MARKS; n++) {
@@ -345,7 +347,11 @@ function useShore(seed: number, mode: string) {
   }, [seed, mode]);
 }
 
-function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
+/**
+ * Bản đồ (nhỏ góc màn hình, hay lớn khi bấm M). Bản đồ chỉ huy (WarCommandMap) dùng lại bản đồ lớn: gắn `svgRef`,
+ * sự kiện chuột (`handlers`) và lớp vẽ riêng (`overlay`: lính đang chọn, vùng đã giao lệnh).
+ */
+export function BattleMinimap({ room, big, overlay, svgRef, handlers }: { room: IslandRoom; big?: boolean; overlay?: ReactNode; svgRef?: Ref<SVGSVGElement>; handlers?: SVGProps<SVGSVGElement> }) {
   useFrameTick(8);
   const seed = useRoomSnapshot(room, (s) => s.worldSeed);
   const mode = useRoomSnapshot(room, (s) => (s.battleMode === "war" ? "war" : "solo"));
@@ -363,7 +369,7 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
   const cz = big ? 0 : localPosition.z;
   const u = span / (big ? Math.min(window.innerHeight, window.innerWidth) * 0.8 : 240);
   return (
-    <svg className={big ? "b-map big" : "b-map"} viewBox={`${cx - span / 2} ${cz - span / 2} ${span} ${span}`}>
+    <svg ref={svgRef} {...handlers} className={big ? "b-map big" : "b-map"} viewBox={`${cx - span / 2} ${cz - span / 2} ${span} ${span}`}>
       <rect x={-H * 2} y={-H * 2} width={H * 4} height={H * 4} className="bm-sea" />
       <polygon points={shore} className="bm-land" />
       {map.sites.map((s) => (
@@ -434,10 +440,12 @@ function BattleMinimap({ room, big }: { room: IslandRoom; big?: boolean }) {
           <path d="M-6,-6 L6,6 M6,-6 L-6,6" className="bm-order" />
         </g>
       )}
+      {overlay}
       {phase === "battle" || phase === "prep" ? <PingMarks u={u} /> : null}
       {phase === "battle" && <StreakMarks room={room} u={u} />}
+      {/* Mũi tên (đầu nhọn ở −y) xoay theo hướng nhìn: look.yaw = 0 nhìn về −z, tức phía trên bản đồ. */}
       {me && (
-        <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI + 180}) scale(${u})`}>
+        <g transform={`translate(${localPosition.x} ${localPosition.z}) rotate(${(-look.yaw * 180) / Math.PI}) scale(${u})`}>
           <path d="M0,-10 L7,7 L0,3.5 L-7,7 Z" className="bm-me" />
         </g>
       )}
@@ -1077,6 +1085,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === "KeyM" && !(e.target instanceof HTMLInputElement)) setBigMap((b) => !b);
+      if (e.code === "Escape") setBigMap(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1096,7 +1105,8 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
         <BattleMinimap room={room} />
         <KillFeed room={room} />
       </div>
-      {bigMap && (
+      {bigMap && war && fighting && <WarCommandMap room={room} onClose={() => setBigMap(false)} />}
+      {bigMap && !(war && fighting) && (
         <div className="b-bigmap" onClick={() => setBigMap(false)}>
           <BattleMinimap room={room} big />
           <p>

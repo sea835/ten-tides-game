@@ -16,7 +16,7 @@ export const HELI = {
   /** Bán kính bấm F lên trực thăng (đứng cạnh cửa). */
   enter: 6,
   bulletFactor: 0.36,
-  blastFactor: 1.25,
+  blastFactor: 0.8,
   /** Tốc độ ngang tối đa (m/s, ~165 km/h) khi chúc mũi hết cỡ. */
   maxSpeed: 46,
   /** Tốc độ lên / xuống tối đa (m/s) theo cần tập thể; gia tốc đuổi theo tốc độ đứng mong muốn. */

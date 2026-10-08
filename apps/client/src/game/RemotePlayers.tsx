@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObjec
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Callbacks } from "@colyseus/sdk";
-import { MeshBasicMaterial, OctahedronGeometry, type Group } from "three";
+import type { Group } from "three";
 import { GAIT, type PlayerState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { currentWorld } from "./world.ts";
@@ -17,12 +17,9 @@ import { muzzleOffset } from "./GunModel.tsx";
 import { localPosition } from "./shared.ts";
 import { playFootstep, playLand } from "./sound/guns.ts";
 import { groundProbe } from "./character/motionFx.ts";
-import { FarSoldier } from "./battle/FarSoldier.tsx";
+import { FarCrowd, OUTFIT_COLOR, setCrowd, setMateMark } from "./battle/FarCrowd.tsx";
 import { playerTracks, sampleTrack, trackRoom } from "./netInterp.ts";
 
-/** Dấu đồng đội (chiến trường): hình thoi xanh sáng, không bị sương mù làm mờ. */
-const MATE_GEO = new OctahedronGeometry(0.16, 0);
-const MATE_MAT = new MeshBasicMaterial({ color: "#6fb0ff", fog: false, depthTest: false, transparent: true, opacity: 0.9 });
 
 /** Nhãn vai trò trên đầu đồng đội. */
 const ROLE_TAG: Record<string, string> = { rifle: "súng trường", sniper: "bắn tỉa", support: "súng máy", tanker: "lái tăng", antitank: "chống tăng" };
@@ -310,16 +307,30 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
     const onDeck = player.y > currentWorld(room).heightAt(player.x, player.z) + 0.8;
     playFootstep({ x: player.x, y: player.y, z: player.z }, onDeck ? "metal" : ground && ground !== "dirt" ? "concrete" : "grass", run && !player.crouching && !player.prone);
   });
+  // Ở xa: vẽ chung trong đám đông instanced (FarCrowd), ở đây chỉ còn nhóm rỗng giữ vị trí, hướng nhìn.
+  const band = player.team === "blue" || player.team === "red" ? player.color : undefined;
+  useEffect(() => {
+    if (!far || !root.current || !avatar.current) return;
+    setCrowd(id, { root: root.current, yaw: avatar.current, pose, cloth: OUTFIT_COLOR[look.outfit] ?? OUTFIT_COLOR.woodland!, band, gun: !!look.weapon });
+    return () => setCrowd(id, null);
+  }, [far, id, pose, look.outfit, look.weapon, band, root, avatar]);
+  // Dấu đồng đội (chiến trường, 49 đồng đội): vẽ chung một lệnh trong FarCrowd.
+  const markMate = mate && alive && !inTank && war;
+  const markY = pose === "prone" ? 1.0 : 2.3;
+  useEffect(() => {
+    if (!markMate || !root.current) return;
+    setMateMark(id, { root: root.current, y: markY });
+    return () => setMateMark(id, null);
+  }, [markMate, markY, id, root]);
   return (
     <group ref={root} position={[player.x, player.y, player.z]} visible={alive && !inTank}>
       {far ? (
-        <FarSoldier ref={avatar} outfit={look.outfit} pose={pose} gun={!!look.weapon} band={player.team === "blue" || player.team === "red" ? player.color : undefined} />
+        <group ref={avatar} />
       ) : (
         <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} atts={look.atts} gunSkin={look.skin} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} ground={ground} motion={motion} />
       )}
       {/* Đồng đội: dấu tên trên đầu (luôn thấy, để biết ai là người mình). */}
       {/* Chiến trường (49 đồng đội): dấu hình thoi trên đầu vẽ bằng một khối nhỏ, nhẹ hơn nhãn chữ. */}
-      {mate && alive && !inTank && war && <mesh geometry={MATE_GEO} material={MATE_MAT} position-y={pose === "prone" ? 1.0 : 2.3} />}
       {mate && alive && !inTank && !war && (
         <Html position={[0, pose === "prone" ? 1.1 : 2.25, 0]} center zIndexRange={[4, 0]} className="b-mate">
           <i />
@@ -350,8 +361,10 @@ export function RemotePlayers({ room }: { room: IslandRoom }) {
     };
   }, [room]);
 
+  const battle = room.state.mode === "battle";
   return (
     <>
+      {battle && <FarCrowd />}
       {others.map(([id, player]) => (
         <RemotePlayer key={id} room={room} id={id} player={player} carrying={id === carrier} />
       ))}

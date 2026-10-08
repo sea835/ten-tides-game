@@ -77,6 +77,7 @@ import {
   PickSideMessage,
   RespawnMessage,
   SquadOrderMessage,
+  WarCommandMessage,
   TankFireMessage,
   VehicleMoveMessage,
   VehicleSeatMessage,
@@ -457,6 +458,26 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (Math.hypot(x - p.x, z - p.z) > 400) return;
       this.bots.orders.set(id, { kind: m.kind, x, z, rot: p.rotY });
       this.comms.acknowledge(id);
+    });
+
+    // Chiến trường: người chơi chỉ huy các máy cùng phe trên bản đồ lớn (đánh chiếm, giữ một vùng, hay thả tự do).
+    this.onMessage(Messages.warCommand, WarCommandMessage, (client, m) => {
+      const id = this.playerOf(client);
+      const p = id && this.state.players.get(id);
+      if (!id || !p || p.bot || this.state.battleMode !== "war" || !p.team || !this.fighting()) return;
+      const half = this.map.half ?? 240;
+      if (!Number.isFinite(m.x) || !Number.isFinite(m.z) || Math.abs(m.x) > half || Math.abs(m.z) > half) return;
+      const r = Math.max(8, Math.min(60, m.r ?? 18));
+      let first = "";
+      for (const bid of new Set(m.ids)) {
+        const b = this.state.players.get(bid);
+        if (!b || !b.bot || b.team !== p.team) continue;
+        if (m.kind === "free") this.bots.commands.delete(bid);
+        else this.bots.commands.set(bid, { kind: m.kind, x: m.x, z: m.z, r, by: id, until: Date.now() + 4 * 60_000 });
+        first ||= bid;
+      }
+      // Một máy được giao lệnh đáp "Rõ" qua bộ đàm.
+      if (first) this.comms.acknowledge(p.team, Date.now(), first);
     });
 
     this.onMessage(Messages.squadBoard, SquadBoardMessage, (client, { vid }) => {
