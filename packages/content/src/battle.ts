@@ -87,9 +87,47 @@ export interface LootSpot {
   kind?: "heavy";
 }
 
+/** Căn cứ một phe trên chiến trường: tâm, hướng nhìn ra mặt trận (rotY). */
+export interface WarBase {
+  x: number;
+  z: number;
+  face: number;
+}
+
+/** Vũ khí cố định đặt thêm theo bản đồ chiến trường (ngoài các ổ tự đặt quanh cứ điểm, căn cứ). */
+export interface WarEmplacement {
+  kind: "hmg_nest" | "mortar";
+  x: number;
+  z: number;
+  rotY: number;
+}
+
+/** Phần riêng của chiến trường 50 vs 50: căn cứ, sân đỗ trực thăng, chỗ neo thuyền, đường vòng qua sông. */
+export interface WarInfo {
+  /** Mã bản đồ (WAR_MAP_LIST). */
+  id: string;
+  bases: { blue: WarBase; red: WarBase };
+  helipads: { blue: { x: number; y: number; z: number; rotY: number }; red: { x: number; y: number; z: number; rotY: number } };
+  /** Chỗ thả thuyền tuần tra / xuồng cao tốc (gần bờ biển, sông lớn); rỗng là bản đồ không có thuyền. */
+  harbors: readonly { x: number; z: number }[];
+  /** Ổ đại liên, cối đặt thêm (chiến hào, pháo đài). */
+  emplacements: readonly WarEmplacement[];
+  /** Điểm cần đi qua trước trên đường từ (x, z) tới (tx, tz) (cầu qua sông...); không có thì đi thẳng. */
+  route?: (x: number, z: number, tx: number, tz: number) => { x: number; z: number };
+}
+
+/** Một điểm trước căn cứ, cách tâm `d` mét theo hướng ra mặt trận (lệch ngang `side` mét). */
+export function baseAhead(b: WarBase, d: number, side = 0): { x: number; z: number } {
+  const s = Math.sin(b.face);
+  const c = Math.cos(b.face);
+  return { x: b.x + s * d + c * side, z: b.z + c * d - s * side };
+}
+
 export interface BattleMap {
   /** Đảo sinh tồn (mặc định) hay chiến trường 50 vs 50 (war.ts). */
   layout?: "island" | "war";
+  /** Chiến trường: căn cứ, sân đỗ, chỗ thả thuyền... (có khi layout là "war"). */
+  war?: WarInfo;
   /** Nửa cạnh vùng bản đồ (m); mặc định MAP_HALF_SIZE. */
   half?: number;
   /** Cứ điểm để chiếm (chiến trường). */

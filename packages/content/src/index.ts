@@ -11,6 +11,8 @@ export * from "./ballistics.ts";
 export * from "./squad.ts";
 export * from "./classes.ts";
 export * from "./war.ts";
+export * from "./warKit.ts";
+export * from "./warMaps.ts";
 export * from "./skins.ts";
 export * from "./airdrop.ts";
 export * from "./vehicles.ts";

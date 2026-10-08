@@ -17,7 +17,6 @@ import {
   WEAPON,
   WEAPONS,
   isEmplacement,
-  mapForMode,
   bulletDrop,
   lootLabel,
   sightFits,
@@ -34,6 +33,7 @@ import { DEFAULT_GRAPHICS, QUALITY_LABEL, setGraphics, toggleStats, useGraphics,
 import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/guns.ts";
 import { DEFAULT_VOLUME, audio, type VolumeKey } from "../sound/engine.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
+import { mapOfKey, useMapKey } from "../world.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
 import { closeBuyMenu, getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
 import { ItemIcon } from "./ItemIcons.tsx";
@@ -329,7 +329,7 @@ function Compass() {
 
 function useShore(seed: number, mode: string) {
   return useMemo(() => {
-    const map = mapForMode(mode, seed);
+    const map = mapOfKey(mode, seed);
     const world = map.world;
     const pts: string[] = [];
     for (let i = 0; i < 96; i++) {
@@ -354,12 +354,12 @@ function useShore(seed: number, mode: string) {
 export function BattleMinimap({ room, big, overlay, svgRef, handlers }: { room: IslandRoom; big?: boolean; overlay?: ReactNode; svgRef?: Ref<SVGSVGElement>; handlers?: SVGProps<SVGSVGElement> }) {
   useFrameTick(8);
   const seed = useRoomSnapshot(room, (s) => s.worldSeed);
-  const mode = useRoomSnapshot(room, (s) => (s.battleMode === "war" ? "war" : "solo"));
+  const mode = useMapKey(room);
   const shore = useShore(seed, mode);
-  const map = mapForMode(mode, seed);
+  const map = mapOfKey(mode, seed);
   const z = room.state.zone;
   const H = map.half ?? MAP_HALF_SIZE;
-  const war = mode === "war";
+  const war = mode.startsWith("war");
   const me = room.state.players.get(myId(room));
   const phase = room.state.phase;
   // Bản đồ nhỏ: cửa sổ ~380 m quanh mình (cả đảo co vào 240px thì mũi tên, đồng đội chỉ còn 2–3 điểm ảnh);

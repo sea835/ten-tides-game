@@ -60,7 +60,8 @@ describe("vũ khí cố định: đặt sẵn, ghế, không chạy được", (
     const room = makeRoom();
     const all = [...room.state.vehicles.values()];
     expect(all.filter((v) => v.kind === "hmg_nest").length).toBeGreaterThanOrEqual(8);
-    expect(all.filter((v) => v.kind === "mortar").length).toBe(4);
+    // Mỗi cứ điểm một khẩu cối, mỗi căn cứ hai khẩu (cứ điểm giữa bản đồ hai khẩu).
+    expect(all.filter((v) => v.kind === "mortar").length).toBeGreaterThanOrEqual(10);
     const { vid, v } = first(room, "hmg_nest");
     const p = addPlayer(room, "g", "blue", v.x + 1, v.z);
     room.vehicles.enter("g");
@@ -164,7 +165,8 @@ describe("cối 82mm: server kiểm tra phát bắn, mô phỏng đạn bay", ()
   it("đạn bay cầu vồng rồi nổ ở chỗ rơi gần đúng tầm bắn tính theo góc ngẩng, giết lính địch đứng đó", () => {
     const room = makeRoom();
     const booms = spyExplode(room);
-    const { v } = first(room, "mortar");
+    // Khẩu cối ở căn cứ Xanh (bắn ra đồng trống trước căn cứ).
+    const v = [...room.state.vehicles.values()].filter((x) => x.kind === "mortar").sort((a, b) => Math.hypot(a.x + 262, a.z) - Math.hypot(b.x + 262, b.z))[0]!;
     addPlayer(room, "w", "blue", v.x, v.z);
     room.vehicles.enter("w");
     const elev = (65 * Math.PI) / 180;

@@ -9,6 +9,7 @@ import {
   Keyboard,
   Lock,
   LogOut,
+  Map as MapIcon,
   Moon,
   Shuffle,
   Snowflake,
@@ -18,6 +19,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import { WAR_MAP_LIST } from "@tentides/content";
 import { BATTLE_TIMES, MAX_BATTLE_BOTS, MIN_BATTLE_BOTS, Messages, WAR_MAX_PER_SIDE, WAR_TICKETS_MAX, WAR_TICKETS_MIN, type BattleSettingsMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
@@ -41,9 +43,9 @@ const MODES: { id: Mode; title: string; tag: string; icon: ReactNode; facts: str
     title: "Đại Chiến 50v50",
     tag: "Chiếm cứ điểm A–G",
     icon: <Flag size={22} aria-hidden />,
-    facts: ["100 quân", "7 cứ điểm", "Hồi sinh"],
+    facts: ["100 quân", "6 bản đồ", "Hồi sinh"],
     brief:
-      "Bản đồ riêng rộng gần 700 m, hai căn cứ hai đầu, 7 cứ điểm A–G có công sự. Đứng trong vùng cứ điểm để chiếm; phe giữ ít cứ điểm hơn bị trừ vé dần, mỗi lần gục mất một vé; hết vé là thua. Gục thì chọn lớp lính và chỗ hồi sinh.",
+      "Sáu chiến trường rộng gần 700 m (trận đánh nổi tiếng: Điện Biên Phủ, Normandy, Verdun, Stalingrad, El Alamein), hai căn cứ hai đầu, 7 cứ điểm A–G có công sự, chiến hào, pháo đài. Đứng trong vùng cứ điểm để chiếm; phe giữ ít cứ điểm hơn bị trừ vé dần, mỗi lần gục mất một vé; hết vé là thua. Gục thì chọn lớp lính và chỗ hồi sinh.",
   },
   {
     id: "squad",
@@ -139,6 +141,27 @@ function Slider({
   );
 }
 
+/** Chọn bản đồ chiến trường: thẻ mỗi bản đồ (tên, nơi · năm, kiểu địa hình), mô tả bản đồ đang chọn. */
+function MapPicker({ value, disabled, onPick }: { value: string; disabled: boolean; onPick: (id: string) => void }) {
+  const cur = WAR_MAP_LIST.find((m) => m.id === value) ?? WAR_MAP_LIST[0]!;
+  return (
+    <div className="cc-maps">
+      <div className="cc-map-list" role="radiogroup" aria-label="Bản đồ chiến trường">
+        {WAR_MAP_LIST.map((m) => (
+          <button key={m.id} role="radio" aria-checked={m.id === cur.id} className={`cc-map map-${m.id} ${m.id === cur.id ? "on" : ""}`} disabled={disabled} onClick={() => onPick(m.id)}>
+            <strong>{m.name}</strong>
+            <small>{m.place}</small>
+            <i>{m.terrain}</i>
+          </button>
+        ))}
+      </div>
+      <p className="cc-map-brief">
+        <MapIcon size={14} aria-hidden /> {cur.brief}
+      </p>
+    </div>
+  );
+}
+
 export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const s = useRoomSnapshot(room, (st) => ({
     phase: st.phase,
@@ -149,6 +172,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
     time: st.settings.timePick,
     tickets: st.settings.warTickets,
     vehicles: st.settings.vehiclesEnabled,
+    warMap: st.settings.warMap,
     players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color, team: p.team })),
   }));
   // Nhân vật của mình trên bục 3D phía sau bảng: theo lớp lính, trang phục, skin đã lắp.
@@ -231,6 +255,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
           <section className="cc-brief">
             <h3>Lệnh tác chiến · {mode.title}</h3>
             <p>{mode.brief}</p>
+            {war && <MapPicker value={s.warMap} disabled={!isHost} onPick={(id) => send({ map: id })} />}
             {war ? (
               <div className="w-sides cc-sides">
                 {(["blue", "red"] as const).map((side) => {

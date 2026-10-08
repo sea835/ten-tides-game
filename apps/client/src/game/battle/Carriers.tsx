@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
-import { BOAT, HMG, JEEP, MOUNT, RHIB, SEATS, isBoat, isEmplacement, mapForMode, mountMuzzle, rayBody, seatPos, vehicleSpec, vehicleStep, type TankPose, type VehicleKind } from "@tentides/content";
+import { BOAT, HMG, JEEP, MOUNT, RHIB, SEATS, isBoat, isEmplacement, mapForState, mountMuzzle, rayBody, seatPos, vehicleSpec, vehicleStep, type TankPose, type VehicleKind } from "@tentides/content";
 import { Messages, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -286,7 +286,7 @@ export function Carrier({ room, id, v, teamColor }: { room: IslandRoom; id: stri
     const c = teamColor(v.team);
     if (c !== color) setColor(c);
     const t = performance.now() / 1000;
-    const world = mapForMode(room.state.battleMode, room.state.worldSeed).world;
+    const world = mapForState(room.state).world;
     const s = Math.sin(a.rotY);
     const co = Math.cos(a.rotY);
     let y = a.y;
@@ -482,7 +482,7 @@ export function CarrierSeat({ room }: { room: IslandRoom }) {
     seat.id = vid;
     cdrive.seat = mySeat;
     cdrive.gunner = mySeat === SEATS[kind as Exclude<VehicleKind, "tank">].gunner;
-    const map = mapForMode(room.state.battleMode, room.state.worldSeed);
+    const map = mapForState(room.state);
     const typing = menuOpen();
     if (mySeat === 0) {
       const throttle = typing ? 0 : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);

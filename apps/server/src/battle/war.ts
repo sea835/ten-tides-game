@@ -1,4 +1,4 @@
-import { CLASSES, MAX_HP, ROLES, WAR_BASES, WATER_LEVEL, WEAPON, classOfRole, floorBelow, launcherExtras, insideBox, isSoldierClass, warSquadLeader, type SquadRole } from "@tentides/content";
+import { CLASSES, MAX_HP, ROLES, WATER_LEVEL, baseAhead, WEAPON, classOfRole, floorBelow, launcherExtras, insideBox, isSoldierClass, warSquadLeader, type SquadRole } from "@tentides/content";
 import { FlagState, Messages, WAR_TICKETS_DEFAULT, type CorrectMessage, type PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, ammoOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -144,10 +144,10 @@ export class War {
       r0 = flag.r * 0.4;
       r1 = flag.r + 6;
     } else {
-      const base = WAR_BASES[side];
-      // Trước cổng căn cứ, hướng về giữa bản đồ.
-      cx = base.x + Math.sign(-base.x) * 38;
-      cz = base.z;
+      // Trước cổng căn cứ, hướng ra mặt trận.
+      const front = baseAhead(this.base(side), 38);
+      cx = front.x;
+      cz = front.z;
       r0 = 2;
       r1 = 16;
     }
@@ -196,7 +196,7 @@ export class War {
     p.x = pt.x;
     p.z = pt.z;
     p.y = lead ? lead.y + 0.05 : this.room.map.world.heightAt(pt.x, pt.z) + 0.05;
-    p.rotY = side === "blue" ? Math.PI / 2 : -Math.PI / 2;
+    p.rotY = this.base(side).face;
     this.room.clientOf(id)?.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
   }
 
@@ -302,12 +302,18 @@ export class War {
     }
   }
 
+  /** Căn cứ của phe trên bản đồ đang chơi. */
+  base(side: Side) {
+    return this.room.map.war?.bases[side] ?? { x: side === "blue" ? -262 : 262, z: 0, face: side === "blue" ? Math.PI / 2 : -Math.PI / 2 };
+  }
+
   private spawnTank(side: Side) {
-    const base = WAR_BASES[side];
-    const out = Math.sign(-base.x);
-    const spot = this.room.vehicles.findSpot(base.x + out * 44, base.z, 0, 22, Math.random) ?? this.room.vehicles.findSpot(base.x + out * 60, base.z, 0, 40, Math.random);
+    const base = this.base(side);
+    const near = baseAhead(base, 44);
+    const far = baseAhead(base, 60);
+    const spot = this.room.vehicles.findSpot(near.x, near.z, 0, 22, Math.random) ?? this.room.vehicles.findSpot(far.x, far.z, 0, 40, Math.random);
     if (!spot) return;
-    this.room.vehicles.spawn(spot.x, spot.z, out > 0 ? Math.PI / 2 : -Math.PI / 2, side);
+    this.room.vehicles.spawn(spot.x, spot.z, base.face, side);
   }
 
   /** Người lái tăng (máy) đang ở căn cứ mà có xe trống thì lên xe. */

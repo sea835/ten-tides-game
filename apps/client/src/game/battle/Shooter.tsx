@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Vector3 } from "three";
-import { DUAL_MAG_RELOAD, HEALS, LEAN, MELEE, RICOCHET, SIGHTS, WEAPON, boxSpan, caliberOf, mapForMode, penetrableBy, penetration, ricochet, withAttachments, bulletAt, bulletSteps, rayBody, weaponDrop, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
+import { DUAL_MAG_RELOAD, HEALS, LEAN, MELEE, RICOCHET, SIGHTS, WEAPON, boxSpan, caliberOf, mapForState, penetrableBy, penetration, ricochet, withAttachments, bulletAt, bulletSteps, rayBody, weaponDrop, zoomOf, type SightId, type WeaponDef } from "@tentides/content";
 import { Messages, type FireMessage, type HitMessage, type HurtMessage, type KitState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { clampPitch, toggleCameraView } from "../camera.ts";
@@ -746,7 +746,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
       let target = "";
       let part: "head" | "body" = "body";
       let wall = false;
-      const battleIndex = mapForMode(room.state.battleMode, room.state.worldSeed).index;
+      const battleIndex = mapForState(room.state).index;
       // Vách gỗ, tường vữa mỏng: đạn xuyên qua một lần (như server, xem bulletThrough), để lỗ hai mặt.
       let pens = 0;
       // Khối công trình chặn đạn (để xét đạn nảy, như server).

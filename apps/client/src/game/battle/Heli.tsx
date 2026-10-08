@@ -32,7 +32,7 @@ import {
   heliRocketAim,
   heliRocketMuzzle,
   heliStep,
-  mapForMode,
+  mapForState,
   mountMuzzle,
   seatPos,
   type HeliMotion,
@@ -292,7 +292,7 @@ export function Heli({ room, id, v, teamColor }: { room: IslandRoom; id: string;
     if (v.hp <= 0 !== wreck) setWreck(v.hp <= 0);
     const c = teamColor(v.team);
     if (c !== color) setColor(c);
-    const map = mapForMode(room.state.battleMode, room.state.worldSeed);
+    const map = mapForState(room.state);
     const ground = heliGround(map, a.x, a.z);
     const alt = a.y - ground;
     // Vòng tua cánh: có phi công (hay đang trên không) thì quay lên dần, bỏ trống dưới đất thì chậm dần rồi dừng.
@@ -489,7 +489,7 @@ export function HeliSeat({ room }: { room: IslandRoom }) {
     seat.id = vid;
     hdrive.seat = mySeat;
     const gunner = mySeat === 1 || mySeat === 2;
-    const map = mapForMode(room.state.battleMode, room.state.worldSeed);
+    const map = mapForState(room.state);
     const typing = menuOpen();
     const now = performance.now();
     if (mySeat === 0) {

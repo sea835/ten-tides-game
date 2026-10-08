@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Callbacks } from "@colyseus/sdk";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, Vector3, type Group, type PerspectiveCamera } from "three";
-import { TANK, TEAM_COLORS, isEmplacement, mapForMode, cannonMuzzle, cannonPitch, tankGround, vehicleSpec, vehicleStep, type TankPose } from "@tentides/content";
+import { TANK, TEAM_COLORS, isEmplacement, mapForState, cannonMuzzle, cannonPitch, tankGround, vehicleSpec, vehicleStep, type TankPose } from "@tentides/content";
 import { Messages, type VehicleMoveMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
@@ -175,7 +175,7 @@ function Tank({ room, id, v }: { room: IslandRoom; id: string; v: VehicleState }
     if (c !== color) setColor(c);
     // Nghiêng theo mặt đất (dốc trước sau, trái phải).
     // Mặt đất hay mặt cầu dưới bốn phía xe.
-    const bmap = mapForMode(room.state.battleMode, room.state.worldSeed);
+    const bmap = mapForState(room.state);
     const s = Math.sin(a.rotY);
     const co = Math.cos(a.rotY);
     const hf = tankGround(bmap, a.x + s * 2.6, a.z + co * 2.6);
@@ -340,7 +340,7 @@ function TankDriver({ room }: { room: IslandRoom }) {
       look.pitch = 0.25;
       if (getBattleHud().nearTank) setBattleHud({ nearTank: "" });
     }
-    const map = mapForMode(room.state.battleMode, room.state.worldSeed);
+    const map = mapForState(room.state);
     const typing = menuOpen();
     const throttle = typing ? 0 : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const steer = typing ? 0 : (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);

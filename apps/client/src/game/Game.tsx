@@ -39,7 +39,7 @@ import { RemotePlayers } from "./RemotePlayers.tsx";
 import { SkyDome, SkyEnvironment } from "./Sky.tsx";
 import { bindInput, isTyping, look } from "./input.ts";
 import { debugCam, localEnv, localPosition, weatherFx } from "./shared.ts";
-import { useWorld } from "./world.ts";
+import { useMapKey, useWorld } from "./world.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { cameraMode } from "./camera.ts";
 import { BattleIsland } from "./battle/BattleWorld.tsx";
@@ -220,6 +220,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
   // - Canvas đục: trình duyệt khỏi phải trộn trong suốt với trang web mỗi khung.
   // - Xin card rời trên laptop hai card (Windows, Mac đời Intel).
   const [glOptions] = useState(() => ({ antialias: PROFILES[getGraphics().quality].post === "none", alpha: false, stencil: false, powerPreference: "high-performance" as const }));
+  const mapKey = useMapKey(room);
   const world = useWorld(room);
   // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
   const battle = useRoomSnapshot(room, (s) => s.mode) === "battle";
@@ -256,7 +257,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           <SkyDome />
           {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
           {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
-          <Physics key={`${world.seed}:${world.half ?? 0}`} timeStep="vary">
+          <Physics key={`${world.seed}:${mapKey}`} timeStep="vary">
             {battle ? <BattleIsland room={room} world={world} /> : <Island room={room} world={world} />}
             <LocalPlayer room={room} world={world} />
             {battle && <Shooter room={room} />}

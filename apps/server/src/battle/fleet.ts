@@ -1,4 +1,4 @@
-import { BATTLE_SITES, RHIB, WAR_BASES, WAR_HELIPADS, WAR_SITES, boatFits, vehicleFits } from "@tentides/content";
+import { BATTLE_SITES, RHIB, baseAhead, boatFits, vehicleFits } from "@tentides/content";
 import type { BattleRoom } from "./BattleRoom.ts";
 import type { Vehicles } from "./vehicles.ts";
 
@@ -51,27 +51,29 @@ export class Fleet {
     if (!vehiclesOn(this.room)) return;
     const map = this.room.map;
     const rand = Math.random;
-    if (map.layout === "war") {
+    if (map.layout === "war" && map.war) {
+      const war = map.war;
       // Trực thăng đặt trước (xe trinh sát tránh sân đỗ).
       for (const side of ["blue", "red"] as const) {
-        const pad = WAR_HELIPADS[side];
+        const pad = war.helipads[side];
         const spot = vehicleFits("heli", map, pad.x, pad.z, pad.rotY) ? { x: pad.x, z: pad.z, rotY: pad.rotY } : this.vehicles.findSpot(pad.x, pad.z, 2, 30, rand, "heli");
         if (spot) this.add("heli", spot.x, spot.z, spot.rotY, side);
       }
       for (const side of ["blue", "red"] as const) {
-        const base = WAR_BASES[side];
-        const out = Math.sign(-base.x);
+        const base = war.bases[side];
         for (let k = 0; k < WAR_JEEPS_PER_SIDE; k++) {
-          const spot = this.vehicles.findSpot(base.x + out * 30, base.z + (k ? 16 : -16), 0, 14, rand, "jeep") ?? this.vehicles.findSpot(base.x + out * 50, base.z, 0, 35, rand, "jeep");
-          if (spot) this.add("jeep", spot.x, spot.z, out > 0 ? Math.PI / 2 : -Math.PI / 2, side);
+          const near = baseAhead(base, 30, k ? 16 : -16);
+          const far = baseAhead(base, 50);
+          const spot = this.vehicles.findSpot(near.x, near.z, 0, 14, rand, "jeep") ?? this.vehicles.findSpot(far.x, far.z, 0, 35, rand, "jeep");
+          if (spot) this.add("jeep", spot.x, spot.z, base.face, side);
         }
       }
-      for (const id of ["g", "b"]) {
-        const site = WAR_SITES.find((w) => w.id === id);
-        const spot = site && shoreWater(this.room, site.x, site.z);
+      for (const [k, site] of war.harbors.entries()) {
+        const spot = shoreWater(this.room, site.x, site.z);
         if (spot) this.add("boat", spot.x, spot.z, spot.rotY, "");
-        // Xuồng cao tốc neo cách thuyền một quãng (cảng G có vũng nước sâu sát kè).
-        const fast = site && shoreWater(this.room, site.x + (id === "g" ? -20 : 0), site.z + (id === "g" ? -45 : 0), undefined, RHIB);
+        // Xuồng cao tốc neo cách thuyền một quãng (bản đồ gốc: cảng G có vũng nước sâu sát kè).
+        const g = war.id === "frontier" && k === 0;
+        const fast = shoreWater(this.room, site.x + (g ? -20 : 0), site.z + (g ? -45 : 0), undefined, RHIB);
         if (fast && (!spot || Math.hypot(fast.x - spot.x, fast.z - spot.z) > 10)) this.add("rhib", fast.x, fast.z, fast.rotY, "");
         else if (spot) {
           const near = this.vehicles.findSpot(spot.x, spot.z, 10, 40, rand, "rhib");

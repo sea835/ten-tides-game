@@ -716,3 +716,105 @@
   left: 60px;
   top: 26px;
 }
+
+/* ---------------------------------------------------------------- chọn bản đồ chiến trường */
+
+.cc-maps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.cc-map-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.cc-map {
+  --tone: var(--cc-amber);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 74px;
+  padding: 8px 9px 7px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--cc-line);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--tone) 14%, var(--cc-card-hi)), var(--cc-card));
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.cc-map::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--tone);
+  opacity: 0.75;
+}
+.cc-map.map-dienbien {
+  --tone: #4f8a3a;
+}
+.cc-map.map-normandy {
+  --tone: #4f7fa8;
+}
+.cc-map.map-verdun {
+  --tone: #8a6a48;
+}
+.cc-map.map-stalingrad {
+  --tone: #b8c4d0;
+}
+.cc-map.map-alamein {
+  --tone: #d6a95a;
+}
+.cc-map strong {
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.cc-map small {
+  font-size: 11px;
+  color: var(--cc-muted);
+}
+.cc-map i {
+  margin-top: auto;
+  font-style: normal;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--cc-line);
+}
+.cc-map.on {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 1px var(--tone) inset;
+}
+.cc-map:disabled {
+  cursor: default;
+}
+.cc-map:disabled:not(.on) {
+  opacity: 0.6;
+}
+.cc-map:not(:disabled):hover {
+  border-color: var(--cc-line-hi);
+}
+.cc-map-brief {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--cc-muted);
+}
+.cc-map-brief svg {
+  vertical-align: -2px;
+  color: var(--cc-amber);
+}
+@media (max-width: 720px) {
+  .cc-map-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

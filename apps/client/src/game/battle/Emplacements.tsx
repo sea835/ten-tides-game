@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { BoxGeometry, CylinderGeometry, Euler, MeshBasicMaterial, MeshStandardMaterial, Quaternion, RingGeometry, SphereGeometry, Vector3, type Group, type Mesh, type PerspectiveCamera } from "three";
-import { BULLET_GRAVITY, HMG, MORTAR, MOUNT, NEST, clampElevation, clampTraverse, isEmplacement, mapForMode, mortarImpact, mortarMuzzle, mountMuzzle, seatPos, vehicleSpec } from "@tentides/content";
+import { BULLET_GRAVITY, HMG, MORTAR, MOUNT, NEST, clampElevation, clampTraverse, isEmplacement, mapForState, mortarImpact, mortarMuzzle, mountMuzzle, seatPos, vehicleSpec } from "@tentides/content";
 import { Messages, type MortarFxMessage, type VehicleState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { keys, look, smoothView, view } from "../input.ts";
@@ -332,7 +332,7 @@ export function EmplacementSeat({ room, teamColor }: { room: IslandRoom; teamCol
     smoothView(dt);
     const cam = state.camera as PerspectiveCamera;
     const { target, pos, dir, aim } = _tmp;
-    const map = mapForMode(room.state.battleMode, room.state.worldSeed);
+    const map = mapForState(room.state);
     const now = performance.now();
     const typing = menuOpen();
     let zoomFov = 1;
@@ -529,7 +529,7 @@ export function MortarShells({ room }: { room: IslandRoom }) {
     const g = group.current;
     if (!g) return;
     const now = performance.now() / 1000;
-    const world = mapForMode(room.state.battleMode, room.state.worldSeed).world;
+    const world = mapForState(room.state).world;
     for (let i = 0; i < SHELL_MAX; i++) {
       const s = shells[i]!;
       const mesh = g.children[i] as Mesh | undefined;

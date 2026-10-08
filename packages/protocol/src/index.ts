@@ -622,6 +622,8 @@ export const RoomSettingsState = schema(
     warTickets: t.uint16().default(300),
     /** Có xe cơ giới (xe tăng, xe jeep, thuyền...) trong trận không; tắt thì server không đặt xe nào. */
     vehiclesEnabled: t.boolean().default(true),
+    /** Chiến trường 50 vs 50: bản đồ chủ phòng chọn (mã trong WAR_MAP_LIST của content; rỗng là bản đồ gốc). */
+    warMap: t.string().default("frontier"),
   },
   "RoomSettingsState",
 );
@@ -944,6 +946,7 @@ export const BattleSettingsMessage = z
     mode: z.enum(["solo", "squad", "war"]),
     tickets: z.int().min(0).max(5000),
     vehicles: z.boolean(),
+    map: z.string().max(32),
   })
   .partial();
 export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;

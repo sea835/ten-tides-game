@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Vector3 } from "three";
-import { IGLA_LOCK, advanceLock, heliGround, lockReady, mapForMode, raycastBoxes, raycastTerrain, type LockState } from "@tentides/content";
+import { IGLA_LOCK, advanceLock, heliGround, lockReady, mapForState, raycastBoxes, raycastTerrain, type LockState } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { playLockBeep } from "../sound/air.ts";
@@ -37,7 +37,7 @@ export function AirDefense({ room }: { room: IslandRoom }) {
       aaHud.locked = false;
       return;
     }
-    const map = mapForMode(room.state.battleMode, room.state.worldSeed);
+    const map = mapForState(room.state);
     camera.getWorldDirection(_fwd);
     _cam.copy(camera.position);
     let best = "";

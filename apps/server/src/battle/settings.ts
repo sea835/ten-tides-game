@@ -8,6 +8,7 @@ import {
   type BattleSettingsMessage,
   type IslandState,
 } from "@tentides/protocol";
+import { warMapId } from "@tentides/content";
 
 // Bảng cài đặt phòng (Trung tâm chỉ huy ở sảnh): kẹp số máy theo chế độ, vé quân, bật / tắt xe cơ giới, thời tiết.
 // Chỉ chủ phòng gửi được và chỉ khi còn ở sảnh (BattleRoom kiểm tra); ở đây chỉ lo đưa giá trị về khoảng hợp lệ.
@@ -61,5 +62,6 @@ export function applyBattleSettings(state: IslandState, s: BattleSettingsMessage
   if (s.vehicles !== undefined) state.settings.vehiclesEnabled = s.vehicles;
   if (s.weather !== undefined) state.settings.weatherPick = s.weather;
   if (s.time !== undefined) state.settings.timePick = s.time;
+  if (s.map !== undefined) state.settings.warMap = warMapId(s.map);
   return changed;
 }

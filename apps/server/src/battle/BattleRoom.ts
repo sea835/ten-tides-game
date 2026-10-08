@@ -303,7 +303,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.battleSettings, BattleSettingsMessage, (client, s) => {
       if (!this.hostOnly(client) || this.state.phase !== "lobby") return;
       // Kẹp số máy, vé quân, xe cơ giới, thời tiết (settings.ts).
+      const mapBefore = this.state.settings.warMap;
       const mode = applyBattleSettings(this.state, s);
+      // Đổi bản đồ chiến trường: dựng lại bản đồ (người chơi về chỗ xuất phát mới).
+      if (!mode && this.state.battleMode === "war" && mapBefore !== this.state.settings.warMap) this.setupMap(this.state.worldSeed);
       if (mode) {
         // Chiến trường dùng bản đồ riêng (rộng hơn, có cứ điểm): dựng lại bản đồ, chia phe cho người chơi.
         this.setupMap(this.state.worldSeed);
@@ -684,7 +687,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Bản riêng của phòng (mặt nạ khối vỡ, cây đổ riêng), không đụng bản đồ trong cache dùng chung.
     // Thêm chỗ trống cuối danh sách khối cho bao cát dựng giữa trận.
     this.gadgets.clear();
-    this.map = withDynamicSlots(withDestruction(mapForMode(this.state.battleMode, seed)), SANDBAG_SLOTS);
+    this.map = withDynamicSlots(withDestruction(mapForMode(this.state.battleMode, seed, this.state.settings.warMap)), SANDBAG_SLOTS);
     this.destruction.reset();
     this.rand = makeRand(seed ^ Date.now());
     for (const p of this.state.players.values()) this.placeAtSpawn(p);
@@ -988,13 +991,30 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       for (const [v, w] of table) if ((r -= w) <= 0) return v;
       return table[0]![0];
     };
-    s.weather = (BATTLE_WEATHERS as readonly string[]).includes(s.settings.weatherPick)
-      ? s.settings.weatherPick
-      : weighted([["sunny", 3], ["cloudy", 2], ["rain", 2], ["fog", 1.4], ["storm", 1.2], ["snow", 1.4]]);
+    s.weather = (BATTLE_WEATHERS as readonly string[]).includes(s.settings.weatherPick) ? s.settings.weatherPick : weighted(this.weatherTable());
     const time = (BATTLE_TIMES as readonly string[]).includes(s.settings.timePick) ? s.settings.timePick : weighted([["day", 5], ["dawn", 1.5], ["dusk", 1.5], ["night", 2]]);
     const base = time === "dawn" ? 0.1 : time === "dusk" ? 0.72 : time === "night" ? 0.88 : 0.25 + this.rand() * 0.3;
     s.clock = base + (time === "day" ? 0 : this.rand() * 0.04);
     this.weatherLeft = WEATHER_MIN + this.rand() * WEATHER_MIN;
+  }
+
+  /**
+   * Bảng bốc thăm thời tiết "ngẫu nhiên" theo cảnh quan bản đồ: sa mạc nắng gắt, thỉnh thoảng nhiều mây (không mưa
+   * tuyết); Stalingrad tuyết rơi, mây mù; Verdun mưa dầm, sương mù; rừng rậm Điện Biên mưa rừng, sương núi.
+   */
+  private weatherTable(): [string, number][] {
+    switch (this.map?.world.biome) {
+      case "desert":
+        return [["sunny", 6], ["cloudy", 1.5], ["fog", 0.5]];
+      case "snow":
+        return [["snow", 5], ["cloudy", 2], ["fog", 1.5], ["storm", 0.5]];
+      case "mud":
+        return [["rain", 3], ["fog", 2.5], ["cloudy", 2], ["storm", 1], ["sunny", 0.8]];
+      case "jungle":
+        return [["rain", 2.5], ["fog", 2], ["sunny", 2], ["cloudy", 1.5], ["storm", 1]];
+      default:
+        return [["sunny", 3], ["cloudy", 2], ["rain", 2], ["fog", 1.4], ["storm", 1.2], ["snow", 1.4]];
+    }
   }
 
   /** Giữa trận thời tiết có thể chuyển (trời quang kéo mây rồi mưa, bão tan...), trời trôi dần theo giờ. */
@@ -1013,8 +1033,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       fog: ["cloudy", "sunny", "rain"],
       snow: ["snow", "cloudy", "fog"],
     };
-    const list = next[s.weather] ?? ["sunny"];
-    s.weather = list[Math.floor(this.rand() * list.length)]!;
+    // Chỉ chuyển sang kiểu thời tiết hợp cảnh quan bản đồ (sa mạc không tuyết...).
+    const fits = new Set(this.weatherTable().map(([w]) => w));
+    const list = (next[s.weather] ?? ["sunny"]).filter((w) => fits.has(w));
+    if (list.length) s.weather = list[Math.floor(this.rand() * list.length)]!;
   }
 
   private tick(dt: number) {
