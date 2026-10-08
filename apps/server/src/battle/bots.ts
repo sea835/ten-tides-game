@@ -1,7 +1,10 @@
-import { MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
+import { HELI, IGLA_LOCK, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WAR_BASES, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
+import { NavGrid, type NavPoint } from "./nav.ts";
+import { coverSpot, lookOut, overwatch, type TacticsHost } from "./tactics.ts";
+import { HeliPilots } from "./heliPilot.ts";
 
 // Máy (bot) cho Battleground: đi lang thang trong vùng an toàn (hay đi theo đội hình của đội trưởng ở chế độ Đồng đội),
 // tránh tường và nước, thấy ai trong tầm nhìn (không bị tường, đồi che) thì quay lại bắn từng loạt, trúng hay trật tuỳ
@@ -13,6 +16,11 @@ import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts
 // cùng đội, nghe lệnh người dẫn đội (theo sau, giữ chỗ, tới điểm).
 // Chạy nhẹ với 50 máy: mỗi máy nhìn quanh lệch nhịp nhau, chỉ dò tia tới vài người gần nhất trong tầm, độ cao địa hình
 // lấy từ lưới tính sẵn.
+// Đi lại theo lưới dẫn đường (nav.ts, tìm đường A*): vòng qua nhà, tường, sông thay vì đi thẳng rồi kẹt; đứng mãi
+// không nhích thì tìm đường lại, vẫn kẹt thì lùi ra chỗ trống gần đó. Chiến thuật theo lớp lính (tactics.ts): bắn tỉa
+// tìm chỗ cao xa nhìn thẳng vào cứ điểm rồi nằm rình, bắn vài phát thì đổi chỗ; súng máy xả áp chế vào chỗ địch vừa
+// nấp; tay súng ném lựu đạn vào địch nấp sau tường, trong nhà; phe giữ cứ điểm vào nhà, nấp sau tường thấp, phục kích
+// chờ địch tới gần mới nổ súng; máu thấp thì ném khói rút lui. Đứng canh thì nhìn ra khoảng trống phía địch tới.
 
 const NAMES = [
   "Hải Âu", "Cá Mập", "Kền Kền", "Rắn Hổ", "Bão Cát", "Sói Xám", "Đại Bàng", "Chim Cắt", "Báo Đốm", "Gấu Nâu", "Cú Mèo", "Mãng Xà",
@@ -68,6 +76,58 @@ interface Brain {
   tankSpeed: number;
   stuck: number;
   backUp: number;
+  /** Đường đang đi (lưới dẫn đường), điểm kế tiếp, đích lúc tìm đường, cần tìm lại. */
+  path: NavPoint[] | null;
+  pathI: number;
+  pgx: number;
+  pgz: number;
+  replan: boolean;
+  /** Đo kẹt: chỗ đứng lúc bắt đầu đo, thời gian đã đo, số lần kẹt liền; đang lùi ra chỗ trống (giây, toạ độ). */
+  progX: number;
+  progZ: number;
+  progT: number;
+  stuckN: number;
+  unstick: number;
+  ux: number;
+  uz: number;
+  /** Hướng canh gác đang nhìn và lúc tính lại. */
+  lookYaw: number;
+  lookAt: number;
+  /** Chỗ đứng chiến thuật cho khu vực hiện tại (khoá khu vực, toạ độ, loại chỗ). */
+  tacKey: string;
+  tacX: number;
+  tacZ: number;
+  tacKind: "" | "overwatch" | "cover" | "open";
+  /** Số phát đã bắn từ chỗ bắn tỉa hiện tại (bắn vài phát thì đổi chỗ). */
+  shots: number;
+  /** Lúc mất dấu mục tiêu, lúc bị bắn gần nhất (giây trận). */
+  lostAt: number;
+  hurtAt: number;
+  /** Đang rút lui (giây còn lại) về chỗ (rx, rz); chờ ném khói lần sau. */
+  retreat: number;
+  rx: number;
+  rz: number;
+  smokeCd: number;
+}
+
+/** Lệnh của người chơi cho một máy trên chiến trường (vẽ vùng trên bản đồ): đánh chiếm hay giữ khu vực. */
+export interface WarCommand {
+  kind: "attack" | "hold";
+  x: number;
+  z: number;
+  r: number;
+  /** Người ra lệnh, hết hạn lúc (Date.now(), ms). */
+  by: string;
+  until: number;
+}
+
+/** Chỗ đứng của máy: toạ độ, khoảng cách tới đó, loại chỗ (bắn tỉa, nấp, chỗ trống), hướng địch tới (NaN nếu không rõ). */
+interface Placement {
+  x: number;
+  z: number;
+  far: number;
+  kind: "" | "overwatch" | "cover" | "open";
+  threat: number;
 }
 
 export interface SquadOrder {
@@ -116,8 +176,40 @@ export class Bots {
   /** Đội trưởng từng đội, tính lại mỗi nhịp. */
   private leaders = new Map<string, string>();
   private nameSeq = 0;
+  /** Lệnh vùng của người chơi cho từng máy (chiến trường). */
+  commands = new Map<string, WarCommand>();
+  private navGrid: NavGrid | null = null;
+  private navMap: object | null = null;
+  /** Hạn mức ô tìm đường còn lại trong nhịp này (chia đều cho các máy cần tìm đường). */
+  private planLeft = 0;
+  /** Số lần chọn chỗ chiến thuật (dò nhiều tia) còn được làm trong nhịp này. */
+  private tacLeft = 0;
+  /** Giây trận (cộng dồn theo nhịp). */
+  private time = 0;
+  /** Máy lái trực thăng (heliPilot.ts); lúc mỗi trực thăng bắt đầu bỏ trống (giây trận). */
+  readonly pilots: HeliPilots;
+  private heliIdle = new Map<string, number>();
 
-  constructor(private readonly room: BattleRoom) {}
+  constructor(private readonly room: BattleRoom) {
+    this.pilots = new HeliPilots(room);
+  }
+
+  /** Lưới dẫn đường của bản đồ hiện tại (dựng lười, bản đồ đổi thì dựng lại). */
+  nav(): NavGrid {
+    const map = this.room.map;
+    if (!this.navGrid || this.navMap !== map) {
+      const mf = map.sites.find((x) => x.kind === "minefield");
+      // Bãi mìn: đi vòng (đắt gấp 8), không cấm hẳn.
+      const cost = mf ? (x: number, z: number) => (Math.hypot(x - mf.x, z - mf.z) < Math.max(mf.rx, mf.rz) + 4 ? 8 : 1) : undefined;
+      this.navGrid = new NavGrid(map, (x, z) => this.height(x, z), cost);
+      this.navMap = map;
+    }
+    return this.navGrid;
+  }
+
+  private get tactics(): TacticsHost {
+    return { map: this.room.map, nav: this.nav(), height: (x, z) => this.height(x, z), visible: (e, x, y, z) => this.visible(e, x, y, z) };
+  }
 
   private height(x: number, z: number): number {
     const map = this.room.map;
@@ -158,6 +250,9 @@ export class Bots {
     this.brains.clear();
     this.orders.clear();
     this.boarding.clear();
+    this.commands.clear();
+    this.pilots.clear();
+    this.heliIdle.clear();
     this.nameSeq = 0;
   }
 
@@ -252,6 +347,7 @@ export class Bots {
   forget(id: string) {
     this.brains.delete(id);
     this.boarding.delete(id);
+    this.pilots.forget(id);
   }
 
   /**
@@ -277,8 +373,8 @@ export class Bots {
     return best;
   }
 
-  /** Máy đang theo lệnh lên xe: hướng chạy tới xe (null nếu không có lệnh, hay lệnh hết hiệu lực); tới nơi thì lên. */
-  private boardStep(id: string, p: PlayerState): { mx: number; mz: number } | null {
+  /** Máy đang theo lệnh lên xe: chỗ chạy tới (null nếu không có lệnh, hay lệnh hết hiệu lực); tới nơi thì lên. */
+  private boardStep(id: string, p: PlayerState): { x: number; z: number } | null {
     const vid = this.boarding.get(id);
     if (!vid) return null;
     const v = this.room.state.vehicles.get(vid);
@@ -286,16 +382,58 @@ export class Bots {
       this.boarding.delete(id);
       return null;
     }
-    const dx = v.x - p.x;
-    const dz = v.z - p.z;
-    const d = Math.hypot(dx, dz) || 1;
-    if (d < TANK.enter * 0.8) {
+    if (Math.hypot(v.x - p.x, v.z - p.z) < (v.kind === "heli" ? HELI.enter * 0.7 : TANK.enter * 0.8)) {
       this.boarding.delete(id);
       this.room.vehicles.board(id, vid);
       v.team = p.team;
-      return { mx: 0, mz: 0 };
+      return { x: p.x, z: p.z };
     }
-    return { mx: dx / d, mz: dz / d };
+    return { x: v.x, z: v.z };
+  }
+
+  /**
+   * Chiến trường: trực thăng đậu ở sân nhà bỏ trống một lúc mà không người chơi nào của phe đứng gần thì giao một máy
+   * chạy tới lái. Máy đang lái mà đáp ở nhà, có người chơi cùng phe tới sát thì xuống nhường ghế.
+   */
+  private crewHelis() {
+    const s = this.room.state;
+    if (s.battleMode !== "war" || s.phase !== "battle") return;
+    // Máy được giao lên xe mà đã gục: bỏ lệnh, để giao cho máy khác.
+    for (const [bid] of this.boarding) if (!s.players.get(bid)?.alive) this.boarding.delete(bid);
+    for (const [vid, v] of s.vehicles) {
+      if (v.kind !== "heli" || v.hp <= 0 || !v.team) continue;
+      const home = this.room.vehicles.air.homeOf(vid);
+      const landed = v.y - this.height(v.x, v.z) < 1.5;
+      let human = Infinity;
+      for (const q of s.players.values()) if (!q.bot && q.alive && q.team === v.team && !q.vehicle) human = Math.min(human, Math.hypot(q.x - v.x, q.z - v.z));
+      const driver = v.driver ? s.players.get(v.driver) : undefined;
+      if (driver?.bot && landed && human < 9) {
+        this.room.vehicles.exit(v.driver);
+        this.heliIdle.set(vid, this.time + 30);
+        continue;
+      }
+      if (v.driver || !landed || !home || Math.hypot(v.x - home.x, v.z - home.z) > 15 || human < 40) {
+        this.heliIdle.delete(vid);
+        continue;
+      }
+      const since = this.heliIdle.get(vid);
+      if (since === undefined) {
+        this.heliIdle.set(vid, this.time);
+        continue;
+      }
+      if (this.time - since < 20 || [...this.boarding.values()].includes(vid)) continue;
+      let best = "";
+      let bestD = 420;
+      for (const [id, p] of s.players) {
+        if (!p.bot || !p.alive || p.vehicle || p.team !== v.team || p.role === "tanker" || p.role === "sniper" || this.boarding.has(id)) continue;
+        const d = Math.hypot(p.x - v.x, p.z - v.z);
+        if (d < bestD) {
+          bestD = d;
+          best = id;
+        }
+      }
+      if (best) this.boarding.set(best, vid);
+    }
   }
 
   onHurt(target: string, attacker: string) {
@@ -313,6 +451,9 @@ export class Bots {
     b.lz = a.z + (Math.random() - 0.5) * 2 * err;
     b.ly = a.y;
     b.seen = 4;
+    b.hurtAt = this.time;
+    // Bắn tỉa bị lộ: bắn xong loạt này thì đổi chỗ.
+    if (me.role === "sniper") b.shots = Math.max(b.shots, 3);
     if (!me.vehicle) me.rotY = Math.atan2(a.x - me.x, a.z - me.z);
     // Bị bắn thì nằm hay ngồi xuống cho khó trúng.
     if (!me.vehicle && me.role === "sniper") me.prone = true;
@@ -339,7 +480,7 @@ export class Bots {
   }
 
   private fresh(x: number, z: number, slot: number): Brain {
-    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0 };
+    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0, path: null, pathI: 0, pgx: x, pgz: z, replan: false, progX: x, progZ: z, progT: 0, stuckN: 0, unstick: 0, ux: x, uz: z, lookYaw: 0, lookAt: 0, tacKey: "", tacX: x, tacZ: z, tacKind: "", shots: 0, lostAt: -99, hurtAt: -99, retreat: 0, rx: x, rz: z, smokeCd: 0 };
   }
 
   /** Hai người có phải địch của nhau không (cùng đội thì không). */
@@ -369,6 +510,14 @@ export class Bots {
     const room = this.room;
     const s = room.state;
     if (!room.fighting()) return;
+    this.time += dt;
+    this.planLeft = 8000;
+    this.tacLeft = 4;
+    // Tường bị phá, nhà sập mở ra lối đi mới: dò lại vùng đó (vài giây một lần).
+    if (Math.floor(this.time / 3) !== Math.floor((this.time - dt) / 3)) {
+      this.nav().refresh();
+      this.crewHelis();
+    }
     this.updateLeaders();
     // Người trong tầm: danh sách ngắn gọn để các máy duyệt nhanh.
     const alive: [string, PlayerState][] = [];
@@ -382,8 +531,9 @@ export class Bots {
       }
       const tank = p.vehicle ? s.vehicles.get(p.vehicle) : undefined;
       if (tank && tank.hp > 0) {
-        // Máy chỉ lái xe tăng; ngồi xe khác (xe trinh sát, thuyền) thì ngồi yên theo xe.
+        // Máy lái xe tăng, trực thăng (ghế lái); ngồi xe khác (xe trinh sát, thuyền) thì ngồi yên theo xe.
         if (tank.kind === "tank") this.tickTanker(id, p, b, tank, alive, dt);
+        else if (tank.kind === "heli" && tank.driver === id) this.pilots.tick(id, p, p.vehicle, tank, room.vehicles.air.homeOf(p.vehicle), dt);
         // Vũ khí cố định: ngồi ổ đại liên canh, quét đạn vào địch (emplacements.ts).
         else if (isEmplacement(tank.kind)) this.room.vehicles.emplacements.tickBot(id, p, tank, dt);
         continue;
@@ -408,7 +558,12 @@ export class Bots {
       return this.visible(eye, o.x, o.y + (o.vehicle ? 1.6 : o.prone ? 0.3 : o.crouching ? 0.8 : 1.2), o.z);
     };
     // Xạ thủ vũ khí cố định lộ người ra ngoài: bắn được như lính đi bộ.
-    const usable = (o: PlayerState) => o.alive && this.hostile(p, o) && (tanks || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
+    // Pháo xe tăng không ngóc lên bắn trực thăng đang bay.
+    const airborne = (o: PlayerState) => {
+      const v = o.vehicle ? s.vehicles.get(o.vehicle) : undefined;
+      return !!v && v.kind === "heli" && v.y - this.height(v.x, v.z) > 6;
+    };
+    const usable = (o: PlayerState) => o.alive && this.hostile(p, o) && ((tanks && !airborne(o)) || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
     const cur = b.target ? s.players.get(b.target) : undefined;
     b.sees = !!cur && usable(cur) && canSee(cur, range * 1.3);
     if (!b.sees) {
@@ -447,42 +602,111 @@ export class Bots {
     }
   }
 
+  /** Hướng (radian) từ khu vực (x, z) về phía địch có thể tới: cứ điểm gần nhất chưa phải của phe mình, hay căn cứ địch. */
+  private threatYaw(side: string, x: number, z: number): number {
+    const s = this.room.state;
+    if (s.battleMode !== "war" || (side !== "blue" && side !== "red")) return NaN;
+    let best: { x: number; z: number } = side === "blue" ? WAR_BASES.red : WAR_BASES.blue;
+    let bestD = Infinity;
+    for (const f of s.flags.values()) {
+      const d = Math.hypot(f.x - x, f.z - z);
+      if (f.owner === side || d < 5 || d > bestD) continue;
+      bestD = d;
+      best = f;
+    }
+    return Math.atan2(best.x - x, best.z - z);
+  }
+
   /**
    * Chiến trường: máy nhắm tới một cứ điểm (chưa phải của phe mình, gần nhất hay gần nhì; thỉnh thoảng ở lại giữ
-   * cứ điểm đang bị đánh), đứng rải trong vùng chiếm; chiếm xong thì đi tiếp. Xe tăng đứng ngoài rìa yểm trợ.
+   * cứ điểm đang bị đánh), hay tới vùng người chơi chỉ trên bản đồ. Chỗ đứng theo vai: bắn tỉa tìm chỗ cao xa nhìn
+   * thẳng vào khu vực; phe giữ khu vực tìm chỗ nấp (trong nhà, sau tường thấp) hướng ra phía địch; phe đánh rải trong
+   * vùng chiếm. Xe tăng đứng ngoài rìa yểm trợ.
    */
-  private warSpot(p: PlayerState, b: Brain, tank: boolean): { x: number; z: number; far: number } | null {
+  private warSpot(id: string, p: PlayerState, b: Brain, tank: boolean): Placement | null {
     const s = this.room.state;
     const side = p.team;
     const now = Date.now();
-    let f = b.goal ? s.flags.get(b.goal) : undefined;
-    const enemyIn = (fl: { blue: number; red: number }) => (side === "blue" ? fl.red : fl.blue);
-    const secured = f && f.owner === side && Math.abs(f.progress) >= 1 && enemyIn(f) === 0;
-    if (!f || now > b.goalUntil || (secured && Math.random() < 0.75)) {
-      const flags = [...s.flags.entries()];
-      const dist = ([, fl]: (typeof flags)[number]) => Math.hypot(fl.x - p.x, fl.z - p.z);
-      const attack = flags.filter(([, fl]) => fl.owner !== side).sort((a, c) => dist(a) - dist(c));
-      const defend = flags.filter(([, fl]) => fl.owner === side && enemyIn(fl) > 0);
-      let pick = attack[Math.random() < 0.65 || attack.length < 2 ? 0 : 1];
-      if (defend.length && Math.random() < 0.35) pick = defend[Math.floor(Math.random() * defend.length)];
-      if (!pick) pick = flags[Math.floor(Math.random() * flags.length)];
-      if (!pick) return null;
-      b.goal = pick[0];
-      b.goalUntil = now + 9000 + Math.random() * 9000;
-      b.ga = Math.random() * Math.PI * 2;
-      b.gr = Math.sqrt(Math.random());
-      f = pick[1];
+    const cmd = this.commands.get(id);
+    let area: { key: string; x: number; z: number; r: number; defend: boolean };
+    if (cmd && cmd.until > now) {
+      area = { key: `cmd:${Math.round(cmd.x)}:${Math.round(cmd.z)}:${cmd.kind}`, x: cmd.x, z: cmd.z, r: cmd.r, defend: cmd.kind === "hold" };
+    } else {
+      if (cmd) this.commands.delete(id);
+      let f = b.goal ? s.flags.get(b.goal) : undefined;
+      const enemyIn = (fl: { blue: number; red: number }) => (side === "blue" ? fl.red : fl.blue);
+      const secured = f && f.owner === side && Math.abs(f.progress) >= 1 && enemyIn(f) === 0;
+      if (!f || now > b.goalUntil || (secured && Math.random() < 0.75)) {
+        const flags = [...s.flags.entries()];
+        const dist = ([, fl]: (typeof flags)[number]) => Math.hypot(fl.x - p.x, fl.z - p.z);
+        const attack = flags.filter(([, fl]) => fl.owner !== side).sort((a, c) => dist(a) - dist(c));
+        const defend = flags.filter(([, fl]) => fl.owner === side && enemyIn(fl) > 0);
+        let pick = attack[Math.random() < 0.65 || attack.length < 2 ? 0 : 1];
+        // Phe mình đang giữ cứ điểm bị đánh: máy giữ nhà ở lại phòng thủ (súng máy, bắn tỉa hay ở lại hơn).
+        if (defend.length && Math.random() < (p.role === "support" || p.role === "sniper" ? 0.5 : 0.35)) pick = defend[Math.floor(Math.random() * defend.length)];
+        if (!pick) pick = flags[Math.floor(Math.random() * flags.length)];
+        if (!pick) return null;
+        b.goal = pick[0];
+        // Bắn tỉa, giữ nhà: ở lâu một chỗ; phe đánh đổi mục tiêu nhanh hơn.
+        b.goalUntil = now + (p.role === "sniper" ? 30000 : 12000) + Math.random() * 12000;
+        b.ga = Math.random() * Math.PI * 2;
+        b.gr = Math.sqrt(Math.random());
+        f = pick[1];
+      }
+      area = { key: `flag:${b.goal}:${f.owner === side ? "d" : "a"}`, x: f.x, z: f.z, r: f.r, defend: f.owner === side };
     }
-    const r = tank ? f.r + 12 : f.r * 0.8 * b.gr;
-    // Cứ điểm bên kia sông: vòng qua cầu hay khúc cạn gần nhất.
-    const at = this.room.map.layout === "war" ? warRoute(p.x, p.z, f.x + Math.cos(b.ga) * r, f.z + Math.sin(b.ga) * r) : { x: f.x + Math.cos(b.ga) * r, z: f.z + Math.sin(b.ga) * r };
-    return { x: at.x, z: at.z, far: Math.hypot(at.x - p.x, at.z - p.z) };
+    const threat = this.threatYaw(side, area.x, area.z);
+    let x: number;
+    let z: number;
+    let kind: Brain["tacKind"] = "open";
+    if (tank) {
+      const r = area.r + 12;
+      x = area.x + Math.cos(b.ga) * r;
+      z = area.z + Math.sin(b.ga) * r;
+    } else {
+      // Đổi khu vực, hay bắn tỉa đã bắn vài phát ở chỗ cũ (lộ vị trí): chọn chỗ mới.
+      const relocate = b.tacKind === "overwatch" && b.shots >= 4;
+      // Chọn chỗ dò nhiều tia: mỗi nhịp chỉ vài máy (đầu trận cả trăm máy cùng chọn thì khựng server); máy chưa tới
+      // lượt tạm đi về giữa khu vực.
+      if ((b.tacKey !== area.key || relocate) && this.tacLeft <= 0 && b.tacKey !== area.key) {
+        b.tacX = area.x;
+        b.tacZ = area.z;
+        b.tacKind = "open";
+      } else if (b.tacKey !== area.key || relocate) {
+        this.tacLeft--;
+        const host = this.tactics;
+        let spot: { x: number; z: number } | null = null;
+        if (p.role === "sniper") {
+          const base = side === "red" ? WAR_BASES.red : WAR_BASES.blue;
+          spot = overwatch(host, area.x, area.z, Math.atan2(base.x - area.x, base.z - area.z));
+          kind = spot ? "overwatch" : "open";
+        }
+        if (!spot && (area.defend || Math.random() < 0.35)) {
+          spot = coverSpot(host, area.x, area.z, area.r * 0.9, Number.isNaN(threat) ? NaN : threat);
+          kind = spot ? "cover" : "open";
+        }
+        if (!spot) {
+          const r = area.r * 0.8 * b.gr;
+          spot = this.nav().nearestWalkable(area.x + Math.cos(b.ga) * r, area.z + Math.sin(b.ga) * r, 8) ?? { x: area.x, z: area.z };
+          kind = "open";
+        }
+        b.tacKey = area.key;
+        b.tacX = spot.x;
+        b.tacZ = spot.z;
+        b.tacKind = kind;
+        b.shots = 0;
+      }
+      x = b.tacX;
+      z = b.tacZ;
+      kind = b.tacKind;
+    }
+    return { x, z, far: Math.hypot(x - p.x, z - p.z), kind, threat };
   }
 
   /** Chỗ máy này nên đứng theo đội hình (hay theo lệnh), hoặc null nếu tự do (đội trưởng, máy solo). */
-  private formationSpot(id: string, p: PlayerState, b: Brain, tank: boolean): { x: number; z: number; far: number } | null {
+  private formationSpot(id: string, p: PlayerState, b: Brain, tank: boolean): Placement | null {
     if (!p.team) return null;
-    if (this.room.state.battleMode === "war") return this.warSpot(p, b, tank);
+    if (this.room.state.battleMode === "war") return this.warSpot(id, p, b, tank);
     const s = this.room.state;
     const leaderId = this.leaderOf(p.team);
     const order = this.orders.get(p.team);
@@ -504,7 +728,127 @@ export class Bots {
     const sn = Math.sin(rot);
     const x = ax + c * u + sn * v;
     const z = az - sn * u + c * v;
-    return { x, z, far: Math.hypot(x - p.x, z - p.z) };
+    return { x, z, far: Math.hypot(x - p.x, z - p.z), kind: "open", threat: NaN };
+  }
+
+  /**
+   * Hướng đi (vector đơn vị) để tới (gx, gz) theo lưới dẫn đường: gần, hay đi thẳng được thì đi thẳng; không thì tìm
+   * đường A* (trong hạn mức của nhịp, hết hạn mức thì tạm đi thẳng, nhịp sau tìm). null khi đã tới nơi.
+   */
+  private steer(p: PlayerState, b: Brain, gx: number, gz: number): [number, number] | null {
+    // Đang kẹt: lùi ra chỗ trống gần đó trước đã.
+    if (b.unstick > 0) {
+      gx = b.ux;
+      gz = b.uz;
+    }
+    const dx = gx - p.x;
+    const dz = gz - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.9) return null;
+    // Chiến trường: cứ điểm bên kia sông thì đi qua cầu, khúc cạn gần nhất trước (đường tìm ngắn hơn hẳn).
+    if (this.room.map.layout === "war") {
+      const via = warRoute(p.x, p.z, gx, gz);
+      gx = via.x;
+      gz = via.z;
+    }
+    const nav = this.nav();
+    const path = b.path;
+    const moved = !path || Math.hypot(gx - b.pgx, gz - b.pgz) > Math.max(3, d * 0.15);
+    if (moved || b.replan || b.pathI >= path.length) {
+      if (d < 4 || nav.clearLine(p.x, p.z, gx, gz)) {
+        b.path = [{ x: gx, z: gz }];
+      } else if (this.planLeft > 1500) {
+        const before = nav.expanded;
+        const found = nav.findPath(p.x, p.z, gx, gz, Math.min(3500, this.planLeft));
+        this.planLeft -= nav.expanded - before;
+        b.path = found && found.length ? found : [{ x: gx, z: gz }];
+      } else return [dx / d, dz / d];
+      b.pathI = 0;
+      b.pgx = gx;
+      b.pgz = gz;
+      b.replan = false;
+    }
+    const pts = b.path!;
+    let wp = pts[b.pathI]!;
+    while (b.pathI < pts.length - 1 && Math.hypot(wp.x - p.x, wp.z - p.z) < 1.2) wp = pts[++b.pathI]!;
+    const wx = wp.x - p.x;
+    const wz = wp.z - p.z;
+    const wd = Math.hypot(wx, wz);
+    if (wd < 0.6) {
+      // Tới cuối đường mà chưa tới đích (đường tìm dở vì hết hạn mức): tìm tiếp.
+      b.pathI = pts.length;
+      return d > 1.5 ? [dx / d, dz / d] : null;
+    }
+    return [wx / wd, wz / wd];
+  }
+
+  /**
+   * Bước đi một nhịp theo hướng (mx, mz): tránh tường, nước sâu; vướng thì thử lách sang hai bên; đi mãi không nhích
+   * được thì tìm đường lại, vẫn kẹt thì lùi ra chỗ trống gần đó.
+   */
+  private stepMove(p: PlayerState, b: Brain, mx: number, mz: number, speed: number, dt: number) {
+    const room = this.room;
+    if (!mx && !mz) {
+      p.moving = false;
+      b.progT = 0;
+      b.progX = p.x;
+      b.progZ = p.z;
+      return;
+    }
+    const base = Math.atan2(mx, mz);
+    let stepped = false;
+    for (const off of [0, 0.5, -0.5, 1.0, -1.0]) {
+      const a = base + off;
+      const nx = p.x + Math.sin(a) * speed * dt;
+      const nz = p.z + Math.cos(a) * speed * dt;
+      const ny = this.height(nx, nz);
+      // Lội được khúc cạn (nước tới gối), nước sâu thì không.
+      if (ny < WATER_LEVEL - 0.7 || ny - p.y > 0.8 || insideBox(room.map.index, nx, ny + 0.9, nz, 0.35)) continue;
+      p.x = nx;
+      p.z = nz;
+      p.y = ny;
+      stepped = true;
+      break;
+    }
+    p.moving = stepped;
+    if (b.unstick > 0) b.unstick -= dt;
+    // Đo tiến độ mỗi 1,2 giây.
+    b.progT += dt;
+    if (b.progT < 1.2) return;
+    const moved = Math.hypot(p.x - b.progX, p.z - b.progZ);
+    b.progT = 0;
+    b.progX = p.x;
+    b.progZ = p.z;
+    if (moved > speed * 0.25) {
+      b.stuckN = 0;
+      return;
+    }
+    b.stuckN++;
+    b.replan = true;
+    if (b.stuckN >= 2) {
+      // Kẹt thật: chọn một chỗ đi được cách 4–9 m rồi lùi ra đó, xong mới tìm đường lại.
+      const a = Math.random() * Math.PI * 2;
+      const r = 4 + Math.random() * 5;
+      const spot = this.nav().nearestWalkable(p.x + Math.sin(a) * r, p.z + Math.cos(a) * r, 4);
+      if (spot) {
+        b.ux = spot.x;
+        b.uz = spot.z;
+        b.unstick = 1.6;
+        b.path = null;
+      }
+      if (!p.team) this.pickWaypoint(b);
+    }
+  }
+
+  /** Quay mặt canh gác: hướng thoáng về phía địch (tính lại vài giây một lần), quét qua lại nhẹ. */
+  private guard(p: PlayerState, b: Brain, threat: number, dt: number) {
+    if (this.time >= b.lookAt) {
+      b.lookAt = this.time + 3 + Math.random() * 3;
+      b.lookYaw = lookOut(this.tactics, p.x, p.y + (p.prone ? 0.4 : p.crouching ? 1.0 : 1.5) - 1.4, p.z, threat);
+    }
+    const want = b.lookYaw + Math.sin(this.time * 0.5 + b.slot) * 0.45;
+    const diff = Math.atan2(Math.sin(want - p.rotY), Math.cos(want - p.rotY));
+    p.rotY += diff * Math.min(1, dt * 3);
   }
 
   private tickSoldier(id: string, p: PlayerState, b: Brain, alive: [string, PlayerState][], dt: number) {
@@ -512,11 +856,14 @@ export class Bots {
     const s = room.state;
     const eyeH = p.prone ? 0.35 : p.crouching ? 1.05 : 1.55;
     const eye: [number, number, number] = [p.x, p.y + eyeH, p.z];
-    const range = SIGHT[p.role] ?? SIGHT[""]!;
+    // Bắn tỉa đã vào chỗ rình: nhìn xa hơn hẳn (ống ngắm 8x).
+    const range = (SIGHT[p.role] ?? SIGHT[""]!) * (b.tacKind === "overwatch" && p.prone ? 1.5 : 1);
     b.scan -= dt;
     if (b.scan <= 0) {
       b.scan = 0.3 + Math.random() * 0.1;
+      const had = b.sees;
       this.scan(id, p, b, alive, eye, range, true, false);
+      if (had && !b.sees) b.lostAt = this.time;
     }
 
     const target = b.target ? s.players.get(b.target) : undefined;
@@ -525,58 +872,82 @@ export class Bots {
     const slot = isGunSlot(kit.active) ? kit.active : null;
     const def = slot ? weaponIn(kit, slot) : undefined;
     if (slot && def && magOf(kit, slot) === 0 && !kit.reloading) room.reload(id);
+    b.nade -= dt;
+    b.smokeCd -= dt;
 
     // Có RPG: thấy xe tăng địch trong tầm thì đổi sang RPG, ngắm (bù đạn rơi) rồi bắn; không thì cầm lại súng chính.
     if (this.antiTank(id, p, b, eye, dt, target)) return;
+    // Có IGLA: thấy trực thăng địch đang bay thì ngắm giữ khoá rồi phóng tên lửa đuổi theo.
+    if (this.antiAir(id, p, b, eye, dt, target)) return;
 
     let mx = 0;
     let mz = 0;
+    let goal: { x: number; z: number } | null = null;
     let speed = 5;
+    let faceMove = true;
     const spot = this.formationSpot(id, p, b, false);
     const order = p.team ? this.orders.get(p.team) : undefined;
     const board = this.boardStep(id, p);
+    const battle = s.phase === "battle";
     if (board) {
-      // Lệnh lên xe tăng: chạy thẳng tới xe, không dừng lại đấu súng.
+      // Lệnh lên xe: chạy tới xe (theo đường đi được), không dừng lại đấu súng.
       if (p.vehicle) return;
-      mx = board.mx;
-      mz = board.mz;
+      goal = board;
       speed = 7.8;
       p.aiming = p.prone = p.crouching = false;
       p.aimPitch = 0;
-      if (mx || mz) p.rotY = Math.atan2(mx, mz);
-    } else if (target && target.alive && s.phase === "battle" && !b.sees) {
-      // Mất dấu: đi tới chỗ thấy lần cuối (máy trong đội người chơi không đi quá xa đội hình), súng chĩa về đó.
+    } else if (b.retreat > 0) {
+      // Rút lui sau màn khói: chạy về chỗ nấp phía sau, không đấu súng.
+      b.retreat -= dt;
+      goal = { x: b.rx, z: b.rz };
+      speed = 7.2;
+      p.aiming = p.prone = p.crouching = false;
+    } else if (target && target.alive && battle && !b.sees) {
+      // Mất dấu: tuỳ vai. Súng máy xả áp chế vào chỗ địch vừa nấp; tay súng ném lựu đạn vào chỗ đó; bắn tỉa nằm yên
+      // rình tiếp; còn lại đi dò tới chỗ thấy lần cuối (máy theo đội không đi quá xa đội hình), súng chĩa về đó.
       const dx = b.lx - p.x;
       const dz = b.lz - p.z;
       const d = Math.hypot(dx, dz) || 1;
       p.rotY = Math.atan2(dx, dz);
-      p.aimPitch = 0;
-      p.aiming = false;
-      p.prone = false;
-      // Giữ chốt: không rời vị trí quá 12 m; tới điểm & tấn công: được truy địch xa hơn (45 m).
-      const leash = spot && spot.far > (order?.kind === "hold" ? 12 : order?.kind === "move" ? 45 : 30);
-      if (d > 2.5 && !leash) {
-        mx = dx / d;
-        mz = dz / d;
-        speed = 4;
-      } else if (spot && spot.far > 3) {
-        mx = (spot.x - p.x) / spot.far;
-        mz = (spot.z - p.z) / spot.far;
-        speed = 6;
+      p.aimPitch = Math.atan2(b.ly + 1 - eye[1], d);
+      faceMove = false;
+      const since = this.time - b.lostAt;
+      if (kit.frag > 0 && b.nade <= 0 && d > 7 && d < 32 && since < 5 && p.role !== "sniper") {
+        this.lob(id, p, b.lx, b.ly, b.lz, "frag");
+      } else if (p.role === "support" && since < 2.5 && d < 90 && def && slot && !kit.reloading && magOf(kit, slot) > 0) {
+        p.crouching = true;
+        p.aiming = true;
+        this.suppress(id, b, dt, def.id, eye, b.lx, b.ly + 1, b.lz);
+      } else if (p.role === "sniper" && b.tacKind === "overwatch") {
+        p.aiming = true;
+      } else {
+        p.aiming = false;
+        p.prone = false;
+        // Giữ chốt: không rời vị trí quá 12 m; tới điểm & tấn công: được truy địch xa hơn (45 m).
+        const leash = spot && spot.far > (order?.kind === "hold" || spot.kind === "cover" ? 12 : order?.kind === "move" ? 45 : 30);
+        if (d > 2.5 && !leash) {
+          goal = { x: b.lx, z: b.lz };
+          speed = 4;
+        } else if (spot && spot.far > 3) {
+          goal = spot;
+          speed = 6;
+          faceMove = true;
+        }
       }
-    } else if (target && target.alive && s.phase === "battle") {
+    } else if (target && target.alive && battle) {
       const dx = target.x - p.x;
       const dz = target.z - p.z;
       const d = Math.hypot(dx, dz) || 1;
       p.rotY = Math.atan2(dx, dz);
       p.aimPitch = Math.atan2(target.y + (target.prone ? 0.3 : 1.1) - eye[1], d);
       p.aiming = d > 25;
+      faceMove = false;
       // Tư thế khi đấu súng: bắn tỉa nằm bắn từ xa, súng máy ngồi, tay súng trường né qua lại.
-      const hold = p.role === "sniper" || p.role === "support";
+      const hold = p.role === "sniper" || p.role === "support" || b.tacKind === "cover";
       if (p.role === "sniper" && d > 30) {
         p.prone = true;
         p.crouching = false;
-      } else if (p.role === "support" && d > 20) {
+      } else if ((p.role === "support" && d > 20) || b.tacKind === "cover") {
         p.crouching = true;
         p.prone = false;
       } else p.prone = false;
@@ -588,82 +959,127 @@ export class Bots {
         mz = (dx / d) * side * 0.6;
         speed = p.crouching ? 2 : 3;
       }
+      // Máu thấp mà còn khói: ném khói chắn giữa hai bên rồi rút về phía sau.
+      if (p.hp < 40 && kit.smoke > 0 && b.smokeCd <= 0 && d > 12) {
+        b.smokeCd = 20;
+        this.lob(id, p, p.x + (dx / d) * 7, p.y, p.z + (dz / d) * 7, "smoke");
+        const back = this.nav().nearestWalkable(p.x - (dx / d) * 22, p.z - (dz / d) * 22, 8);
+        if (back) {
+          b.retreat = 4;
+          b.rx = back.x;
+          b.rz = back.z;
+        }
+      }
+      // Lựu đạn vào đám địch đứng sát nhau, hay địch nấp sau vật chắn thấp (ngồi, nằm) ở tầm ném.
+      if (kit.frag > 0 && b.nade <= 0 && d > 9 && d < 30 && p.role !== "sniper" && (target.crouching || target.prone || this.crowdAround(target, p, alive) >= 1)) {
+        this.lob(id, p, target.x, target.y, target.z, "frag");
+      }
+      // Phục kích: nấp chờ địch tới gần mới nổ súng (trừ khi đã bị bắn); bắn tỉa thì bắn từ xa.
+      const ambush = b.tacKind === "cover" && d > 45 && this.time - b.hurtAt > 4 && p.role !== "sniper";
       if (b.react > 0) b.react -= dt;
-      else if (def && slot && !kit.reloading) this.shoot(id, b, dt, def.id, eye, target, d);
+      else if (def && slot && !kit.reloading && !ambush) {
+        const before = b.burst;
+        this.shoot(id, b, dt, def.id, eye, target, d);
+        if (p.role === "sniper" && b.burst !== before) b.shots++;
+      }
     } else {
       p.aiming = false;
-      p.prone = false;
       const z = s.zone;
       if (spot) {
-        // Theo đội hình: tới chỗ của mình, xa thì chạy; tới nơi thì đứng (giữ chỗ thì ngồi xuống canh).
-        if (spot.far > 2.5) {
-          mx = (spot.x - p.x) / spot.far;
-          mz = (spot.z - p.z) / spot.far;
+        // Tới chỗ của mình (theo đội hình, theo vai); xa thì chạy; tới nơi thì đứng canh theo vai.
+        if (spot.far > 2) {
+          goal = spot;
           speed = spot.far > 14 ? 7.8 : spot.far > 6 ? 5.6 : 3.5;
           p.crouching = false;
-          p.rotY = Math.atan2(mx, mz);
+          p.prone = false;
         } else {
-          p.crouching = order?.kind === "hold" || order?.kind === "move" || s.battleMode === "war";
-          // Đứng canh: nhìn ra ngoài đội hình theo hướng chỗ đứng; chiến trường thì đảo mắt quanh cứ điểm.
+          faceMove = false;
+          if (spot.kind === "overwatch") {
+            p.prone = true;
+            p.crouching = false;
+          } else {
+            p.prone = false;
+            p.crouching = spot.kind === "cover" || order?.kind === "hold" || order?.kind === "move" || s.battleMode === "war";
+          }
           const leader = s.players.get(this.leaderOf(p.team));
-          if (s.battleMode === "war") p.rotY += dt * 0.35 * (b.slot % 2 ? 1 : -1);
-          // Giữ chốt: mỗi máy canh một hướng, quay lưng vào giữa (phòng thủ vòng tròn quanh điểm giữ).
-          else if (order?.kind === "hold" && Math.hypot(spot.x - order.x, spot.z - order.z) > 1) p.rotY = Math.atan2(spot.x - order.x, spot.z - order.z);
+          // Giữ chốt (Đồng đội): mỗi máy canh một hướng, quay lưng vào giữa. Chiến trường: nhìn ra phía địch tới.
+          if (s.battleMode === "war") this.guard(p, b, spot.threat, dt);
+          else if (order?.kind === "hold" && Math.hypot(spot.x - order.x, spot.z - order.z) > 1) this.guard(p, b, Math.atan2(spot.x - order.x, spot.z - order.z), dt);
           else if (leader) p.rotY = leader.rotY + ((b.slot % 2 ? 1 : -1) * (0.4 + (b.slot >> 1) * 0.5));
         }
       } else {
         p.crouching = false;
+        p.prone = false;
         // Đi về điểm đích trong vùng an toàn; tới nơi hoặc vùng đổi thì chọn điểm mới.
         const inNext = Math.hypot(b.wx - z.nx, b.wz - z.nz) < Math.max(8, z.nr * 0.8);
         if (Math.hypot(b.wx - p.x, b.wz - p.z) < 3 || (s.phase === "battle" && !inNext)) this.pickWaypoint(b);
-        const dx = b.wx - p.x;
-        const dz = b.wz - p.z;
-        const d = Math.hypot(dx, dz) || 1;
-        mx = dx / d;
-        mz = dz / d;
+        goal = { x: b.wx, z: b.wz };
         const outside = Math.hypot(p.x - z.x, p.z - z.z) > z.r - 5;
         // Đội trưởng máy đi chậm lại cho đội theo kịp.
         speed = outside ? 7.5 : p.team ? 4.2 : 5;
-        p.rotY = Math.atan2(mx, mz);
       }
-      p.aimPitch = 0;
+      if (!b.target) p.aimPitch = 0;
+    }
+    if (goal) {
+      const dir = this.steer(p, b, goal.x, goal.z);
+      if (dir) {
+        mx = dir[0];
+        mz = dir[1];
+        if (faceMove) p.rotY = Math.atan2(mx, mz);
+      }
     }
     if (p.prone) speed = Math.min(speed, 1.2);
-
-    // Bước tới: tránh tường, tránh nước sâu; kẹt thì né sang bên một lúc rồi đi tiếp.
-    if (mx || mz) {
-      if (b.detour > 0) {
-        b.detour -= dt;
-        const a = Math.atan2(mx, mz) + b.detourDir * 1.1;
-        mx = Math.sin(a);
-        mz = Math.cos(a);
-      }
-      const nx = p.x + mx * speed * dt;
-      const nz = p.z + mz * speed * dt;
-      const ny = this.height(nx, nz);
-      // Lội được khúc cạn (nước tới gối), nước sâu thì không.
-      const blocked = ny < WATER_LEVEL - 0.7 || ny - p.y > 0.8 || insideBox(room.map.index, nx, ny + 0.9, nz, 0.35);
-      if (blocked) {
-        if (b.detour <= 0) {
-          b.detour = 0.8 + Math.random() * 0.8;
-          b.detourDir = Math.random() < 0.5 ? -1 : 1;
-        } else b.detourDir = -b.detourDir;
-        if (!spot) this.pickWaypoint(b);
-      } else {
-        p.x = nx;
-        p.z = nz;
-        p.y = ny;
-        p.moving = true;
-      }
-    } else p.moving = false;
+    this.stepMove(p, b, mx, mz, speed, dt);
     // Xe tăng địch tới gần: súng không xuyên được thép, ném lựu đạn vào.
-    b.nade -= dt;
-    if (b.nade <= 0 && kit.frag > 0 && s.phase === "battle") {
-      b.nade = 1.5;
+    if (b.nade <= 0 && kit.frag > 0 && battle) {
       this.throwAtTank(id, p, eye);
+      if (b.nade <= 0) b.nade = 1;
     }
     // Máu thấp mà không ai bắn thì băng bó.
     if (!target && p.hp < 60 && kit.bandage > 0 && !kit.healing) this.heal(id);
+  }
+
+  /** Số địch khác (cùng phe với `target`) đứng trong vòng 5 m quanh nó: đáng một quả lựu đạn. */
+  private crowdAround(target: PlayerState, me: PlayerState, alive: [string, PlayerState][]): number {
+    let n = 0;
+    for (const [, o] of alive) {
+      if (o === target || !this.hostile(me, o) || o.vehicle) continue;
+      if (Math.abs(o.x - target.x) < 5 && Math.abs(o.z - target.z) < 5) n++;
+    }
+    return n;
+  }
+
+  /** Ném lựu đạn (hay khói) theo đường cầu vồng rơi đúng (tx, ty, tz), lệch chút ít theo khoảng cách. */
+  private lob(id: string, p: PlayerState, tx: number, ty: number, tz: number, kind: "frag" | "smoke") {
+    const o: [number, number, number] = [p.x, p.y + 1.5, p.z];
+    const dist = Math.hypot(tx - o[0], tz - o[2]);
+    const err = 0.8 + dist * 0.06;
+    const ax = tx + (Math.random() - 0.5) * 2 * err;
+    const az = tz + (Math.random() - 0.5) * 2 * err;
+    const dx = ax - o[0];
+    const dz = az - o[2];
+    const dy = ty + 0.3 - o[1];
+    // Bay ngang ~13 m/s, trọng lực server 20 m/s²; xa thì ném cao hơn cho qua tường, mép cửa sổ.
+    const T = Math.max(0.6, Math.hypot(dx, dz) / 12);
+    p.rotY = Math.atan2(dx, dz);
+    this.room.throwGrenade(id, kind, o, [dx / T, (dy + 0.5 * 20 * T * T) / T, dz / T]);
+    const b = this.brains.get(id);
+    if (b && kind === "frag") b.nade = 9 + Math.random() * 6;
+  }
+
+  /** Súng máy bắn áp chế vào chỗ địch vừa nấp (không trúng ai, chỉ ghìm đầu, người chơi thấy đạn vèo qua). */
+  private suppress(id: string, b: Brain, dt: number, weaponId: string, eye: [number, number, number], x: number, y: number, z: number) {
+    const def = WEAPON.get(weaponId)!;
+    if (b.pause > 0) {
+      b.pause -= dt;
+      return;
+    }
+    if (b.burst <= 0) b.burst = 4 + Math.floor(Math.random() * 5);
+    const a = Math.random() * Math.PI * 2;
+    const spread = 0.8 + Math.random() * 1.5;
+    this.room.fire(id, weaponId, eye, [[x + Math.cos(a) * spread - eye[0], y + Math.sin(a) * spread * 0.5 - eye[1], z + Math.sin(a) * spread - eye[2]]], []);
+    b.burst -= 1;
+    b.pause = b.burst <= 0 ? 0.5 + Math.random() * 0.5 : 60 / def.rpm;
   }
 
   /** Máy mang RPG bắn xe tăng địch thấy được trong tầm. Trả về true nếu lượt này đang lo bắn xe (không đi lại). */
@@ -684,6 +1100,8 @@ export class Bots {
           const driver = s.players.get(v.driver);
           if (!driver || !this.hostile(p, driver)) continue;
           const d = Math.hypot(v.x - p.x, v.z - p.z);
+          // RPG không điều khiển: chỉ bắn trực thăng đang lơ lửng thấp (đáp, cất cánh) trong tầm gần.
+          if (v.kind === "heli" && (v.y - this.height(v.x, v.z) > 10 || d > 90)) continue;
           if (d > bestD || d < 8 || !this.visible(eye, v.x, v.y + 1.4, v.z)) continue;
           b.at = v.driver;
           bestD = d;
@@ -716,7 +1134,8 @@ export class Bots {
     // Ngẩng thêm để bù đạn rơi (đạn bay chậm, rơi nhiều ở xa), lệch chút ít theo khoảng cách.
     const flight = flightTime(def.velocity, d, def.boost);
     const drop = 0.5 * 9.81 * flight * flight;
-    const err = 0.012 + d * 0.00012;
+    // Trực thăng nhỏ, chao liệng: khó trúng hơn xe tăng nhiều.
+    const err = (0.012 + d * 0.00012) * (v.kind === "heli" ? 3 : 1);
     const ty = v.y + 1.2 + drop - rocketEye[1];
     const aimYaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 2 * err;
     const aimPitch = Math.atan2(ty, d) + (Math.random() - 0.5) * err;
@@ -732,6 +1151,70 @@ export class Bots {
     const cp = Math.cos(aimPitch);
     this.room.fire(id, "rpg7", rocketEye, [[Math.sin(aimYaw) * cp, Math.sin(aimPitch), Math.cos(aimYaw) * cp]], []);
     b.pause = 1.5 + Math.random();
+    return true;
+  }
+
+  /**
+   * Máy mang IGLA: trực thăng địch đang bay trong tầm, thấy được thì cầm IGLA, chĩa theo, giữ khoá (như người chơi giữ
+   * tâm ngắm) tới khi khoá chín thì phóng. Lính địch sát bên thì lo bắn người trước. Trả về true khi đang lo việc này.
+   */
+  private antiAir(id: string, p: PlayerState, b: Brain, eye: [number, number, number], dt: number, infantry: PlayerState | undefined): boolean {
+    const s = this.room.state;
+    const kit = p.kit;
+    const slot = kit.primary1 === "igla" ? "primary1" : kit.primary2 === "igla" ? "primary2" : "";
+    if (!slot || s.phase !== "battle") return false;
+    const missiles = magOf(kit, slot) + (kit.ammo.get("missile") ?? 0);
+    const air = this.room.vehicles.air;
+    b.atScan -= dt;
+    if (b.atScan <= 0) {
+      b.atScan = 0.5 + Math.random() * 0.2;
+      b.at = "";
+      if (missiles > 0)
+        for (const [vid, v] of s.vehicles) {
+          if (v.kind !== "heli" || v.hp <= 0 || !v.driver) continue;
+          const driver = s.players.get(v.driver);
+          if (!driver || !this.hostile(p, driver) || Math.hypot(v.x - p.x, v.z - p.z) > IGLA_LOCK.range * 0.9) continue;
+          const was = kit.active;
+          kit.active = slot;
+          const ok = air.canLock(id, vid);
+          kit.active = was;
+          if (ok) {
+            b.at = vid;
+            break;
+          }
+        }
+    }
+    const closeInfantry = infantry && b.sees && Math.hypot(infantry.x - p.x, infantry.z - p.z) < 25;
+    const v = b.at && !closeInfantry ? s.vehicles.get(b.at) : undefined;
+    if (!v || v.hp <= 0) {
+      if (kit.active === slot && kit.primary1 && slot !== "primary1") kit.active = "primary1";
+      return false;
+    }
+    if (kit.active !== slot) {
+      kit.active = slot;
+      kit.reloading = false;
+    }
+    const dx = v.x - p.x;
+    const dz = v.z - p.z;
+    const d = Math.hypot(dx, dz);
+    const o: [number, number, number] = [p.x, p.y + 1.55, p.z];
+    p.rotY = Math.atan2(dx, dz);
+    p.aimPitch = Math.atan2(v.y + 1.2 - o[1], d);
+    p.aiming = true;
+    p.moving = false;
+    p.crouching = false;
+    p.prone = false;
+    if (magOf(kit, slot) === 0) {
+      if (!kit.reloading) this.room.reload(id);
+      return true;
+    }
+    air.lock(id, b.at);
+    if (air.lockReadyFor(id)) {
+      const cp = Math.cos(p.aimPitch);
+      this.room.fire(id, "igla", o, [[Math.sin(p.rotY) * cp, Math.sin(p.aimPitch), Math.cos(p.rotY) * cp]], []);
+      b.atScan = 4 + Math.random() * 3;
+      b.at = "";
+    }
     return true;
   }
 
@@ -884,7 +1367,7 @@ export class Bots {
       const r = Math.sqrt(Math.random()) * Math.max(10, Math.min(z.nr || 150, 150) * 0.85);
       const x = (s.phase === "battle" ? z.nx : 0) + Math.cos(a) * r;
       const zz = (s.phase === "battle" ? z.nz : 0) + Math.sin(a) * r;
-      if (this.height(x, zz) < 0.8) continue;
+      if (this.height(x, zz) < 0.8 || !this.nav().walkable(x, zz)) continue;
       if (mf && Math.hypot(x - mf.x, zz - mf.z) < Math.max(mf.rx, mf.rz) + 4) continue;
       b.wx = x;
       b.wz = zz;

@@ -12,7 +12,7 @@ import { TORSO, block, capsule, ellipsoid, loft, merge, ringAt, strap, type V3 }
 //   dây nén balo, ăng-ten bộ đàm. Lắc theo gia tốc thật của điểm treo (chạy, rẽ, tiếp đất, giật súng), trọng lực
 //   kéo xuống, lò xo kéo về dáng nghỉ, không xuyên vào người.
 // - Đầu liếc trước theo hướng đang quay người, thỉnh thoảng nhìn quanh khi đứng yên, mắt chớp mỗi 3–5 giây.
-// Chỉ tính cho người ở gần (≤ 25 m) và đang hiện; người ở xa đã thay bằng FarSoldier.
+// Chỉ tính cho người ở gần (≤ 25 m) và đang hiện; người ở xa đã vẽ bằng đám đông instanced (FarCrowd).
 
 /** Quá khoảng này (m) thì thôi tính đồ lắc, chớp mắt: nhìn không ra mà tốn. */
 const NEAR = 25;

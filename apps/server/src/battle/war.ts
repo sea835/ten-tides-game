@@ -39,6 +39,13 @@ export function inFlag(f: FlagState, p: PlayerState): boolean {
   return Math.hypot(p.x - f.x, p.z - f.z) <= f.r && Math.abs(p.y - f.y) <= 12;
 }
 
+/** Máy chống tăng nào mang IGLA: chia đôi theo tên (ổn định qua các lần hồi sinh). */
+function botAA(name: string): boolean {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return (h & 1) === 1;
+}
+
 export class War {
   private bleed = 0;
   private tankTimer: Record<Side, number> = { blue: 0, red: 0 };
@@ -214,7 +221,11 @@ export class War {
     receive(p.kit, "armor:2", []);
     receive(p.kit, "helmet:2", []);
     // Kỹ Thuật chọn IGLA phòng không thì mang IGLA thay RPG-7.
-    for (const extra of launcherExtras(spec.extras, !p.bot && p.gear.aa && classOfRole(role) === "engineer")) receive(p.kit, extra, []);
+    // Máy chống tăng: cứ hai máy thì một máy mang IGLA (phòng không), để trực thăng địch có đối thủ.
+    const aa = p.bot ? role === "antitank" && botAA(p.name) : p.gear.aa;
+    for (const extra of launcherExtras(spec.extras, aa && classOfRole(role) === "engineer")) receive(p.kit, extra, []);
+    // Máy (trừ bắn tỉa) mang thêm một quả lựu đạn để ném vào địch nấp sau tường, trong nhà.
+    if (p.bot && role !== "sniper") receive(p.kit, "frag", []);
     p.kit.active = "primary1";
     p.role = role;
     this.room.gadgets.equip(p, classOfRole(role));

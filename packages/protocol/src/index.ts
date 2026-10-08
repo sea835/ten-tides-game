@@ -1025,6 +1025,12 @@ export interface VehicleFxMessage {
 }
 /** Ra lệnh cho máy trong đội: đi theo mình, giữ chỗ, tới điểm (x, z). */
 export const SquadOrderMessage = z.object({ kind: z.enum(["follow", "hold", "move"]), x: finite.optional(), z: finite.optional() });
+/**
+ * Chiến trường: lệnh cho các máy cùng phe (chọn trên bản đồ lớn): "attack" đánh chiếm vùng tròn (x, z, r), "hold" vào
+ * vùng đó nấp giữ, "free" thôi lệnh (máy tự chọn cứ điểm như cũ).
+ */
+export const WarCommandMessage = z.object({ ids: z.array(id).max(60), kind: z.enum(["attack", "hold", "free"]), x: finite, z: finite, r: finite.optional() });
+export type WarCommandMessage = z.infer<typeof WarCommandMessage>;
 /** Ra lệnh cho máy lái tăng trong đội lên chiếc xe tăng trống (cùng đội) mình đang nhìn. */
 export const SquadBoardMessage = z.object({ vid: id });
 
@@ -1241,6 +1247,8 @@ export const Messages = {
   mortarFire: "mortarFire",
   mortarFx: "mortarFx",
   squadOrder: "squadOrder",
+  /** Chiến trường: người chơi chọn lính trên bản đồ lớn, giao vùng đánh chiếm / giữ. */
+  warCommand: "warCommand",
   possess: "possess",
   squadBoard: "squadBoard",
   /** Đánh dấu chuột giữa, câu bộ đàm: gửi lên server, server chuyển cho đồng đội. */

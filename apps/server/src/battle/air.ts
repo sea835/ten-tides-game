@@ -86,6 +86,16 @@ export class Air {
     this.home.set(vid, { x: v.x, z: v.z });
   }
 
+  /** Sân đỗ nhà của trực thăng `vid` (máy lái về đây nạp đạn). */
+  homeOf(vid: string): { x: number; z: number } | undefined {
+    return this.home.get(vid);
+  }
+
+  /** Khoá IGLA đã chín (giữ đủ lâu) chưa. */
+  lockReadyFor(pid: string): boolean {
+    return lockReady(this.locks.get(pid) ?? null, Date.now());
+  }
+
   /** Số tên lửa đang bay (thử nghiệm, HUD). */
   get flying(): readonly MissileState[] {
     return this.missiles;
