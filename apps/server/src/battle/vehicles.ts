@@ -5,7 +5,6 @@ import {
   TRACKS_SECONDS,
   WRECK_SECONDS,
   armorFactor,
-  bulletAt,
   bulletSteps,
   clampElevation,
   clampTraverse,
@@ -37,9 +36,7 @@ import {
   vehicleStep,
   vehicleY,
   type ArmorFace,
-  tankFits,
   tankGround,
-  tankStep,
 } from "@tentides/content";
 import { Messages, VehicleState, type BoomMessage, type CorrectMessage, type HitMessage, type ShotMessage, type VehicleFxMessage, type VehicleGunMessage, type VehicleMoveMessage } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";

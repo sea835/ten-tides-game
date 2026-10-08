@@ -185,38 +185,6 @@ export function broadLeafTexture(): Texture {
   return cache.broad;
 }
 
-/** Ảnh dùng cho cỏ: một nắm lá cỏ mảnh, gốc sẫm ngọn sáng (v = 0 gốc, 1 ngọn). */
-export function grassTexture(): Texture {
-  if (cache.grass) return cache.grass;
-  const W = 256;
-  const H = 256;
-  const { c, g } = canvas(W, H);
-  const rand = mulberry32(21);
-  for (let i = 0; i < 60; i++) {
-    const x = W * (0.08 + rand() * 0.84);
-    const hgt = H * (0.45 + rand() * 0.53);
-    const lean = (rand() - 0.5) * W * 0.25;
-    const w = 3 + rand() * 4;
-    const grad = g.createLinearGradient(0, H, 0, H - hgt);
-    const hue = 70 + rand() * 30;
-    grad.addColorStop(0, `hsl(${hue}, 30%, 38%)`);
-    grad.addColorStop(1, `hsl(${hue - 10}, 38%, ${72 + rand() * 18}%)`);
-    g.fillStyle = grad;
-    g.beginPath();
-    g.moveTo(x - w, H);
-    g.quadraticCurveTo(x - w * 0.5 + lean * 0.3, H - hgt * 0.5, x + lean, H - hgt);
-    g.quadraticCurveTo(x + w * 0.5 + lean * 0.3, H - hgt * 0.5, x + w, H);
-    g.fill();
-  }
-  cache.grass = finish(c);
-  return cache.grass;
-}
-
-export function resetFoliageTextures() {
-  for (const t of Object.values(cache)) t.dispose();
-  cache = {};
-}
-
 // ---------------------------------------------------------------------------- vật liệu
 
 /**

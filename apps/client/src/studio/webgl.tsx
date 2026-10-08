@@ -1,26 +1,18 @@
 import { Component, type ReactNode } from "react";
 import { getGraphics } from "../game/graphics.ts";
+import { platform } from "../game/platform.ts";
 
-// Có nên dựng cảnh 3D trang trí (sảnh chờ, bục vinh danh) không: máy đặt đồ hoạ Thấp hay trình duyệt không có WebGL
-// thì dùng nền tĩnh. Cảnh 3D lỗi lúc chạy thì cũng lặng lẽ về nền tĩnh.
+// Có nên dựng cảnh 3D trang trí (sảnh chờ, bục vinh danh) không: máy đặt đồ hoạ Thấp, trình duyệt không có WebGL 2
+// hay đang vẽ bằng CPU thì dùng nền tĩnh. Cảnh 3D lỗi lúc chạy thì cũng lặng lẽ về nền tĩnh.
 
-let webgl: boolean | null = null;
-
-/** Trình duyệt có WebGL không (thử một lần). */
+/** Trình duyệt có WebGL 2 không (three.js bản này không chạy được trên WebGL 1). */
 export function hasWebGL(): boolean {
-  if (webgl !== null) return webgl;
-  try {
-    const c = document.createElement("canvas");
-    webgl = !!(c.getContext("webgl2") ?? c.getContext("webgl"));
-  } catch {
-    webgl = false;
-  }
-  return webgl;
+  return platform().webgl2;
 }
 
-/** Cảnh 3D trang trí được bật với mức đồ hoạ này không. */
+/** Cảnh 3D trang trí được bật với mức đồ hoạ này không (vẽ bằng CPU thì thôi: chỉ riêng nền sảnh đã đủ giật). */
 export function decor3d(quality = getGraphics().quality): boolean {
-  return quality !== "low" && hasWebGL();
+  return quality !== "low" && hasWebGL() && platform().tier !== "software";
 }
 
 /** Cảnh 3D lỗi (mất WebGL, hết bộ nhớ...): hiện `fallback`, phần giao diện còn lại vẫn dùng được. */

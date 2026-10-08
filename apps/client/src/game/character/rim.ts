@@ -34,8 +34,3 @@ export function withRim<M extends MeshStandardMaterial>(m: M, strength = 1): M {
   return m;
 }
 
-/** Cập nhật độ mạnh chung (gọi mỗi khung từ nơi biết trời sáng tối). */
-export function setRim(v: number) {
-  rimLight.value = v;
-  uniform.value = v;
-}

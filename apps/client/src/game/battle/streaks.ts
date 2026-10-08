@@ -29,12 +29,6 @@ export function streakRpm(def: WeaponDef, now: number): number {
   return minigunRpm(def.rpm, spin.burst ? now - spin.burst : 0);
 }
 
-/** Vòng quay nòng Minigun hiện tại (0–1), cho hiệu ứng. */
-export function minigunSpin(now: number): number {
-  if (now - spin.last > MINIGUN.idle) return 0;
-  return Math.min(1, (now - spin.start) / MINIGUN.spinup);
-}
-
 /** Lúc mình vừa phóng tên lửa TOW (performance.now, ms); 0 là chưa. */
 export const towLaunch = { at: 0 };
 

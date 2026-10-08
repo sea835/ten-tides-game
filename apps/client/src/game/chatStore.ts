@@ -27,10 +27,6 @@ export function listenChat(room: IslandRoom): () => void {
   };
 }
 
-export function getChat(): readonly ChatLine[] {
-  return lines;
-}
-
 export function useChat(): readonly ChatLine[] {
   return useSyncExternalStore(
     (l) => {

@@ -20,7 +20,7 @@ import {
   type PointLight,
 } from "three";
 import { BULLET_GRAVITY, FRAG, SMOKE, SMOKE_CLEAR, TANK, battleMap, flightDistance, flightTime, type World } from "@tentides/content";
-import type { BoomMessage, ProjectileState, ShotMessage, SmokeState } from "@tentides/protocol";
+import type { BoomMessage, ProjectileState, ShotMessage } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { localPosition, shake, suppression } from "../shared.ts";

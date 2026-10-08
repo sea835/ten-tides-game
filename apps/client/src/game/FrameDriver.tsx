@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { advance, useStore, useThree } from "@react-three/fiber";
 import { getGraphics, perfStats, renderHints, targetDpr, useGraphics, useStatsOpen } from "./graphics.ts";
+import { paceInterval } from "./pacing.ts";
 
 // Vòng lặp vẽ tự quản (Canvas đặt frameloop="never"): vẽ tối đa `fpsCap` khung hình mỗi giây thay vì theo tần số
-// màn hình (màn 120 Hz thì GPU làm gấp đôi mà mắt khó thấy khác, máy nóng, quạt rú). Cửa sổ không được chọn (đang
-// xem cửa sổ khác) hay phòng đang tạm dừng thì hạ còn 20 khung hình. Chế độ tự thích ứng hạ độ phân giải vẽ khi không theo kịp giới hạn và
-// nâng lại khi máy rảnh. Đo số liệu cho bảng F3.
+// màn hình (màn 120 Hz thì GPU làm gấp đôi mà mắt khó thấy khác, máy nóng, quạt rú). Nhịp vẽ là một số nguyên lần chu
+// kỳ màn hình (paceInterval) để các khung cách đều nhau: màn 144 Hz giới hạn 60 thì vẽ đều 72 khung (cách 2 nhịp)
+// thay vì 60 khung lệch nhịp 14 ms / 21 ms (mắt thấy giật dù số khung đủ). Cửa sổ không được chọn (đang xem cửa sổ
+// khác) hay phòng đang tạm dừng thì hạ còn 20 khung hình; cảnh bị Trung tâm chỉ huy che kín thì gần như dừng.
+// Chế độ tự thích ứng hạ độ phân giải vẽ khi không theo kịp giới hạn và nâng lại khi máy rảnh. Đo số liệu cho bảng F3.
 
 /** Không bao giờ vẽ mờ hơn mức này (điểm ảnh vẽ trên mỗi điểm ảnh CSS). */
 const MIN_DPR = 0.75;
 /** Số khung hình khi cửa sổ không được chọn. */
 const BACKGROUND_FPS = 20;
+/** Số khung hình khi cảnh bị nền 3D của menu che kín (vẫn chạy logic, dịch sẵn shader, chỉ không cần vẽ mượt). */
+const COVERED_FPS = 6;
 
 export function FrameDriver() {
   const store = useStore();
@@ -53,6 +58,10 @@ export function FrameDriver() {
     let raf = 0;
     let base = -1;
     let last = -Infinity;
+    // Chu kỳ màn hình (ms): trung vị khoảng cách giữa các lần gọi requestAnimationFrame gần đây.
+    const deltas: number[] = [];
+    let prevRaf = -1;
+    let period = 0;
     // Số liệu gom trong từng nửa giây.
     let windowStart = 0;
     let frames = 0;
@@ -65,13 +74,24 @@ export function FrameDriver() {
 
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
+      if (prevRaf >= 0) {
+        const d = t - prevRaf;
+        // Bỏ các quãng tab bị ẩn, khung bị trễ lâu.
+        if (d > 2 && d < 50) {
+          deltas.push(d);
+          if (deltas.length > 40) deltas.shift();
+          if (deltas.length >= 10 && deltas.length % 5 === 0) period = [...deltas].sort((a, b) => a - b)[deltas.length >> 1]!;
+        }
+      }
+      prevRaf = t;
       const settings = getGraphics();
-      const cap = focused && !renderHints.idle && !renderHints.covered ? settings.fpsCap : Math.min(settings.fpsCap || BACKGROUND_FPS, BACKGROUND_FPS);
+      const active = focused && !renderHints.idle && !renderHints.covered;
+      const cap = renderHints.covered ? COVERED_FPS : active ? settings.fpsCap : Math.min(settings.fpsCap || BACKGROUND_FPS, BACKGROUND_FPS);
       if (cap > 0) {
-        const interval = 1000 / cap;
+        const interval = paceInterval(cap, period);
         const elapsed = t - last;
-        // Dung sai 10%: màn 60 Hz lệch nhịp vài phần mười ms vẫn vẽ đủ 60, màn 120 Hz thì vẽ cách một khung.
-        if (elapsed < interval * 0.9) return;
+        // Dung sai nửa chu kỳ màn hình: rAF lệch nhịp vài phần mười ms vẫn vẽ đúng khung đã định.
+        if (elapsed < interval - (period > 0 ? period * 0.5 : interval * 0.1)) return;
         last = elapsed > interval * 2 ? t : last + interval;
       }
       if (base < 0) {
@@ -101,7 +121,7 @@ export function FrameDriver() {
       perfStats.programs = gl.info.programs?.length ?? 0;
 
       if (settings.adaptive && focused && !renderHints.idle && !renderHints.covered && document.visibilityState === "visible") {
-        const goal = cap > 0 ? cap : 60;
+        const goal = cap > 0 ? 1000 / paceInterval(cap, period) : 60;
         // Chậm vì CPU (logic, React) thì hạ độ phân giải cũng vô ích.
         const gpuBound = perfStats.cpuMs < (1000 / goal) * 0.6;
         if (fps < goal * 0.8 && gpuBound) {

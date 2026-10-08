@@ -27,7 +27,8 @@ import { weatherUniforms } from "./textures.ts";
 import { trampleUniforms } from "./trample.ts";
 import { useGodRays } from "./GodRays.tsx";
 import { RainGlass } from "./RainGlass.tsx";
-import { cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
+import { PROFILES, cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
+import { platform } from "./platform.ts";
 import { FrameDriver, PerfOverlay } from "./FrameDriver.tsx";
 import { Hud } from "./hud/Hud.tsx";
 import { Island } from "./Island.tsx";
@@ -176,6 +177,27 @@ function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null
 }
 
 export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
+  // Trình duyệt không có WebGL 2 (bản quá cũ, card bị chặn): báo rõ thay vì màn hình trắng.
+  if (!platform().webgl2) {
+    return (
+      <div className="game-loading">
+        Trình duyệt này không chạy được đồ hoạ 3D (cần WebGL 2). Hãy cập nhật Chrome, Edge, Firefox hoặc Safari và bật tăng tốc phần cứng.
+        <button onClick={onLeave}>Về sảnh</button>
+      </div>
+    );
+  }
+  return <GameView room={room} onLeave={onLeave} />;
+}
+
+/**
+ * Bản phát hành bỏ bước đọc nhật ký lỗi của từng shader sau khi dịch (three mặc định bật): mỗi lần đọc là một lệnh
+ * đồng bộ phải chờ trình điều khiển, trên Windows/ANGLE đắt hơn hẳn. Bản dev vẫn bật để thấy lỗi shader.
+ */
+function onCreated({ gl }: { gl: { debug: { checkShaderErrors: boolean } } }) {
+  gl.debug.checkShaderErrors = import.meta.env.DEV;
+}
+
+function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const sun = useRef<DirectionalLight>(null);
   const hemi = useRef<HemisphereLight>(null);
   const wrapper = useRef<HTMLDivElement>(null);
@@ -184,6 +206,12 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
   const post = profile.post !== "none";
   // Độ phân giải lúc tạo canvas; sau đó FrameDriver tự chỉnh.
   const [initialDpr] = useState(() => targetDpr(getGraphics()));
+  // Thông số ngữ cảnh WebGL (chỉ đặt được lúc tạo canvas):
+  // - Có hậu kỳ thì cảnh vẽ vào ảnh trung gian và đã có SMAA khử răng cưa: bộ đệm MSAA của canvas chỉ tốn thêm băng
+  //   thông (nặng nhất trên Windows, nơi ANGLE phải gộp mẫu MSAA mỗi khung). Chỉ bật MSAA khi không có hậu kỳ.
+  // - Canvas đục: trình duyệt khỏi phải trộn trong suốt với trang web mỗi khung.
+  // - Xin card rời trên laptop hai card (Windows, Mac đời Intel).
+  const [glOptions] = useState(() => ({ antialias: PROFILES[getGraphics().quality].post === "none", alpha: false, stencil: false, powerPreference: "high-performance" as const }));
   const world = useWorld(room);
   // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
   const battle = useRoomSnapshot(room, (s) => s.mode) === "battle";
@@ -208,7 +236,7 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
 
   return (
     <div className="game" ref={wrapper}>
-      <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} camera={{ fov: 60, near: 0.1, far: 500 }}>
+      <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} gl={glOptions} camera={{ fov: 60, near: 0.1, far: 500 }} onCreated={onCreated}>
         <FrameDriver />
         <ShadowScheduler hz={profile.shadowHz} />
         <color attach="background" args={[HORIZON]} />

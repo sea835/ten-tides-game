@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { platform } from "./platform.ts";
 
 // Cài đặt đồ hoạ, nhớ theo trình duyệt. Ba mức chất lượng:
 // - "high": hậu kỳ đủ (bóng tối ở khe, quầng sáng, khử răng cưa), bóng đổ nét, cỏ dày, ánh sáng lấy từ bầu trời.
@@ -65,8 +66,11 @@ const KEY = "tentides.graphics";
 const OLD_KEY = "tentides.quality";
 
 function guessQuality(): Quality {
-  // Máy ít nhân hoặc màn hình cảm ứng (thường là điện thoại) thì chạy nhẹ. Còn lại mặc định Trung bình: đo trên
+  // Vẽ bằng CPU (tắt tăng tốc phần cứng, card bị trình duyệt chặn) hay card tích hợp đời cũ (Intel HD/UHD): mức Thấp.
+  // Máy ít nhân hoặc màn hình cảm ứng (thường là điện thoại) cũng chạy nhẹ. Còn lại mặc định Trung bình: đo trên
   // M5 Pro, mức Cao giữ 60 khung hình vẫn bắt GPU làm gần hết sức (nóng, quạt kêu), Trung bình chỉ còn khoảng nửa.
+  const tier = platform().tier;
+  if (tier === "software" || tier === "weak") return "low";
   const cores = navigator.hardwareConcurrency ?? 8;
   if (cores <= 4 || matchMedia("(pointer: coarse)").matches) return "low";
   return "medium";
@@ -93,7 +97,20 @@ function load(): GraphicsSettings {
 let current: GraphicsSettings = load();
 const listeners = new Set<() => void>();
 
+/**
+ * Kính mờ (backdrop-filter) của menu chỉ bật ở mức Cao: đặt trên cảnh 3D đang chạy, trình duyệt phải làm mờ lại cả
+ * vùng phía sau mỗi khung hình (rất nặng trên Windows, card tích hợp). Mức khác dùng nền kính đục hơn (CSS đọc
+ * `html[data-glass]`). `data-os` để CSS chỉnh riêng từng hệ điều hành nếu cần.
+ */
+function applyDocument() {
+  const root = document.documentElement;
+  root.dataset.glass = current.quality === "high" ? "on" : "off";
+  root.dataset.os = platform().os;
+}
+applyDocument();
+
 function emit() {
+  applyDocument();
   listeners.forEach((l) => l());
 }
 

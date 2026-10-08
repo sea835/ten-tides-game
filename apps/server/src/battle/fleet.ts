@@ -48,7 +48,6 @@ export class Fleet {
   /** Đặt xe lúc bắt đầu trận (sau xe tăng). */
   setup() {
     this.slots = [];
-    const s = this.room.state;
     if (!vehiclesOn(this.room)) return;
     const map = this.room.map;
     const rand = Math.random;

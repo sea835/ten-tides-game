@@ -14,8 +14,6 @@ import { physicsProbe } from "./surface.ts";
 // Máy mình diễn ngay (tiếng, động tác), server kiểm tra lại rồi mới tính (Adrenaline, đạn M203, dấu ống nhòm, hộp
 // đạn, bao cát, sửa xe, mìn chống tăng).
 
-/** Phím rút khí tài (1–9 đã dành cho súng, đồ ném, hồi máu). */
-export const GADGET_KEY = "Digit0";
 export const GADGET_KEY_LABEL = "0";
 
 /** Chế độ có lớp lính không (sinh tồn solo thì không). */

@@ -7,6 +7,7 @@ import { useAccount } from "./account/account.ts";
 import { GachaScreen } from "./gacha/GachaScreen.tsx";
 import { StudioBackdrop } from "./studio/StudioBackdrop.tsx";
 import { lobbyLook } from "./studio/looks.ts";
+import { platform } from "./game/platform.ts";
 
 const NAME_KEY = "tentides.name";
 
@@ -15,6 +16,17 @@ const NAME_KEY = "tentides.name";
  * Mở lại bằng tham số ?survival=1 trên địa chỉ (mã nguồn IslandRoom, packages/story vẫn giữ nguyên).
  */
 const SURVIVAL_ENABLED = new URLSearchParams(location.search).get("survival") === "1";
+
+/** Cảnh báo máy không chạy nổi 3D: không có WebGL 2, hay trình duyệt đang vẽ bằng CPU (lý do giật hay gặp trên Windows). */
+function hardwareNotice(): string | null {
+  const p = platform();
+  if (!p.webgl2) return "Trình duyệt này không hỗ trợ WebGL 2 nên không chạy được game 3D. Hãy cập nhật Chrome, Edge, Firefox hoặc Safari bản mới.";
+  if (p.tier === "software") {
+    const where = p.browser === "firefox" ? "Firefox: Cài đặt → Chung → Hiệu suất" : p.browser === "safari" ? "cập nhật macOS và Safari" : "Chrome/Edge: Cài đặt → Hệ thống";
+    return `Trình duyệt đang vẽ 3D bằng CPU (tắt tăng tốc phần cứng hoặc thiếu driver card đồ hoạ) nên game sẽ rất giật. Bật “Dùng tăng tốc phần cứng” (${where}), cập nhật driver card đồ hoạ rồi mở lại trình duyệt.`;
+  }
+  return null;
+}
 
 function loadName(): string {
   try {
@@ -47,6 +59,7 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
   const profile = account.status === "user" ? account.profile : null;
   const look = useMemo(() => lobbyLook(name, profile), [name, profile]);
   const inner = useRef<HTMLDivElement>(null);
+  const [hwNotice] = useState(hardwareNotice);
 
   async function run(action: () => Promise<IslandRoom>) {
     if (!name.trim()) {
@@ -100,6 +113,7 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
             <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="vd. Hải" autoFocus readOnly={signedIn} title={signedIn ? "Đã đăng nhập: dùng tên tài khoản" : undefined} />
           </label>
 
+          {hwNotice && <p className="notice">{hwNotice}</p>}
           {notice && <p className="notice">{notice}</p>}
 
           {previous && (

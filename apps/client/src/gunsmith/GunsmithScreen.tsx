@@ -25,6 +25,8 @@ import { ApiError, refreshProfile, saveLoadout, useAccount } from "../account/ac
 import { GunModel } from "../game/GunModel.tsx";
 import { pulseNeon } from "../game/skinMaterials.ts";
 import { SkinSwatch } from "../gacha/SkinSwatch.tsx";
+import { StageLoop } from "../studio/stageLoop.tsx";
+import { useDecorPause } from "../studio/decorPause.ts";
 import "../gacha/gacha.css";
 import "./gunsmith.css";
 
@@ -84,7 +86,8 @@ function NeonPulse() {
 function GunStage({ weaponId, loadout, skin }: { weaponId: string; loadout: WeaponLoadout; skin: string }) {
   const atts = loadoutAtts(loadout);
   return (
-    <Canvas dpr={[1, 2]} camera={{ position: [1.15, 0.35, 0.9], fov: 35, near: 0.02, far: 20 }} gl={{ antialias: true, alpha: true }}>
+    <Canvas frameloop="never" dpr={[1, 1.5]} camera={{ position: [1.15, 0.35, 0.9], fov: 35, near: 0.02, far: 20 }} gl={{ antialias: true, alpha: true }}>
+      <StageLoop fps={60} />
       <hemisphereLight args={["#dfefff", "#2a2016", 0.55]} />
       <directionalLight position={[2, 3, 2]} intensity={1.6} />
       <directionalLight position={[-2, 1, -1.5]} intensity={0.6} color="#9fc6ff" />
@@ -128,6 +131,8 @@ function StatsPanel({ weaponId, loadout }: { weaponId: string; loadout: WeaponLo
 }
 
 export function GunsmithScreen({ initialWeapon, onClose }: { initialWeapon?: string; onClose: () => void }) {
+  // Bảng phủ kín sảnh: nền 3D phía sau thôi vẽ, chỉ còn sân khấu súng của Gunsmith.
+  useDecorPause();
   const account = useAccount();
   const profile = account.status === "user" ? account.profile : null;
   const [weapon, setWeapon] = useState(() => (initialWeapon && GUNSMITH_WEAPON_IDS.includes(initialWeapon) ? initialWeapon : (GUNSMITH_WEAPON_IDS[4] ?? GUNSMITH_WEAPON_IDS[0]!)));

@@ -42,6 +42,15 @@ export function isTyping(e: KeyboardEvent): boolean {
   return e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
 }
 
+/**
+ * Chuột đang khoá vào vùng chơi (khung bọc hay chính canvas bên trong). Đóng cửa hàng bằng phím khoá chuột vào
+ * thẳng canvas (battle/runtime.ts), trước đây chỉ nhận khung bọc nên khoá xong mà xoay chuột không quay được góc nhìn.
+ */
+function lockedIn(root: HTMLElement): boolean {
+  const el = document.pointerLockElement;
+  return !!el && root.contains(el);
+}
+
 export function bindInput(canvas: HTMLElement): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
     if (isTyping(e)) return;
@@ -52,10 +61,10 @@ export function bindInput(canvas: HTMLElement): () => void {
   const onClick = (e: MouseEvent) => {
     // Chỉ khoá chuột khi bấm vào cảnh 3D, không phải khi bấm nút trên HUD.
     if (!(e.target instanceof HTMLCanvasElement)) return;
-    if (document.pointerLockElement !== canvas) void canvas.requestPointerLock?.();
+    if (!lockedIn(canvas)) void canvas.requestPointerLock?.();
   };
   const onMouseMove = (e: MouseEvent) => {
-    if (document.pointerLockElement !== canvas) return;
+    if (!lockedIn(canvas)) return;
     // Độ nhạy theo cài đặt; đang ngắm thì chậm lại theo mức phóng đại để nhắm xa không bị giật tay.
     const set = getSettings();
     const zoomed = aimZoom.value > 1.01;
