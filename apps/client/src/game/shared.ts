@@ -42,9 +42,10 @@ export const localMotion = {
 
 /**
  * Môi trường quanh mình, LocalPlayer ghi mỗi khung hình: `indoor` là độ sâu trong hang/hầm (0 ngoài trời, 1 sâu nhất),
- * `underwater` là camera đang ở dưới mặt nước, `light` là mình đang cầm đèn dầu hay đuốc.
+ * `underwater` là camera đang ở dưới mặt nước, `light` là mình đang cầm đèn dầu hay đuốc, `underwaterFar` là tầm sương
+ * dưới nước thay mặc định (0: như lúc bơi lặn; lái tàu ngầm thì nhìn xa hơn).
  */
-export const localEnv = { indoor: 0, underwater: false, light: false };
+export const localEnv = { indoor: 0, underwater: false, light: false, underwaterFar: 0 };
 
 /**
  * Giờ trong ngày (0–1) và độ cao mặt trời (0–1), DayCycle ghi mỗi khung hình để bầu trời,

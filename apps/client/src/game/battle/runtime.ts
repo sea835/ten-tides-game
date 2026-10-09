@@ -112,6 +112,8 @@ export interface Flash {
   born: number;
   /** Chỉ chiếu sáng (lửa đã vẽ trên súng trước mặt). */
   lightOnly?: boolean;
+  /** Chỉ vẽ đốm lửa, không bật đèn (súng bắn nhanh, nhiều ổ: đèn chớp liên tục làm cả cảnh nhấp nháy). */
+  noLight?: boolean;
 }
 export interface Blast {
   kind: "frag" | "mine" | "smoke" | "flash";

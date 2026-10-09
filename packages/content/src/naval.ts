@@ -131,15 +131,22 @@ export const NAVAL_WEAPONS: Record<NavalWeaponId, NavalWeapon> = {
   aa: { id: "aa", name: "Pháo phòng không 40 ly", reload: 0.11, damage: 13, splash: 0, speed: 650, range: 700, spread: 0.018, fire: 0.01 },
   torpedo: { id: "torpedo", name: "Ngư lôi", reload: 14, damage: 450, splash: 8, speed: 25, range: 1200, spread: 0, fire: 0.3 },
   gtorpedo: { id: "gtorpedo", name: "Ngư lôi dẫn đường", reload: 20, damage: 380, splash: 8, speed: 21, range: 65, spread: 0, fire: 0.3 },
-  missile: { id: "missile", name: "Tên lửa chống hạm", reload: 20, damage: 450, splash: 10, speed: 72, range: 26, spread: 0, fire: 0.8 },
+  missile: { id: "missile", name: "Tên lửa chống hạm", reload: 24, damage: 400, splash: 10, speed: 68, range: 28, spread: 0, fire: 0.7 },
   depth: { id: "depth", name: "Bom chìm", reload: 9, damage: 320, splash: 15, speed: 0, range: 0, spread: 0, fire: 0 },
   decoy: { id: "decoy", name: "Mồi nhử", reload: 25, damage: 0, splash: 0, speed: 0, range: 0, spread: 0, fire: 0 },
   jetGun: { id: "jetGun", name: "Pháo máy bay 20 ly", reload: 0.07, damage: 15, splash: 0, speed: 800, range: 600, spread: 0.01, fire: 0.02 },
   bomb: { id: "bomb", name: "Bom 500 kg", reload: 22, damage: 380, splash: 11, speed: 0, range: 0, spread: 0, fire: 0.6 },
 };
 
+/**
+ * Độ tản đạn pháo (độ lệch chuẩn): lệch xa / gần `range` × tầm bắn + `base` m, lệch ngang `lateral` × tầm bắn +
+ * `baseLateral` m. Bắn 1 km: một nửa số đạn rơi trong khoảng ±55 m dọc hướng bắn, ±19 m ngang; tàu to, cao (tàu sân
+ * bay) vẫn dễ trúng hơn tàu nhỏ nhưng không còn gần như viên nào cũng trúng.
+ */
+export const GUN_DISPERSION = { range: 0.06, lateral: 0.02, base: 20, baseLateral: 8 } as const;
+
 /** Máu của đơn vị bay / chạy: tên lửa (pháo phòng không bắn hạ được), ngư lôi, máy bay. */
-export const UNIT_HP = { missile: 70, gtorpedo: 9999, torpedo: 9999, plane: 260, decoy: 9999 } as const;
+export const UNIT_HP = { missile: 80, gtorpedo: 9999, torpedo: 9999, plane: 260, decoy: 9999 } as const;
 
 /**
  * Giáp theo lớp tàu: hệ số sát thương nhận vào theo loại vũ khí. Thiết giáp hạm vỏ dày: pháo nhỏ, đạn phòng không gần
@@ -179,8 +186,12 @@ export const MISSILE_TURN = 1.15;
 /** Ngư lôi dẫn đường: tốc độ quay tối đa (rad/s), chạy sâu (m). */
 export const GTORPEDO_TURN = 0.45;
 export const TORPEDO_DEPTH = -2.2;
-/** Tàu ngầm: lặn sâu (mặt boong dưới nước), tốc độ lặn / nổi (m/s), thời gian lặn tối đa (giây) rồi phải nổi. */
-export const SUB = { depth: -9, rate: 1.4, air: 60, recharge: 0.6 } as const;
+/**
+ * Tàu ngầm: độ sâu lặn mặc định, nông nhất, sâu nhất (m), tốc độ lặn / nổi (m/s), dưỡng khí (giây lặn), hồi dưỡng khí
+ * khi nổi. Lặn sâu hơn `deep`: ra-đa tàu tên lửa không bắt được, phải tới gần hơn mới thấy. Ngư lôi tàu ngầm mạnh gấp
+ * `torpedo` lần (đầu đạn nặng, nổ dưới đáy tàu).
+ */
+export const SUB = { depth: -9, shallow: -6, deepest: -30, deep: -16, rate: 2.2, air: 60, recharge: 0.6, torpedo: 3 } as const;
 /** Đám cháy: lớn dần mỗi giây, máu thân tàu mất mỗi giây khi cháy hết cỡ (100), dập mỗi giây, bán kính đứng dập. */
 export const FIRE = { grow: 6, burn: 3.4, partBurn: 4, douse: 34, reach: 5.5, spread: 0.035, max: 4 } as const;
 /** Thời gian chờ hồi sinh trên tàu (giây), giới hạn trận (giây). */
@@ -486,6 +497,37 @@ export function jetStep(u: UnitPose, wantYaw: number, wantPitch: number, throttl
   const cp = Math.cos(pitch);
   const y = Math.min(JET.ceiling, u.y + Math.sin(pitch) * speed * dt);
   return { x: u.x + Math.sin(yaw) * cp * speed * dt, y, z: u.z + Math.cos(yaw) * cp * speed * dt, yaw, pitch, roll, speed };
+}
+
+/**
+ * Điểm hội tụ của các ổ phòng không: theo tia ngắm từ mắt người ngắm (`eye`, hướng yaw / pitch thế giới), ở khoảng
+ * cách tới máy bay / tên lửa địch nằm gần tia ngắm nhất (lệch không quá ~5°), không có thì 400 m. Các ổ đứng rải khắp
+ * tàu cùng bắn vào điểm này (chứ không bắn song song, ổ ở xa mắt người ngắm trượt cả chục mét).
+ */
+export function aaAimPoint(eye: readonly [number, number, number], yaw: number, pitch: number, targets: Iterable<{ x: number; y: number; z: number }>, fallback = 400): [number, number, number] {
+  const cp = Math.cos(pitch);
+  const d = [Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp] as const;
+  let dist = fallback;
+  let best = Infinity;
+  for (const t of targets) {
+    const rx = t.x - eye[0];
+    const ry = t.y - eye[1];
+    const rz = t.z - eye[2];
+    const along = rx * d[0] + ry * d[1] + rz * d[2];
+    if (along < 20) continue;
+    const off = Math.hypot(rx - d[0] * along, ry - d[1] * along, rz - d[2] * along) / along;
+    if (off < 0.09 && off < best) {
+      best = off;
+      dist = along;
+    }
+  }
+  return [eye[0] + d[0] * dist, eye[1] + d[1] * dist, eye[2] + d[2] * dist];
+}
+
+/** Mắt người ngắm phòng không của tàu (theo vị trí điều khiển phòng không, ngang tầm mắt), toạ độ riêng của tàu. */
+export function aaEye(cls: ShipClass): [number, number, number] {
+  const r = cls.roles.find((q) => q.weapons.includes("aa"));
+  return r ? [r.station[0], r.station[1] + 2.3, r.station[2]] : [0, cls.deck + 4, 0];
 }
 
 /** Vị trí đạn pháo / bom sau `t` giây (bắn từ o với vận tốc v). */

@@ -47,6 +47,11 @@ function Unit({ room, id, kind, team }: { room: IslandRoom; id: string; kind: st
     }),
     [kind, color],
   );
+  useMemo(() => {
+    mats.body.userData.detail = "metal";
+    mats.body.userData.detailSpace = "object";
+    mats.team.userData.detail = "none";
+  }, [mats]);
   useMemo(() => mats.glow.color.multiplyScalar(kind === "decoy" ? 5 : 2.4), [mats, kind]);
 
   useFrame((_, rawDt) => {
