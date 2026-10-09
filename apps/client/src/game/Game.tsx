@@ -232,7 +232,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
   cameraMode.battle = battle;
   // Hải chiến 3 vs 3: hai chiến hạm, biển rộng, nhìn xa hơn nhiều (đánh nhau ở tầm gần một cây số).
   const naval = useRoomSnapshot(room, (s) => s.mode === "battle" && s.battleMode === "naval");
-  viewReach.scale = naval ? 4.5 : 1;
+  viewReach.scale = naval ? 5.5 : 1;
   renderHints.idle = useRoomSnapshot(room, (s) => s.paused);
   useEffect(() => () => void (renderHints.idle = false), []);
 

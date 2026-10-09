@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
-import { BoxGeometry, Color, CylinderGeometry, Euler, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Quaternion, type BufferGeometry } from "three";
+import {
+  BoxGeometry,
+  BufferAttribute,
+  CanvasTexture,
+  Color,
+  CylinderGeometry,
+  DoubleSide,
+  Euler,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Quaternion,
+  RepeatWrapping,
+  SRGBColorSpace,
+  type BufferGeometry,
+} from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { buildShipModel, type ModelMat } from "./shipModel.ts";
 import {
   clampMountYaw,
   firePointOf,
@@ -10,7 +27,6 @@ import {
   shipClass,
   shipToWorld,
   NAVAL_WEAPONS,
-  type ShipBox,
   type ShipClass,
   type ShipPart,
 } from "@tentides/content";
@@ -27,17 +43,72 @@ import { shipPose, updateShips } from "./navalRuntime.ts";
 // địch đang lặn ở xa thì không thấy (chỉ thấy khi tới gần hay lúc nó vừa phóng ngư lôi).
 
 const TEAM = { blue: "#2f6bff", red: "#e0332b" } as Record<string, string>;
-const MAT_COLOR: Record<ShipBox["mat"], string> = {
-  hull: "#555b62",
-  deck: "#8d8675",
-  steel: "#a3a8ad",
-  dark: "#3d4146",
-  wood: "#7d6648",
-  glass: "#2b4252",
-  accent: "#d8d4c4",
-  flight: "#4a4d51",
-  rail: "#c9ccd0",
+const MAT_COLOR: Record<ModelMat, string> = {
+  hull: "#4f565d",
+  deck: "#6f7378",
+  steel: "#9aa0a6",
+  dark: "#3a3e43",
+  wood: "#b39570",
+  glass: "#22394a",
+  accent: "#d9d6cc",
+  flight: "#3d4045",
+  rail: "#c4c8cc",
+  loft: "#ffffff",
+  boat: "#ede7d8",
+  marking: "#ecebe4",
+  bronze: "#a8834d",
+  funnelCap: "#1a1b1d",
+  team: "#cccccc",
 };
+
+/** Vân ván gỗ boong (thiết giáp hạm) và thép chống trượt (tàu khác): vẽ một lần, lặp theo mét. */
+let deckTextures: { wood: CanvasTexture; steel: CanvasTexture } | null = null;
+function deckTexture(kind: "wood" | "steel"): CanvasTexture {
+  if (!deckTextures) {
+    const make = (draw: (c: CanvasRenderingContext2D) => void) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 256;
+      draw(canvas.getContext("2d")!);
+      const t = new CanvasTexture(canvas);
+      t.wrapS = t.wrapT = RepeatWrapping;
+      t.colorSpace = SRGBColorSpace;
+      t.anisotropy = 4;
+      return t;
+    };
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const wood = make((c) => {
+      // 15 tấm ván dọc thân, mỗi tấm một tông, mối nối so le.
+      for (let i = 0; i < 15; i++) {
+        const tone = 0.85 + rnd() * 0.25;
+        c.fillStyle = `rgb(${Math.round(176 * tone)},${Math.round(146 * tone)},${Math.round(108 * tone)})`;
+        c.fillRect((i * 256) / 15, 0, 256 / 15, 256);
+        c.fillStyle = "rgba(40,28,18,0.55)";
+        c.fillRect((i * 256) / 15, 0, 1.2, 256);
+        c.fillRect((i * 256) / 15, ((i * 97) % 256) | 0, 256 / 15, 1.2);
+      }
+      for (let k = 0; k < 400; k++) {
+        c.fillStyle = `rgba(60,40,20,${rnd() * 0.12})`;
+        c.fillRect(rnd() * 256, rnd() * 256, 1, 6 + rnd() * 20);
+      }
+    });
+    const steel = make((c) => {
+      c.fillStyle = "#73777c";
+      c.fillRect(0, 0, 256, 256);
+      for (let k = 0; k < 2500; k++) {
+        const g = 90 + rnd() * 50;
+        c.fillStyle = `rgba(${g},${g + 2},${g + 5},0.35)`;
+        c.fillRect(rnd() * 256, rnd() * 256, 1.5, 1.5);
+      }
+      c.strokeStyle = "rgba(30,32,35,0.5)";
+      c.lineWidth = 1;
+      c.strokeRect(0.5, 0.5, 255, 127);
+      c.strokeRect(0.5, 128.5, 255, 127);
+    });
+    deckTextures = { wood, steel };
+  }
+  return deckTextures[kind];
+}
 const STATION_MAT = new MeshBasicMaterial({
   color: new Color("#ffd27a").multiplyScalar(2.2),
   transparent: true,
@@ -53,24 +124,6 @@ interface MountView {
   part: ShipPart;
   group: Group;
   barrels: Group;
-}
-
-/** Hình khối gộp theo (vật liệu, bộ phận): mỗi nhóm một mesh. */
-function buildHull(cls: ShipClass): { key: string; mat: ShipBox["mat"]; part: string; geometry: BufferGeometry }[] {
-  const groups = new Map<string, BufferGeometry[]>();
-  for (const b of cls.boxes) {
-    const g = new BoxGeometry(b.w, b.h, b.d);
-    if (b.pitch) g.rotateX(b.pitch);
-    g.translate(b.x, b.y, b.z);
-    const key = `${b.mat}|${b.part ?? ""}`;
-    const list = groups.get(key) ?? [];
-    list.push(g);
-    groups.set(key, list);
-  }
-  return [...groups].map(([key, list]) => {
-    const [mat, part] = key.split("|") as [ShipBox["mat"], string];
-    return { key, mat, part, geometry: mergeGeometries(list)! };
-  });
 }
 
 export function Ships({ room }: { room: IslandRoom }) {
@@ -96,21 +149,28 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
   const anim = useRef({ shots: -1, aaShots: -1, kick: 0, emit: 0, partsKey: "" });
   const team = room.state.naval.ships.get(id)?.team ?? id;
   const accent = TEAM[team] ?? "#cccccc";
-  const hull = useMemo(() => buildHull(cls), [cls]);
+  const hull = useMemo(() => buildShipModel(cls, new Color(accent)), [cls, accent]);
+  useEffect(() => () => hull.forEach((h) => h.geometry.dispose()), [hull]);
   const mats = useMemo(() => {
-    const out = {} as Record<ShipBox["mat"], MeshStandardMaterial>;
-    for (const k of Object.keys(MAT_COLOR) as ShipBox["mat"][]) {
+    const out = {} as Record<ModelMat, MeshStandardMaterial>;
+    for (const k of Object.keys(MAT_COLOR) as ModelMat[]) {
       out[k] = new MeshStandardMaterial({
-        color: k === "accent" ? accent : MAT_COLOR[k],
-        roughness: k === "glass" ? 0.25 : 0.8,
-        metalness: k === "steel" || k === "hull" || k === "dark" ? 0.35 : 0.05,
-        emissive: k === "glass" ? new Color("#18303d") : new Color(0),
+        color: k === "team" ? accent : MAT_COLOR[k],
+        roughness: k === "glass" ? 0.2 : k === "loft" ? 0.62 : k === "marking" ? 0.9 : 0.78,
+        metalness: k === "steel" || k === "hull" || k === "dark" || k === "loft" ? 0.3 : k === "glass" ? 0.5 : 0.05,
+        emissive: k === "glass" ? new Color("#10222e") : new Color(0),
+        vertexColors: k === "loft",
+        side: k === "team" || k === "loft" || k === "marking" ? DoubleSide : undefined,
+        map: k === "wood" ? deckTexture("wood") : k === "deck" ? deckTexture("steel") : null,
+        polygonOffset: k === "marking",
+        polygonOffsetFactor: k === "marking" ? -2 : 0,
       });
     }
     return out;
   }, [accent]);
   useEffect(() => () => Object.values(mats).forEach((m) => m.dispose()), [mats]);
   const stripe = useMemo(() => new MeshStandardMaterial({ color: accent, roughness: 0.6 }), [accent]);
+  const turretMat = useMemo(() => new MeshStandardMaterial({ color: "#6b737b", roughness: 0.7, metalness: 0.3 }), []);
 
   // Hộp va chạm theo khối đặc (đi lại trên boong, lên dốc, nấp sau thượng tầng).
   useEffect(() => {
@@ -174,10 +234,10 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
       a.partsKey = key;
       const dead = new Set(key.split(","));
       for (const [part, list] of meshes.current)
-        for (const mesh of list) mesh.material = dead.has(part) ? BURNT : mats[(mesh.userData.mat as ShipBox["mat"]) ?? "steel"];
+        for (const mesh of list) mesh.material = dead.has(part) ? BURNT : mats[(mesh.userData.mat as ModelMat) ?? "steel"];
       for (const m of mounts.current)
         m.group.traverse((o) =>
-          (o as Mesh).isMesh ? ((o as Mesh).material = dead.has(m.part.id) ? BURNT : o.userData.mat === "accent" ? stripe : mats.dark) : null,
+          (o as Mesh).isMesh ? ((o as Mesh).material = dead.has(m.part.id) ? BURNT : o.userData.mat === "accent" ? stripe : o.userData.mat === "turret" ? turretMat : mats.dark) : null,
         );
     }
 
@@ -231,13 +291,6 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
           }}
         />
       ))}
-      {/* Sọc màu phe dọc thân (gần mép nước) và lá cờ phe trên cột. */}
-      <mesh position={[0, 0.6, 0]} material={stripe}>
-        <boxGeometry args={[cls.id === "carrier" ? 18.2 : cls.beam + 0.15, 0.5, cls.length * 0.62]} />
-      </mesh>
-      <mesh position={[0, cls.deck + (cls.id === "submarine" ? 9 : 16), cls.id === "carrier" ? -6 : 3]} material={stripe}>
-        <boxGeometry args={[0.05, 1.4, 2.4]} />
-      </mesh>
       {/* Vòng sáng đánh dấu bàn điều khiển các vị trí (đứng vào rồi bấm F). */}
       {cls.roles.map((r, k) => (
         <mesh key={`st${k}`} position={[r.station[0], r.station[1] + 0.06, r.station[2]]} rotation-x={-Math.PI / 2} material={STATION_MAT}>
@@ -250,6 +303,7 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
           part={p}
           stripe={stripe}
           dark={mats.dark}
+          house={turretMat}
           onMount={(m) => {
             mounts.current = [...mounts.current.filter((x) => x.part.id !== p.id), m];
           }}
@@ -263,8 +317,56 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
 export const bodies = new Map<string, RapierBody>();
 type RapierBody = ReturnType<ReturnType<typeof useRapier>["world"]["createRigidBody"]>;
 
-/** Một ụ vũ khí: bệ xoay (yaw) và cụm nòng (pitch). */
-function Mount({ part, stripe, dark, onMount }: { part: ShipPart; stripe: MeshStandardMaterial; dark: MeshStandardMaterial; onMount: (m: MountView) => void }) {
+/** Hộp có mặt trước vát lên (tháp pháo): đỉnh trên phía trước lùi lại `slope` mét, phía sau lùi `back`. */
+function slopedBox(w: number, h: number, d: number, slope: number, back = 0): BufferGeometry {
+  const g = new BoxGeometry(w, h, d);
+  const p = g.getAttribute("position") as BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    if (p.getY(i) <= 0) continue;
+    if (p.getZ(i) > 0) p.setZ(i, p.getZ(i) - slope);
+    else p.setZ(i, p.getZ(i) + back);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+interface TurretShape {
+  /** Rộng, cao, dài thân tháp; vát trước. */
+  w: number;
+  h: number;
+  d: number;
+  slope: number;
+  /** Nòng: bán kính gốc, đầu, khoảng cách giữa các nòng, độ cao trục nòng (phần thân tháp). */
+  r0: number;
+  r1: number;
+  spread: number;
+  axis: number;
+  /** Kính đo xa hai bên (thiết giáp hạm), tấm chắn (phòng không), ống phóng. */
+  kind: "turret" | "aa" | "tubes";
+}
+
+const SHAPES: Partial<Record<string, TurretShape>> = {
+  bbGun: { w: 10.5, h: 3.6, d: 12.5, slope: 2.6, r0: 0.55, r1: 0.36, spread: 2.7, axis: 0.42, kind: "turret" },
+  ddGun: { w: 4.2, h: 2.5, d: 5.4, slope: 1.1, r0: 0.22, r1: 0.15, spread: 1.05, axis: 0.42, kind: "turret" },
+  aa: { w: 2.6, h: 1, d: 2.4, slope: 0, r0: 0.09, r1: 0.07, spread: 0.42, axis: 0.85, kind: "aa" },
+  torpedo: { w: 2.4, h: 0.35, d: 2.4, slope: 0, r0: 0.3, r1: 0.3, spread: 0.68, axis: 0.6, kind: "tubes" },
+  gtorpedo: { w: 2.4, h: 0.35, d: 2.4, slope: 0, r0: 0.3, r1: 0.3, spread: 0.68, axis: 0.6, kind: "tubes" },
+};
+
+/** Một ụ vũ khí: bệ xoay (yaw) và cụm nòng (pitch). Tàu ngầm (ống trong thân), giếng phóng, máy phóng không vẽ ụ. */
+function Mount({
+  part,
+  stripe,
+  dark,
+  house,
+  onMount,
+}: {
+  part: ShipPart;
+  stripe: MeshStandardMaterial;
+  dark: MeshStandardMaterial;
+  house: MeshStandardMaterial;
+  onMount: (m: MountView) => void;
+}) {
   const group = useRef<Group>(null);
   const barrels = useRef<Group>(null);
   const m = part.mount!;
@@ -272,52 +374,55 @@ function Mount({ part, stripe, dark, onMount }: { part: ShipPart; stripe: MeshSt
     if (group.current && barrels.current) onMount({ part, group: group.current, barrels: barrels.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [part]);
-  const shape = useMemo(() => {
-    switch (m.weapon) {
-      case "bbGun":
-        return { house: [7.2, 2.8, 8.4] as const, barrel: [0.38, 0.5] as const, len: m.barrel, spread: 1.6, y: 0.4 };
-      case "ddGun":
-        return { house: [3.6, 2, 4.2] as const, barrel: [0.16, 0.22] as const, len: m.barrel, spread: 0.7, y: 0.3 };
-      case "aa":
-        return { house: [1.6, 0.9, 1.4] as const, barrel: [0.06, 0.08] as const, len: m.barrel, spread: 0.35, y: 0.2 };
-      case "torpedo":
-      case "gtorpedo":
-        return { house: [1.2, 0.5, 1.2] as const, barrel: [0.3, 0.32] as const, len: m.barrel, spread: 0.65, y: 0.1 };
-      default:
-        return null;
+  const shape = m.pivot[1] < 0 ? undefined : SHAPES[m.weapon];
+  const geo = useMemo(() => {
+    if (!shape) return null;
+    const len = m.barrel;
+    const barrel = new CylinderGeometry(shape.r1, shape.r0, len, 12).rotateX(Math.PI / 2).translate(0, 0, len / 2);
+    // Đầu nòng loe (pháo), bao chắn gốc nòng.
+    const muzzle = new CylinderGeometry(shape.r1 * 1.25, shape.r1 * 1.1, Math.max(0.2, len * 0.04), 12).rotateX(Math.PI / 2).translate(0, 0, len);
+    const bag = new CylinderGeometry(shape.r0 * 1.5, shape.r0 * 1.5, Math.max(0.3, len * 0.07), 12).rotateX(Math.PI / 2).translate(0, 0, Math.max(0.15, len * 0.035));
+    const barrelAll = mergeGeometries([barrel.toNonIndexed(), muzzle.toNonIndexed(), bag.toNonIndexed()])!;
+    let body: BufferGeometry;
+    const extra: BufferGeometry[] = [];
+    if (shape.kind === "turret") {
+      body = slopedBox(shape.w, shape.h, shape.d, shape.slope, shape.slope * 0.2).translate(0, shape.h / 2, -shape.d * 0.12);
+      if (m.weapon === "bbGun") {
+        // Kính đo xa hai bên phía sau, nắp quan sát trên nóc.
+        extra.push(new BoxGeometry(shape.w + 3.6, 0.9, 1.1).translate(0, shape.h * 0.62, -shape.d * 0.38));
+        for (const sx of [-2.6, 2.6]) extra.push(new CylinderGeometry(0.6, 0.7, 0.6, 10).translate(sx, shape.h + 0.3, -shape.d * 0.15));
+      }
+    } else if (shape.kind === "aa") {
+      body = new CylinderGeometry(shape.w * 0.5, shape.w * 0.55, 0.35, 16).translate(0, 0.18, 0);
+      // Tấm chắn phía trước, ghế pháo thủ hai bên.
+      extra.push(new BoxGeometry(shape.w * 0.95, shape.h, 0.08).translate(0, 0.35 + shape.h / 2, shape.d * 0.28));
+      for (const sx of [-0.85, 0.85]) extra.push(new BoxGeometry(0.4, 0.5, 0.4).translate(sx * shape.w * 0.4, 0.6, -0.4));
+    } else {
+      body = new CylinderGeometry(shape.w * 0.5, shape.w * 0.5, shape.h, 16).translate(0, shape.h / 2, 0);
     }
-  }, [m]);
-  const barrelGeo = useMemo(
-    () => (shape ? new CylinderGeometry(shape.barrel[0], shape.barrel[1], shape.len, 10).rotateX(Math.PI / 2).translate(0, 0, shape.len / 2) : null),
-    [shape],
-  );
-  if (!shape || !barrelGeo)
+    const bodyAll = mergeGeometries([body.index ? body.toNonIndexed() : body, ...extra.map((e) => (e.index ? e.toNonIndexed() : e))])!;
+    return { barrel: barrelAll, body: bodyAll };
+  }, [shape, m]);
+  useEffect(() => () => void (geo && (geo.barrel.dispose(), geo.body.dispose())), [geo]);
+  if (!shape || !geo)
     return (
       <group ref={group} position={[m.pivot[0], m.pivot[1], m.pivot[2]]}>
         <group ref={barrels} />
       </group>
     );
-  const [w, h, d] = shape.house;
+  const axisY = shape.kind === "turret" ? shape.h * shape.axis : shape.axis;
+  const front = shape.kind === "turret" ? shape.d * 0.3 : shape.kind === "aa" ? 0 : -m.barrel * 0.5;
   return (
     <group ref={group} position={[m.pivot[0], m.pivot[1], m.pivot[2]]} rotation-y={m.rest}>
-      <mesh position={[0, -h / 2 + shape.y, -d * 0.1]} material={dark} castShadow userData={{ mat: "dark" }}>
-        <boxGeometry args={[w, h, d]} />
-      </mesh>
+      <mesh geometry={geo.body} material={house} castShadow receiveShadow userData={{ mat: "turret" }} />
       {m.weapon === "bbGun" && (
-        <mesh position={[0, shape.y + 0.05, -d * 0.1]} material={stripe} userData={{ mat: "accent" }}>
-          <boxGeometry args={[w * 0.6, 0.1, d * 0.5]} />
+        <mesh position={[0, shape.h + 0.03, -shape.d * 0.2]} material={stripe} userData={{ mat: "accent" }}>
+          <boxGeometry args={[shape.w * 0.55, 0.06, shape.d * 0.4]} />
         </mesh>
       )}
-      <group ref={barrels} position={[0, shape.y - h * 0.15, d * 0.3]}>
+      <group ref={barrels} position={[0, axisY, front]}>
         {Array.from({ length: m.barrels }, (_, k) => (
-          <mesh
-            key={k}
-            geometry={barrelGeo}
-            material={dark}
-            position={[(k - (m.barrels - 1) / 2) * shape.spread, 0, 0]}
-            castShadow
-            userData={{ mat: "dark" }}
-          />
+          <mesh key={k} geometry={geo.barrel} material={dark} position={[(k - (m.barrels - 1) / 2) * shape.spread, 0, 0]} castShadow userData={{ mat: "dark" }} />
         ))}
       </group>
     </group>

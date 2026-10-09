@@ -347,8 +347,8 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         zoom = 4;
       } else {
         // Camera sau và trên tàu, nhìn theo hướng chuột (ngắm xa qua đầu tàu).
-        const dist = cls.length * (role.role === "gunner" ? 0.95 : 0.8) + 10;
-        const h = cls.deck + (role.role === "gunner" ? 30 : 18);
+        const dist = cls.length * (role.role === "gunner" ? 0.7 : 0.6) + 20;
+        const h = cls.deck + (role.role === "gunner" ? 34 : 22);
         const bx = Math.sin(view.yaw);
         const bz = Math.cos(view.yaw);
         cam.position.set(target!.x + bx * dist, Math.max(4, pose.y + h + Math.sin(view.pitch) * 12), target!.z + bz * dist);
