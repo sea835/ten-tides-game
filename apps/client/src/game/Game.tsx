@@ -51,6 +51,11 @@ import { Killcam } from "./battle/Killcam.tsx";
 import { SpectatorCamera } from "./battle/Spectator.tsx";
 import { Vehicles } from "./battle/Vehicles.tsx";
 import { VoiceHeads } from "./voice/VoiceHeads.tsx";
+import { viewReach } from "./DayCycle.tsx";
+import { Ships } from "./naval/Ships.tsx";
+import { NavalUnits } from "./naval/NavalUnits.tsx";
+import { NavalFx } from "./naval/NavalFx.tsx";
+import { NavalControl } from "./naval/NavalControl.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -225,6 +230,9 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
   // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
   const battle = useRoomSnapshot(room, (s) => s.mode) === "battle";
   cameraMode.battle = battle;
+  // Hải chiến 3 vs 3: hai chiến hạm, biển rộng, nhìn xa hơn nhiều (đánh nhau ở tầm gần một cây số).
+  const naval = useRoomSnapshot(room, (s) => s.mode === "battle" && s.battleMode === "naval");
+  viewReach.scale = naval ? 4.5 : 1;
   renderHints.idle = useRoomSnapshot(room, (s) => s.paused);
   useEffect(() => () => void (renderHints.idle = false), []);
 
@@ -262,6 +270,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
             <LocalPlayer room={room} world={world} />
             {battle && <Shooter room={room} />}
             {battle && <Vehicles room={room} />}
+            {naval && <Ships room={room} />}
           </Physics>
           <PlayerLight />
           {!battle && <FirstPersonHands room={room} />}
@@ -272,6 +281,9 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           <Weather room={room} world={world} />
           {!battle && <Trails room={room} world={world} />}
           {battle && <BattleEffects room={room} world={world} />}
+          {naval && <NavalUnits room={room} />}
+          {naval && <NavalFx room={room} />}
+          {naval && <NavalControl room={room} />}
           {battle && <ViewModel room={room} />}
           {battle && <Killcam room={room} />}
           {battle && <SpectatorCamera room={room} />}

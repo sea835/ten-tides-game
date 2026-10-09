@@ -94,7 +94,7 @@ export class MatchRewards {
       if (userId === null) return;
       lines.push({ playerId, userId, kills, placement, coins: matchCoins(kills, placement, entrants), xp: 0 });
     };
-    if (mode === "war") {
+    if (mode === "war" || mode === "naval") {
       for (const [id, p] of players.entries()) if (teamOf(p)) add(id, p.kills, teamOf(p) === winner ? 1 : 2, 2);
     } else {
       const won = (id: string, p: PlayerState | undefined) => !!winner && (id === winner || (!!teamOf(p) && teamOf(p) === winner));

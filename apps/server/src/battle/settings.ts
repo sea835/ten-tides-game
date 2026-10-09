@@ -13,7 +13,7 @@ import { warMapId } from "@tentides/content";
 // Bảng cài đặt phòng (Trung tâm chỉ huy ở sảnh): kẹp số máy theo chế độ, vé quân, bật / tắt xe cơ giới, thời tiết.
 // Chỉ chủ phòng gửi được và chỉ khi còn ở sảnh (BattleRoom kiểm tra); ở đây chỉ lo đưa giá trị về khoảng hợp lệ.
 
-export type BattleMode = "solo" | "squad" | "war";
+export type BattleMode = "solo" | "squad" | "war" | "naval";
 
 /** Khoảng số máy hợp lệ của mỗi chế độ (chiến trường tính mỗi phe: 5–50, tức 10–100 quân trên sân). */
 export function botRange(mode: string): { min: number; max: number } {

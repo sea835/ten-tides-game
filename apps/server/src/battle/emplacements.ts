@@ -98,6 +98,8 @@ export class Emplacements {
   /** Người này đang ngồi vũ khí cố định (lộ người ra ngoài: trúng đạn, mảnh nổ như đi bộ). */
   exposed(p: PlayerState): boolean {
     if (!p.vehicle) return false;
+    // Hải chiến: người đứng vị trí điều khiển trên boong tàu lộ người ra ngoài.
+    if (p.vehicle.startsWith("ship:")) return true;
     const v = this.room.state.vehicles.get(p.vehicle);
     return !!v && isEmplacement(v.kind);
   }

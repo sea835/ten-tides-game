@@ -9,14 +9,15 @@ import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 
 /**
  * Khoá bản đồ Battleground của phòng: "solo" (đảo sinh tồn, cả chế độ đồng đội) hay "war:<mã bản đồ>" (chiến
- * trường 50 vs 50 theo bản đồ chủ phòng chọn). Đổi khoá là phải dựng lại cảnh.
+ * trường 50 vs 50 theo bản đồ chủ phòng chọn) hay "naval" (biển hải chiến 3 vs 3). Đổi khoá là phải dựng lại cảnh.
  */
 export function mapKeyOf(s: { battleMode: string; settings: { warMap: string } }): string {
-  return s.battleMode === "war" ? `war:${s.settings.warMap}` : "solo";
+  return s.battleMode === "war" ? `war:${s.settings.warMap}` : s.battleMode === "naval" ? "naval" : "solo";
 }
 
 /** Bản đồ Battleground theo khoá (mapKeyOf) và seed. */
 export function mapOfKey(key: string, seed: number): BattleMap {
+  if (key === "naval") return mapForMode("naval", seed || 1);
   return key.startsWith("war") ? mapForMode("war", seed || 1, key.slice(4)) : mapForMode("solo", seed || 1);
 }
 

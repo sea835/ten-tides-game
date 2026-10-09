@@ -6,6 +6,7 @@ import { NORMANDY } from "./warNormandy.ts";
 import { VERDUN } from "./warVerdun.ts";
 import { STALINGRAD } from "./warStalingrad.ts";
 import { ALAMEIN } from "./warAlamein.ts";
+import { navalMap } from "./naval.ts";
 
 // Danh mục bản đồ chiến trường 50 vs 50: chủ phòng chọn ở sảnh (RoomSettingsState.warMap). Mỗi bản đồ dựng lại một
 // trận đánh nổi tiếng với địa hình riêng; seed chỉ đổi cây cối, cỏ, mìn.
@@ -46,6 +47,7 @@ export function warMapById(id: string | undefined, seed: number): BattleMap {
 
 /** Bản đồ theo chế độ trận: chiến trường 50 vs 50 (theo mã bản đồ) hay đảo sinh tồn / đồng đội. */
 export function mapForMode(mode: string, seed: number, mapId?: string): BattleMap {
+  if (mode === "naval") return navalMap(seed || 1);
   return mode === "war" ? warMapById(mapId, seed) : battleMap(seed || 1);
 }
 

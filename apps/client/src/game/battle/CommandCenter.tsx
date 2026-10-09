@@ -11,6 +11,7 @@ import {
   LogOut,
   Map as MapIcon,
   Moon,
+  Ship,
   Shuffle,
   Snowflake,
   Sun,
@@ -19,7 +20,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { WAR_MAP_LIST } from "@tentides/content";
+import { SHIP_CLASSES, WAR_MAP_LIST, shipClass } from "@tentides/content";
 import { BATTLE_TIMES, MAX_BATTLE_BOTS, MIN_BATTLE_BOTS, Messages, WAR_MAX_PER_SIDE, WAR_TICKETS_MAX, WAR_TICKETS_MIN, type BattleSettingsMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
@@ -35,7 +36,7 @@ import "./command.css";
 // khí tài), danh sách người chơi / hai phe, ô Kho Quân Nhu. Chỉ chủ phòng chỉnh được; người khác thấy cùng bảng ở dạng
 // chỉ xem. Server kẹp lại mọi giá trị (apps/server/src/battle/settings.ts).
 
-type Mode = "war" | "squad" | "solo";
+type Mode = "war" | "squad" | "solo" | "naval";
 
 const MODES: { id: Mode; title: string; tag: string; icon: ReactNode; facts: string[]; brief: string }[] = [
   {
@@ -46,6 +47,15 @@ const MODES: { id: Mode; title: string; tag: string; icon: ReactNode; facts: str
     facts: ["100 quân", "6 bản đồ", "Hồi sinh"],
     brief:
       "Sáu chiến trường rộng gần 700 m (trận đánh nổi tiếng: Điện Biên Phủ, Normandy, Verdun, Stalingrad, El Alamein), hai căn cứ hai đầu, 7 cứ điểm A–G có công sự, chiến hào, pháo đài. Đứng trong vùng cứ điểm để chiếm; phe giữ ít cứ điểm hơn bị trừ vé dần, mỗi lần gục mất một vé; hết vé là thua. Gục thì chọn lớp lính và chỗ hồi sinh.",
+  },
+  {
+    id: "naval",
+    title: "Hải Chiến 3v3",
+    tag: "Hai chiến hạm đấu nhau",
+    icon: <Ship size={22} aria-hidden />,
+    facts: ["5 lớp tàu", "3 người / tàu", "Lái tên lửa"],
+    brief:
+      "Mỗi phe một chiến hạm, ba người (thiếu thì máy lấp) đứng ba vị trí: lái tàu, pháo, phòng không, tên lửa, ngư lôi, phi công tuỳ lớp tàu. Đi lại trên boong, bấm F ở bàn điều khiển để vào vị trí. Trúng đạn thì bộ phận vỡ, hỏng, bốc cháy (giữ F để dập); ụ súng hỏng thì không bắn được nữa; lính trên boong bị bắn được. Đánh chìm tàu địch là thắng.",
   },
   {
     id: "squad",
@@ -162,6 +172,54 @@ function MapPicker({ value, disabled, onPick }: { value: string; disabled: boole
   );
 }
 
+/**
+ * Sảnh hải chiến: hai phe, mỗi phe chọn lớp tàu (người trong phe chọn; phe toàn máy thì chủ phòng chọn), ba vị trí
+ * trên tàu (bấm để đứng vị trí đó, người chưa chọn và chỗ trống do máy lấp).
+ */
+function NavalLobby({ room, me, isHost, players, ships }: { room: IslandRoom; me: string; isHost: boolean; players: { id: string; name: string; team: string; role: string }[]; ships: Record<"blue" | "red", string> }) {
+  const mine = players.find((p) => p.id === me);
+  return (
+    <div className="w-sides cc-sides nv-lobby">
+      {(["blue", "red"] as const).map((side) => {
+        const humans = players.filter((p) => p.team === side);
+        const cls = shipClass(ships[side]);
+        const canPick = mine?.team === side || (isHost && humans.length === 0);
+        return (
+          <div key={side} className={`w-side ${side}`}>
+            <h4>
+              {SIDE_NAME[side]} <small>{cls.name}</small>
+            </h4>
+            <div className="nv-ships" role="radiogroup" aria-label={`Lớp tàu ${SIDE_NAME[side]}`}>
+              {SHIP_CLASSES.map((id) => (
+                <button key={id} role="radio" aria-checked={cls.id === id} className={cls.id === id ? "on" : ""} disabled={!canPick} onClick={() => room.send(Messages.navalPick, mine?.team === side ? { ship: id } : { ship: id, side })}>
+                  {shipClass(id).name}
+                </button>
+              ))}
+            </div>
+            <p className="nv-ship-brief">
+              {cls.brief} <small>Máu {cls.hp} · {Math.round(cls.speed * 1.944)} hải lý/giờ · dài {cls.length} m</small>
+            </p>
+            <ul className="nv-roles">
+              {cls.roles.map((r, k) => {
+                const who = humans.find((p) => p.role === String(k));
+                return (
+                  <li key={k} className={who?.id === me ? "me" : ""}>
+                    <strong>{r.name}</strong>
+                    <span>{who ? `${who.name}${who.id === me ? " (bạn)" : ""}` : "Máy"}</span>
+                    <small>{r.brief}</small>
+                    {mine?.team === side && who?.id !== me && <button onClick={() => room.send(Messages.navalPick, { station: k })}>{who ? "Đổi chỗ" : "Đứng vị trí này"}</button>}
+                  </li>
+                );
+              })}
+            </ul>
+            {mine?.team !== side && humans.length < 3 && <button onClick={() => room.send(Messages.pickSide, { side })}>Vào {SIDE_NAME[side]}</button>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const s = useRoomSnapshot(room, (st) => ({
     phase: st.phase,
@@ -173,7 +231,9 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
     tickets: st.settings.warTickets,
     vehicles: st.settings.vehiclesEnabled,
     warMap: st.settings.warMap,
-    players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color, team: p.team })),
+    shipBlue: st.settings.shipBlue,
+    shipRed: st.settings.shipRed,
+    players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color, team: p.team, role: p.role })),
   }));
   // Nhân vật của mình trên bục 3D phía sau bảng: theo lớp lính, trang phục, skin đã lắp.
   const mine = useRoomSnapshot(room, (st) => {
@@ -198,6 +258,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
   const isHost = s.host === me;
   const war = s.mode === "war";
   const squad = s.mode === "squad";
+  const naval = s.mode === "naval";
   const perSide = Math.max(MIN_BATTLE_BOTS / 2, Math.min(WAR_MAX_PER_SIDE, s.bots || WAR_MAX_PER_SIDE));
   const squadBots = Math.max(s.bots, s.players.length * 5);
   /** Quân số hiển thị: chiến trường là tổng hai phe, đồng đội gồm cả 5 lính theo mỗi người. */
@@ -256,7 +317,9 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
             <h3>Lệnh tác chiến · {mode.title}</h3>
             <p>{mode.brief}</p>
             {war && <MapPicker value={s.warMap} disabled={!isHost} onPick={(id) => send({ map: id })} />}
-            {war ? (
+            {naval ? (
+              <NavalLobby room={room} me={me} isHost={isHost} players={s.players} ships={{ blue: s.shipBlue, red: s.shipRed }} />
+            ) : war ? (
               <div className="w-sides cc-sides">
                 {(["blue", "red"] as const).map((side) => {
                   const humans = s.players.filter((p) => p.team === side);
@@ -294,7 +357,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
                 </li>
               </ul>
             )}
-            <ClassPicker room={room} />
+            {!naval && <ClassPicker room={room} />}
             <button className="cc-armory" onClick={() => openGunsmith()}>
               <Wrench size={18} aria-hidden />
               <span>
@@ -313,17 +376,19 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
                 </span>
               )}
             </h3>
-            <Slider
-              label={war ? "Quân số (hai phe)" : squad ? "Lính AI (gồm 5 lính mỗi người)" : "Lính AI cùng chơi"}
-              icon={<Bot size={16} aria-hidden />}
-              value={troops}
-              min={MIN_BATTLE_BOTS}
-              max={MAX_BATTLE_BOTS}
-              step={war ? 2 : 1}
-              unit={war ? `(${perSide} vs ${perSide})` : "lính"}
-              disabled={!isHost}
-              onChange={(v) => send({ bots: war ? Math.round(v / 2) : v })}
-            />
+            {!naval && (
+              <Slider
+                label={war ? "Quân số (hai phe)" : squad ? "Lính AI (gồm 5 lính mỗi người)" : "Lính AI cùng chơi"}
+                icon={<Bot size={16} aria-hidden />}
+                value={troops}
+                min={MIN_BATTLE_BOTS}
+                max={MAX_BATTLE_BOTS}
+                step={war ? 2 : 1}
+                unit={war ? `(${perSide} vs ${perSide})` : "lính"}
+                disabled={!isHost}
+                onChange={(v) => send({ bots: war ? Math.round(v / 2) : v })}
+              />
+            )}
             {war && (
               <Slider
                 label="Vé quân mỗi phe"
@@ -363,17 +428,19 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
                 <small>Thời tiết: {WEATHER_NAME[s.weather] ?? s.weather}</small>
               </label>
             </div>
-            <div className="cc-field">
-              <span className="cc-field-head">
-                <Truck size={16} aria-hidden />
-                <span>Khí tài cơ giới</span>
-              </span>
-              <button className={`cc-toggle ${s.vehicles ? "on" : ""}`} role="switch" aria-checked={s.vehicles} disabled={!isHost} onClick={() => send({ vehicles: !s.vehicles })}>
-                <i />
-                <span>{s.vehicles ? "Bật: xe tăng, xe jeep, thuyền, xuồng, trực thăng" : "Tắt: chỉ có bộ binh"}</span>
-              </button>
-              {s.mode === "solo" && <small className="cc-note">Sinh Tồn Sa Trường không có xe tăng.</small>}
-            </div>
+            {!naval && (
+              <div className="cc-field">
+                <span className="cc-field-head">
+                  <Truck size={16} aria-hidden />
+                  <span>Khí tài cơ giới</span>
+                </span>
+                <button className={`cc-toggle ${s.vehicles ? "on" : ""}`} role="switch" aria-checked={s.vehicles} disabled={!isHost} onClick={() => send({ vehicles: !s.vehicles })}>
+                  <i />
+                  <span>{s.vehicles ? "Bật: xe tăng, xe jeep, thuyền, xuồng, trực thăng" : "Tắt: chỉ có bộ binh"}</span>
+                </button>
+                {s.mode === "solo" && <small className="cc-note">Sinh Tồn Sa Trường không có xe tăng.</small>}
+              </div>
+            )}
           </section>
         </div>
 
@@ -381,7 +448,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
           {isHost ? (
             <button className="cc-start" data-ui="clack" onClick={() => room.send(Messages.start)}>
               <Crosshair size={20} aria-hidden /> Xuất kích
-              <small>{war ? `${perSide} vs ${perSide} · ${s.tickets} vé` : `${s.players.length + troops} người`}</small>
+              <small>{naval ? `${shipClass(s.shipBlue).name} vs ${shipClass(s.shipRed).name}` : war ? `${perSide} vs ${perSide} · ${s.tickets} vé` : `${s.players.length + troops} người`}</small>
             </button>
           ) : (
             <p className="cc-wait">

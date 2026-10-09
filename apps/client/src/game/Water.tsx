@@ -519,7 +519,9 @@ export function Water({ world, tidal = false }: { world: World; tidal?: boolean 
   const profile = useProfile();
   const segments = profile.water;
   const reflectScale = profile.reflect;
-  const geometry = useMemo(() => radialGrid(SIZE, segments, 2.2), [segments]);
+  // Biển hải chiến: nhìn xa hơn nhiều (đánh nhau ở tầm gần một cây số) nên tấm nước lớn hơn.
+  const size = (world.half ?? MAP_HALF_SIZE) >= 600 ? SIZE * 4.5 : SIZE;
+  const geometry = useMemo(() => radialGrid(size, segments, size > SIZE ? 2.8 : 2.2), [segments, size]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const mesh = useRef<Mesh>(null);
   const material = useMemo(() => {

@@ -247,6 +247,14 @@ export class Bots {
     return p;
   }
 
+  /** Hải chiến: thêm máy `id` vào phe `team` ở vị trí số `station` trên tàu (naval.ts điều khiển, không dùng não bộ binh). */
+  addNavalBot(id: string, team: string, station: number): PlayerState {
+    const p = this.newBot(id, team, "");
+    p.role = String(station);
+    p.kit.outfit = ["urban", "digital", "woodland"][station % 3]!;
+    return p;
+  }
+
   /** Bỏ hết máy. */
   clear() {
     const s = this.room.state;
@@ -522,6 +530,8 @@ export class Bots {
     const room = this.room;
     const s = room.state;
     if (!room.fighting()) return;
+    // Hải chiến: máy do naval.ts điều khiển (đứng vị trí trên tàu).
+    if (s.battleMode === "naval") return;
     this.time += dt;
     this.planLeft = 8000;
     this.tacLeft = 4;

@@ -64,6 +64,9 @@ function aimLight(light: DirectionalLight, dir: Vector3) {
  * trận chiếu mỗi khung hình khi sương đổi dần. Vòm trời vẽ ở đúng mặt phẳng xa (xyww) nên không bị cắt.
  */
 const FAR_MARGIN = 15;
+
+/** Hệ số tầm nhìn (sương mù, mặt phẳng xa): hải chiến đặt lớn hơn (biển trống, đánh nhau ở tầm xa). */
+export const viewReach = { scale: 1 };
 const FAR_MIN = 60;
 
 export function farForFog(fogFar: number): number {
@@ -148,8 +151,8 @@ export function DayCycle({
         scene.fog.color.copy(horizon);
         // Ban đêm sương mù dày hơn một chút cho thấy tối; trời sương, mưa thì nhìn không xa.
         const murk = Math.max(w.fog, w.rain * 0.55);
-        scene.fog.near = 70 - 62 * murk;
-        scene.fog.far = (280 - 80 * night) * (1 - 0.76 * murk);
+        scene.fog.near = (70 - 62 * murk) * viewReach.scale;
+        scene.fog.far = (280 - 80 * night) * (1 - 0.76 * murk) * viewReach.scale;
       }
       if (scene.background instanceof Color) scene.background.copy(horizon);
     }
