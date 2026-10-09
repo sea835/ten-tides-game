@@ -37,7 +37,7 @@ import { playLand } from "./sound/guns.ts";
 import { aimZoom, getSettings } from "./settings.ts";
 import { scratchRay, scratchRayFrom } from "./scratch.ts";
 import { tide } from "./tide.ts";
-import { carryAt, deckOfState, shipPose } from "./naval/navalRuntime.ts";
+import { carryAt, deckOfState, shipPose, walkDeck } from "./naval/navalRuntime.ts";
 import { shipToWorld, worldToShip } from "@tentides/content";
 
 const WALK_SPEED = 8;
@@ -858,22 +858,18 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       // Bị đánh bật lùi: cộng thêm vận tốc đẩy, giảm dần.
       mx += knock.vx * dt;
       mz += knock.vz * dt;
-      controller.computeColliderMovement(col, vaultNext ? { x: 0, y: 0, z: 0 } : { x: mx, y: s.vy * dt, z: mz });
-      const delta = controller.computedMovement();
-      if (carry) {
-        // Trên boong tàu đang chạy: khối va chạm của tàu vừa dời đi trong bước vật lý trước nên bộ điều khiển có thể
-        // tưởng bị kẹt mà đẩy ngược lại. Không cho đi xa hơn bước chân muốn đi (tường vẫn chặn được: bước ngắn lại).
-        const want = Math.hypot(mx, mz);
-        const got = Math.hypot(delta.x, delta.z);
-        if (got > want + 0.02) {
-          const k = got > 1e-6 ? want / got : 0;
-          delta.x *= k;
-          delta.z *= k;
-        }
+      // Hải chiến: đứng trên boong thì đi theo hình khối của tàu (sàn, dốc, tường: walkDeck), không qua bộ va chạm
+      // Rapier (khối va chạm của tàu đang chạy bị dò ở chỗ cũ một nhịp nên người bị đẩy đi, không bước được).
+      const onDeck = carry && !s.swimming ? walkDeck(carry.ship, pos.x, feetNow, pos.z, vaultNext ? 0 : mx, vaultNext ? 0 : s.vy * dt, vaultNext ? 0 : mz) : null;
+      let delta: { x: number; y: number; z: number };
+      if (onDeck && carry) delta = { x: onDeck.x - pos.x - carry.dx, y: onDeck.y - feetNow - carry.dy, z: onDeck.z - pos.z - carry.dz };
+      else {
+        controller.computeColliderMovement(col, vaultNext ? { x: 0, y: 0, z: 0 } : { x: mx, y: s.vy * dt, z: mz });
+        delta = controller.computedMovement();
       }
       const wasGrounded = s.grounded;
       const fallSpeed = -s.vy;
-      s.grounded = controller.computedGrounded();
+      s.grounded = onDeck ? onDeck.grounded : controller.computedGrounded();
       // Đâm vào tường thì mất đà theo hướng đó (không trượt dọc tường với vận tốc cũ khi vừa rời ra).
       if (dt > 0) {
         if (Math.abs(delta.x) < Math.abs(s.vx * dt) * 0.5) s.vx = delta.x / dt;
@@ -930,16 +926,6 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     knock.vx *= fade;
     knock.vz *= fade;
     if (Math.abs(knock.vx) + Math.abs(knock.vz) < 0.05) knock.vx = knock.vz = 0;
-    if (import.meta.env.DEV) {
-      const dbg = ((globalThis as { __carry?: { n: number; miss: number; dx: number; dz: number; kx: number; kz: number } }).__carry ??= { n: 0, miss: 0, dx: 0, dz: 0, kx: 0, kz: 0 });
-      if (carry) {
-        dbg.n++;
-        dbg.dx += carry.dx;
-        dbg.dz += carry.dz;
-      } else dbg.miss++;
-      dbg.kx += next.x - pos.x - (carry?.dx ?? 0);
-      dbg.kz += next.z - pos.z - (carry?.dz ?? 0);
-    }
     if (carry) {
       next.x += carry.dx;
       next.y += carry.dy;

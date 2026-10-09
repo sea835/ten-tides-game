@@ -758,9 +758,19 @@ export class Naval {
     const cls = this.cls(ship);
     const [lx, , lz] = worldToShip(this.pose(ship), p.x, p.y, p.z);
     if (Math.abs(lx) > cls.beam / 2 + 10 || Math.abs(lz) > cls.length / 2 + 10) return;
-    const tz = Math.max(-cls.length / 2 + 6, Math.min(cls.length / 2 - 12, lz));
-    const tx = Math.sign(lx || 1) * (cls.beam / 2 - 2.2);
-    const floor = deckBelow(cls, tx, cls.deck + 20, tz);
+    const tz = Math.max(-cls.length / 2 + 8, Math.min(cls.length / 2 - 14, lz));
+    // Chỗ đứng gần mạn nhất có sàn ở bên mạn đó (mép boong cong, sàn bay chìa ra không đều).
+    let tx = 0;
+    let floor = deckBelow(cls, 0, cls.deck + 1, tz);
+    for (let k = cls.beam / 2 - 1.5; k > 0; k -= 0.5) {
+      const x = Math.sign(lx || 1) * k;
+      const f = deckBelow(cls, x, cls.deck + 1, tz);
+      if (Number.isFinite(f) && !insideShip(cls, x, f + 1, tz)) {
+        tx = x;
+        floor = f;
+        break;
+      }
+    }
     const [x, y, z] = shipToWorld(this.pose(ship), tx, Number.isFinite(floor) ? floor : cls.deck, tz);
     p.x = x;
     p.y = y + 0.1;

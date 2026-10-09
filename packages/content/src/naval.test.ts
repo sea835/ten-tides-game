@@ -24,6 +24,52 @@ describe("chiến hạm", () => {
       );
   });
 
+  it("từ boong chính đi bộ (lên cầu thang, vòng qua thượng tầng, lan can) tới được mọi bàn điều khiển", () => {
+    const STEP = 0.5;
+    const R = 0.38;
+    const C = 0.5;
+    for (const cls of Object.values(SHIPS)) {
+      const wall = (x: number, y: number, z: number) =>
+        cls.boxes.some((b) => {
+          if (!b.solid || b.pitch || b.y + b.h / 2 <= y + STEP || b.y - b.h / 2 >= y + 1.75) return false;
+          const r = b.y + b.h / 2 - y > 1 ? R : 0.05;
+          return Math.abs(x - b.x) < b.w / 2 + r && Math.abs(z - b.z) < b.d / 2 + r;
+        });
+      const start = cls.id === "carrier" ? [10, cls.deck, -20] : cls.id === "submarine" ? [0, cls.deck, -30] : [0, cls.hull.deck, -cls.length * 0.3];
+      const y0 = deckBelow(cls, start[0]!, start[1]! + 0.5, start[2]!);
+      const seen = new Set<string>();
+      const queue: [number, number, number][] = [[start[0]!, y0, start[2]!]];
+      const key = (x: number, y: number, z: number) => `${Math.round(x / C)},${Math.round(y * 2)},${Math.round(z / C)}`;
+      seen.add(key(...queue[0]!));
+      const reached: [number, number, number][] = [];
+      while (queue.length) {
+        const [x, y, z] = queue.pop()!;
+        reached.push([x, y, z]);
+        for (const [dx, dz] of [
+          [C, 0],
+          [-C, 0],
+          [0, C],
+          [0, -C],
+        ] as const) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (Math.abs(nz) > cls.length / 2 || Math.abs(nx) > cls.beam / 2) continue;
+          const floor = deckBelow(cls, nx, y + STEP - 0.6, nz);
+          if (wall(nx, Number.isFinite(floor) ? Math.max(y, floor) : y, nz)) continue;
+          if (!Number.isFinite(floor) || floor < y - 3) continue;
+          const k = key(nx, floor, nz);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          queue.push([nx, floor, nz]);
+        }
+      }
+      for (const r of cls.roles) {
+        const ok = reached.some(([x, y, z]) => Math.hypot(x - r.station[0], z - r.station[2]) < 1.2 && Math.abs(y - r.station[1]) < 0.6);
+        expect(ok, `${cls.id} ${r.name}`).toBe(true);
+      }
+    }
+  });
+
   it("đám cháy của mọi bộ phận nằm trên mặt sàn (người đứng tới dập được)", () => {
     for (const cls of Object.values(SHIPS)) {
       for (const p of cls.parts) {
