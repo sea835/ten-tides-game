@@ -62,7 +62,7 @@ export function cycleSpectate(room: IslandRoom, dir: 1 | -1) {
 function watching(room: IslandRoom): boolean {
   const st = room.state;
   const p = st.players.get(myId(room));
-  return !!p && !p.alive && st.battleMode !== "war" && (st.phase === "battle" || st.phase === "prep");
+  return !!p && !p.alive && st.battleMode !== "war" && st.battleMode !== "naval" && (st.phase === "battle" || st.phase === "prep");
 }
 
 const FLY_SPEED = 14;

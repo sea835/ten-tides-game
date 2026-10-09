@@ -39,7 +39,7 @@ import { RemotePlayers } from "./RemotePlayers.tsx";
 import { SkyDome, SkyEnvironment } from "./Sky.tsx";
 import { bindInput, isTyping, look } from "./input.ts";
 import { debugCam, localEnv, localPosition, weatherFx } from "./shared.ts";
-import { useWorld } from "./world.ts";
+import { useMapKey, useWorld } from "./world.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { cameraMode } from "./camera.ts";
 import { BattleIsland } from "./battle/BattleWorld.tsx";
@@ -51,6 +51,11 @@ import { Killcam } from "./battle/Killcam.tsx";
 import { SpectatorCamera } from "./battle/Spectator.tsx";
 import { Vehicles } from "./battle/Vehicles.tsx";
 import { VoiceHeads } from "./voice/VoiceHeads.tsx";
+import { viewReach } from "./DayCycle.tsx";
+import { Ships } from "./naval/Ships.tsx";
+import { NavalUnits } from "./naval/NavalUnits.tsx";
+import { NavalFx } from "./naval/NavalFx.tsx";
+import { NavalControl } from "./naval/NavalControl.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -220,10 +225,14 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
   // - Canvas đục: trình duyệt khỏi phải trộn trong suốt với trang web mỗi khung.
   // - Xin card rời trên laptop hai card (Windows, Mac đời Intel).
   const [glOptions] = useState(() => ({ antialias: PROFILES[getGraphics().quality].post === "none", alpha: false, stencil: false, powerPreference: "high-performance" as const }));
+  const mapKey = useMapKey(room);
   const world = useWorld(room);
   // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
   const battle = useRoomSnapshot(room, (s) => s.mode) === "battle";
   cameraMode.battle = battle;
+  // Hải chiến 3 vs 3: hai chiến hạm, biển rộng, nhìn xa hơn nhiều (đánh nhau ở tầm gần một cây số).
+  const naval = useRoomSnapshot(room, (s) => s.mode === "battle" && s.battleMode === "naval");
+  viewReach.scale = naval ? 4.5 : 1;
   renderHints.idle = useRoomSnapshot(room, (s) => s.paused);
   useEffect(() => () => void (renderHints.idle = false), []);
 
@@ -256,11 +265,12 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           <SkyDome />
           {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
           {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
-          <Physics key={`${world.seed}:${world.half ?? 0}`} timeStep="vary">
+          <Physics key={`${world.seed}:${mapKey}`} timeStep="vary">
             {battle ? <BattleIsland room={room} world={world} /> : <Island room={room} world={world} />}
             <LocalPlayer room={room} world={world} />
             {battle && <Shooter room={room} />}
             {battle && <Vehicles room={room} />}
+            {naval && <Ships room={room} />}
           </Physics>
           <PlayerLight />
           {!battle && <FirstPersonHands room={room} />}
@@ -271,6 +281,9 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           <Weather room={room} world={world} />
           {!battle && <Trails room={room} world={world} />}
           {battle && <BattleEffects room={room} world={world} />}
+          {naval && <NavalUnits room={room} />}
+          {naval && <NavalFx room={room} />}
+          {naval && <NavalControl room={room} />}
           {battle && <ViewModel room={room} />}
           {battle && <Killcam room={room} />}
           {battle && <SpectatorCamera room={room} />}

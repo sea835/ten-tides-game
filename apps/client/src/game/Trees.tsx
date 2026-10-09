@@ -290,6 +290,17 @@ function PalmForest({ trees, world }: { trees: Tree[]; world: World }) {
   );
 }
 
+const FROST = new Color("#e4eaf0");
+const DEAD = new Color("#5b4a35");
+const DUSTY = new Color("#8a8a55");
+/** Màu tán cây theo cảnh quan chiến trường: tuyết phủ trắng tán, rừng cháy (bùn) trơ màu nâu úa, sa mạc xám bụi. */
+function crownTint(world: World, c: Color, i: number): Color {
+  if (world.biome === "snow") return c.lerp(FROST, 0.55 + grain(i, 31) * 0.25);
+  if (world.biome === "mud") return c.lerp(DEAD, 0.45 + grain(i, 32) * 0.4);
+  if (world.biome === "desert") return c.lerp(DUSTY, 0.4);
+  return c;
+}
+
 function BroadleafForest({ trees, world, indices }: { trees: Tree[]; world: World; indices: number[] }) {
   const trunks = useRef<InstancedMesh>(null);
   const canopies = useRef<InstancedMesh>(null);
@@ -315,7 +326,7 @@ function BroadleafForest({ trees, world, indices }: { trees: Tree[]; world: Worl
       dummy.updateMatrix();
       canopies.current!.setMatrixAt(i, dummy.matrix);
       cores.current!.setMatrixAt(i, dummy.matrix);
-      canopies.current!.setColorAt(i, color.setHSL(0.24 + p.hue * 0.07, 0.42 + p.sat * 0.12, 0.3 + p.light * 0.1));
+      canopies.current!.setColorAt(i, crownTint(world, color.setHSL(0.24 + p.hue * 0.07, 0.42 + p.sat * 0.12, 0.3 + p.light * 0.1), indices[i]!));
       cores.current!.setColorAt(i, color.multiplyScalar(0.45));
     });
     for (const m of [trunks, canopies, cores]) {

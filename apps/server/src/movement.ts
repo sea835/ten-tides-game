@@ -25,13 +25,15 @@ export function isPlausibleMove(
   ground: (x: number, z: number) => number = islandHeightAt,
   half: number = MAP_HALF_SIZE,
   boost = 1,
+  /** Tốc độ (m/s) của tàu, xe đang chở người này đi (hải chiến: đứng trên boong tàu đang chạy). */
+  carry = 0,
 ): boolean {
   if (Math.abs(to.x) > half || Math.abs(to.z) > half) return false;
   if (to.y < ground(to.x, to.z) - 2) return false;
 
   const seconds = Math.max(elapsedMs, MIN_WINDOW_MS) / 1000;
   const horizontal = Math.hypot(to.x - from.x, to.z - from.z);
-  return horizontal <= MAX_RUN_SPEED * MAX_SPEED_BOOST * SPEED_TOLERANCE * Math.max(1, boost) * seconds;
+  return horizontal <= (MAX_RUN_SPEED * MAX_SPEED_BOOST * SPEED_TOLERANCE * Math.max(1, boost) + carry * 1.5) * seconds + (carry > 0 ? 1.5 : 0);
 }
 
 /**

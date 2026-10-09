@@ -169,6 +169,9 @@ export interface StructureHit {
   depth: number;
 }
 
+/** Kiểu cảnh quan của bản đồ (xem World.biome). */
+export type Biome = "temperate" | "desert" | "snow" | "mud" | "jungle";
+
 export interface World {
   seed: number;
   /** Bản đồ cốt truyện (mặc định) hay bản đồ Battleground (xem battle.ts). */
@@ -177,6 +180,11 @@ export interface World {
   extent?: number;
   /** Nửa cạnh cả bản đồ (địa hình, mặt biển); mặc định MAP_HALF_SIZE. Chiến trường 50 vs 50 rộng hơn. */
   half?: number;
+  /**
+   * Kiểu cảnh quan (chiến trường): đổi màu đất, độ dày cây cỏ. Mặc định "temperate" (đồng cỏ, rừng nhiệt đới như đảo).
+   * desert: cát vàng, cỏ cháy lơ thơ · snow: tuyết phủ, cỏ khô · mud: bùn đất cày nát bởi đạn pháo · jungle: rừng rậm.
+   */
+  biome?: Biome;
   islets: readonly Islet[];
   reefs: readonly Reef[];
   structures: readonly Structure[];

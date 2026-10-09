@@ -1,7 +1,8 @@
 import type { ZoneId } from "@tentides/rules";
 import type { GrassPatch } from "./island.ts";
 import { makeRand, subSeed, type Surface, type Tree, type World } from "./worldgen.ts";
-import { Builder, battleMap as battleMapFor, registerMap, buildArmory, buildFortress, buildIndex, container, outside, toWorld, tower, type BattleMap, type BattleSite, type FlagSpot } from "./battle.ts";
+import { Builder, registerMap, buildArmory, buildFortress, buildIndex, container, outside, toWorld, tower, type BattleMap, type BattleSite, type FlagSpot, type WarInfo } from "./battle.ts";
+import { SUPPLY_HQ, ammoCrates, buildHq, heavyLoot, helipadOf, markDeck, stronghold, woodTower } from "./warKit.ts";
 
 // Bản đồ chiến trường 50 vs 50 (phe Xanh đấu phe Đỏ, chiếm cứ điểm): một vùng đất liền rộng gần gấp ba đảo sinh
 // tồn, đồi thoải cho xe tăng chạy, rừng từng cụm; hai căn cứ ở hai đầu tây, đông (chỗ hồi sinh, xe tăng), bảy cứ
@@ -223,6 +224,7 @@ export const WAR_BASES = {
 const SITE_D = WAR_SITES.find((s) => s.id === "d")!;
 const SITE_E = WAR_SITES.find((s) => s.id === "e")!;
 const SITE_G = WAR_SITES.find((s) => s.id === "g")!;
+const SITE_B = WAR_SITES.find((s) => s.id === "b")!;
 /** Mặt cầu ngang mặt sân đồn biên phòng (hai đầu cầu san phẳng bằng mặt cầu). */
 const BRIDGE_TOP = SITE_E.h;
 /** Cảng nhỏ của nhà máy xi măng (toạ độ riêng của khu G): vũng nước sâu sát kè cho thuyền cập, cầu tàu chìa ra. */
@@ -266,81 +268,6 @@ function onBridgeRoad(x: number, z: number, grow = 0): boolean {
 }
 
 // ---------------------------------------------------------------------------- công trình
-
-/** Đánh dấu khối vừa thêm là mặt cầu (xe tăng chạy trên được). */
-function markDeck(b: Builder) {
-  b.boxes[b.boxes.length - 1]!.deck = true;
-}
-
-/** Chỗ rơi vũ khí hạng nặng (súng máy, RPG, súng bắn tỉa hiếm). */
-function heavyLoot(b: Builder, u: number, y: number, v: number) {
-  b.lootAt(u, y, v, 3);
-  b.loot[b.loot.length - 1]!.kind = "heavy";
-}
-
-/** Chồng hòm đạn dã chiến (thùng gỗ sơn xanh quân đội). */
-function ammoCrates(b: Builder, u: number, v: number, rot: number) {
-  const add = b.local(u, v, rot);
-  add(-0.85, 0.4, 0, 1.6, 0.8, 1.0, "wood", { tint: "#4f5a32" });
-  add(0.85, 0.4, 0, 1.6, 0.8, 1.0, "wood", { tint: "#55603a" });
-  add(0, 1.2, 0, 1.6, 0.8, 1.0, "wood", { tint: "#4a5530" });
-}
-
-/** Công sự quanh cột cờ: vòng bao cát có lối vào, hai lô cốt bê tông có lỗ châu mai (tuỳ), tháp canh gỗ (tuỳ), cột cờ. */
-function stronghold(b: Builder, u0: number, v0: number, r: number, o: { tower?: boolean; bunkers?: boolean } = {}) {
-  const add = b.local(u0, v0, 0);
-  // Cột cờ (mảnh, không chặn đạn) và bệ.
-  add(0, 0.25, 0, 1.6, 0.5, 1.6, "concrete", { tint: "#a8a596" });
-  add(0, 4.5, 0, 0.12, 8, 0.12, "metal", { tint: "#d8d8d0", solid: false });
-  // Vòng bao cát bán kính ~r/2, chừa bốn lối.
-  const ring = r * 0.55;
-  const segs = 16;
-  for (let k = 0; k < segs; k++) {
-    if (k % 4 === 0) continue;
-    const a = (k / segs) * Math.PI * 2;
-    const len = ((2 * Math.PI * ring) / segs) * 0.95;
-    const au = Math.cos(a) * ring;
-    const av = Math.sin(a) * ring;
-    const piece = b.local(u0 + au, v0 + av, -a + Math.PI / 2);
-    piece(0, 0.45, 0, len, 0.9, 0.9, "sandbag");
-    piece(0, 1.15, 0, len * 0.9, 0.5, 0.8, "sandbag");
-  }
-  // Hai lô cốt đối diện nhau ở mép vùng chiếm.
-  for (const side of o.bunkers === false ? [] : [-1, 1]) {
-    const bk = b.local(u0 + side * r * 0.85, v0 + side * r * 0.25, side > 0 ? Math.PI / 2 : -Math.PI / 2);
-    const W = 6;
-    const D = 4.5;
-    const H = 2.6;
-    bk(0, H / 2, D / 2, W, H, 0.5, "concrete", { tint: "#9c998a" });
-    bk(-W / 2, H / 2, 0, 0.5, H, D, "concrete", { tint: "#9c998a" });
-    bk(W / 2, H / 2, 0, 0.5, H, D, "concrete", { tint: "#9c998a" });
-    // Mặt trước có khe bắn ngang tầm ngực.
-    bk(0, 0.55, -D / 2, W, 1.1, 0.5, "concrete", { tint: "#9c998a" });
-    bk(0, H - 0.35, -D / 2, W, 0.7, 0.5, "concrete", { tint: "#9c998a" });
-    bk(0, H + 0.25, 0, W + 0.6, 0.5, D + 0.6, "concrete", { tint: "#8b887a" });
-    b.lootLocal(u0 + side * r * 0.85, v0 + side * r * 0.25, 0, 0, 0.05, 0, 2);
-  }
-  if (o.tower !== false) woodTower(b, u0 - r * 0.2, v0 + r * 0.9, 5.3);
-}
-
-/** Tháp canh gỗ bốn chân cao `H` mét, sàn có lan can, dốc gỗ lên (về phía −u). */
-function woodTower(b: Builder, tu: number, tv: number, H: number, tier?: 1 | 2 | 3) {
-  const tw = b.local(tu, tv, 0);
-  for (const lu of [-1.6, 1.6]) for (const lv of [-1.6, 1.6]) tw(lu, H / 2 - 0.05, lv, 0.3, H - 0.1, 0.3, "wood", { tint: "#6a5238" });
-  tw(0, H, 0, 4, 0.25, 4, "wood", { tint: "#7a6040" });
-  for (const [du, dv, w, d] of [
-    [0, -1.9, 4, 0.15],
-    [0, 1.9, 4, 0.15],
-    [1.9, 0, 0.15, 4],
-    [-1.9, 0, 0.15, 4],
-  ] as const)
-    tw(du, H + 0.6, dv, w, 0.9, d, "wood", { tint: "#7a6040" });
-  const run = H * 1.5;
-  const slope = Math.atan2(H, run);
-  const ramp = b.local(tu - 2 - run / 2, tv, Math.PI / 2);
-  ramp(0, H / 2, 0, 1.2, 0.2, Math.hypot(H, run), "wood", { tint: "#7a6040", pitch: slope });
-  if (tier) b.lootAt(tu, H + 0.15, tv, tier);
-}
 
 /** Làng lớn: sáu nhà một, hai tầng quanh bãi đất giữa làng, hàng rào gỗ, đống củi. */
 function buildHamlet(b: Builder) {
@@ -600,33 +527,8 @@ function buildBridge(b: Builder) {
   for (const u of [-8, 8]) b.add(u, (bottom + pierTop) / 2, 0, 2.4, pierTop - bottom, Wd - 1, "concrete", { tint: "#8f8c83", part: "base" });
 }
 
-/** Căn cứ: kho vũ khí có hàng rào, bãi đậu xe tăng bê tông, lều trại, hòm đạn tiếp tế. */
-function buildHq(b: Builder) {
-  buildArmory(b);
-  // Bãi đậu xe tăng trước căn cứ (phía trận địa).
-  b.add(b.site.rx + 12, 0.03, 0, 18, 0.06, 30, "road", { solid: false, tint: "#6d6d68" });
-  for (const v of [-9, 0, 9]) b.add(b.site.rx + 12, 0.035, v + 4.5, 17, 0.02, 0.2, "road", { solid: false, tint: "#e8e0c0" });
-  ammoCrates(b, SUPPLY_HQ[0], SUPPLY_HQ[1], Math.PI / 2);
-  // Sân đỗ trực thăng góc sân sau: bệ bê tông tròn (vẽ bằng tấm mỏng không chắn), vòng sơn vàng, chữ H.
-  const [hu, hv] = HELIPAD_HQ;
-  b.add(hu, 0.04, hv, 13, 0.08, 13, "road", { solid: false, tint: "#7b7b74" });
-  for (let k = 0; k < 12; k++) {
-    const a = (k / 12) * Math.PI * 2;
-    b.add(hu + Math.cos(a) * 5.4, 0.085, hv + Math.sin(a) * 5.4, 0.35, 0.02, 2.6, "road", { solid: false, tint: "#e2c23a", rot: -a });
-  }
-  b.add(hu - 1.3, 0.09, hv, 0.5, 0.02, 4, "road", { solid: false, tint: "#f2f0e6" });
-  b.add(hu + 1.3, 0.09, hv, 0.5, 0.02, 4, "road", { solid: false, tint: "#f2f0e6" });
-  b.add(hu, 0.09, hv, 2.1, 0.02, 0.5, "road", { solid: false, tint: "#f2f0e6" });
-}
-/** Hòm đạn tiếp tế trước cổng căn cứ (toạ độ riêng của khu). */
-const SUPPLY_HQ = [31.5, -8] as const;
-/** Sân đỗ trực thăng trong căn cứ (toạ độ riêng của khu; góc sân sau, xa bãi xe tăng). */
-const HELIPAD_HQ = [14, -18] as const;
 /** Sân đỗ trực thăng của hai phe (toạ độ thế giới, độ cao mặt sân). */
-export const WAR_HELIPADS = {
-  blue: { ...toWorld(WAR_SITES[0]!, HELIPAD_HQ[0], HELIPAD_HQ[1]), y: WAR_SITES[0]!.h, rotY: WAR_SITES[0]!.rot + Math.PI / 2 },
-  red: { ...toWorld(WAR_SITES[1]!, HELIPAD_HQ[0], HELIPAD_HQ[1]), y: WAR_SITES[1]!.h, rotY: WAR_SITES[1]!.rot + Math.PI / 2 },
-} as const;
+export const WAR_HELIPADS = { blue: helipadOf(WAR_SITES[0]!), red: helipadOf(WAR_SITES[1]!) } as const;
 
 // ---------------------------------------------------------------------------- cây cỏ
 
@@ -689,6 +591,20 @@ function warGrass(rand: () => number, world: World): GrassPatch[] {
 
 const cache = new Map<number, BattleMap>();
 
+/** Phần riêng của bản đồ Tiền Tuyến Sông Xanh: căn cứ, sân đỗ, chỗ thả thuyền (Nhà máy G, Pháo đài B), đường qua sông. */
+const FRONTIER_INFO: WarInfo = {
+  id: "frontier",
+  bases: { blue: { ...WAR_BASES.blue }, red: { ...WAR_BASES.red } },
+  helipads: WAR_HELIPADS,
+  harbors: [
+    { x: SITE_G.x, z: SITE_G.z },
+    { x: SITE_B.x, z: SITE_B.z },
+  ],
+  emplacements: [],
+  route: (x, z, tx, tz) => warRoute(x, z, tx, tz),
+};
+
+/** Bản đồ chiến trường gốc: Tiền Tuyến Sông Xanh. */
 export function warMap(seed: number): BattleMap {
   const hit = cache.get(seed);
   if (hit) return hit;
@@ -775,15 +691,10 @@ export function warMap(seed: number): BattleMap {
   world.palms = world.trees.filter((t) => t.kind === "palm").map((t) => ({ x: t.x, z: t.z, height: t.height, lean: t.lean }));
   world.tallGrass = warGrass(rand, world);
 
-  const map: BattleMap = { layout: "war", half: WAR_HALF, flags, world, sites: WAR_SITES, boxes, loot, mines: [], supplies, index: buildIndex(boxes) };
+  const map: BattleMap = { layout: "war", war: FRONTIER_INFO, half: WAR_HALF, flags, world, sites: WAR_SITES, boxes, loot, mines: [], supplies, index: buildIndex(boxes) };
   cache.set(seed, map);
   registerMap(map);
   return map;
-}
-
-/** Bản đồ theo chế độ trận: chiến trường 50 vs 50 hay đảo sinh tồn / đồng đội. */
-export function mapForMode(mode: string, seed: number): BattleMap {
-  return mode === "war" ? warMap(seed || 1) : battleMapFor(seed || 1);
 }
 
 // ---------------------------------------------------------------------------- tìm đường qua sông, tiểu đội

@@ -4,7 +4,7 @@
 // ngẩng, góc ngẩng theo tầm, điểm rơi dự đoán theo địa hình), chọn chỗ đặt trên chiến trường và đảo sinh tồn.
 
 import { WEAPON, BULLET_GRAVITY, type WeaponDef } from "./battleItems.ts";
-import { boxesNear, type BattleMap } from "./battle.ts";
+import { baseAhead, boxesNear, type BattleMap } from "./battle.ts";
 
 type V3 = readonly [number, number, number];
 
@@ -248,10 +248,10 @@ function nearestFit(map: BattleMap, kind: EmplacementKind, x: number, z: number,
 const facing = (ax: number, az: number, bx: number, bz: number) => Math.atan2(bx - ax, bz - az);
 
 /**
- * Chỗ đặt vũ khí cố định trên bản đồ. Chiến trường: mỗi cứ điểm một ổ đại liên ở rìa vùng chiếm, chĩa về phía thị
- * trấn trung tâm (đường tiến quân chính); thị trấn trung tâm hai ổ chĩa ra hai phía tây, đông; mỗi căn cứ một ổ chĩa ra
- * mặt trận; cối 82 ly ở cứ điểm B, C (bắn được vào thị trấn trung tâm) và ở mỗi căn cứ. Đảo sinh tồn: vài ổ đại liên
- * ở rìa các khu (chĩa ra ngoài) và một khẩu cối ở pháo đài (nếu có).
+ * Chỗ đặt vũ khí cố định trên bản đồ. Chiến trường: mỗi cứ điểm một ổ đại liên ở rìa vùng chiếm (chĩa về giữa bản
+ * đồ) và một khẩu cối 82 ly phía sau cột cờ; cứ điểm giữa bản đồ hai ổ, hai cối; mỗi căn cứ một ổ chĩa ra mặt trận và
+ * hai khẩu cối; cộng các ổ, trận địa cối riêng của từng bản đồ (chiến hào, pháo đài). Đảo sinh tồn: vài ổ đại liên ở
+ * rìa các khu (chĩa ra ngoài) và một khẩu cối ở pháo đài (nếu có).
  */
 export function emplacementSpots(map: BattleMap): EmplacementSpot[] {
   const out: EmplacementSpot[] = [];
@@ -263,20 +263,29 @@ export function emplacementSpots(map: BattleMap): EmplacementSpot[] {
     const flags = map.flags ?? [];
     for (const f of flags) {
       if (Math.hypot(f.x, f.z) < 30) {
-        // Thị trấn trung tâm: hai ổ chĩa ra hai phía.
+        // Cứ điểm giữa bản đồ: hai ổ chĩa ra hai phía, hai khẩu cối hai bên cột cờ.
         for (const s of [-1, 1]) put("hmg_nest", f.x + s * (f.r + 4), f.z, s > 0 ? Math.PI / 2 : -Math.PI / 2);
+        for (const s of [-1, 1]) put("mortar", f.x, f.z + s * f.r * 0.6, s > 0 ? 0 : Math.PI);
         continue;
       }
       const a = facing(f.x, f.z, 0, 0);
       put("hmg_nest", f.x + Math.sin(a) * (f.r + 3), f.z + Math.cos(a) * (f.r + 3), a);
-      // Cối đặt phía sau cột cờ (xa mặt trận hơn), trong vùng chiếm.
-      if (f.id === "B" || f.id === "C") put("mortar", f.x - Math.sin(a) * f.r * 0.7, f.z - Math.cos(a) * f.r * 0.7, a);
+      // Mỗi cứ điểm một khẩu cối đặt phía sau cột cờ (xa mặt trận hơn), trong vùng chiếm.
+      put("mortar", f.x - Math.sin(a) * f.r * 0.7, f.z - Math.cos(a) * f.r * 0.7, a);
     }
-    for (const x of [-262, 262]) {
-      const a = x < 0 ? Math.PI / 2 : -Math.PI / 2;
-      put("hmg_nest", x + Math.sin(a) * 38, 10, a, 30);
-      put("mortar", x - Math.sin(a) * 4, -34, a, 30);
+    const bases = map.war?.bases;
+    for (const base of bases ? [bases.blue, bases.red] : []) {
+      const a = base.face;
+      const front = baseAhead(base, 38, 10);
+      put("hmg_nest", front.x, front.z, a, 30);
+      // Trận địa cối của căn cứ: hai khẩu hai bên sân sau.
+      for (const side of [-1, 1]) {
+        const at = baseAhead(base, -4, side * 34);
+        put("mortar", at.x, at.z, a, 30);
+      }
     }
+    // Ổ đại liên, trận địa cối riêng của bản đồ (chiến hào, pháo đài, đồi cao).
+    for (const e of map.war?.emplacements ?? []) put(e.kind, e.x, e.z, e.rotY, 20);
     return out;
   }
   const sites = map.sites.filter((s) => s.kind !== "minefield" && s.kind !== "port");

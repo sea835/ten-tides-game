@@ -28,7 +28,7 @@ import { audio } from "../sound/engine.ts";
 import { playExplosion, playGrenadeBounce, playGunshot, playBulletWhiz, playMineBeep, playSmoke, playBolt, playCannon, playSuppressed } from "../sound/guns.ts";
 import { closestApproach, flybyTiming, type Approach } from "../sound/acoustics.ts";
 import { setAcousticMap } from "../sound/environment.ts";
-import { mapForMode } from "@tentides/content";
+import { mapForState } from "@tentides/content";
 import { M203, WEAPON } from "@tentides/content";
 import { playLauncher } from "../sound/gadgets.ts";
 import { bodies, effects, getBattleHud, hitStopScale, setBattleHud, stance } from "./runtime.ts";
@@ -863,7 +863,7 @@ const approach: Approach = { t: 0, miss: 0, x: 0, y: 0, z: 0, len: 0 };
 function useShots(room: IslandRoom) {
   useEffect(() => {
     // Âm thanh dò môi trường (phố, đồi, rừng, trong nhà) trên bản đồ trận đang chơi.
-    setAcousticMap(() => mapForMode(room.state.battleMode, room.state.worldSeed));
+    setAcousticMap(() => mapForState(room.state));
     const off = room.onMessage(Messages.shot, (m: ShotMessage) => {
       const now = performance.now() / 1000;
       const [ox, oy, oz] = m.o;

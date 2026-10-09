@@ -12,14 +12,15 @@ import {
   ATTACHMENT_IDS,
   attachmentFits,
   SIGHTS,
+  NAVAL_ISLETS,
   SIGHT_IDS,
   THROWABLES,
   WEAPON,
   WEAPONS,
   isEmplacement,
-  mapForMode,
   bulletDrop,
   lootLabel,
+  shipClass,
   sightFits,
   type SightId,
   type AmmoId,
@@ -34,11 +35,13 @@ import { DEFAULT_GRAPHICS, QUALITY_LABEL, setGraphics, toggleStats, useGraphics,
 import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/guns.ts";
 import { DEFAULT_VOLUME, audio, type VolumeKey } from "../sound/engine.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
+import { mapOfKey, useMapKey } from "../world.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
 import { closeBuyMenu, getBattleHud, setBattleHud, stance, useBattleHud } from "./runtime.ts";
 import { ItemIcon } from "./ItemIcons.tsx";
 import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.tsx";
 import { teamColor } from "./Vehicles.tsx";
+import { NavalHud } from "../naval/NavalHud.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
 import { Suppression } from "./Suppression.tsx";
@@ -329,7 +332,7 @@ function Compass() {
 
 function useShore(seed: number, mode: string) {
   return useMemo(() => {
-    const map = mapForMode(mode, seed);
+    const map = mapOfKey(mode, seed);
     const world = map.world;
     const pts: string[] = [];
     for (let i = 0; i < 96; i++) {
@@ -354,24 +357,26 @@ function useShore(seed: number, mode: string) {
 export function BattleMinimap({ room, big, overlay, svgRef, handlers }: { room: IslandRoom; big?: boolean; overlay?: ReactNode; svgRef?: Ref<SVGSVGElement>; handlers?: SVGProps<SVGSVGElement> }) {
   useFrameTick(8);
   const seed = useRoomSnapshot(room, (s) => s.worldSeed);
-  const mode = useRoomSnapshot(room, (s) => (s.battleMode === "war" ? "war" : "solo"));
+  const mode = useMapKey(room);
   const shore = useShore(seed, mode);
-  const map = mapForMode(mode, seed);
+  const map = mapOfKey(mode, seed);
   const z = room.state.zone;
   const H = map.half ?? MAP_HALF_SIZE;
-  const war = mode === "war";
+  const war = mode.startsWith("war");
+  const naval = mode === "naval";
   const me = room.state.players.get(myId(room));
   const phase = room.state.phase;
   // Bản đồ nhỏ: cửa sổ ~380 m quanh mình (cả đảo co vào 240px thì mũi tên, đồng đội chỉ còn 2–3 điểm ảnh);
   // bản đồ lớn (M): cả đảo. `u`: số mét ứng với một điểm ảnh, để vẽ biểu tượng theo kích thước màn hình.
-  const span = big ? H * 2 : Math.min(H * 2, 380);
+  const span = big ? H * 2 : Math.min(H * 2, naval ? 1100 : 380);
   const cx = big ? 0 : localPosition.x;
   const cz = big ? 0 : localPosition.z;
   const u = span / (big ? Math.min(window.innerHeight, window.innerWidth) * 0.8 : 240);
   return (
     <svg ref={svgRef} {...handlers} className={big ? "b-map big" : "b-map"} viewBox={`${cx - span / 2} ${cz - span / 2} ${span} ${span}`}>
       <rect x={-H * 2} y={-H * 2} width={H * 4} height={H * 4} className="bm-sea" />
-      <polygon points={shore} className="bm-land" />
+      {naval ? NAVAL_ISLETS.map((it, i) => <circle key={i} cx={it.x} cy={it.z} r={it.r} className="bm-land" />) : <polygon points={shore} className="bm-land" />}
+      {naval && <ShipMarks room={room} u={u} />}
       {map.sites.map((s) => (
         <g key={s.id} transform={`translate(${s.x} ${s.z}) rotate(${(-s.rot * 180) / Math.PI})`}>
           <rect x={-s.rx} y={-s.rz} width={s.rx * 2} height={s.rz * 2} className={`bm-site ${s.kind}`} />
@@ -392,7 +397,7 @@ export function BattleMinimap({ room, big, overlay, svgRef, handlers }: { room: 
             </text>
           </g>
         ))}
-      {phase === "battle" && !war && (
+      {phase === "battle" && !war && !naval && (
         <>
           <circle cx={z.x} cy={z.z} r={z.r} className="bm-zone" />
           {z.nr > 0 && <circle cx={z.nx} cy={z.nz} r={z.nr} className="bm-next" />}
@@ -450,6 +455,30 @@ export function BattleMinimap({ room, big, overlay, svgRef, handlers }: { room: 
         </g>
       )}
     </svg>
+  );
+}
+
+/** Hải chiến: hai tàu trên bản đồ (tàu ngầm địch đang lặn ở xa thì không thấy), đơn vị đang bay / chạy của địch gần. */
+function ShipMarks({ room, u }: { room: IslandRoom; u: number }) {
+  const me = room.state.players.get(myId(room));
+  const own = me ? room.state.naval.ships.get(me.team) : undefined;
+  return (
+    <>
+      {[...room.state.naval.ships.values()].map((s) => {
+        if (s.team !== me?.team && own && s.cls === "submarine" && s.y < -4 && Math.hypot(s.x - own.x, s.z - own.z) > 260) return null;
+        const cls = shipClass(s.cls);
+        return (
+          <g key={s.team} transform={`translate(${s.x} ${s.z}) rotate(${(-s.rotY * 180) / Math.PI})`} opacity={s.sunk ? 0.35 : 1}>
+            <path d={`M${-cls.beam / 2},${-cls.length / 2} L${cls.beam / 2},${-cls.length / 2} L${cls.beam / 2},${cls.length * 0.25} L0,${cls.length / 2} L${-cls.beam / 2},${cls.length * 0.25} Z`} style={{ fill: teamColor(s.team), stroke: "#fff", strokeWidth: 2 * u }} />
+          </g>
+        );
+      })}
+      {[...room.state.naval.units.values()]
+        .filter((n) => n.team === me?.team || n.kind === "plane" || n.kind === "missile" || (own && Math.hypot(n.x - own.x, n.z - own.z) < 300))
+        .map((n, i) => (
+          <circle key={i} cx={n.x} cy={n.z} r={(n.kind === "plane" ? 5 : 3) * u} style={{ fill: n.kind === "decoy" ? "#fff2a0" : teamColor(n.team), stroke: "#000", strokeWidth: u }} />
+        ))}
+    </>
   );
 }
 
@@ -832,6 +861,7 @@ function DeathAndWin({ room, onLeave, summary }: { room: IslandRoom; onLeave: ()
       team: p?.team ?? "",
       squad: st.battleMode === "squad",
       war: st.battleMode === "war",
+      naval: st.battleMode === "naval",
       kills: p?.kills ?? 0,
       aliveCount: st.aliveCount,
       host: st.hostId,
@@ -860,18 +890,18 @@ function DeathAndWin({ room, onLeave, summary }: { room: IslandRoom; onLeave: ()
   });
 
   if (s.phase === "ended") {
-    const won = s.squad || s.war ? !!s.team && s.winner === s.team : s.winner === me;
+    const won = s.squad || s.war || s.naval ? !!s.team && s.winner === s.team : s.winner === me;
     return (
       <div className={`b-end ${won ? "win" : ""} ${summary ? "has-mvp" : ""}`}>
         {won ? (
           <>
             <Trophy size={48} />
             <h1>WINNER WINNER!</h1>
-            <p>{s.war ? `${SIDE_NAME[s.team]} thắng: phe địch hết vé quân` : s.squad ? "Đội bạn là đội cuối cùng còn trụ lại" : "Bạn là người cuối cùng còn sống"} · {s.kills} hạ gục</p>
+            <p>{s.naval ? `${SIDE_NAME[s.team]} thắng: tàu địch bị đánh chìm (hay hết giờ, tàu địch hư hại nặng hơn)` : s.war ? `${SIDE_NAME[s.team]} thắng: phe địch hết vé quân` : s.squad ? "Đội bạn là đội cuối cùng còn trụ lại" : "Bạn là người cuối cùng còn sống"} · {s.kills} hạ gục</p>
           </>
         ) : (
           <>
-            <h1>{s.winner ? `${s.war ? SIDE_NAME[s.winner] : s.squad ? teamName(room, s.winner) : nameOf(room, s.winner)} chiến thắng` : "Không ai sống sót"}</h1>
+            <h1>{s.winner ? `${s.war || s.naval ? SIDE_NAME[s.winner] : s.squad ? teamName(room, s.winner) : nameOf(room, s.winner)} chiến thắng` : "Không ai sống sót"}</h1>
             <p>
               Hạng #{rank || 1} · {s.kills} hạ gục
             </p>
@@ -891,7 +921,7 @@ function DeathAndWin({ room, onLeave, summary }: { room: IslandRoom; onLeave: ()
     );
   }
   // Killcam đang chiếu, hay đã chọn "Xem trận": thu bảng lại cho thoáng (dải xem trận ở dưới vẫn hiện).
-  if ((s.phase === "battle" || s.phase === "prep") && !s.alive && !s.war && !killcam && !sp.watch) {
+  if ((s.phase === "battle" || s.phase === "prep") && !s.alive && !s.war && !s.naval && !killcam && !sp.watch) {
     // Vào phòng lúc trận đang đánh: chưa từng chơi trận này, chỉ xem.
     if (!sp.everAlive && !s.killer)
       return (
@@ -1080,6 +1110,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
   const phase = useRoomSnapshot(room, (s) => s.phase);
   const summary = useMatchSummary(room);
   const war = useRoomSnapshot(room, (s) => s.battleMode === "war");
+  const naval = useRoomSnapshot(room, (s) => s.battleMode === "naval");
   useFlagToasts(room);
   const [bigMap, setBigMap] = useState(false);
   useEffect(() => {
@@ -1098,7 +1129,8 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       {fighting && <Flashed room={room} />}
       {fighting && <Suppression />}
       <Compass />
-      {fighting && (war ? <WarTop room={room} /> : <TopBar room={room} />)}
+      {fighting && (war ? <WarTop room={room} /> : naval ? null : <TopBar room={room} />)}
+      {naval && <NavalHud room={room} />}
       {fighting && war && <CaptureBar room={room} />}
       {fighting && war && <Deploy room={room} />}
       <div className="b-right">

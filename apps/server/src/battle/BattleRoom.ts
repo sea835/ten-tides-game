@@ -67,6 +67,13 @@ import {
   MAX_PLAYERS,
   Messages,
   MoveMessage,
+  NavalActMessage,
+  NavalAimMessage,
+  NavalFireMessage,
+  NavalHelmMessage,
+  NavalPickMessage,
+  NavalStationMessage,
+  NavalUnitMessage,
   PLAYER_COLORS,
   PickupMessage,
   PlayerState,
@@ -107,6 +114,7 @@ import { MatchStats } from "./mvp.ts";
 import { Vehicles } from "./vehicles.ts";
 import { DEFAULT_BOTS, applyBattleSettings, clampBots } from "./settings.ts";
 import { War, type Side } from "./war.ts";
+import { Naval, parseSeat } from "./naval.ts";
 import { VoiceRelay } from "./voice.ts";
 import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize, priceOf, receive, reloadStep, reloadTime, resetKit, setMag, weaponIn, type GunSlot } from "./kit.ts";
 
@@ -216,6 +224,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   bots!: Bots;
   vehicles!: Vehicles;
   war!: War;
+  /** Hải chiến 3 vs 3 (tạo sẵn: các phần khác gọi clear, onDeath dù đang ở chế độ nào). */
+  naval: Naval = new Naval(this);
   /** Liên lạc trong đội: đánh dấu chuột giữa, câu bộ đàm. */
   comms = new Comms(this);
   /** Thùng thính: bản đồ và bộ số ngẫu nhiên đổi theo trận nên đọc qua getter. */
@@ -272,8 +282,13 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (p.vehicle) return;
       const now = Date.now();
       const elapsed = now - (this.lastMoveAt.get(id) ?? now);
-      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half, p.gear.boost > 0 ? ADRENALINE.speed : 1)) {
-        client.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
+      // Hải chiến: đứng trên tàu đang chạy thì đi nhanh hơn được đúng bằng tốc độ tàu; báo chỗ trên boong theo toạ độ
+      // riêng của tàu thì đặt theo tàu của server.
+      const naval = this.state.battleMode === "naval";
+      if (naval) this.naval.deckMove(move);
+      const carry = naval ? this.naval.carrySpeed(p) : 0;
+      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half, p.gear.boost > 0 ? ADRENALINE.speed : 1, carry)) {
+        client.send(Messages.correct, naval ? this.naval.correctOf(p) : ({ x: p.x, y: p.y, z: p.z } satisfies CorrectMessage));
         return;
       }
       this.lastMoveAt.set(id, now);
@@ -303,13 +318,17 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.battleSettings, BattleSettingsMessage, (client, s) => {
       if (!this.hostOnly(client) || this.state.phase !== "lobby") return;
       // Kẹp số máy, vé quân, xe cơ giới, thời tiết (settings.ts).
+      const mapBefore = this.state.settings.warMap;
       const mode = applyBattleSettings(this.state, s);
+      // Đổi bản đồ chiến trường: dựng lại bản đồ (người chơi về chỗ xuất phát mới).
+      if (!mode && this.state.battleMode === "war" && mapBefore !== this.state.settings.warMap) this.setupMap(this.state.worldSeed);
       if (mode) {
         // Chiến trường dùng bản đồ riêng (rộng hơn, có cứ điểm): dựng lại bản đồ, chia phe cho người chơi.
         this.setupMap(this.state.worldSeed);
         for (const [id, p] of this.state.players) {
           if (p.bot) continue;
           if (mode === "war") this.war.assign(id);
+          else if (mode === "naval") this.naval.assign(id);
           else {
             p.team = "";
             p.color = this.pickColor();
@@ -513,6 +532,53 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.pickSide, PickSideMessage, (client, { side }) => {
       const id = this.playerOf(client);
       if (id && this.state.battleMode === "war" && this.state.phase === "lobby") this.war.pickSide(id, side);
+      if (id && this.state.battleMode === "naval" && this.state.phase === "lobby") {
+        const p = this.state.players.get(id);
+        const humans = [...this.state.players.values()].filter((q) => !q.bot && q.team === side).length;
+        if (p && p.team !== side && humans < 3) {
+          p.team = side;
+          p.color = side === "blue" ? "#2f6bff" : "#e0332b";
+          p.role = "";
+          this.naval.assign(id);
+        }
+      }
+    });
+
+    // Hải chiến: chọn tàu, vị trí; vào / rời vị trí điều khiển; lái, ngắm, bắn; đơn vị mình lái; dập lửa, leo lên tàu.
+    this.onMessage(Messages.navalPick, NavalPickMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (!id || this.state.battleMode !== "naval" || this.state.phase !== "lobby") return;
+      const me = this.state.players.get(id);
+      // Chủ phòng chọn tàu cho phe toàn máy (phe kia không có người); còn lại chọn cho phe mình.
+      if (m.side && m.ship && m.side !== me?.team) {
+        if (this.state.hostId === id && ![...this.state.players.values()].some((q) => !q.bot && q.team === m.side)) this.naval.pickFor(m.side, m.ship);
+        return;
+      }
+      this.naval.pick(id, m);
+    });
+    this.onMessage(Messages.navalStation, NavalStationMessage, (client, { station }) => {
+      const id = this.playerOf(client);
+      if (id && this.state.battleMode === "naval" && this.fighting()) this.naval.station(id, station);
+    });
+    this.onMessage(Messages.navalHelm, NavalHelmMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id && this.state.battleMode === "naval") this.naval.helmInput(id, m);
+    });
+    this.onMessage(Messages.navalAim, NavalAimMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id && this.state.battleMode === "naval") this.naval.aim(id, m);
+    });
+    this.onMessage(Messages.navalFire, NavalFireMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id && this.state.battleMode === "naval") this.naval.fire(id, m);
+    });
+    this.onMessage(Messages.navalUnit, NavalUnitMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id && this.state.battleMode === "naval") this.naval.unitMove(id, m);
+    });
+    this.onMessage(Messages.navalAct, NavalActMessage, (client, m) => {
+      const id = this.playerOf(client);
+      if (id && this.state.battleMode === "naval" && this.state.phase === "battle") this.naval.act(id, m);
     });
 
     this.onMessage(Messages.respawn, RespawnMessage, (client, { at, role }) => {
@@ -620,6 +686,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       this.state.players.set(playerId, p);
       // Chiến trường: vào phe ít người hơn; vào giữa trận thì chọn chỗ hồi sinh được ngay.
       if (this.state.battleMode === "war") this.war.assign(playerId);
+      else if (this.state.battleMode === "naval") this.naval.assign(playerId);
     }
     this.sessions.set(client.sessionId, playerId);
     this.lastMoveAt.set(playerId, Date.now());
@@ -684,7 +751,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Bản riêng của phòng (mặt nạ khối vỡ, cây đổ riêng), không đụng bản đồ trong cache dùng chung.
     // Thêm chỗ trống cuối danh sách khối cho bao cát dựng giữa trận.
     this.gadgets.clear();
-    this.map = withDynamicSlots(withDestruction(mapForMode(this.state.battleMode, seed)), SANDBAG_SLOTS);
+    this.map = withDynamicSlots(withDestruction(mapForMode(this.state.battleMode, seed, this.state.settings.warMap)), SANDBAG_SLOTS);
     this.destruction.reset();
     this.rand = makeRand(seed ^ Date.now());
     for (const p of this.state.players.values()) this.placeAtSpawn(p);
@@ -725,15 +792,17 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.destruction.reset();
     const squad = s.battleMode === "squad";
     const war = s.battleMode === "war";
+    const naval = s.battleMode === "naval";
     const humans = [...s.players.entries()].filter(([, p]) => !p.bot).map(([id]) => id);
-    if (war) this.bots.clear();
+    this.naval.clear();
+    if (war || naval) this.bots.clear();
     else if (squad) this.bots.buildSquads(humans, Math.min(MAX_BATTLE_BOTS, Math.max(s.bots, humans.length * SQUAD_BOTS)), SQUAD_BOTS);
     else {
       this.bots.clear();
       this.bots.sync(s.bots);
     }
     for (const p of s.players.values()) {
-      if (!squad && !war) p.team = p.role = "";
+      if (!squad && !war && !naval) p.team = p.role = "";
       p.vehicle = "";
       p.alive = true;
       p.hp = MAX_HP;
@@ -748,26 +817,27 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       // Lớp lính: Đồng đội thì đội trưởng (người) mang đồ, khí tài của lớp đã chọn ở sảnh; sinh tồn solo thì không.
       const cls = p.gear.cls;
       if (squad && !p.bot && isSoldierClass(cls)) this.gadgets.loadout(p, cls);
-      else if (!war) this.gadgets.equip(p, "");
+      else if (!war && !naval) this.gadgets.equip(p, "");
       p.gear.cls = cls;
     }
     // Vũ khí cố định (ổ đại liên, cối) đặt trước xe cộ để xe tránh chỗ; luôn có, không theo công tắc xe cơ giới.
-    this.vehicles.emplacements.setup();
+    if (!naval) this.vehicles.emplacements.setup();
     if (war) this.war.start(clampBots("war", s.bots || WAR_MAX_PER_SIDE));
+    else if (naval) this.naval.start();
     else if (squad) this.placeTeams();
     else for (const p of s.players.values()) this.placeAtSpawn(p);
     for (const id of s.players.keys()) this.sendMines(id);
-    if (!war) this.bots.equipAll();
+    if (!war && !naval) this.bots.equipAll();
     // Xe tăng: chỉ chế độ Đồng đội (chiến trường tự đặt xe ở căn cứ; sinh tồn không có xe tăng).
     if (squad) this.placeTanks(true);
     // Xe trinh sát, thuyền tuần tra bỏ trống trên đảo (chiến trường tự đặt ở căn cứ, bờ biển).
-    if (!war) this.vehicles.fleet.setup();
-    this.bots.warm();
-    this.spawnLoot(this.map.loot);
+    if (!war && !naval) this.vehicles.fleet.setup();
+    if (!naval) this.bots.warm();
+    if (!naval) this.spawnLoot(this.map.loot);
     this.rollSky();
     // Vùng an toàn phủ cả đảo; vòng kế tiếp chọn khi vào trận. Chiến trường không có vùng bo: war.start đã đặt
     // vùng 2000 m phủ cả bản đồ (trước đây bị đặt lại 260 m ở đây, căn cứ hai phe nằm ngoài vùng).
-    if (!war) {
+    if (!war && !naval) {
       s.zone.x = s.zone.nx = 0;
       s.zone.z = s.zone.nz = 0;
       s.zone.r = s.zone.nr = 260;
@@ -780,7 +850,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     s.phaseDuration = Math.ceil(this.phaseLeft);
     s.timeLeft = Math.ceil(this.phaseLeft);
     s.winner = "";
-    this.entrants = squad || war ? new Set([...s.players.values()].map((p) => p.team)).size : s.players.size;
+    this.entrants = squad || war || naval ? new Set([...s.players.values()].map((p) => p.team)).size : s.players.size;
     this.rewards.begin(s.players);
     this.stats.begin(s.players.keys());
     this.summary = null;
@@ -899,7 +969,19 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   private beginBattle() {
     this.state.phase = "battle";
-    if (this.state.battleMode !== "war") this.nextZone();
+    if (this.state.battleMode !== "war" && this.state.battleMode !== "naval") this.nextZone();
+  }
+
+  /** Hải chiến: một tàu chìm (hay hết giờ, tàu còn ít máu hơn thua). */
+  endNaval(winner: Side) {
+    const s = this.state;
+    if (s.phase !== "battle") return;
+    s.winner = winner;
+    s.phase = "ended";
+    this.phaseLeft = sec(ENDED_SECONDS);
+    s.phaseDuration = Math.ceil(this.phaseLeft);
+    this.rewards.finish(s.players, winner, "naval");
+    this.sendSummary(winner, "naval");
   }
 
   /** Chiến trường: một phe hết vé, phe kia thắng. */
@@ -988,13 +1070,30 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       for (const [v, w] of table) if ((r -= w) <= 0) return v;
       return table[0]![0];
     };
-    s.weather = (BATTLE_WEATHERS as readonly string[]).includes(s.settings.weatherPick)
-      ? s.settings.weatherPick
-      : weighted([["sunny", 3], ["cloudy", 2], ["rain", 2], ["fog", 1.4], ["storm", 1.2], ["snow", 1.4]]);
+    s.weather = (BATTLE_WEATHERS as readonly string[]).includes(s.settings.weatherPick) ? s.settings.weatherPick : weighted(this.weatherTable());
     const time = (BATTLE_TIMES as readonly string[]).includes(s.settings.timePick) ? s.settings.timePick : weighted([["day", 5], ["dawn", 1.5], ["dusk", 1.5], ["night", 2]]);
     const base = time === "dawn" ? 0.1 : time === "dusk" ? 0.72 : time === "night" ? 0.88 : 0.25 + this.rand() * 0.3;
     s.clock = base + (time === "day" ? 0 : this.rand() * 0.04);
     this.weatherLeft = WEATHER_MIN + this.rand() * WEATHER_MIN;
+  }
+
+  /**
+   * Bảng bốc thăm thời tiết "ngẫu nhiên" theo cảnh quan bản đồ: sa mạc nắng gắt, thỉnh thoảng nhiều mây (không mưa
+   * tuyết); Stalingrad tuyết rơi, mây mù; Verdun mưa dầm, sương mù; rừng rậm Điện Biên mưa rừng, sương núi.
+   */
+  private weatherTable(): [string, number][] {
+    switch (this.map?.world.biome) {
+      case "desert":
+        return [["sunny", 6], ["cloudy", 1.5], ["fog", 0.5]];
+      case "snow":
+        return [["snow", 5], ["cloudy", 2], ["fog", 1.5], ["storm", 0.5]];
+      case "mud":
+        return [["rain", 3], ["fog", 2.5], ["cloudy", 2], ["storm", 1], ["sunny", 0.8]];
+      case "jungle":
+        return [["rain", 2.5], ["fog", 2], ["sunny", 2], ["cloudy", 1.5], ["storm", 1]];
+      default:
+        return [["sunny", 3], ["cloudy", 2], ["rain", 2], ["fog", 1.4], ["storm", 1.2], ["snow", 1.4]];
+    }
   }
 
   /** Giữa trận thời tiết có thể chuyển (trời quang kéo mây rồi mưa, bão tan...), trời trôi dần theo giờ. */
@@ -1013,8 +1112,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       fog: ["cloudy", "sunny", "rain"],
       snow: ["snow", "cloudy", "fog"],
     };
-    const list = next[s.weather] ?? ["sunny"];
-    s.weather = list[Math.floor(this.rand() * list.length)]!;
+    // Chỉ chuyển sang kiểu thời tiết hợp cảnh quan bản đồ (sa mạc không tuyết...).
+    const fits = new Set(this.weatherTable().map(([w]) => w));
+    const list = (next[s.weather] ?? ["sunny"]).filter((w) => fits.has(w));
+    if (list.length) s.weather = list[Math.floor(this.rand() * list.length)]!;
   }
 
   private tick(dt: number) {
@@ -1032,7 +1133,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
         else this.backToLobby();
       }
     }
-    if (s.phase === "battle" && s.battleMode !== "war") {
+    if (s.phase === "battle" && s.battleMode !== "war" && s.battleMode !== "naval") {
       this.tickZone(dt);
       if (second) this.zoneDamage();
     }
@@ -1040,6 +1141,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.airdrops.tick(dt);
     this.streaks.tick(dt);
     if (s.battleMode === "war") this.war.tick(dt);
+    if (s.battleMode === "naval") this.naval.tick(dt);
     this.tickTimers(dt);
     this.gadgets.tick(dt);
     this.tickThrown(dt);
@@ -1063,6 +1165,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.mines = [];
     this.thrown = [];
     this.bots.clear();
+    this.naval.clear();
     this.vehicles.clear();
     this.airdrops.clear();
     this.gadgets.clear();
@@ -1075,6 +1178,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       p.respawn = 0;
       // Chiến trường: giữ phe đã chọn cho trận sau.
       if (s.battleMode === "war") p.role = p.vehicle = "";
+      else if (s.battleMode === "naval") p.vehicle = "";
       else p.team = p.role = p.vehicle = "";
       void id;
       p.prone = p.crouching = false;
@@ -1353,7 +1457,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (!p || !p.alive) return null;
     // Ngồi trong xe tăng: đạn, mảnh nổ không tới (xe chịu thay); chỉ vùng độc vẫn làm mất máu.
     // Xạ thủ vũ khí cố định thì lộ người ra ngoài, trúng như đi bộ.
-    if (p.vehicle && part !== "zone" && !this.vehicles.emplacements.exposed(p)) return null;
+    if (p.vehicle && part !== "zone" && !this.vehicles.emplacements.exposed(p) && !parseSeat(p.vehicle)) return null;
     const kit = p.kit;
     // Giáp Juggernaut chịu đòn gấp ba (vùng độc thì không đỡ).
     let amount = part === "zone" ? raw : this.streaks.soak(p, raw);
@@ -1386,11 +1490,12 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   kill(id: string, killer: string, weapon: string, headshot: boolean) {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return;
+    if (this.state.battleMode === "naval") this.naval.onDeath(id);
     if (p.vehicle) this.vehicles.leave(id);
     // Mất giáp Juggernaut; Minigun không rơi lại.
     this.streaks.onDeath(id, p);
     // Chiến trường có hồi sinh: hạng tính theo phe thắng thua, không theo lúc gục.
-    if (this.fighting() && this.state.battleMode !== "war") this.rewards.onDeath(id, this.state.players);
+    if (this.fighting() && this.state.battleMode !== "war" && this.state.battleMode !== "naval") this.rewards.onDeath(id, this.state.players);
     p.alive = false;
     p.hp = 0;
     p.moving = false;
@@ -1399,8 +1504,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     p.lean = 0;
     this.timers.delete(id);
     // Đồ rơi quanh chỗ gục.
-    // Chiến trường: hàng trăm lần gục mỗi trận, không rải đồ (chỉ chút đạn), hồi sinh lại có đồ mới.
-    if (this.state.battleMode === "war") {
+    // Chiến trường: hàng trăm lần gục mỗi trận, không rải đồ (chỉ chút đạn), hồi sinh lại có đồ mới. Hải chiến: không rải.
+    if (this.state.battleMode === "naval") {
+      // Đồ chìm theo người xuống biển.
+    } else if (this.state.battleMode === "war") {
       const def = WEAPON.get(p.kit.primary1);
       if (def && this.rand() < 0.35) this.dropAround([`ammo:${def.ammo}`], p.x, p.y, p.z);
     } else {
@@ -1435,7 +1542,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const alive = [...s.players.entries()].filter(([, p]) => p.alive);
     s.aliveCount = alive.length;
     if (s.phase !== "battle" && s.phase !== "prep") return;
-    if (s.battleMode === "war") return;
+    if (s.battleMode === "war" || s.battleMode === "naval") return;
     // Đồng đội: còn một đội có người sống là hết trận (đội thắng ghi theo id đội).
     const squad = s.battleMode === "squad";
     const teams = new Set(alive.map(([id, p]) => p.team || id));
@@ -1708,7 +1815,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Sức nổ làm hư, thủng tường gần đó, gãy cây; nổ đủ nhiều thì sập nhà.
     this.destruction.blast(x, y, z, radius, maxDamage, owner);
     for (const [id, p] of this.state.players) {
-      if (!p.alive || (p.vehicle && !this.vehicles.emplacements.exposed(p))) continue;
+      if (!p.alive || (p.vehicle && !this.vehicles.emplacements.exposed(p) && !parseSeat(p.vehicle))) continue;
       const cx = p.x;
       const cy = p.y + (p.prone ? 0.25 : p.crouching ? 0.7 : 1.1);
       const cz = p.z;

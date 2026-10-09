@@ -1,4 +1,4 @@
-import { HELI, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WAR_BASES, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, warRoute, type SquadRole } from "@tentides/content";
+import { HELI, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -244,6 +244,14 @@ export class Bots {
     p.kit.outfit = (role && ROLES[role].outfit) || ["woodland", "desert", "urban", "digital", "ghillie"][k % 5]!;
     s.players.set(id, p);
     this.brains.delete(id);
+    return p;
+  }
+
+  /** Hải chiến: thêm máy `id` vào phe `team` ở vị trí số `station` trên tàu (naval.ts điều khiển, không dùng não bộ binh). */
+  addNavalBot(id: string, team: string, station: number): PlayerState {
+    const p = this.newBot(id, team, "");
+    p.role = String(station);
+    p.kit.outfit = ["urban", "digital", "woodland"][station % 3]!;
     return p;
   }
 
@@ -522,6 +530,8 @@ export class Bots {
     const room = this.room;
     const s = room.state;
     if (!room.fighting()) return;
+    // Hải chiến: máy do naval.ts điều khiển (đứng vị trí trên tàu).
+    if (s.battleMode === "naval") return;
     this.time += dt;
     this.planLeft = 8000;
     this.tacLeft = 4;
@@ -618,7 +628,7 @@ export class Bots {
   private threatYaw(side: string, x: number, z: number): number {
     const s = this.room.state;
     if (s.battleMode !== "war" || (side !== "blue" && side !== "red")) return NaN;
-    let best: { x: number; z: number } = side === "blue" ? WAR_BASES.red : WAR_BASES.blue;
+    let best: { x: number; z: number } = this.room.war.base(side === "blue" ? "red" : "blue");
     let bestD = Infinity;
     for (const f of s.flags.values()) {
       const d = Math.hypot(f.x - x, f.z - z);
@@ -689,7 +699,7 @@ export class Bots {
         const host = this.tactics;
         let spot: { x: number; z: number } | null = null;
         if (p.role === "sniper") {
-          const base = side === "red" ? WAR_BASES.red : WAR_BASES.blue;
+          const base = this.room.war.base(side === "red" ? "red" : "blue");
           spot = overwatch(host, area.x, area.z, Math.atan2(base.x - area.x, base.z - area.z));
           kind = spot ? "overwatch" : "open";
         }
@@ -758,8 +768,9 @@ export class Bots {
     const d = Math.hypot(dx, dz);
     if (d < 0.9) return null;
     // Chiến trường: cứ điểm bên kia sông thì đi qua cầu, khúc cạn gần nhất trước (đường tìm ngắn hơn hẳn).
-    if (this.room.map.layout === "war") {
-      const via = warRoute(p.x, p.z, gx, gz);
+    const route = this.room.map.war?.route;
+    if (route) {
+      const via = route(p.x, p.z, gx, gz);
       gx = via.x;
       gz = via.z;
     }

@@ -1,0 +1,387 @@
+/* Giao diện hải chiến: thẻ hai tàu trên cùng, bảng tình trạng tàu mình (trái), bảng vị trí (phải dưới). */
+
+.naval-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-size: 13px;
+}
+.nv-top {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.nv-clock {
+  order: 1;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  font:
+    700 18px/1.2 system-ui,
+    sans-serif;
+  color: #ffd27a;
+}
+.nv-card {
+  width: 210px;
+  padding: 6px 10px 7px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-top: 3px solid #888;
+}
+.nv-card.blue {
+  border-top-color: #3f74ff;
+}
+.nv-card.red {
+  border-top-color: #e0392f;
+}
+.nv-card.right {
+  order: 2;
+  text-align: right;
+}
+.nv-card.mine {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.nv-card.sunk {
+  opacity: 0.55;
+}
+.nv-card em {
+  font-style: normal;
+  color: #ffd27a;
+}
+.nv-card-tags {
+  display: flex;
+  gap: 8px;
+  min-height: 16px;
+  font-size: 12px;
+}
+.nv-card.right .nv-card-tags {
+  justify-content: flex-end;
+}
+.nv-card-tags .fire {
+  color: #ff9a5a;
+}
+.nv-bar {
+  position: relative;
+  height: 14px;
+  margin: 4px 0 3px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.nv-bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #4bd36b, #9be36a);
+}
+.nv-card.red .nv-bar i {
+  background: linear-gradient(90deg, #e0392f, #ff7a55);
+}
+.nv-card.blue .nv-bar i {
+  background: linear-gradient(90deg, #2f6bff, #6fa0ff);
+}
+.nv-bar span {
+  position: relative;
+  display: block;
+  text-align: center;
+  font:
+    600 11px/14px system-ui,
+    sans-serif;
+}
+.nv-bar.small {
+  display: inline-block;
+  width: 110px;
+  height: 8px;
+  margin: 0 6px;
+  vertical-align: middle;
+}
+.nv-bar.small i {
+  background: #6fd3ff;
+}
+
+.nv-own {
+  position: absolute;
+  left: 14px;
+  top: 250px;
+  width: 240px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.nv-own-head {
+  margin-bottom: 5px;
+  font-weight: 700;
+}
+.nv-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nv-part {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+}
+.nv-part-name {
+  width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nv-part-bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.nv-part-bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #8fd18f;
+}
+.nv-part.hurt .nv-part-bar i {
+  background: #f1c35a;
+}
+.nv-part-bar b {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: #6fd3ff;
+}
+.nv-part.dead {
+  color: #ff8a7a;
+}
+.nv-part.dead .nv-part-name {
+  text-decoration: line-through;
+}
+.nv-broken {
+  font-size: 10.5px;
+  color: #ff8a7a;
+}
+.nv-part.burning .nv-part-name {
+  color: #ffb070;
+}
+.nv-flame {
+  font-size: 11px;
+  animation: nv-flicker 0.5s infinite alternate;
+}
+@keyframes nv-flicker {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.nv-warn {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #ffb070;
+}
+
+.nv-station {
+  position: absolute;
+  right: 14px;
+  bottom: 110px;
+  width: 330px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nv-role {
+  font-weight: 700;
+  font-size: 15px;
+  color: #ffd27a;
+}
+.nv-role small {
+  display: block;
+  font-weight: 400;
+  font-size: 11.5px;
+  color: #ddd;
+}
+.nv-wl {
+  font-size: 12px;
+}
+.nv-wl.ok b {
+  color: #8fe38f;
+}
+.nv-wl.wait b {
+  color: #6fd3ff;
+}
+.nv-wl.warn b {
+  color: #f1c35a;
+}
+.nv-wl.dead {
+  color: #ff8a7a;
+}
+.nv-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+.nv-keys span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+}
+.nv-telegraph {
+  display: flex;
+  gap: 2px;
+}
+.nv-telegraph span {
+  flex: 1;
+  padding: 2px 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+  font-size: 10.5px;
+}
+.nv-telegraph span.on {
+  background: #ffd27a;
+  color: #222;
+  text-shadow: none;
+  font-weight: 700;
+}
+.nv-rudder {
+  position: relative;
+  height: 8px;
+  margin: 3px 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.nv-rudder i {
+  position: absolute;
+  top: -2px;
+  width: 6px;
+  height: 12px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: #ffd27a;
+}
+.nv-air {
+  font-size: 12px;
+}
+
+.nv-prompt {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  font-weight: 600;
+  font-size: 14px;
+}
+.nv-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  max-width: 460px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.nv-dead {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translateX(-50%);
+  padding: 14px 26px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+.nv-dead h2 {
+  margin: 0 0 4px;
+}
+
+.nv-overlay {
+  position: absolute;
+  inset: 0;
+}
+.nv-enemy {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(224, 57, 47, 0.75);
+  font:
+    700 11px/16px system-ui,
+    sans-serif;
+  white-space: nowrap;
+}
+.nv-enemy.edge {
+  background: rgba(224, 57, 47, 0.45);
+}
+.nv-cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+.nv-cross::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: #fff;
+}
+.nv-lead {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid #ff5a3c;
+  transform: rotate(45deg);
+}
+.nv-lead[data-kind="missile"] {
+  border-color: #ffd166;
+}
+
+@media (max-width: 1200px) {
+  .nv-top {
+    left: 40%;
+  }
+  .nv-card {
+    width: 175px;
+    font-size: 12px;
+  }
+}
+@media (max-width: 900px) {
+  .nv-card {
+    width: 150px;
+  }
+  .nv-own {
+    display: none;
+  }
+  .nv-station {
+    width: 260px;
+  }
+}

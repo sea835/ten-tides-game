@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ROLES, TANK, mapForMode, squadSlots, type SquadRole } from "@tentides/content";
+import { ROLES, TANK, mapForState, squadSlots, type SquadRole, type World } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, look } from "../input.ts";
@@ -38,8 +38,7 @@ export function teamName(room: IslandRoom, team: string): string {
 }
 
 /** Điểm trên mặt đất ở giữa màn hình (dò theo hướng nhìn), để ra lệnh "tới điểm". */
-function groundAhead(seed: number, mode: string): { x: number; z: number } | null {
-  const world = mapForMode(mode, seed).world;
+function groundAhead(world: World): { x: number; z: number } | null {
   const cp = Math.cos(look.pitch);
   // Góc thứ ba: camera sau lưng nhìn xuống nhân vật; tia từ ngang đầu theo hướng nhìn.
   const dx = -Math.sin(look.yaw) * cp;
@@ -118,7 +117,7 @@ export function SquadHud({ room }: { room: IslandRoom }) {
             setBattleHud({ toast: { at: performance.now(), text: "Đội: lên xe tăng" } });
             return;
           }
-          const at = groundAhead(room.state.worldSeed, room.state.battleMode);
+          const at = groundAhead(mapForState(room.state).world);
           if (!at) return;
           room.send(Messages.squadOrder, { kind: "move", x: at.x, z: at.z });
           Object.assign(lastOrder, { kind: "move", x: at.x, z: at.z, at: performance.now() });

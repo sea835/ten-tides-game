@@ -37,6 +37,8 @@ import { playLand } from "./sound/guns.ts";
 import { aimZoom, getSettings } from "./settings.ts";
 import { scratchRay, scratchRayFrom } from "./scratch.ts";
 import { tide } from "./tide.ts";
+import { carryAt, deckOfState, shipPose } from "./naval/navalRuntime.ts";
+import { shipToWorld, worldToShip } from "@tentides/content";
 
 const WALK_SPEED = 8;
 const GRAVITY = 25;
@@ -216,6 +218,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     sendTimer: 0,
     lastSent: "",
     started: false,
+    /** Hải chiến: đã đặt lên boong tàu đang vẽ lúc vào trận. */
+    deckPlaced: false,
+    /** Chỗ trên boong server đặt mà tàu chưa hiện trên máy mình (đặt khi tàu hiện). */
+    pendingDeck: null as CorrectMessage["deck"] | null,
     energy: 100,
     exhausted: false,
     sitting: false,
@@ -301,7 +307,12 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
   useEffect(
     () =>
       room.onMessage(Messages.correct, (at: CorrectMessage) => {
-        body.current?.setTranslation({ x: at.x, y: at.y + FEET_OFFSET, z: at.z }, true);
+        // Chỗ trên boong tàu: đặt theo tàu đang vẽ trên máy mình (server tính theo tàu của server); tàu chưa kịp
+        // hiện (vừa vào trận) thì chờ tàu hiện rồi mới đặt.
+        const pose = at.deck ? shipPose(at.deck.ship) : undefined;
+        sim.current.pendingDeck = at.deck && !pose ? at.deck : null;
+        const [x, y, z] = at.deck && pose ? shipToWorld(pose, at.deck.x, at.deck.y, at.deck.z) : [at.x, at.y, at.z];
+        body.current?.setTranslation({ x, y: y + FEET_OFFSET, z }, true);
         sim.current.vy = 0;
       }),
     [room],
@@ -336,6 +347,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       // Battleground: F là nhặt đồ gần nhất (đứng cạnh xe tăng thì lên xe, đang lái thì xuống xe); Q/E để nghiêng người.
       if (room.state.mode === "battle") {
         if (e.code !== "KeyF") return;
+        // Hải chiến: F là vào / rời vị trí trên tàu, dập lửa, leo lên tàu (NavalControl lo).
+        if (room.state.battleMode === "naval") return;
         const near = getBattleHud().nearItem;
         if (seat.id || getBattleHud().nearTank) room.send(Messages.vehicleEnter);
         else if (near) room.send(Messages.pickup, { id: near.key });
@@ -463,6 +476,27 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       s.started = true;
       look.yaw = me.rotY + Math.PI;
     }
+    // Hải chiến: chỗ trên boong server vừa đặt mà tàu chưa hiện: đứng yên chờ tàu hiện rồi đặt lên đúng chỗ.
+    if (s.pendingDeck) {
+      const pose = shipPose(s.pendingDeck.ship);
+      if (!pose) return;
+      const [x, y, z] = shipToWorld(pose, s.pendingDeck.x, s.pendingDeck.y + 0.05, s.pendingDeck.z);
+      rb.setTranslation({ x, y: y + FEET_OFFSET, z }, true);
+      s.pendingDeck = null;
+      s.vy = 0;
+    }
+    // Hải chiến: vừa vào trận (cảnh dựng lại) mà đang đứng trên boong thì đặt lên đúng chỗ đó của tàu đang vẽ.
+    if (!s.deckPlaced && room.state.battleMode === "naval") {
+      const p = room.state.players.get(myId(room));
+      const d = p?.alive ? deckOfState(room, p) : null;
+      const pose = d ? shipPose(d.ship) : undefined;
+      if (!d || pose) s.deckPlaced = true;
+      if (d && pose) {
+        const [x, y, z] = shipToWorld(pose, d.local[0], d.local[1] + 0.05, d.local[2]);
+        rb.setTranslation({ x, y: y + FEET_OFFSET, z }, true);
+        s.vy = 0;
+      }
+    }
     // Tạm dừng thì đứng yên; đang trong sự kiện thì đứng yên tại chỗ, người khác vẫn đi tiếp.
     const sheet = room.state.players.get(myId(room));
     const stunned = (sheet?.stun ?? 0) > 0;
@@ -523,7 +557,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
 
     const pos = rb.translation();
     const feetNow = pos.y - FEET_OFFSET;
-    const waterDepth = tide.level - world.heightAt(pos.x, pos.z);
+    // Hải chiến: đứng trên boong tàu đang chạy thì đi theo tàu (dời, quay cùng tàu trong khung này).
+    const carry = room.state.battleMode === "naval" && battle ? carryAt(pos.x, feetNow, pos.z) : null;
+    const waterDepth = carry ? 0 : tide.level - world.heightAt(pos.x, pos.z);
     // Vào nước sâu thì bơi; về chỗ nông chạm được đáy thì lội. Hai ngưỡng khác nhau để khỏi chập chờn ở mép.
     const wasSwimming = s.swimming;
     if (!s.swimming && waterDepth > SWIM_ENTER_DEPTH && feetNow < tide.level - 0.5) s.swimming = true;
@@ -824,6 +860,17 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       mz += knock.vz * dt;
       controller.computeColliderMovement(col, vaultNext ? { x: 0, y: 0, z: 0 } : { x: mx, y: s.vy * dt, z: mz });
       const delta = controller.computedMovement();
+      if (carry) {
+        // Trên boong tàu đang chạy: khối va chạm của tàu vừa dời đi trong bước vật lý trước nên bộ điều khiển có thể
+        // tưởng bị kẹt mà đẩy ngược lại. Không cho đi xa hơn bước chân muốn đi (tường vẫn chặn được: bước ngắn lại).
+        const want = Math.hypot(mx, mz);
+        const got = Math.hypot(delta.x, delta.z);
+        if (got > want + 0.02) {
+          const k = got > 1e-6 ? want / got : 0;
+          delta.x *= k;
+          delta.z *= k;
+        }
+      }
       const wasGrounded = s.grounded;
       const fallSpeed = -s.vy;
       s.grounded = controller.computedGrounded();
@@ -883,6 +930,24 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     knock.vx *= fade;
     knock.vz *= fade;
     if (Math.abs(knock.vx) + Math.abs(knock.vz) < 0.05) knock.vx = knock.vz = 0;
+    if (import.meta.env.DEV) {
+      const dbg = ((globalThis as { __carry?: { n: number; miss: number; dx: number; dz: number; kx: number; kz: number } }).__carry ??= { n: 0, miss: 0, dx: 0, dz: 0, kx: 0, kz: 0 });
+      if (carry) {
+        dbg.n++;
+        dbg.dx += carry.dx;
+        dbg.dz += carry.dz;
+      } else dbg.miss++;
+      dbg.kx += next.x - pos.x - (carry?.dx ?? 0);
+      dbg.kz += next.z - pos.z - (carry?.dz ?? 0);
+    }
+    if (carry) {
+      next.x += carry.dx;
+      next.y += carry.dy;
+      next.z += carry.dz;
+      look.yaw += carry.dyaw;
+      view.yaw += carry.dyaw;
+      s.facing += carry.dyaw;
+    }
     rb.setNextKinematicTranslation(next);
 
     // Nghiêng người (Battleground, giữ Q sang trái, E sang phải): đứng hay ngồi xổm; chạy nước rút, nằm, bơi, leo, trượt,
@@ -1174,6 +1239,12 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
         msg.lean = Math.round(leanNow * 8) / 8;
         // Máy khác diễn lại trượt, lao người, nhảy.
         msg.gait = (s.dive ? GAIT.dive : sliding ? GAIT.slide : 0) | (localMotion.airborne ? GAIT.air : 0);
+        // Hải chiến: đứng trên boong thì báo thêm chỗ đứng theo toạ độ riêng của tàu.
+        const deckPose = carry ? shipPose(carry.ship) : undefined;
+        if (carry && deckPose) {
+          const [lx, ly, lz] = worldToShip(deckPose, next.x, feetY, next.z);
+          msg.deck = { ship: carry.ship, x: Math.round(lx * 100) / 100, y: Math.round(ly * 100) / 100, z: Math.round(lz * 100) / 100 };
+        }
       }
       const key = `${msg.x.toFixed(2)},${msg.y.toFixed(2)},${msg.z.toFixed(2)},${msg.rotY.toFixed(2)},${msg.moving},${s.sitting},${s.swimming},${s.crouching},${s.prone},${msg.aiming},${(msg.aimPitch ?? 0).toFixed(2)},${msg.lean ?? 0},${msg.gait ?? 0}`;
       if (key !== s.lastSent) {

@@ -62,7 +62,43 @@ const C = {
   dirt: new Color("#6e5b44"),
   asphalt: new Color("#3f4143"),
   concrete: new Color("#8f8c85"),
+  // Cảnh quan chiến trường (World.biome).
+  duneLight: new Color("#dcbd84"),
+  duneDark: new Color("#c39a5f"),
+  desertRock: new Color("#a58c68"),
+  snow: new Color("#e9edf2"),
+  snowShade: new Color("#c9d3de"),
+  snowMud: new Color("#857a6e"),
+  mud: new Color("#5f4b37"),
+  mudDark: new Color("#43362a"),
+  mudGrass: new Color("#5b6338"),
+  jungle: new Color("#3f6a28"),
+  jungleDark: new Color("#2d4f1d"),
 };
+
+/**
+ * Màu đất liền theo cảnh quan (null: cảnh quan mặc định, tô như đảo). Sa mạc: đụn cát vàng sáng tối theo sườn;
+ * tuyết: trắng ngả xanh, dốc lộ đá; bùn: đất nâu cày nát lẫn mảng cỏ úa; rừng rậm: xanh đậm.
+ */
+function biomeColor(world: World, out: Color, x: number, z: number, h: number, slope: number, n: number): Color | null {
+  const g = grain(x, z);
+  switch (world.biome) {
+    case "desert":
+      if (slope > 0.5 && h > 3) return out.copy(C.desertRock).lerp(C.duneDark, 0.3 * g);
+      return out.copy(C.duneLight).lerp(C.duneDark, Math.min(1, Math.max(0, 0.45 + n * 0.6 + slope * 0.8)));
+    case "snow":
+      if (slope > 0.6 && h > 2) return out.copy(C.rockDark).lerp(C.snowShade, 0.35 * g);
+      return out.copy(C.snow).lerp(C.snowShade, Math.min(1, Math.max(0, 0.25 + n * 0.5 + slope)));
+    case "mud":
+      if (n > 0.35) return out.copy(C.mudGrass).lerp(C.mud, 0.4 + 0.3 * g);
+      return out.copy(C.mud).lerp(C.mudDark, Math.min(1, Math.max(0, 0.3 + slope * 1.2 + g * 0.3)));
+    case "jungle":
+      if (slope > 0.6 && h > 4) return out.copy(C.rockDark).lerp(C.jungleDark, 0.4);
+      return out.copy(C.jungle).lerp(n > 0 ? C.jungleDark : C.grass, Math.abs(n) * 0.9);
+    default:
+      return null;
+  }
+}
 
 function faceColor(world: World, out: Color, x: number, z: number, h: number, slope: number) {
   const surf = world.surface(x, z);
@@ -74,6 +110,10 @@ function faceColor(world: World, out: Color, x: number, z: number, h: number, sl
   // Nền nhân tạo của Battleground: đường nhựa, sân bê tông, sân đá, đất trống.
   if (surf.ground && h >= WATER_LEVEL + 0.35) {
     const g = grain(x, z);
+    // Tuyết phủ lên đường phố, sân bê tông (mỏng hơn ngoài đồng).
+    if (world.biome === "snow" && surf.ground !== "dirt") return out.copy(surf.ground === "asphalt" ? C.asphalt : C.concrete).lerp(C.snow, 0.35 + 0.3 * g);
+    if (surf.ground === "dirt" && world.biome === "snow") return out.copy(C.snowMud).lerp(C.dirt, 0.3 * g);
+    if (surf.ground === "dirt" && world.biome === "desert") return out.copy(C.duneDark).lerp(C.dirt, 0.35 + 0.2 * g);
     if (surf.ground === "asphalt") return out.copy(C.asphalt).multiplyScalar(0.92 + 0.12 * g);
     if (surf.ground === "concrete") return out.copy(C.concrete).multiplyScalar(0.9 + 0.12 * g);
     if (surf.ground === "stone") return out.copy(C.rock).lerp(C.dirt, 0.25 + 0.2 * g);
@@ -84,6 +124,11 @@ function faceColor(world: World, out: Color, x: number, z: number, h: number, sl
     return out.copy(bed).lerp(C.deepBed, Math.min(1, (WATER_LEVEL - h) / (surf.reef ? 9 : 7)));
   }
   if (h < WATER_LEVEL + 0.35) return out.copy(volcanic ? C.blackWet : C.wetSand);
+  // Chiến trường có cảnh quan riêng (trừ bãi biển ven bờ của cảnh quan mặc định).
+  if (world.biome && world.biome !== "temperate" && (world.biome !== "jungle" || inland > 14)) {
+    const tinted = biomeColor(world, out, x, z, h, slope, n);
+    if (tinted) return tinted;
+  }
   // Sàn trong lòng hang, hầm và sân trước cửa: đất nện lẫn đá vụn.
   if (surf.pad || world.structureAt(x, z)) return out.copy(C.dirt).lerp(C.rockDark, 0.3 + 0.3 * grain(x, z));
   // Dốc đứng thì lộ đá, bất kể vùng nào.
@@ -128,6 +173,9 @@ function splatAt(world: World, x: number, z: number, h: number, slope: number): 
   const islet = surf.islet && surf.inland > -30 ? surf.islet : null;
   if (h < WATER_LEVEL + 0.35) return [1, 0, 0, 0];
   if (surf.ground) return surf.ground === "dirt" ? [0, 0, 0.2, 0.8] : [0, 0, 1, 0];
+  // Cảnh quan chiến trường: cát (sa mạc, tuyết dùng vân cát mịn), bùn đất, rừng.
+  if (world.biome === "desert" || world.biome === "snow") return slope > 0.55 && h > 2 ? [0.3, 0, 0.7, 0] : [1, 0, 0, 0];
+  if (world.biome === "mud") return n > 0.35 ? [0, 0.5, 0, 0.5] : slope > 0.55 ? [0, 0, 0.5, 0.5] : [0, 0, 0.1, 0.9];
   if (surf.pad || world.structureAt(x, z)) return [0, 0, 0.3, 0.7];
   if (slope > 0.55 && h > 2) return [0, 0, 1, 0];
   const mix = (t: number, a: [number, number, number, number], b: [number, number, number, number]) =>

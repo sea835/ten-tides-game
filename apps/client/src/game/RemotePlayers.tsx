@@ -9,7 +9,7 @@ import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { WEAPON, gadgetIn, isEmplacement, withAttachments } from "@tentides/content";
+import { WEAPON, gadgetIn, isEmplacement, shipClass, shipToWorld, withAttachments, worldToShip } from "@tentides/content";
 import { bodies } from "./battle/runtime.ts";
 import { replay, replayPose } from "./battle/replay.ts";
 import { physicsProbe } from "./battle/surface.ts";
@@ -19,6 +19,7 @@ import { playFootstep, playLand } from "./sound/guns.ts";
 import { groundProbe } from "./character/motionFx.ts";
 import { FarCrowd, OUTFIT_COLOR, SHADOW_BUDGET, crowdRank, fullBudget, setCrowd, setMateMark, setRemoteRoot } from "./battle/FarCrowd.tsx";
 import { playerTracks, sampleTrack, trackRoom } from "./netInterp.ts";
+import { shipPose } from "./naval/navalRuntime.ts";
 
 
 /** Nhãn vai trò trên đầu đồng đội. */
@@ -42,9 +43,22 @@ function useBubble(playerId: string): string | null {
 
 /** Ngồi trong xe (không thấy thân, không bắn trúng được); xạ thủ vũ khí cố định (ổ đại liên, cối) thì lộ người ra ngoài. */
 function hiddenInVehicle(room: IslandRoom, player: PlayerState): boolean {
-  if (!player.vehicle) return false;
+  // Hải chiến: người đứng vị trí trên tàu vẫn lộ người trên boong (bắn trúng được).
+  if (!player.vehicle || player.vehicle.startsWith("ship:")) return false;
   const v = room.state.vehicles.get(player.vehicle);
   return !v || !isEmplacement(v.kind);
+}
+
+/** Tàu (theo trạng thái server, cùng gói với vị trí người) có boong dưới chân người này, hay "". */
+function deckUnder(room: IslandRoom, p: { x: number; y: number; z: number }): string {
+  let hit = "";
+  room.state.naval?.ships.forEach((sh, id) => {
+    if (hit) return;
+    const cls = shipClass(sh.cls);
+    const [lx, ly, lz] = worldToShip(sh, p.x, p.y, p.z);
+    if (Math.abs(lx) < cls.beam / 2 + 1 && Math.abs(lz) < cls.length / 2 + 1 && ly > -1.5 && ly < cls.deck + 25) hit = id;
+  });
+  return hit;
 }
 
 function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: string; player: PlayerState; carrying: boolean }) {
@@ -60,13 +74,35 @@ function RemotePlayer({ room, id, player, carrying }: { room: IslandRoom; id: st
   const [pose, setPose] = useState<"stand" | "sit" | "hidden">("stand");
   const bubble = useBubble(id);
   const interp = useMemo(() => ({ x: 0, y: 0, z: 0, rotY: 0 }), []);
+  const deckLocal = useMemo(() => ({ ship: "", x: 0, y: 0, z: 0 }), []);
 
   useFrame((_, dt) => {
     const g = root.current;
     if (!g) return;
     // Killcam đang chiếu: đứng đúng chỗ, đúng tư thế trong băng ghi (xem battle/replay.ts).
     const rp = battle ? replayPose(id) : null;
-    if (!rp && sampleTrack(playerTracks, id, interp)) {
+    // Hải chiến: người trên boong tàu vẽ theo tàu đang vẽ (không thì trông như trượt lùi sau tàu đang chạy).
+    const deck = !rp && room.state.battleMode === "naval" ? deckUnder(room, player) : "";
+    const deckShip = deck ? room.state.naval.ships.get(deck) : undefined;
+    const deckPose = deck ? shipPose(deck) : undefined;
+    if (deckShip && deckPose) {
+      // Đứng trên boong: lấy chỗ đứng theo toạ độ riêng của tàu (vị trí người và tàu cùng một gói server) rồi đặt lên
+      // tàu đang vẽ, kéo mượt trong toạ độ của tàu.
+      const [lx, ly, lz] = worldToShip(deckShip, player.x, player.y, player.z);
+      const k = deckLocal.ship === deck ? Math.min(1, dt * 12) : 1;
+      deckLocal.ship = deck;
+      deckLocal.x += (lx - deckLocal.x) * k;
+      deckLocal.y += (ly - deckLocal.y) * k;
+      deckLocal.z += (lz - deckLocal.z) * k;
+      const [wx, wy, wz] = shipToWorld(deckPose, deckLocal.x, deckLocal.y, deckLocal.z);
+      g.position.set(wx, wy, wz);
+      if (avatar.current) {
+        const want = player.rotY - deckShip.rotY + deckPose.rotY;
+        const cur = avatar.current.rotation.y;
+        avatar.current.rotation.y = cur + Math.atan2(Math.sin(want - cur), Math.cos(want - cur)) * Math.min(1, dt * 12);
+      }
+    } else if (!rp && sampleTrack(playerTracks, id, interp)) {
+      deckLocal.ship = "";
       // Nội suy Hermite giữa các gói server, vẽ lùi một chút (netInterp.ts): mượt dù mạng rung.
       g.position.set(interp.x, interp.y, interp.z);
       if (avatar.current) avatar.current.rotation.y = interp.rotY;

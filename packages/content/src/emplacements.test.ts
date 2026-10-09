@@ -69,14 +69,14 @@ describe("ổ đại liên: cung xoay", () => {
 });
 
 describe("chỗ đặt vũ khí cố định", () => {
-  it("chiến trường: ổ đại liên ở các cứ điểm, cối ở B, C và hai căn cứ; tất cả trên đất liền, không chồng lên nhà", () => {
+  it("chiến trường: ổ đại liên, cối ở mọi cứ điểm và hai căn cứ; tất cả trên đất liền, không chồng lên nhà", () => {
     const map = warMap(7);
     const spots = emplacementSpots(map);
     const nests = spots.filter((s) => s.kind === "hmg_nest");
     const mortars = spots.filter((s) => s.kind === "mortar");
     expect(nests.length).toBeGreaterThanOrEqual(8);
-    expect(mortars.length).toBe(4);
-    for (const letter of ["B", "C"]) {
+    expect(mortars.length).toBeGreaterThanOrEqual(10);
+    for (const letter of ["A", "B", "C", "E", "F", "G"]) {
       const f = map.flags!.find((x) => x.id === letter)!;
       expect(mortars.some((m) => Math.hypot(m.x - f.x, m.z - f.z) < f.r + 10)).toBe(true);
     }

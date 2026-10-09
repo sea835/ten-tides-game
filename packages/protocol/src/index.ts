@@ -590,6 +590,86 @@ export const FlagState = schema(
 export type FlagState = SchemaType<typeof FlagState>;
 
 /**
+ * Hải chiến 3 vs 3: một chiến hạm. Bộ phận còn bao nhiêu phần trăm máu (`parts`, khoá là id bộ phận trong lớp tàu;
+ * không có là còn nguyên, 0 là hỏng hẳn), đám cháy (`fires`: id bộ phận → độ lớn 1–100), thời gian nạp đạn còn lại của
+ * từng ụ (`cool`, giây), ai đang đứng vị trí nào (`crew`: "0" "1" "2" → id người). Pháo thủ ngắm vào điểm (aimX, aimZ)
+ * với góc nâng aimPitch; phòng không ngắm theo hướng (aaYaw, aaPitch) — máy nào cũng tự quay từng tháp pháo theo đó.
+ */
+export const ShipState = schema(
+  {
+    cls: t.string().default("battleship"),
+    team: t.string().default(""),
+    x: t.float32().default(0),
+    /** Độ cao thân tàu (tàu ngầm lặn xuống, tàu chìm dần). */
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    rotY: t.angle().default(0),
+    speed: t.float32().default(0),
+    /** Lệnh máy (−1 lùi hết … 1 tiến hết) và bánh lái (−1 trái … 1 phải). */
+    throttle: t.float32().default(0),
+    rudder: t.float32().default(0),
+    hp: t.int16().default(0),
+    maxHp: t.int16().default(0),
+    parts: t.map("uint8"),
+    fires: t.map("uint8"),
+    cool: t.map("float32"),
+    crew: t.map("string"),
+    aimX: t.float32().default(0),
+    aimZ: t.float32().default(0),
+    aimPitch: t.float32().default(0),
+    aaYaw: t.float32().default(0),
+    aaPitch: t.float32().default(0),
+    /** Tàu ngầm: đang lặn; dưỡng khí còn lại (0–100). */
+    dive: t.boolean().default(false),
+    air: t.uint8().default(100),
+    /** Mồi nhử còn tác dụng (giây). */
+    decoy: t.float32().default(0),
+    /** Tàu sân bay: còn bao lâu có máy bay mới (giây); id máy bay đang bay (rỗng: chưa cất cánh). */
+    jetWait: t.float32().default(0),
+    jet: t.string().default(""),
+    /** Bộ đếm loạt pháo chính, loạt phòng không (máy khác diễn lửa đầu nòng). */
+    shots: t.uint16().default(0),
+    aaShots: t.uint16().default(0),
+    sunk: t.boolean().default(false),
+  },
+  "ShipState",
+);
+export type ShipState = SchemaType<typeof ShipState>;
+
+/** Đơn vị đang bay / chạy: ngư lôi, ngư lôi dẫn đường, tên lửa, máy bay, mồi nhử. */
+export const NavalUnitState = schema(
+  {
+    kind: t.string().default("torpedo"),
+    team: t.string().default(""),
+    owner: t.string().default(""),
+    ship: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    yaw: t.float32().default(0),
+    pitch: t.float32().default(0),
+    roll: t.float32().default(0),
+    speed: t.float32().default(0),
+    hp: t.int16().default(0),
+    /** Máy bay: bom còn lại. */
+    bombs: t.uint8().default(0),
+  },
+  "NavalUnitState",
+);
+export type NavalUnitState = SchemaType<typeof NavalUnitState>;
+
+/** Trạng thái hải chiến: hai tàu, các đơn vị đang bay / chạy, giây còn lại của trận. */
+export const NavalState = schema(
+  {
+    ships: t.map(ShipState),
+    units: t.map(NavalUnitState),
+    timeLeft: t.uint16().default(0),
+  },
+  "NavalState",
+);
+export type NavalState = SchemaType<typeof NavalState>;
+
+/**
  * Thùng thính (Battleground): rơi bằng dù từ trên cao xuống một chỗ trong vùng an toàn. `y` là độ cao hiện tại của
  * thùng, `ground` là mặt đất chỗ rơi; chạm đất thì `landed`, đồ đổ ra quanh thùng (nằm trong groundItems) và khói
  * đỏ bốc lên trong `smoke` giây. Nằm trong state nên người vào giữa trận cũng thấy.
@@ -622,6 +702,11 @@ export const RoomSettingsState = schema(
     warTickets: t.uint16().default(300),
     /** Có xe cơ giới (xe tăng, xe jeep, thuyền...) trong trận không; tắt thì server không đặt xe nào. */
     vehiclesEnabled: t.boolean().default(true),
+    /** Chiến trường 50 vs 50: bản đồ chủ phòng chọn (mã trong WAR_MAP_LIST của content; rỗng là bản đồ gốc). */
+    warMap: t.string().default("frontier"),
+    /** Hải chiến: lớp tàu của mỗi phe (SHIP_CLASSES của content). */
+    shipBlue: t.string().default("battleship"),
+    shipRed: t.string().default("destroyer"),
   },
   "RoomSettingsState",
 );
@@ -641,6 +726,8 @@ export const IslandState = schema(
      * Thời tiết của trận nằm ở `weather` (sunny, cloudy, rain, fog, storm, snow).
      */
     clock: t.float32().default(0.35),
+    /** Hải chiến 3 vs 3: hai chiến hạm, ngư lôi, tên lửa, máy bay. */
+    naval: t.ref(NavalState).default(() => new NavalState()),
     /** Lựa chọn của chủ phòng cho trận tới: thời tiết, giờ, vé quân, xe cơ giới (RoomSettingsState). */
     settings: t.ref(RoomSettingsState).default(() => new RoomSettingsState()),
     zone: t.ref(ZoneState).default(() => new ZoneState()),
@@ -761,6 +848,11 @@ export const MoveMessage = z.object({
   lean: z.number().min(-1).max(1).optional(),
   /** Dáng di chuyển nhất thời: trượt, lao người, trên không (xem `GAIT`). */
   gait: z.number().int().min(0).max(7).optional(),
+  /**
+   * Hải chiến: đang đứng trên boong tàu `ship` ở toạ độ riêng của tàu (x ngang, y cao, z dọc). Server đặt người theo
+   * tàu của server (hai máy thấy tàu lệch nhau một chút theo độ trễ mạng, đứng trên boong thì không bị lệch theo).
+   */
+  deck: z.object({ ship: z.string().max(8), x: finite, y: finite, z: finite }).optional(),
 });
 export type MoveMessage = z.infer<typeof MoveMessage>;
 
@@ -769,6 +861,8 @@ export interface CorrectMessage {
   x: number;
   y: number;
   z: number;
+  /** Hải chiến: chỗ trên boong tàu (toạ độ riêng của tàu): máy mình đặt theo tàu mình đang vẽ. */
+  deck?: { ship: string; x: number; y: number; z: number };
 }
 
 export const SettingsMessage = z
@@ -941,9 +1035,10 @@ export const BattleSettingsMessage = z
     bots: z.int().min(0).max(255),
     weather: z.enum(["random", ...BATTLE_WEATHERS]),
     time: z.enum(["random", ...BATTLE_TIMES]),
-    mode: z.enum(["solo", "squad", "war"]),
+    mode: z.enum(["solo", "squad", "war", "naval"]),
     tickets: z.int().min(0).max(5000),
     vehicles: z.boolean(),
+    map: z.string().max(32),
   })
   .partial();
 export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
@@ -1270,7 +1365,56 @@ export const Messages = {
   towSteer: "towSteer",
   streakFx: "streakFx",
   points: "points",
+  /**
+   * Hải chiến: chọn lớp tàu, vị trí ở sảnh (NavalPickMessage); vào / rời vị trí điều khiển (NavalStationMessage); lái
+   * tàu (NavalHelmMessage); ngắm (NavalAimMessage); bắn (NavalFireMessage); vị trí tên lửa, ngư lôi dẫn đường, máy
+   * bay mình lái (NavalUnitMessage); dập lửa, leo lên tàu (NavalActMessage); hiệu ứng từ server (NavalFxMessage).
+   */
+  navalPick: "navalPick",
+  navalStation: "navalStation",
+  navalHelm: "navalHelm",
+  navalAim: "navalAim",
+  navalFire: "navalFire",
+  navalUnit: "navalUnit",
+  navalAct: "navalAct",
+  navalFx: "navalFx",
 } as const;
+
+/** Sảnh hải chiến: chọn lớp tàu (`side`: chủ phòng chọn cho phe toàn máy), chọn vị trí trên tàu. */
+export const NavalPickMessage = z.object({ ship: z.string().max(16).optional(), side: z.enum(["blue", "red"]).optional(), station: z.int().min(0).max(2).optional() });
+export type NavalPickMessage = z.infer<typeof NavalPickMessage>;
+/** Vào vị trí điều khiển số `station` (0–2) trên tàu mình; −1 là rời vị trí. */
+export const NavalStationMessage = z.object({ station: z.int().min(-1).max(2) });
+export type NavalStationMessage = z.infer<typeof NavalStationMessage>;
+export const NavalHelmMessage = z.object({ throttle: z.number().min(-1).max(1), rudder: z.number().min(-1).max(1), dive: z.boolean().optional() });
+export type NavalHelmMessage = z.infer<typeof NavalHelmMessage>;
+/** Pháo thủ: điểm ngắm (x, z) và góc nâng; phòng không: hướng (yaw, pitch). */
+export const NavalAimMessage = z.object({ yaw: finite, pitch: z.number().min(-1.6).max(1.6), x: finite.optional(), z: finite.optional() });
+export type NavalAimMessage = z.infer<typeof NavalAimMessage>;
+export const NavalFireMessage = z.object({ weapon: z.string().max(16), yaw: finite, pitch: z.number().min(-1.6).max(1.6), x: finite.optional(), z: finite.optional() });
+export type NavalFireMessage = z.infer<typeof NavalFireMessage>;
+/** Máy người lái báo vị trí tên lửa / ngư lôi dẫn đường / máy bay của mình (server kiểm tra tốc độ, va chạm). */
+export const NavalUnitMessage = z.object({ id: id, x: finite, y: finite, z: finite, yaw: finite, pitch: z.number().min(-1.6).max(1.6), roll: z.number().min(-3.2).max(3.2), speed: z.number().min(0).max(400) });
+export type NavalUnitMessage = z.infer<typeof NavalUnitMessage>;
+export const NavalActMessage = z.object({ act: z.enum(["extinguish", "board", "bomb", "eject", "land"]) });
+export type NavalActMessage = z.infer<typeof NavalActMessage>;
+/**
+ * Hiệu ứng hải chiến server gửi mọi người. `k`: "shell" (đạn pháo bay: o, v), "bomb" (bom rơi: o, v), "splash" (đạn
+ * rơi xuống nước), "hit" (trúng tàu: ship, part), "blast" (nổ lớn: tên lửa, ngư lôi), "aa" (loạt phòng không, đạn
+ * vạch: o, v), "jet" (máy bay bắn: o, v), "fire" (bộ phận bốc cháy), "wreck" (bộ phận hỏng), "sink" (tàu chìm),
+ * "launch" (phóng tên lửa / ngư lôi / máy bay), "depth" (bom chìm nổ), "decoy" (phóng mồi nhử), "down" (bắn rơi).
+ */
+export interface NavalFxMessage {
+  k: string;
+  x: number;
+  y: number;
+  z: number;
+  v?: [number, number, number];
+  ship?: string;
+  part?: string;
+  weapon?: string;
+  team?: string;
+}
 
 /** Một dòng bảng điểm cuối trận. `support` là tiếp tế, sửa xe, hồi sinh đồng đội; `score` để xếp hạng. */
 export interface MatchSummaryRow {

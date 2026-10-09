@@ -162,6 +162,8 @@ export class Track {
 const clock = new PatchClock();
 export const playerTracks = new Map<string, Track>();
 export const vehicleTracks = new Map<string, Track>();
+/** Hải chiến: băng vị trí hai chiến hạm (khoá là phe). */
+export const shipTracks = new Map<string, Track>();
 let bound: IslandRoom | null = null;
 let unbind: (() => void) | null = null;
 /** Số component đang cần băng (người, xe tăng, xe chở): người cuối cùng thôi thì mới thôi ghi. */
@@ -201,10 +203,12 @@ function bind(room: IslandRoom) {
     const s = room.state;
     s.players?.forEach((p, id) => record(playerTracks, id, t, p));
     s.vehicles?.forEach((v, id) => record(vehicleTracks, id, t, v));
+    s.naval?.ships?.forEach((v, id) => record(shipTracks, id, t, v));
     // Dọn băng của người, xe đã rời phòng.
     if (clock.count % 200 === 0) {
       for (const id of playerTracks.keys()) if (!s.players?.has(id)) playerTracks.delete(id);
       for (const id of vehicleTracks.keys()) if (!s.vehicles?.has(id)) vehicleTracks.delete(id);
+      for (const id of shipTracks.keys()) if (!s.naval?.ships?.has(id)) shipTracks.delete(id);
     }
   };
   room.onStateChange(onPatch);
@@ -215,12 +219,26 @@ function bind(room: IslandRoom) {
     users = 0;
     playerTracks.clear();
     vehicleTracks.clear();
+    shipTracks.clear();
   };
 }
 
 /** Thời điểm đang vẽ (giây, cùng đồng hồ với băng): hiện tại lùi INTERP_DELAY. */
 export function renderTime(): number {
   return performance.now() / 1000 - INTERP_DELAY;
+}
+
+/**
+ * Thời điểm vẽ chiến hạm (và người đứng trên boong): hiện tại, ngoại suy theo vận tốc từ gói cuối. Tàu chạy đều, đổi
+ * hướng chậm nên ngoại suy gần như đúng; vẽ "hiện tại" thì boong tàu dưới chân mình khớp với vị trí mình gửi server.
+ */
+export function shipTime(): number {
+  return performance.now() / 1000 - 0.02;
+}
+
+/** Như sampleTrack nhưng ở thời điểm `t` (giây, cùng đồng hồ với băng). */
+export function sampleTrackAt(tracks: Map<string, Track>, id: string, t: number, out: { x: number; y: number; z: number; rotY: number }): boolean {
+  return tracks.get(id)?.sample(t, out) ?? false;
 }
 
 /** Tư thế nội suy của người / xe `id` ghi vào `out`; false nếu chưa có băng (dùng trạng thái thô). */

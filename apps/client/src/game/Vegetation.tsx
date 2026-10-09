@@ -169,7 +169,8 @@ function placer(world: World) {
     ANCHORS.every((a) => Math.hypot(a.x - x, a.z - z) > d + (LANDMARK_TYPES.has(a.type) ? 7 : 0)) && TREASURE_SITES.every((t) => Math.hypot(t.x - x, t.z - z) > d) && world.isClear(x, z, d);
   /** Đất có cỏ mọc: trong đảo, không phải sườn núi lửa, hang, đảo đá hay đảo cát đen, không dưới nước. */
   const grassy = (x: number, z: number, h: number) => {
-    if (h < 0.6 || h > 9 || inland(x, z) < 12 || inLake(x, z)) return false;
+    // Chiến trường có cao nguyên, núi cao hơn đảo nhiều: cỏ mọc tới độ cao lớn hơn.
+    if (h < 0.6 || h > (world.kind === "battle" ? 45 : 9) || inland(x, z) < 12 || inLake(x, z)) return false;
     const s = world.surface(x, z);
     if (s.islet && (s.islet.kind === "rocky" || s.islet.kind === "volcanic")) return false;
     return world.zoneAt(x, z) !== "volcano" && Math.hypot(x - CAVE.x, z - CAVE.z) > CAVE.radius - 2 && !s.pad && !world.structureAt(x, z);
@@ -357,9 +358,22 @@ function Instances({ spots, geometry, material, tint, heightScale = false, cast 
   );
 }
 
+/**
+ * Độ dày từng loại cây cỏ theo cảnh quan chiến trường (World.biome) và màu pha thêm: sa mạc chỉ còn bụi khô lơ thơ, đá;
+ * tuyết: cỏ khô vàng nhạt nhô khỏi tuyết; bùn: cỏ úa từng mảng; rừng rậm: bụi, dương xỉ, chuối dày đặc.
+ */
+const BIOME_VEG: Record<string, { grass: number; bush: number; fern: number; tropical: number; flowers: number; rocks: number; tint: string | null; tintAmount: number }> = {
+  temperate: { grass: 1, bush: 1, fern: 1, tropical: 1, flowers: 1, rocks: 1, tint: null, tintAmount: 0 },
+  jungle: { grass: 1.1, bush: 1.6, fern: 1.8, tropical: 2.4, flowers: 0.8, rocks: 1, tint: "#2f5d1e", tintAmount: 0.25 },
+  desert: { grass: 0.05, bush: 0.12, fern: 0, tropical: 0, flowers: 0, rocks: 3, tint: "#b39a5c", tintAmount: 0.7 },
+  snow: { grass: 0.18, bush: 0.3, fern: 0, tropical: 0, flowers: 0, rocks: 1.6, tint: "#b8b08e", tintAmount: 0.65 },
+  mud: { grass: 0.35, bush: 0.35, fern: 0.25, tropical: 0, flowers: 0.1, rocks: 1.2, tint: "#6e6440", tintAmount: 0.5 },
+};
+
 export function Vegetation({ world }: { world: World }) {
   const profile = useProfile();
   const density = profile.vegetation;
+  const bio = BIOME_VEG[world.biome ?? "temperate"] ?? BIOME_VEG.temperate!;
   // Tầm vẽ theo mức chất lượng: ô ở xa hơn thì ẩn hẳn (sương mù đã che gần hết, vẽ ra chỉ tốn GPU).
   const far = (m: number) => m * profile.drawDistance;
   const place = useMemo(() => placer(world), [world]);
@@ -369,7 +383,7 @@ export function Vegetation({ world }: { world: World }) {
     const zoneAt = world.zoneAt;
     // Đảo lớn hơn (bản đồ Battleground) thì rải nhiều hơn theo diện tích để độ dày như nhau.
     const area = Math.min(3.2, ((world.extent ?? 112) / 112) ** 2);
-    const d = (n: number) => Math.round(n * density * area);
+    const d = (n: number, k = 1) => Math.round(n * density * area * k);
     const underPalm = (x: number, z: number) => world.palms.some((p) => Math.hypot(p.x - x, p.z - z) < 4);
     const nearTree = (x: number, z: number, r: number) => world.trees.some((t) => Math.hypot(t.x - x, t.z - z) < r);
     /** Bãi cát: trên mặt nước, sát mép bờ (đảo đá, đảo núi lửa không có). */
@@ -379,33 +393,33 @@ export function Vegetation({ world }: { world: World }) {
       if (s.islet && (s.islet.kind === "rocky" || s.islet.kind === "volcanic")) return false;
       return inland(x, z) < 14 && !s.pad && !world.structureAt(x, z);
     };
-    const bushes = scatter(d(680), 12, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 11) && clearOfPoints(x, z, 3) && (inland(x, z) > 30 || rand() < 0.35), [0.6, 1.8]);
+    const bushes = scatter(d(680, bio.bush), 12, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 11) && clearOfPoints(x, z, 3) && (inland(x, z) > 30 || rand() < 0.35), [0.6, 1.8]);
     return {
       // Cỏ thấp phủ khắp nơi có đất, thưa dần ra phía cát.
-      short: scatter(d(10500), 11, (x, z, h, rand) => grassy(x, z, h) && (inland(x, z) > 16 || rand() < 0.3) && !nearCamp(x, z, 3.5), [0.7, 1.4]).map((p, i) => ({
+      short: scatter(d(10500, bio.grass), 11, (x, z, h, rand) => grassy(x, z, h) && (inland(x, z) > 16 || rand() < 0.3) && !nearCamp(x, z, 3.5), [0.7, 1.4]).map((p, i) => ({
         ...p,
         h: 0.25 + grain(i, 9) * 0.35 + Math.max(0, patch(p.x, p.z)) * 0.2,
       })),
       // Cỏ vừa mọc thành từng khóm lẻ, dày hơn ở bìa rừng.
-      medium: scatter(d(2300), 15, (x, z, h, rand) => grassy(x, z, h) && inland(x, z) > 18 && !nearCamp(x, z, 5) && (patch(x, z) > -0.2 || rand() < 0.3), [0.8, 1.3]).map((p, i) => ({
+      medium: scatter(d(2300, bio.grass), 15, (x, z, h, rand) => grassy(x, z, h) && inland(x, z) > 18 && !nearCamp(x, z, 5) && (patch(x, z) > -0.2 || rand() < 0.3), [0.8, 1.3]).map((p, i) => ({
         ...p,
         h: 0.6 + grain(i, 7) * 0.5,
       })),
       // Cỏ cao dùng để nấp nên dày như nhau ở mọi mức đồ hoạ (máy yếu không được lợi thế nhìn xuyên cỏ).
       tall: fillPatches(world.tallGrass, 3.4, 16),
-      ferns: scatter(d(850), 17, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 8) && clearOfPoints(x, z, 2.5) && (underPalm(x, z) || nearTree(x, z, 6) || inland(x, z) > 38 || rand() < 0.15), [0.6, 1.3]),
+      ferns: scatter(d(850, bio.fern), 17, (x, z, h, rand) => grassy(x, z, h) && !nearCamp(x, z, 8) && clearOfPoints(x, z, 2.5) && (underPalm(x, z) || nearTree(x, z, 6) || inland(x, z) > 38 || rand() < 0.15), [0.6, 1.3]),
       // Chuối rừng mọc thành cụm ở chỗ ẩm trong rừng, dưới tán cây lớn.
-      bananas: scatter(d(170), 19, (x, z, h, rand) => grassy(x, z, h) && inland(x, z) > 26 && !nearCamp(x, z, 12) && clearOfPoints(x, z, 3.5) && !nearTree(x, z, 1.8) && (nearTree(x, z, 9) || rand() < 0.25), [0.8, 1.35]),
+      bananas: scatter(d(170, bio.tropical), 19, (x, z, h, rand) => grassy(x, z, h) && inland(x, z) > 26 && !nearCamp(x, z, 12) && clearOfPoints(x, z, 3.5) && !nearTree(x, z, 1.8) && (nearTree(x, z, 9) || rand() < 0.25), [0.8, 1.35]),
       // Dứa dại: khóm lá dài gai góc ở bìa rừng giáp bãi cát.
-      pandans: scatter(d(260), 20, (x, z, h) => h > 0.5 && h < 6 && inland(x, z) > 7 && inland(x, z) < 26 && !inLake(x, z) && !nearCamp(x, z, 9) && clearOfPoints(x, z, 3) && !world.structureAt(x, z), [0.9, 1.6]),
+      pandans: scatter(d(260, bio.tropical), 20, (x, z, h) => h > 0.5 && h < 6 && inland(x, z) > 7 && inland(x, z) < 26 && !inLake(x, z) && !nearCamp(x, z, 9) && clearOfPoints(x, z, 3) && !world.structureAt(x, z), [0.9, 1.6]),
       // Cỏ biển lún phún trên cát.
       beachGrass: scatter(d(1300), 22, (x, z, h) => sandy(x, z, h) && !nearCamp(x, z, 4) && clearOfPoints(x, z, 1.5), [0.6, 1.2]).map((p, i) => ({ ...p, h: 0.35 + grain(i, 23) * 0.45 })),
       // Dây leo bò lan dưới tán rừng và trên bãi cát (rau muống biển).
-      creepers: scatter(d(420), 24, (x, z, h, rand) => (grassy(x, z, h) && inland(x, z) > 30) || (sandy(x, z, h) && rand() < 0.4), [0.7, 1.5]),
+      creepers: scatter(d(420, bio.fern), 24, (x, z, h, rand) => (grassy(x, z, h) && inland(x, z) > 30) || (sandy(x, z, h) && rand() < 0.4), [0.7, 1.5]),
       bushes,
       // Khoảng một phần ba số bụi trổ hoa.
       flowers: bushes
-        .filter((_, i) => grain(i, 21) < 0.33)
+        .filter((_, i) => grain(i, 21) < 0.33 * bio.flowers)
         .flatMap((b, i) =>
           Array.from({ length: 4 }, (_, k) => {
             const a = grain(i, k + 30) * Math.PI * 2;
@@ -413,15 +427,17 @@ export function Vegetation({ world }: { world: World }) {
             return { x: b.x + Math.cos(a) * r * b.s, y: b.y + (0.6 + grain(i, k) * 0.35) * b.s, z: b.z + Math.sin(a) * r * b.s, s: 1, h: 1, r: a };
           }),
         ),
-      rocks: scatter(d(180), 13, (x, z, h) => {
+      rocks: scatter(d(180, bio.rocks), 13, (x, z, h, rand) => {
         if (h < -0.5 || !clearOfPoints(x, z, 2)) return false;
+        // Sa mạc, tuyết, bùn: đá lổn nhổn khắp nơi.
+        if (bio.rocks > 1 && grassy(x, z, h) && rand() < 0.5) return true;
         const s = world.surface(x, z);
         return zoneAt(x, z) === "volcano" || zoneAt(x, z) === "cave" || inland(x, z) < 6 || s.islet?.kind === "rocky" || s.islet?.kind === "volcanic";
       }, [0.4, 1.6]),
       shells: scatter(d(90), 14, (x, z, h) => h > 0.1 && h < 0.9, [0.8, 1.2]),
       driftwood: scatter(16, 18, (x, z, h) => h > 0.15 && h < 0.7 && !nearCamp(x, z, 8) && clearOfPoints(x, z, 3), [0.8, 1.6]),
     };
-  }, [density, place, world]);
+  }, [density, place, world, bio]);
 
   const geo = useMemo(
     () => ({
@@ -458,6 +474,22 @@ export function Vegetation({ world }: { world: World }) {
     [],
   );
   const tints = useMemo(() => {
+    const raw = makeTints();
+    if (!bio.tint) return raw;
+    // Cảnh quan: pha màu lá cỏ về phía màu khô / úa (trừ hoa, đá, vỏ sò, gỗ trôi).
+    const target = new Color(bio.tint);
+    const out = { ...raw } as typeof raw;
+    for (const key of ["short", "medium", "tall", "fern", "bush", "bushCore", "pandan", "beachGrass", "creeper", "banana"] as const) {
+      const base = raw[key];
+      out[key] = ((i, c, p) => {
+        base(i, c, p);
+        c.lerp(target, bio.tintAmount);
+      }) as Tint;
+    }
+    return out;
+  }, [bio]);
+
+  function makeTints() {
     const FLOWERS = ["#e63946", "#ffd166", "#ffffff", "#ff8fab", "#ff7b00"];
     return {
       short: ((i, c, p) => c.setHSL(0.23 + grain(i, 1) * 0.06 + patch(p.x, p.z) * 0.02, 0.5, 0.4 + grain(i, 2) * 0.12)) as Tint,
@@ -484,7 +516,7 @@ export function Vegetation({ world }: { world: World }) {
       beachGrass: ((i, c) => c.setHSL(0.16 + grain(i, 21) * 0.06, 0.4, 0.5 + grain(i, 22) * 0.1)) as Tint,
       creeper: ((i, c) => c.setHSL(0.3 + grain(i, 23) * 0.05, 0.45, 0.25 + grain(i, 24) * 0.07)) as Tint,
     };
-  }, []);
+  }
 
 
   return (

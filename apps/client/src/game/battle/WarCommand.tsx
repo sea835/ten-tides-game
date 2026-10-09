@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { mapForMode, warSquadLeader } from "@tentides/content";
+import { mapForState, warSquadLeader } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping } from "../input.ts";
@@ -34,7 +34,7 @@ export function WarCommandMap({ room, onClose }: { room: IslandRoom; onClose: ()
   const [box, setBox] = useState<{ a: Pt; b: Pt } | null>(null);
   const [ring, setRing] = useState<{ a: Pt; b: Pt; hold: boolean } | null>(null);
   const [, redraw] = useState(0);
-  const half = useMemo(() => mapForMode("war", room.state.worldSeed).half ?? 336, [room]);
+  const half = useMemo(() => mapForState(room.state).half ?? 336, [room]);
   // Mỗi mét bản đồ là bao nhiêu điểm ảnh (để vẽ nét, chấm theo kích thước màn hình).
   const u = (half * 2) / (Math.min(window.innerHeight, window.innerWidth) * 0.8);
 

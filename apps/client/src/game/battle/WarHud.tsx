@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { mapForMode, warSquadLeader } from "@tentides/content";
+import { mapForState, warSquadLeader } from "@tentides/content";
 import { CLASSES, isSoldierClass } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -70,7 +70,7 @@ export function CaptureBar({ room }: { room: IslandRoom }) {
   const me = room.state.players.get(myId(room));
   if (!me?.alive) return null;
   // Cạnh hòm đạn dã chiến (Kho Quân Nhu, căn cứ): server tự tiếp đạn.
-  const supplies = mapForMode(room.state.battleMode, room.state.worldSeed).supplies ?? [];
+  const supplies = mapForState(room.state).supplies ?? [];
   const supply = !me.vehicle && supplies.some((c) => Math.hypot(c.x - localPosition.x, c.z - localPosition.z) < 3.5 && Math.abs(c.y - localPosition.y) < 3);
   const hint = supply ? <div className="w-capture"><div className="w-capture-title">▣ Hòm đạn dã chiến · đang tiếp đạn</div></div> : null;
   let inside: { id: string; name: string; owner: string; progress: number; blue: number; red: number } | null = null;
