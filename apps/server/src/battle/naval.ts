@@ -1,5 +1,6 @@
 import {
   FIRE,
+  GUN_DISPERSION,
   JET,
   MAX_HP,
   NAVAL_HALF,
@@ -565,12 +566,21 @@ export class Naval {
       const yaw = Math.atan2(tx - pv[0], tz - pv[2]);
       if (!mountCovers(pose, m, yaw)) continue;
       const d = Math.hypot(tx - pv[0], tz - pv[2]);
-      const elev = shellElevation(w.speed, Math.min(d, w.range), -pv[1]);
-      if (!Number.isFinite(elev)) continue;
+      if (!Number.isFinite(shellElevation(w.speed, Math.min(d, w.range), -pv[1]))) continue;
+      // Độ tản của loạt pháo: mỗi viên rơi lệch xa / gần (nhiều) và lệch ngang (ít) quanh điểm ngắm, lệch càng nhiều
+      // khi bắn càng xa (như pháo thật: cả loạt rơi thành một vệt dọc theo hướng bắn, chỉ vài viên trúng).
+      const ux = (tx - pv[0]) / Math.max(1, d);
+      const uz = (tz - pv[2]) / Math.max(1, d);
       for (let k = 0; k < m.barrels; k++) {
-        const ey = elev + (Math.random() - 0.5) * w.spread * 2;
-        const ay = yaw + (Math.random() - 0.5) * w.spread * 2;
-        const sp = w.speed * (1 + (Math.random() - 0.5) * 0.01);
+        const along = gauss() * (d * GUN_DISPERSION.range + GUN_DISPERSION.base);
+        const side = gauss() * (d * GUN_DISPERSION.lateral + GUN_DISPERSION.baseLateral);
+        const px = tx + ux * along - uz * side;
+        const pz = tz + uz * along + ux * side;
+        const pd = Math.min(w.range, Math.hypot(px - pv[0], pz - pv[2]));
+        const ey = shellElevation(w.speed, pd, -pv[1]);
+        if (!Number.isFinite(ey)) continue;
+        const ay = Math.atan2(px - pv[0], pz - pv[2]);
+        const sp = w.speed;
         const v: V3 = [Math.sin(ay) * Math.cos(ey) * sp, Math.sin(ey) * sp, Math.cos(ay) * Math.cos(ey) * sp];
         const o: V3 = [pv[0] + (v[0] / sp) * m.barrel, pv[1] + (v[1] / sp) * m.barrel, pv[2] + (v[2] / sp) * m.barrel];
         this.shells.push({ pos: o, v, life: 30, owner, team: ship.team, from: ship.team, weapon, age: 0 });
@@ -1647,7 +1657,9 @@ export class Naval {
           [tx, tz] = lead(t);
         }
         // Sai số ngắm giảm dần qua từng loạt (canh chỉnh pháo).
-        b.aimErr = b.aimErr > 0 ? Math.max(0.4, b.aimErr * 0.75) : 1;
+        // Tàu địch bẻ lái hay đổi máy thì phải canh lại từ đầu.
+        if (Math.abs(enemy.rudder) > 0.3) b.aimErr = Math.min(1.4, b.aimErr + 0.35);
+        b.aimErr = b.aimErr > 0 ? Math.max(0.45, b.aimErr * 0.8) : 1.4;
         const err = range * 0.035 * b.aimErr;
         tx += (Math.random() - 0.5) * err * 2;
         tz += (Math.random() - 0.5) * err * 2;
@@ -1811,6 +1823,12 @@ export class Naval {
     // Tránh đâm xuống biển.
     if (u.y < 22) d.wantPitch = 0.45;
   }
+}
+
+/** Số ngẫu nhiên phân phối chuẩn (trung bình 0, độ lệch 1). */
+function gauss(): number {
+  const u = 1 - Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random());
 }
 
 function dist3(a: readonly number[], b: readonly number[]): number {

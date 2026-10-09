@@ -138,6 +138,13 @@ export const NAVAL_WEAPONS: Record<NavalWeaponId, NavalWeapon> = {
   bomb: { id: "bomb", name: "Bom 500 kg", reload: 22, damage: 380, splash: 11, speed: 0, range: 0, spread: 0, fire: 0.6 },
 };
 
+/**
+ * Độ tản đạn pháo (độ lệch chuẩn): lệch xa / gần `range` × tầm bắn + `base` m, lệch ngang `lateral` × tầm bắn +
+ * `baseLateral` m. Bắn 1 km: một nửa số đạn rơi trong khoảng ±55 m dọc hướng bắn, ±19 m ngang; tàu to, cao (tàu sân
+ * bay) vẫn dễ trúng hơn tàu nhỏ nhưng không còn gần như viên nào cũng trúng.
+ */
+export const GUN_DISPERSION = { range: 0.06, lateral: 0.02, base: 20, baseLateral: 8 } as const;
+
 /** Máu của đơn vị bay / chạy: tên lửa (pháo phòng không bắn hạ được), ngư lôi, máy bay. */
 export const UNIT_HP = { missile: 70, gtorpedo: 9999, torpedo: 9999, plane: 260, decoy: 9999 } as const;
 

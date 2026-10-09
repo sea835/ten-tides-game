@@ -49,7 +49,7 @@ describe("hải chiến (mô phỏng máy đấu máy)", () => {
           if (room.state.phase !== "battle") return;
         }
       };
-      ticks(360);
+      ticks(Number(process.env.NAVAL_SIM_SECONDS ?? 360));
       const c = counts();
       console.log(`${blue} vs ${red} t=${t.toFixed(0)} phase=${room.state.phase} winner=${room.state.winner} hp blue ${b.hp}/${b.maxHp} red ${r.hp}/${r.maxHp} fires b${b.fires.size} r${r.fires.size} parts b${[...b.parts.entries()].map(([k, v]) => k + v).join(",")} r${[...r.parts.entries()].map(([k, v]) => k + v).join(",")} moved b${Math.hypot(b.x - start.bx).toFixed(0)} r${Math.hypot(r.x - start.rx).toFixed(0)} units=${ns.units.size}`, JSON.stringify(c));
       expect(Math.abs(b.x - start.bx) + Math.abs(r.x - start.rx)).toBeGreaterThan(100);
