@@ -502,16 +502,18 @@ function flightMarkings(cls: ShipClass, out: Bucket) {
   const top = main.y + main.h / 2 + 0.025;
   // Vạch tim đứt quãng (vàng) dọc sàn, đường băng chéo (trắng) ở đuôi, vạch dừng, số hiệu ở mũi.
   for (let z = main.z - main.d / 2 + 30; z < main.z + main.d / 2 - 8; z += 9) out.add("accent", undefined, new PlaneGeometry(0.5, 5).rotateX(-Math.PI / 2).translate(main.x - 4, top, z));
+  // Đường hạ cánh chéo sang mạn trái: từ gần đuôi (giữa sàn) chạy về phía mũi lệch trái, nằm gọn trong sàn bay.
   const angle = 0.16;
-  for (let t = -110; t < 40; t += 8) {
-    const g = new PlaneGeometry(0.45, 5).rotateX(-Math.PI / 2).rotateY(angle);
-    g.translate(12 + Math.sin(angle) * t, top + 0.005, -40 + Math.cos(angle) * t);
-    out.add("marking", undefined, g);
+  const cx = 13;
+  const cz = -42;
+  const along = (t: number, side: number): [number, number] => [cx + Math.sin(angle) * t + side * Math.cos(angle), cz + Math.cos(angle) * t - side * Math.sin(angle)];
+  for (let t = -56; t <= 46; t += 8) {
+    const [x, z] = along(t, 0);
+    out.add("marking", undefined, new PlaneGeometry(0.45, 5).rotateX(-Math.PI / 2).rotateY(angle).translate(x, top + 0.005, z));
   }
   for (const s of [-1, 1]) {
-    const g = new PlaneGeometry(0.4, 150).rotateX(-Math.PI / 2).rotateY(angle);
-    g.translate(12 + s * 11 * Math.cos(angle) + Math.sin(angle) * -35, top + 0.004, -40 - s * 11 * Math.sin(angle) + Math.cos(angle) * -35);
-    out.add("marking", undefined, g);
+    const [x, z] = along(-5, s * 9);
+    out.add("marking", undefined, new PlaneGeometry(0.4, 106).rotateX(-Math.PI / 2).rotateY(angle).translate(x, top + 0.004, z));
   }
   // Số hiệu: hai chữ số to (mỗi nét một tấm).
   const digit = (cx: number, cz: number, segs: string) => {

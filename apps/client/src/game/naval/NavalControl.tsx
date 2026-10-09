@@ -137,7 +137,7 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         if (e.repeat) return;
         ctl.current.fHeld = true;
         const p = me();
-        if (!p?.alive || room.state.phase !== "battle") return;
+        if (!p?.alive || (room.state.phase !== "battle" && room.state.phase !== "prep")) return;
         const m = mine();
         if (m) {
           // Đang lái máy bay: F bỏ máy bay (về tàu); không thì rời vị trí.

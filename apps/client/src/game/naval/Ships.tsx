@@ -117,6 +117,8 @@ const STATION_MAT = new MeshBasicMaterial({
   toneMapped: false,
 });
 const BURNT = new MeshStandardMaterial({ color: "#1d1b1a", roughness: 1 });
+BURNT.userData.detail = "rock";
+BURNT.userData.detailSpace = "object";
 const _q = new Quaternion();
 const _e = new Euler();
 
@@ -157,7 +159,7 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
       out[k] = new MeshStandardMaterial({
         color: k === "team" ? accent : MAT_COLOR[k],
         roughness: k === "glass" ? 0.2 : k === "loft" ? 0.62 : k === "marking" ? 0.9 : 0.78,
-        metalness: k === "steel" || k === "hull" || k === "dark" || k === "loft" ? 0.3 : k === "glass" ? 0.5 : 0.05,
+        metalness: k === "steel" || k === "hull" || k === "dark" || k === "loft" ? 0.15 : k === "glass" ? 0.5 : 0.05,
         emissive: k === "glass" ? new Color("#10222e") : new Color(0),
         vertexColors: k === "loft",
         side: k === "team" || k === "loft" || k === "marking" ? DoubleSide : undefined,
@@ -166,11 +168,27 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
         polygonOffsetFactor: k === "marking" ? -2 : 0,
       });
     }
+    // Vân bề mặt (textures.ts): thép theo toạ độ của tàu (tàu chạy thì vân đi theo), kính, sơn, cờ thì để trơn.
+    for (const [k, m] of Object.entries(out) as [ModelMat, MeshStandardMaterial][]) {
+      m.userData.detail = k === "glass" || k === "marking" || k === "team" || k === "boat" || k === "accent" ? "none" : "metal";
+      m.userData.detailSpace = "object";
+      m.userData.detailStrength = 0.45;
+    }
     return out;
   }, [accent]);
   useEffect(() => () => Object.values(mats).forEach((m) => m.dispose()), [mats]);
-  const stripe = useMemo(() => new MeshStandardMaterial({ color: accent, roughness: 0.6 }), [accent]);
-  const turretMat = useMemo(() => new MeshStandardMaterial({ color: "#6b737b", roughness: 0.7, metalness: 0.3 }), []);
+  const stripe = useMemo(() => {
+    const m = new MeshStandardMaterial({ color: accent, roughness: 0.6 });
+    m.userData.detail = "none";
+    return m;
+  }, [accent]);
+  const turretMat = useMemo(() => {
+    const m = new MeshStandardMaterial({ color: "#6b737b", roughness: 0.7, metalness: 0.3 });
+    m.userData.detail = "metal";
+    m.userData.detailSpace = "object";
+    m.userData.detailStrength = 0.45;
+    return m;
+  }, []);
 
   // Hộp va chạm theo khối đặc (đi lại trên boong, lên dốc, nấp sau thượng tầng).
   useEffect(() => {

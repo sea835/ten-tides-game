@@ -280,7 +280,9 @@ export class Naval {
       ship.hp = ship.maxHp = spec.hp;
       ship.air = 100;
       this.ns.ships.set(side, ship);
-      this.helm.set(side, { throttle: 0, rudder: 0 });
+      // Ra khơi với nửa máy (thuyền trưởng là người thì đổi tay chuông sau).
+      this.helm.set(side, { throttle: 0.5, rudder: 0 });
+      ship.throttle = 0.5;
       // Máy lấp các vị trí người chơi chưa chọn.
       const taken = new Set<number>();
       for (const p of s.players.values()) if (!p.bot && p.team === side) taken.add(Number(p.role) || 0);
@@ -294,7 +296,8 @@ export class Naval {
     for (const [id, p] of s.players) {
       if (p.team !== "blue" && p.team !== "red") continue;
       this.equip(p);
-      this.spawnOnShip(id, p, p.bot);
+      // Vào trận, hồi sinh: đứng sẵn ở vị trí của mình (tàu không đứng im chờ người tìm bàn lái); F để rời đi lại.
+      this.spawnOnShip(id, p, true);
     }
   }
 
@@ -317,7 +320,7 @@ export class Naval {
     p.respawn = 0;
   }
 
-  /** Đặt người lên tàu phe mình, cạnh vị trí của mình; máy (và tàu ngầm đang lặn) vào luôn vị trí. */
+  /** Đặt người lên tàu phe mình: vào luôn vị trí (`man`), không thì đứng cạnh bàn điều khiển. */
   private spawnOnShip(id: string, p: PlayerState, man: boolean) {
     const ship = this.ship(p.team);
     if (!ship || ship.sunk) return;
@@ -1010,10 +1013,12 @@ export class Naval {
     const steer = this.partOk(ship, "bridge") ? 1 : 0.55;
     // Không ai đứng vị trí lái: giữ máy như cũ, bánh lái về giữa.
     const helmStation = cls.roles.findIndex((r) => r.helm);
-    const h = battle ? (this.helm.get(ship.team) ?? { throttle: 0, rudder: 0 }) : { throttle: 0, rudder: 0 };
-    if (!ship.crew.has(String(helmStation))) h.rudder = 0;
-    ship.throttle = h.throttle;
-    ship.rudder = h.rudder;
+    const set = this.helm.get(ship.team) ?? { throttle: 0, rudder: 0 };
+    if (!ship.crew.has(String(helmStation))) set.rudder = 0;
+    // Lúc chuẩn bị tàu đứng yên, nhưng tay chuông vẫn hiện đúng lệnh (người lái vào vị trí thấy đúng nấc).
+    ship.throttle = set.throttle;
+    ship.rudder = set.rudder;
+    const h = battle ? set : { throttle: 0, rudder: 0 };
     const map = this.room.map;
     const next = shipStep(cls, { pose: this.pose(ship), speed: ship.speed }, h.throttle, h.rudder, dt, drive, steer, (x, z, r) => shipAground(cls, map, x, z, r));
     ship.x = next.pose.x;
@@ -1440,7 +1445,8 @@ export class Naval {
       p.respawn -= dt;
       if (p.respawn > 0) continue;
       this.equip(p);
-      this.spawnOnShip(id, p, p.bot);
+      // Vào trận, hồi sinh: đứng sẵn ở vị trí của mình (tàu không đứng im chờ người tìm bàn lái); F để rời đi lại.
+      this.spawnOnShip(id, p, true);
       this.room.updateAliveCount();
     }
   }
