@@ -6,6 +6,7 @@ import {
   JET,
   NAVAL_HALF,
   NAVAL_WEAPONS,
+  SUB,
   ballisticAt,
   firePointOf,
   jetStep,
@@ -24,7 +25,7 @@ import {
 import { Messages, type NavalUnitState, type ShipState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
-import { localPosition, shake } from "../shared.ts";
+import { localEnv, localPosition, shake } from "../shared.ts";
 import { aimZoom, getSettings } from "../settings.ts";
 import { menuOpen, seat } from "../battle/runtime.ts";
 import { seatOwner } from "../battle/vehicleParts.tsx";
@@ -40,6 +41,12 @@ import { myUnit, navalLocal, shipPose } from "./navalRuntime.ts";
 const TELEGRAPH = [-1, -0.5, 0, 0.25, 0.5, 0.75, 1] as const;
 const UNIT_HZ = 15;
 const AIM_HZ = 8;
+/** Mỗi lần Q / E đổi độ sâu tàu ngầm (m). */
+const DEPTH_STEP = 3;
+/** Tầm nhìn dưới nước khi lái tàu ngầm (m): xa hơn lúc bơi lặn để thấy thân tàu, ngư lôi, đáy tàu địch. */
+const SUB_VIEW = 150;
+/** Đầu đạn mình vừa thả (chờ server báo `auto`, đừng bắt lái lại). */
+const released = new Set<string>();
 
 const _v = new Vector3();
 const _d = new Vector3();
@@ -126,9 +133,10 @@ export function NavalControl({ room }: { room: IslandRoom }) {
       const ship = st ? room.state.naval.ships.get(st.ship) : undefined;
       return st && ship ? { st, ship, cls: shipClass(ship.cls) } : null;
     };
-    const sendHelm = (dive?: boolean) => {
-      const msg: { throttle: number; rudder: number; dive?: boolean } = { throttle: navalLocal.throttle, rudder: navalLocal.rudder };
+    const sendHelm = (dive?: boolean, depth?: number) => {
+      const msg: { throttle: number; rudder: number; dive?: boolean; depth?: number } = { throttle: navalLocal.throttle, rudder: navalLocal.rudder };
       if (dive !== undefined) msg.dive = dive;
+      if (depth !== undefined) msg.depth = depth;
       room.send(Messages.navalHelm, msg);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -162,6 +170,11 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         navalLocal.throttle = 0;
         sendHelm();
       } else if (e.code === "KeyC" && m.cls.id === "submarine") sendHelm(!m.ship.dive);
+      else if ((e.code === "KeyQ" || e.code === "KeyE") && m.cls.id === "submarine") {
+        // Q nổi lên nông hơn, E lặn sâu hơn (đang nổi thì E là lặn luôn).
+        const depth = Math.max(SUB.deepest, Math.min(SUB.shallow, m.ship.depth + (e.code === "KeyQ" ? DEPTH_STEP : -DEPTH_STEP)));
+        sendHelm(e.code === "KeyE" && !m.ship.dive ? true : undefined, depth);
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "KeyF") ctl.current.fHeld = false;
@@ -196,6 +209,7 @@ export function NavalControl({ room }: { room: IslandRoom }) {
   useFrame((state, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const c = ctl.current;
+    localEnv.underwaterFar = 0;
     const cam = state.camera as PerspectiveCamera;
     const mid = myId(room);
     const me = room.state.players.get(mid);
@@ -257,11 +271,12 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     let unit: NavalUnitState | undefined;
     let uid = "";
     room.state.naval.units.forEach((u, id) => {
-      if (!unit && u.owner === mid && (u.kind === "missile" || u.kind === "gtorpedo" || u.kind === "plane")) {
+      if (!unit && u.owner === mid && !u.auto && !released.has(id) && (u.kind === "missile" || u.kind === "gtorpedo" || u.kind === "plane")) {
         unit = u;
         uid = id;
       }
     });
+    for (const id of released) if (!room.state.naval.units.has(id)) released.delete(id);
     if (!unit) myUnit.id = "";
     else if (myUnit.id !== uid) {
       myUnit.id = uid;
@@ -306,6 +321,11 @@ export function NavalControl({ room }: { room: IslandRoom }) {
           speed: Math.max(0, Math.min(400, myUnit.speed)),
         });
       }
+      // Dẫn xong: bấm chuột thả đầu đạn (nó tự dẫn tiếp), về lại vị trí trên tàu.
+      if ((kind === "missile" || kind === "gtorpedo") && (c.fireClick || c.altClick)) {
+        released.add(uid);
+        room.send(Messages.navalAct, { act: "release" });
+      }
       const back = kind === "plane" ? 20 : kind === "missile" ? 8 : 16;
       const up = kind === "plane" ? 4.5 : kind === "missile" ? 2.6 : 7;
       cam.position.set(myUnit.x - _d.x * back, myUnit.y - _d.y * back + up, myUnit.z - _d.z * back);
@@ -339,6 +359,16 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         cam.position.set(sx - _d.x * 3, sy + 2.3 - _d.y * 3, sz - _d.z * 3);
         cam.lookAt(_v.set(cam.position.x + _d.x, cam.position.y + _d.y, cam.position.z + _d.z));
         zoom = c.altHeld ? 2.5 : 1;
+      } else if (cls.id === "submarine" && pose.y < -2 && !(role.helm && c.altHeld && pose.y > SUB.depth - 1.5)) {
+        // Tàu ngầm đang lặn: camera theo sau dưới nước (nước trong hơn sương lặn thường để thấy cả thân tàu, ngư lôi).
+        const dist = cls.length * 0.45 + 8;
+        const bx = Math.sin(view.yaw);
+        const bz = Math.cos(view.yaw);
+        const y = Math.max(pose.y - 16, Math.min(-1.6, pose.y + cls.deck + 4 + Math.sin(view.pitch) * 14));
+        cam.position.set(pose.x + bx * dist, y, pose.z + bz * dist);
+        cam.lookAt(_v.set(cam.position.x + _d.x, cam.position.y + _d.y, cam.position.z + _d.z));
+        localEnv.underwater = true;
+        localEnv.underwaterFar = SUB_VIEW;
       } else if (cls.id === "submarine" && role.helm && c.altHeld) {
         // Kính tiềm vọng: mắt ở đỉnh kính, phóng to.
         const [px, py, pz] = shipToWorld(pose, 0, cls.deck + 8.6, 9.5);

@@ -36,7 +36,7 @@ export function MuzzleLights() {
     for (let i = 0; i < effects.flashes.length; i++) {
       const f = effects.flashes[i]!;
       const age = now - f.born;
-      if (age < 0 || age > LIFE) continue;
+      if (age < 0 || age > LIFE || f.noLight) continue;
       const d = Math.hypot(f.x - cx, f.y - cy, f.z - cz);
       if (d > RANGE) continue;
       let k = picked.length;

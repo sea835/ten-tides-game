@@ -192,7 +192,7 @@ function Station({ room, s }: { room: IslandRoom; s: ShipState }) {
           </div>,
         );
     } else {
-      keys = ["Chuột: lái đầu đạn vào tàu địch"];
+      keys = ["Chuột: lái đầu đạn vào tàu địch", "Bấm chuột: thả cho tự dẫn, về vị trí"];
       lines.push(
         <div key="u" className="nv-wl ok">
           <b>{unit.kind === "missile" ? "Tên lửa" : "Ngư lôi dẫn đường"}</b> {Math.round(myUnit.speed * 3.6)} km/h
@@ -203,7 +203,7 @@ function Station({ room, s }: { room: IslandRoom; s: ShipState }) {
   } else {
     if (role.helm) {
       keys = ["W/S: tay chuông máy", "A/D: bánh lái", "X: dừng máy"];
-      if (cls.id === "submarine") keys.push("C: lặn / nổi", "Chuột phải: kính tiềm vọng");
+      if (cls.id === "submarine") keys.push("C: lặn / nổi", "Q/E: nông / sâu hơn", "Chuột phải: kính tiềm vọng (lặn nông)");
     }
     if (role.weapons.includes("torpedo")) keys.push("Chuột trái: phóng ngư lôi theo hướng nhìn");
     if (role.weapons.includes("depth")) keys.push("Chuột phải: thả bom chìm");
@@ -284,7 +284,9 @@ function Helm({ s, cls }: { s: ShipState; cls: ShipClass }) {
           <span className="nv-bar small">
             <i style={{ width: `${s.air}%` }} />
           </span>{" "}
-          {s.dive ? `đang lặn (tối đa ${SUB.air}s)` : "đang nổi"}
+          {s.dive
+            ? `đang lặn · sâu ${Math.round(-s.y)}/${Math.round(-s.depth)} m${s.y < SUB.deep ? " · ra-đa không thấy" : ""} (dưỡng khí tối đa ${SUB.air}s)`
+            : `đang nổi · lặn tới ${Math.round(-s.depth)} m`}
         </div>
       )}
     </div>

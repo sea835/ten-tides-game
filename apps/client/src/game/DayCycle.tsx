@@ -142,8 +142,8 @@ export function DayCycle({
       underwaterFog.copy(UNDERWATER_NIGHT).lerp(UNDERWATER_DAY, 1 - night * 0.85);
       if (scene.fog instanceof Fog) {
         scene.fog.color.copy(underwaterFog);
-        scene.fog.near = 1;
-        scene.fog.far = 38 - 12 * night;
+        scene.fog.near = localEnv.underwaterFar ? 6 : 1;
+        scene.fog.far = (localEnv.underwaterFar || 38) - 12 * night;
       }
       if (scene.background instanceof Color) scene.background.copy(underwaterFog);
     } else {

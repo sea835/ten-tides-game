@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { AdditiveBlending, InstancedMesh, MeshBasicMaterial, Object3D, SphereGeometry } from "three";
-import { ballisticAt, mountCovers, NAVAL_WEAPONS, rayShip, shipClass, shipToWorld } from "@tentides/content";
+import { aaAimPoint, aaEye, ballisticAt, mountCovers, NAVAL_WEAPONS, rayShip, shipClass, shipToWorld } from "@tentides/content";
 import { Messages, type NavalFxMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { localPosition, shake } from "../shared.ts";
@@ -147,6 +147,181 @@ function sparks(x: number, y: number, z: number, n: number) {
     });
 }
 
+/** Tàu đang nổ dây chuyền lúc chìm: hầm đạn nổ tung, rồi từng tiếng nổ dọc thân, cột khói đen bốc cao. */
+interface Sinker {
+  ship: string;
+  born: number;
+  next: number;
+  x: number;
+  z: number;
+  smoke: number;
+}
+const sinkers: Sinker[] = [];
+/** Thời gian nổ dây chuyền, thời gian cột khói còn bốc (giây). */
+const SINK_BLASTS = 9;
+const SINK_SMOKE = 40;
+
+function startSink(ship: string, x: number, z: number) {
+  const now = performance.now() / 1000;
+  for (let i = sinkers.length - 1; i >= 0; i--) if (sinkers[i]!.ship === ship) sinkers.splice(i, 1);
+  sinkers.push({ ship, born: now, next: now, x, z, smoke: now });
+}
+
+/** Điểm ngẫu nhiên trên boong / trong thân tàu `ship` (toạ độ thế giới), theo dáng tàu đang vẽ. */
+function hullPoint(sk: Sinker, along: number): [number, number, number] {
+  const pose = shipPose(sk.ship);
+  const s = room0?.state.naval?.ships.get(sk.ship);
+  if (!pose || !s) return [sk.x, 3, sk.z];
+  const cls = shipClass(s.cls);
+  const lz = along * cls.length * 0.45;
+  const lx = (Math.random() - 0.5) * cls.beam * 0.7;
+  const ly = cls.deck * (0.3 + Math.random() * 0.9);
+  const p = shipToWorld(pose, lx, ly, lz);
+  sk.x = pose.x;
+  sk.z = pose.z;
+  return [p[0], Math.max(0.8, p[1]), p[2]];
+}
+
+/** Cầu lửa to: lõi cam chói phồng nhanh, vỏ khói đen cuộn lên, tia lửa, mảnh thép văng. */
+function fireball(x: number, y: number, z: number, size: number) {
+  effects.flashes.push({ x, y, z, born: performance.now() / 1000 });
+  for (let k = 0; k < Math.round(14 * size); k++) {
+    const a = Math.random() * Math.PI * 2;
+    const e = Math.random() * 1.3;
+    const v = (4 + Math.random() * 9) * size;
+    puffs.push({
+      x,
+      y,
+      z,
+      vx: Math.cos(a) * Math.cos(e) * v,
+      vy: Math.sin(e) * v + 2 * size,
+      vz: Math.sin(a) * Math.cos(e) * v,
+      size: 1.6 * size,
+      grow: 1.4,
+      life: 0.6 + Math.random() * 0.6,
+      age: 0,
+      r: 1,
+      g: 0.45 + Math.random() * 0.3,
+      b: 0.1,
+      alpha: 0.95,
+      dense: false,
+    });
+  }
+  for (let k = 0; k < Math.round(12 * size); k++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = (1.5 + Math.random() * 4) * size;
+    puffs.push({
+      x: x + Math.cos(a) * size,
+      y: y + Math.random() * 2 * size,
+      z: z + Math.sin(a) * size,
+      vx: Math.cos(a) * v,
+      vy: 3 + Math.random() * 5 * size,
+      vz: Math.sin(a) * v,
+      size: 2.2 * size,
+      grow: 2.2,
+      life: 5 + Math.random() * 5,
+      age: 0,
+      r: 0.09,
+      g: 0.08,
+      b: 0.08,
+      alpha: 0.75,
+      dense: true,
+    });
+  }
+  for (let k = 0; k < Math.round(30 * size); k++)
+    embers.push({
+      x,
+      y,
+      z,
+      vx: (Math.random() - 0.5) * 22 * size,
+      vy: 5 + Math.random() * 18 * size,
+      vz: (Math.random() - 0.5) * 22 * size,
+      age: 0,
+      life: 1 + Math.random() * 2,
+      size: 0.16,
+    });
+}
+
+/** Mỗi khung hình: tiếng nổ dọc thân tàu đang chìm (dày lúc đầu, thưa dần), cột khói đen lâu tan. */
+function tickSinks(now: number) {
+  for (let i = sinkers.length - 1; i >= 0; i--) {
+    const sk = sinkers[i]!;
+    const t = now - sk.born;
+    if (t > SINK_SMOKE) {
+      sinkers.splice(i, 1);
+      continue;
+    }
+    const far = Math.hypot(sk.x - localPosition.x, sk.z - localPosition.z) > 1400;
+    if (t < SINK_BLASTS && now >= sk.next) {
+      if (sk.next === sk.born) {
+        // Hầm đạn nổ: ba quả cầu lửa khổng lồ cùng lúc, rung mạnh.
+        for (const along of [-0.55, 0.05, 0.6]) {
+          const [x, y, z] = hullPoint(sk, along);
+          if (!far) fireball(x, y + 4, z, 3.2);
+          boom(x, y, z, true);
+          spawnDebris(x, y, z, true);
+          spawnDebris(x, y + 3, z, true);
+        }
+        shake.amount = Math.min(2, shake.amount + Math.max(0, 2 - near(sk.x, 5, sk.z) / 200));
+        sk.next = now + 0.25;
+      } else {
+        const [x, y, z] = hullPoint(sk, Math.random() * 2 - 1);
+        const big = Math.random() < 0.45;
+        if (!far) fireball(x, y, z, big ? 1.8 + Math.random() : 0.9 + Math.random() * 0.6);
+        boom(x, y, z, big);
+        if (Math.random() < 0.6) spawnDebris(x, y, z, big);
+        sparks(x, y, z, 20);
+        // Nổ dồn dập lúc đầu, thưa dần khi tàu ngập.
+        sk.next = now + 0.12 + Math.random() * (0.25 + t * 0.09);
+      }
+    }
+    // Cột khói đen bốc cao từ xác tàu, nhạt dần.
+    if (!far && now - sk.smoke > 0.09) {
+      sk.smoke = now;
+      const fade = 1 - t / SINK_SMOKE;
+      const [x, , z] = hullPoint(sk, Math.random() * 1.4 - 0.7);
+      puffs.push({
+        x,
+        y: 2,
+        z,
+        vx: (Math.random() - 0.5) * 1.5 + 1.2,
+        vy: 6 + Math.random() * 5,
+        vz: (Math.random() - 0.5) * 1.5,
+        size: 4 + Math.random() * 3,
+        grow: 2.6,
+        life: 10 + Math.random() * 8,
+        age: 0,
+        r: 0.07,
+        g: 0.065,
+        b: 0.065,
+        alpha: 0.6 * fade + 0.1,
+        dense: true,
+      });
+      if (t < SINK_BLASTS * 2)
+        puffs.push({
+          x,
+          y: 1.5,
+          z,
+          vx: 0,
+          vy: 2 + Math.random() * 2,
+          vz: 0,
+          size: 2.5,
+          grow: 1,
+          life: 0.9,
+          age: 0,
+          r: 1,
+          g: 0.5,
+          b: 0.12,
+          alpha: 0.85,
+          dense: false,
+        });
+    }
+  }
+}
+
+/** Phòng đang mở (để tính dáng tàu cho tiếng nổ dây chuyền). */
+let room0: IslandRoom | null = null;
+
 function onFx(room: IslandRoom, m: NavalFxMessage) {
   const now = performance.now() / 1000;
   const mine = (() => {
@@ -222,7 +397,7 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
       sparks(m.x, m.y, m.z, 30);
       break;
     case "sink": {
-      // Nước sủi trắng quanh thân, tiếng nổ nồi hơi.
+      // Nước sủi trắng quanh thân, rồi cả con tàu nổ dây chuyền (xem `tickSinks`).
       for (let k = 0; k < 40; k++) {
         const a = Math.random() * Math.PI * 2;
         const r = Math.random() * 40;
@@ -244,7 +419,8 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
           dense: false,
         });
       }
-      boom(m.x, 2, m.z, true);
+      if (m.ship) startSink(m.ship, m.x, m.z);
+      else boom(m.x, 2, m.z, true);
       break;
     }
     case "launch": {
@@ -395,12 +571,18 @@ function aaVolley(room: IslandRoom, team: string) {
   const w = NAVAL_WEAPONS.aa;
   const now = performance.now() / 1000;
   let first = true;
+  // Như server: mọi ổ bắn vào điểm hội tụ trên tia ngắm.
+  const eye = shipToWorld(pose, ...aaEye(cls));
+  const air = [...room.state.naval.units.values()].filter((u) => u.team !== s.team && (u.kind === "missile" || u.kind === "plane"));
+  const aim = aaAimPoint(eye, s.aaYaw, Math.max(-0.2, s.aaPitch), air);
   for (const part of cls.parts) {
     const m = part.mount;
-    if (!m || m.weapon !== "aa" || (s.parts.get(part.id) ?? 100) <= 0 || !mountCovers(pose, m, s.aaYaw)) continue;
+    if (!m || m.weapon !== "aa" || (s.parts.get(part.id) ?? 100) <= 0) continue;
     const [px, py, pz] = shipToWorld(pose, m.pivot[0], m.pivot[1], m.pivot[2]);
-    const yaw = s.aaYaw + (Math.random() - 0.5) * w.spread * 2;
-    const pitch = Math.max(-0.2, s.aaPitch) + (Math.random() - 0.5) * w.spread * 2;
+    const toYaw = Math.atan2(aim[0] - px, aim[2] - pz);
+    if (!mountCovers(pose, m, toYaw)) continue;
+    const yaw = toYaw + (Math.random() - 0.5) * w.spread * 2;
+    const pitch = Math.max(-0.2, Math.atan2(aim[1] - py, Math.hypot(aim[0] - px, aim[2] - pz))) + (Math.random() - 0.5) * w.spread * 2;
     const cp = Math.cos(pitch);
     const d = [Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp];
     const ox = px + d[0]! * m.barrel;
@@ -417,7 +599,7 @@ function aaVolley(room: IslandRoom, team: string) {
       mine: false,
       speed: w.speed,
     });
-    effects.flashes.push({ x: ox, y: oy, z: oz, born: now });
+    effects.flashes.push({ x: ox, y: oy, z: oz, born: now, noLight: true });
     if (first && Math.random() < 0.6) playGunshot("dp28", { x: ox, y: oy, z: oz }, near(ox, oy, oz) < 8);
     first = false;
   }
@@ -438,15 +620,19 @@ export function NavalFx({ room }: { room: IslandRoom }) {
     material.color.multiplyScalar(4);
   }, [material]);
   useEffect(() => {
+    room0 = room;
     const off = room.onMessage(Messages.navalFx, (m: NavalFxMessage) => onFx(room, m));
     return () => {
       off();
       shells.length = 0;
+      sinkers.length = 0;
+      room0 = null;
     };
   }, [room]);
 
   useFrame(() => {
     const now = performance.now() / 1000;
+    tickSinks(now);
     // Đạn vạch phòng không theo bộ đếm loạt bắn.
     room.state.naval?.ships.forEach((s, id) => {
       const last = seen.current.get(id);
