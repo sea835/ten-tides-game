@@ -364,6 +364,54 @@
 .nv-lead[data-kind="missile"] {
   border-color: #ffd166;
 }
+/* Thước ngắm pháo: vạch bậc tầm (mỗi 200 m) dọc hướng nhìn, dấu bóng tàu đón đầu. */
+.nv-tick {
+  position: absolute;
+  transform: translate(10px, -50%);
+  padding-left: 14px;
+  font:
+    600 10.5px/12px system-ui,
+    sans-serif;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+.nv-tick::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.8);
+}
+.nv-gunlead {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid #ff8a5c;
+  transform: rotate(45deg);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+}
+.nv-gunlead span {
+  position: absolute;
+  left: 18px;
+  top: -16px;
+  transform: rotate(-45deg);
+  font:
+    700 10.5px/12px system-ui,
+    sans-serif;
+  color: #ffb08a;
+  white-space: nowrap;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+}
+.nv-gunlead[data-hit="1"] {
+  border-color: #7dff8a;
+}
+.nv-gunlead[data-hit="1"] span {
+  color: #9dffa6;
+}
 
 @media (max-width: 1200px) {
   .nv-top {

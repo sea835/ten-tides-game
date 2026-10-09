@@ -37,6 +37,20 @@ export const navalLocal = {
   leads: [] as { x: number; y: number; kind: string; d: number }[],
   /** Dấu tàu địch trên màn hình (front: ở phía trước camera). */
   enemy: { on: false, front: false, x: 0, y: 0, dist: 0 },
+  /**
+   * Thước ngắm pháo: bậc tầm dọc tâm ngắm (toạ độ màn hình 0–1, mét), dấu bóng đón đầu trên màn hình, tầm tới địch,
+   * quãng địch đi trong lúc đạn bay, độ tản (2σ dọc / ngang, m), bóng đón có nằm trong vùng tản quanh điểm ngắm không.
+   */
+  gun: {
+    on: false,
+    ladder: [] as { x: number; y: number; d: number }[],
+    lead: { on: false, x: 0, y: 0 },
+    enemyRange: 0,
+    leadMove: 0,
+    spreadLong: 0,
+    spreadSide: 0,
+    onTarget: false,
+  },
 };
 
 /** Đơn vị mình đang lái (tên lửa, ngư lôi dẫn đường, máy bay): vị trí dự đoán trên máy mình (vẽ, camera). */

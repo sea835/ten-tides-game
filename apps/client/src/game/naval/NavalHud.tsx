@@ -208,7 +208,7 @@ function Station({ room, s }: { room: IslandRoom; s: ShipState }) {
     if (role.weapons.includes("torpedo")) keys.push("Chuột trái: phóng ngư lôi theo hướng nhìn");
     if (role.weapons.includes("depth")) keys.push("Chuột phải: thả bom chìm");
     if (role.weapons.includes("decoy")) keys.push("Chuột phải: phóng mồi nhử");
-    if (role.weapons.includes("bbGun") || role.weapons.includes("ddGun")) keys.push("Chuột: ngắm mặt biển", "Chuột trái: bắn loạt", "Chuột phải: ống nhòm");
+    if (role.weapons.includes("bbGun") || role.weapons.includes("ddGun")) keys.push("Chuột: đặt elip tản đạn lên bóng đón đầu", "Chuột trái: bắn loạt", "Chuột phải: ống nhòm");
     if (role.weapons.includes("aa")) keys.push("Giữ chuột trái: bắn", "Chuột phải: phóng to", "Ngắm vào vòng đón đầu");
     if (role.weapons.includes("missile")) keys.push("Chuột trái: phóng tên lửa rồi lái");
     if (role.weapons.includes("gtorpedo")) keys.push("Chuột trái: phóng ngư lôi rồi lái");
@@ -222,8 +222,19 @@ function Station({ room, s }: { room: IslandRoom; s: ShipState }) {
     if (role.weapons.includes("bbGun") || role.weapons.includes("ddGun"))
       lines.push(
         <div key="rng" className="nv-wl">
-          Tầm {Math.round(navalLocal.aimRange)} m · đạn bay {navalLocal.flight.toFixed(1)}s
+          Tầm ngắm {Math.round(navalLocal.aimRange)} m · đạn bay {navalLocal.flight.toFixed(1)}s · tản ±{Math.round(navalLocal.gun.spreadLong / 2)}/±
+          {Math.round(navalLocal.gun.spreadSide / 2)} m
         </div>,
+        navalLocal.gun.enemyRange > 0 ? (
+          <div key="lead" className={`nv-wl ${navalLocal.gun.onTarget ? "ok" : "warn"}`}>
+            Địch cách {Math.round(navalLocal.gun.enemyRange)} m · đạn tới thì địch đã đi {Math.round(navalLocal.gun.leadMove)} m ·{" "}
+            <b>{navalLocal.gun.onTarget ? "TRÚNG ĐIỂM ĐÓN — bắn!" : "đưa elip lên bóng đón đầu"}</b>
+          </div>
+        ) : (
+          <div key="lead" className="nv-wl">
+            Không thấy tàu địch
+          </div>
+        ),
       );
     if (role.role === "pilot") {
       const cat = (s.parts.get("cat") ?? 100) > 0;
@@ -303,6 +314,8 @@ function Overlay() {
   const enemy = useRef<HTMLDivElement>(null);
   const cross = useRef<HTMLDivElement>(null);
   const pool = useRef<HTMLDivElement[]>([]);
+  const ladderPool = useRef<HTMLDivElement[]>([]);
+  const gunLead = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -323,6 +336,34 @@ function Overlay() {
         }
       }
       if (cross.current) cross.current.style.display = navalLocal.station >= 0 ? "block" : "none";
+      // Thước ngắm pháo: bậc tầm, dấu bóng đón đầu.
+      const gun = navalLocal.gun;
+      const ladder = gun.on && navalLocal.zoom ? gun.ladder : [];
+      while (ladderPool.current.length < ladder.length) {
+        const d = document.createElement("div");
+        d.className = "nv-tick";
+        el.appendChild(d);
+        ladderPool.current.push(d);
+      }
+      ladderPool.current.forEach((d, i) => {
+        const t = ladder[i];
+        d.style.display = t ? "block" : "none";
+        if (t) {
+          d.style.left = `${t.x * 100}%`;
+          d.style.top = `${t.y * 100}%`;
+          d.textContent = t.d >= 1000 ? `${(t.d / 1000).toFixed(1)} km` : `${t.d}`;
+        }
+      });
+      const gl = gunLead.current;
+      if (gl) {
+        const on = gun.on && gun.lead.on;
+        gl.style.display = on ? "block" : "none";
+        if (on) {
+          gl.style.left = `${gun.lead.x * 100}%`;
+          gl.style.top = `${gun.lead.y * 100}%`;
+          gl.dataset.hit = gun.onTarget ? "1" : "";
+        }
+      }
       const leads = navalLocal.leads;
       while (pool.current.length < leads.length) {
         const d = document.createElement("div");
@@ -347,6 +388,9 @@ function Overlay() {
     <div className="nv-overlay" ref={root}>
       <div className="nv-enemy" ref={enemy} />
       <div className="nv-cross" ref={cross} />
+      <div className="nv-gunlead" ref={gunLead}>
+        <span>đón đầu</span>
+      </div>
     </div>
   );
 }

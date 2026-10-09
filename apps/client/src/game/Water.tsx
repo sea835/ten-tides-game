@@ -197,15 +197,22 @@ const COMMON = /* glsl */ `
     return vec3(d.x * a * cf, a * sf, d.y * a * cf);
   }
 
-  vec3 waves(vec2 p, float amp, out vec3 normal) {
+  uniform float uWaveFade;
+
+  // Sóng bước sóng len mờ dần khi ô lưới ở khoảng cách dist quá thưa so với nó (khỏi răng cưa thành vân vòng).
+  float waveFade(float len, float dist) {
+    return 1.0 - uWaveFade * smoothstep(len * 3.0, len * 7.0, dist);
+  }
+
+  vec3 waves(vec2 p, float amp, float dist, out vec3 normal) {
     vec3 tangent = vec3(1.0, 0.0, 0.0);
     vec3 binormal = vec3(0.0, 0.0, 1.0);
     vec3 o = vec3(0.0);
     // Ba tầng sóng mềm (độ dốc thấp, đỉnh tròn): sóng lừng dài, sóng chéo, sóng con. Gợn nhỏ hơn do bản đồ pháp
     // tuyến lo ở fragment — lưới thưa ở xa không đủ đỉnh cho sóng ngắn hơn (trước đây 5 tầng, tầng 5,5 m nhấp nháy).
-    o += gerstner(vec4(1.0, 0.35, 0.085, 36.0), p, amp, tangent, binormal);
-    o += gerstner(vec4(0.55, 1.0, 0.07, 21.0), p, amp, tangent, binormal);
-    o += gerstner(vec4(-0.45, 0.9, 0.055, 12.5), p, amp, tangent, binormal);
+    o += gerstner(vec4(1.0, 0.35, 0.085, 36.0), p, amp * waveFade(36.0, dist), tangent, binormal);
+    o += gerstner(vec4(0.55, 1.0, 0.07, 21.0), p, amp * waveFade(21.0, dist), tangent, binormal);
+    o += gerstner(vec4(-0.45, 0.9, 0.055, 12.5), p, amp * waveFade(12.5, dist), tangent, binormal);
     normal = normalize(cross(binormal, tangent));
     return o;
   }
@@ -224,7 +231,7 @@ const vertexShader = /* glsl */ `
     // Sát bờ sóng dẹt lại (không trườn lên bãi cát rồi nhấp nháy xuyên qua địa hình).
     float amp = uWaveScale * smoothstep(0.15, 5.0, depth);
     vec3 n;
-    vec3 o = waves(world.xz, amp, n);
+    vec3 o = waves(world.xz, amp, length(world.xz - cameraPosition.xz), n);
     world.xyz += o;
     vWorld = world.xyz;
     vNormalW = n;
@@ -338,8 +345,8 @@ const fragmentShader = /* glsl */ `
     vec3 foamCol = vec3(0.94, 0.97, 0.99) * (0.3 + 0.7 * uDay);
     col = mix(col, foamCol, clamp(foam, 0.0, 1.0) * 0.92);
 
-    // Nước nông trong suốt, thấy cát đáy; sâu dần thì đục.
-    float alpha = mix(0.18, 0.97, smoothstep(0.0, 4.5, depth));
+    // Nước nông trong suốt, thấy cát đáy; sâu dần thì đục hẳn (không lộ lờ mờ từng ô đáy biển thành mảng vuông).
+    float alpha = mix(0.18, 1.0, smoothstep(0.0, 6.0, depth));
     alpha = max(alpha, fres);
     alpha = max(alpha, clamp(foam, 0.0, 1.0));
 
@@ -519,9 +526,11 @@ export function Water({ world, tidal = false }: { world: World; tidal?: boolean 
   const profile = useProfile();
   const segments = profile.water;
   const reflectScale = profile.reflect;
-  // Biển hải chiến: nhìn xa hơn nhiều (đánh nhau ở tầm gần một cây số) nên tấm nước lớn hơn.
-  const size = (world.half ?? MAP_HALF_SIZE) >= 600 ? SIZE * 4.5 : SIZE;
-  const geometry = useMemo(() => radialGrid(size, segments, size > SIZE ? 2.8 : 2.2), [segments, size]);
+  // Biển hải chiến: nhìn xa hơn nhiều (đánh nhau ở tầm gần một cây số) nên tấm nước lớn hơn, lưới dày hơn; sóng
+  // ngắn tắt dần theo khoảng cách (ô lưới ở xa to hơn bước sóng thì sóng răng cưa thành vân vòng, mảng loang).
+  const big = (world.half ?? MAP_HALF_SIZE) >= 600;
+  const size = big ? SIZE * 4.5 : SIZE;
+  const geometry = useMemo(() => radialGrid(size, big ? Math.round(segments * 1.6) : segments, big ? 2.6 : 2.2), [segments, size, big]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const mesh = useRef<Mesh>(null);
   const material = useMemo(() => {
@@ -542,6 +551,7 @@ export function Water({ world, tidal = false }: { world: World; tidal?: boolean 
           uDepth: { value: null },
           uRipple: { value: null },
           uHalf: { value: world.half ?? MAP_HALF_SIZE },
+          uWaveFade: { value: 0 },
           uDepthBias: { value: 0 },
           uReflectMap: { value: null },
           uReflectMatrix: { value: new Matrix4() },
@@ -565,7 +575,8 @@ export function Water({ world, tidal = false }: { world: World; tidal?: boolean 
   // Bản đồ rộng hẹp khác nhau (chiến trường rộng hơn đảo): tấm độ sâu phủ đúng cả bản đồ.
   useEffect(() => {
     material.uniforms.uHalf!.value = world.half ?? MAP_HALF_SIZE;
-  }, [material, world]);
+    material.uniforms.uWaveFade!.value = big ? 1 : 0;
+  }, [material, world, big]);
   material.uniforms.uDepth!.value = depthMap;
   material.uniforms.uDepthBias!.value = headroom;
 

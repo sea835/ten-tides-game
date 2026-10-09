@@ -556,14 +556,40 @@ export const NAVAL_ISLETS: readonly { x: number; z: number; r: number; h: number
   { x: 530, z: 430, r: 30, h: 15 },
 ];
 
+/**
+ * Độ cao đáy biển / đảo ở (x, z): đáy sâu ~32 m gợn nhẹ; quanh mỗi đảo một thềm dốc lên (đá ngầm) tới bãi cát sát
+ * mép nước, rồi bãi cát nhô lên khỏi mặt nước và khối đá nhiều đỉnh ở giữa. Bờ đảo méo theo góc (không tròn xoe).
+ * Ngoài chừng 2,2 lần bán kính đảo là biển sâu hẳn (tàu chạy được sát gần đảo).
+ */
 function navalHeight(x: number, z: number): number {
   let h = -32 + 3 * Math.sin(x * 0.006 + 0.4) * Math.cos(z * 0.005);
-  for (const it of NAVAL_ISLETS) {
-    const d = Math.hypot(x - it.x, z - it.z);
-    if (d > it.r * 2.6) continue;
-    const t = Math.max(0, 1 - d / (it.r * 2.6));
-    const rock = it.h * Math.pow(Math.max(0, 1 - d / it.r), 0.8) * (0.85 + 0.15 * Math.sin(x * 0.3 + z * 0.2));
-    h = Math.max(h, -32 + 34 * t * t, rock);
+  for (let i = 0; i < NAVAL_ISLETS.length; i++) {
+    const it = NAVAL_ISLETS[i]!;
+    const dx = x - it.x;
+    const dz = z - it.z;
+    const d = Math.hypot(dx, dz);
+    if (d > it.r * 2.3) continue;
+    // Bờ méo: bán kính đổi theo góc (vài thuỳ, mỗi đảo một kiểu).
+    const a = Math.atan2(dz, dx);
+    const r = it.r * (1 + 0.16 * Math.sin(3 * a + i * 1.7) + 0.08 * Math.sin(5 * a + i * 2.9) + 0.05 * Math.sin(9 * a + i));
+    const u = d / r;
+    let g: number;
+    if (u >= 2.2) continue;
+    if (u > 1) {
+      // Thềm đá ngầm: từ đáy sâu dốc dần lên tới −2,5 m ở mép đảo.
+      const t = (2.2 - u) / 1.2;
+      g = -32 + 29.5 * t * t * (3 - 2 * t);
+    } else if (u > 0.78) {
+      // Bãi cát: từ −2,5 m nhô lên +1,8 m.
+      const t = (1 - u) / 0.22;
+      g = -2.5 + 4.3 * t * t * (3 - 2 * t);
+    } else {
+      // Khối đá giữa đảo: nhiều đỉnh (gợn theo hướng, theo chỗ), chân đá liền với bãi cát.
+      const t = 1 - u / 0.78;
+      const bumps = 0.78 + 0.14 * Math.sin(x * 0.11 + z * 0.07 + i) + 0.1 * Math.sin(x * 0.05 - z * 0.13 + i * 2.3) + 0.06 * Math.sin(2 * a + i);
+      g = 1.8 + (it.h - 1.8) * Math.pow(t, 0.9) * bumps;
+    }
+    h = Math.max(h, g);
   }
   return h;
 }
@@ -577,7 +603,7 @@ export function navalMap(seed: number): BattleMap {
   const inland = (x: number, z: number) => {
     let best = -1000;
     for (const it of NAVAL_ISLETS) best = Math.max(best, it.r - Math.hypot(x - it.x, z - it.z));
-    return best;
+    return navalHeight(x, z) > 0 ? Math.max(best, 0) : Math.min(best, -0.5);
   };
   const world: World = {
     seed,

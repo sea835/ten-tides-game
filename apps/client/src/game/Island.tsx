@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { useFrame } from "@react-three/fiber";
 import { CuboidCollider, HeightfieldCollider, RigidBody } from "@react-three/rapier";
 import {
@@ -17,7 +18,7 @@ import {
 } from "three";
 import { ANCHORS, CAVE, MAP_HALF_SIZE, TREASURE_SITES, VOLCANO, WATER_LEVEL, heightAt, shoreRadius, type World } from "@tentides/content";
 import type { IslandRoom } from "../net.ts";
-import { sky } from "./shared.ts";
+import { localEnv, sky } from "./shared.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { Vegetation } from "./Vegetation.tsx";
 import { Water, waterUniforms } from "./Water.tsx";
@@ -343,6 +344,30 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   const grids = useMemo(() => terrainGrids(world), [world]);
   const chunks = useMemo(() => buildTerrain(world, grids), [world, grids]);
   const geometries = useMemo(() => chunks.map((c) => c.geometry), [chunks]);
+  // Vẽ: gộp từng khối 4 × 4 ô thành một lưới (bản đồ biển 2 km có ~1 700 ô, mỗi ô một lệnh vẽ thì quá nhiều); vẫn cắt
+  // bỏ khối ngoài tầm nhìn. Cỏ, va chạm vẫn dùng từng ô.
+  const blocks = useMemo(() => {
+    const groups = new Map<string, BufferGeometry[]>();
+    grids.forEach((g, i) => {
+      const key = `${g.cx >> 2},${g.cz >> 2}`;
+      const list = groups.get(key) ?? [];
+      list.push(geometries[i]!);
+      groups.set(key, list);
+    });
+    return [...groups.values()].map((list) => {
+      const merged = mergeGeometries(list)!;
+      merged.userData.smooth = true;
+      merged.computeBoundingSphere();
+      merged.computeBoundingBox();
+      // Cả khối nằm sâu dưới đáy biển (nước sâu gần như đục hẳn): chỉ vẽ khi camera lặn xuống nước.
+      return { geometry: merged, deep: merged.boundingBox!.max.y < WATER_LEVEL - 16 };
+    });
+  }, [grids, geometries]);
+  useEffect(() => () => blocks.forEach((b) => b.geometry.dispose()), [blocks]);
+  const deepRefs = useRef<(Mesh | null)[]>([]);
+  useFrame(() => {
+    for (const m of deepRefs.current) if (m) m.visible = localEnv.underwater;
+  });
   // 100 ô vẽ (mỗi ô một draw call, cắt bớt phần ngoài tầm nhìn) nhưng va chạm chỉ một heightfield phủ cả bản đồ
   // (bản đồ chiến trường rộng hơn MAP_HALF_SIZE): dựng ~1 ms thay vì ~130 ms cho 25 trimesh 212 000 tam giác.
   const field = useMemo(() => terrainField(grids, world.half ?? MAP_HALF_SIZE), [grids, world]);
@@ -361,8 +386,8 @@ export function Terrain({ room, world }: { room: IslandRoom; world: World }) {
   return (
     <RigidBody type="fixed" colliders={false}>
       <HeightfieldCollider args={[field.nrows, field.ncols, field.heights as unknown as number[], field.scale]} />
-      {chunks.map((c, i) => (
-        <mesh key={i} geometry={c.geometry} material={material} receiveShadow />
+      {blocks.map((b, i) => (
+        <mesh key={i} ref={b.deep ? (m) => void (deepRefs.current[i] = m) : undefined} geometry={b.geometry} material={material} receiveShadow />
       ))}
       {grass > 0 && <GrassField geometries={geometries} count={grass} clearings={clearings} heightAt={world.heightAt} half={world.half ?? MAP_HALF_SIZE} />}
     </RigidBody>
