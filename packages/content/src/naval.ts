@@ -176,6 +176,10 @@ export const JET = {
   /** Độ cao bay tối đa (m). */
   ceiling: 420,
   bombs: 3,
+  /** Máy bay yểm trợ cất cánh cùng máy bay dẫn đầu (tự lái), tối đa cùng lúc; bom mỗi chiếc mang, hệ số sát thương bom (bom nhẹ). */
+  wingmen: 4,
+  wingBombs: 2,
+  wingDamage: 0.5,
   respawn: 14,
   /** Nạp lại bom khi bay sát tàu mẹ (m). */
   rearm: 90,

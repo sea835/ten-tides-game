@@ -227,15 +227,19 @@ function Station({ room, s }: { room: IslandRoom; s: ShipState }) {
       );
     if (role.role === "pilot") {
       const cat = (s.parts.get("cat") ?? 100) > 0;
+      let wing = 0;
+      room.state.naval.units.forEach((u) => {
+        if (u.kind === "plane" && u.auto && u.ship === s.team) wing++;
+      });
       lines.push(
         <div key="j" className={`nv-wl ${cat && !s.jet && s.jetWait <= 0 ? "ok" : "wait"}`}>
           {!cat
             ? "Máy phóng hỏng: không cất cánh được"
             : s.jet
-              ? "Máy bay đang bay"
+              ? `Phi đội đang bay: máy bay của bạn + ${wing} máy bay yểm trợ tự đánh`
               : s.jetWait > 0
                 ? `Máy bay mới sau ${Math.ceil(s.jetWait)}s`
-                : "Máy bay sẵn sàng cất cánh"}
+                : `Phi đội sẵn sàng cất cánh (1 + ${JET.wingmen} máy bay)`}
         </div>,
       );
     }

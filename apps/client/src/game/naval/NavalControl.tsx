@@ -464,6 +464,9 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     }
     c.fireClick = false;
     c.altClick = false;
+    // Đang đứng vị trí thì LocalPlayer không chạy tới chỗ tính "dưới nước": tự tính theo camera (tàu ngầm nổi lên thì
+    // hết sương xanh, tiếng nước bóp nghẹt).
+    localEnv.underwater = cam.position.y < -0.05;
     markEnemy(cam, me.team, enemyShip, own);
 
     // Ống nhòm / kính tiềm vọng: thu hẹp góc nhìn.

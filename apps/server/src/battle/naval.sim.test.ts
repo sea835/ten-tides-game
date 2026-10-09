@@ -59,3 +59,29 @@ describe("hải chiến (mô phỏng máy đấu máy)", () => {
     });
   }
 });
+
+describe("hải chiến: đổi vị trí với máy", () => {
+  it("người vào vị trí máy đang đứng: máy sang vị trí người bỏ trống", () => {
+    const { room } = navalRoom("battleship", "destroyer");
+    const naval = room.naval as unknown as { station: (id: string, k: number) => void; seatOf: (p: unknown) => { station: number } | null };
+    const ship = room.state.naval.ships.get("blue")!;
+    // Biến máy thuyền trưởng thành "người": rời vị trí 0, đứng cạnh bàn vị trí 1.
+    const me = room.state.players.get("nb_blue0")!;
+    me.bot = false;
+    naval.station("nb_blue0", -1);
+    expect(ship.crew.has("0")).toBe(false);
+    const st = room.naval.cls(ship).roles[1]!.station;
+    const pose = room.naval.pose(ship);
+    const c = Math.cos(pose.rotY);
+    const s = Math.sin(pose.rotY);
+    me.x = pose.x + c * st[0] + s * st[2];
+    me.y = pose.y + st[1];
+    me.z = pose.z - s * st[0] + c * st[2];
+    naval.station("nb_blue0", 1);
+    expect(naval.seatOf(me)?.station).toBe(1);
+    const bot = room.state.players.get("nb_blue1")!;
+    expect(naval.seatOf(bot)?.station).toBe(0);
+    expect(ship.crew.get("0")).toBe("nb_blue1");
+    expect(ship.crew.get("1")).toBe("nb_blue0");
+  });
+});
