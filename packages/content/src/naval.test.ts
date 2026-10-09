@@ -13,6 +13,17 @@ describe("chiến hạm", () => {
     }
   });
 
+  it("các bàn điều khiển trên một tàu cách nhau đủ xa (bấm F không vào nhầm vị trí)", () => {
+    for (const cls of Object.values(SHIPS))
+      cls.roles.forEach((a, i) =>
+        cls.roles.forEach((b, j) => {
+          if (j <= i) return;
+          const d = Math.hypot(a.station[0] - b.station[0], (a.station[1] - b.station[1]) * 2, a.station[2] - b.station[2]);
+          expect(d, `${cls.id} ${a.name} / ${b.name}`).toBeGreaterThan(4);
+        }),
+      );
+  });
+
   it("đám cháy của mọi bộ phận nằm trên mặt sàn (người đứng tới dập được)", () => {
     for (const cls of Object.values(SHIPS)) {
       for (const p of cls.parts) {

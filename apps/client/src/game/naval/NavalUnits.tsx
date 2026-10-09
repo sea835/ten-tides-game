@@ -47,7 +47,7 @@ function Unit({ room, id, kind, team }: { room: IslandRoom; id: string; kind: st
     }),
     [kind, color],
   );
-  useMemo(() => mats.glow.color.multiplyScalar(5), [mats]);
+  useMemo(() => mats.glow.color.multiplyScalar(kind === "decoy" ? 5 : 2.4), [mats, kind]);
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
@@ -174,7 +174,7 @@ function Unit({ room, id, kind, team }: { room: IslandRoom; id: string; kind: st
           <mesh material={mats.body} position={[0, 0, -2]}>
             <boxGeometry args={[0.06, 1.5, 0.6]} />
           </mesh>
-          <mesh material={mats.glow} position={[0, 0, -2.9]} scale={[0.35, 0.35, 0.9]}>
+          <mesh material={mats.glow} position={[0, 0, -2.75]} scale={[0.17, 0.17, 0.45]}>
             <sphereGeometry args={[1, 8, 6]} />
           </mesh>
         </>

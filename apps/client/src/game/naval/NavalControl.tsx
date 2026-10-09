@@ -307,7 +307,7 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         });
       }
       const back = kind === "plane" ? 20 : kind === "missile" ? 8 : 16;
-      const up = kind === "plane" ? 4.5 : kind === "missile" ? 1.4 : 7;
+      const up = kind === "plane" ? 4.5 : kind === "missile" ? 2.6 : 7;
       cam.position.set(myUnit.x - _d.x * back, myUnit.y - _d.y * back + up, myUnit.z - _d.z * back);
       if (kind === "gtorpedo") cam.position.y = Math.max(3, cam.position.y);
       else cam.position.y = Math.max(0.8, cam.position.y);
@@ -533,13 +533,22 @@ function onFoot(room: IslandRoom, own: ShipState, c: { fHeld: boolean; douseAt: 
     return;
   }
   navalLocal.dousing = false;
-  // Bàn điều khiển gần.
+  // Bàn điều khiển gần nhất.
+  let pick = -1;
+  let pickD = 3.5;
   for (const [k, r] of cls.roles.entries()) {
-    if (Math.hypot(lx - r.station[0], lz - r.station[2]) > 3.5 || Math.abs(ly - r.station[1]) > 2.2) continue;
-    const who = own.crew.get(String(k));
+    const d = Math.hypot(lx - r.station[0], lz - r.station[2]);
+    if (d < pickD && Math.abs(ly - r.station[1]) <= 2.2) {
+      pickD = d;
+      pick = k;
+    }
+  }
+  if (pick >= 0) {
+    const r = cls.roles[pick]!;
+    const who = own.crew.get(String(pick));
     const occ = who ? room.state.players.get(who) : undefined;
     if (occ && !occ.bot && occ.alive) navalLocal.near = { kind: "", station: -1, label: `${r.name}: ${occ.name} đang giữ` };
-    else navalLocal.near = { kind: "station", station: k, label: `F: vào vị trí ${r.name}${occ?.alive ? " (máy nhường chỗ)" : ""}` };
+    else navalLocal.near = { kind: "station", station: pick, label: `F: vào vị trí ${r.name}${occ?.alive ? " (máy nhường chỗ)" : ""}` };
     return;
   }
   // Đang bơi cạnh tàu mình.

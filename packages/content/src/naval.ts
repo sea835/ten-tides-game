@@ -272,7 +272,7 @@ function battleship(): ShipClass {
     turn: 0.07,
     roles: [
       role("captain", "Thuyền trưởng", "Lái tàu (W/S tốc độ, A/D bẻ lái), bắn ngư lôi hai mạn (chuột trái).", [0, D + 11.3, 8.2], 0, ["torpedo"], true),
-      role("gunner", "Pháo thủ chính", "Ba tháp pháo chính: ngắm vào mặt biển, máy tự tính góc nâng; chuột trái bắn loạt.", [3, D + 4, -0.5], 0, ["bbGun"]),
+      role("gunner", "Pháo thủ chính", "Ba tháp pháo chính: ngắm vào mặt biển, máy tự tính góc nâng; chuột trái bắn loạt.", [2.6, D + 4, -5.5], 0, ["bbGun"]),
       role("aa", "Phòng không", "Bốn ổ pháo phòng không: bắn máy bay, tên lửa, lính trên boong tàu địch.", [5.5, D + 4, -1], Math.PI / 2, ["aa"]),
     ],
     parts: [
