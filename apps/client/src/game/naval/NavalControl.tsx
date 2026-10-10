@@ -230,6 +230,7 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     if (ghost.current) ghost.current.visible = false;
     if (trail.current) trail.current.visible = false;
     navalLocal.gun.on = false;
+    navalLocal.torpLead.on = false;
     navalLocal.leads.length = 0;
     navalLocal.enemy.on = false;
     if (room.state.battleMode !== "naval" || !me) return;
@@ -426,6 +427,8 @@ export function NavalControl({ room }: { room: IslandRoom }) {
           ax = pose.x + (_d.x / flat) * w.range;
           az = pose.z + (_d.z / flat) * w.range;
         }
+        // Hỗ trợ ngắm: elip đặt gần bóng đón đầu thì điểm ngắm hút dần về bóng (gunSight trả về điểm ngắm sau khi hút).
+        [ax, az] = gunSight(cam, pose, cls, weapon, ax, az, enemyShip, spread.current, ghost.current, trail.current);
         navalLocal.aimX = ax;
         navalLocal.aimZ = az;
         navalLocal.aimRange = Math.hypot(ax - pose.x, az - pose.z);
@@ -433,7 +436,6 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         const elev = shellElevation(w.speed, navalLocal.aimRange, -(pose.y + cls.deck + 2));
         navalLocal.flight = Number.isFinite(elev) ? shellTime(w.speed, elev, navalLocal.aimRange) : 0;
         navalLocal.aimYaw = yawToAim;
-        gunSight(cam, pose, cls, weapon, ax, az, yawToAim, enemyShip, spread.current, ghost.current, trail.current);
         c.aimAt += dt;
         if (c.aimAt >= 1 / AIM_HZ) {
           c.aimAt = 0;
@@ -471,9 +473,11 @@ export function NavalControl({ room }: { room: IslandRoom }) {
           }
         }
         if (role.weapons.includes("torpedo")) {
-          const r = mountsReady(ship, cls, "torpedo", aimYaw);
-          showLine(line.current, pose.x, pose.z, aimYaw, r.cover > 0);
-          if (c.fireClick && battle) room.send(Messages.navalFire, { weapon: "torpedo", yaw: aimYaw, pitch: 0 });
+          // Đón đầu ngư lôi: dấu ở điểm gặp nhau; hướng phóng lệch dưới ~7° thì hút về đó.
+          const yaw = torpedoLead(cam, pose, aimYaw, enemyShip);
+          const r = mountsReady(ship, cls, "torpedo", yaw);
+          showLine(line.current, pose.x, pose.z, yaw, r.cover > 0);
+          if (c.fireClick && battle) room.send(Messages.navalFire, { weapon: "torpedo", yaw, pitch: 0 });
         }
         if (role.weapons.includes("gtorpedo") && c.fireClick && battle) room.send(Messages.navalFire, { weapon: "gtorpedo", yaw: aimYaw, pitch: 0 });
         if (role.weapons.includes("missile") && c.fireClick && battle) room.send(Messages.navalFire, { weapon: "missile", yaw: aimYaw, pitch: 0 });
@@ -571,6 +575,41 @@ function ghostTexture(): CanvasTexture {
 }
 
 const _l = new Vector3();
+/**
+ * Điểm ngư lôi thẳng gặp tàu địch (tàu địch đi tiếp theo tốc độ, hướng hiện tại): ghi dấu đón đầu lên màn hình; hướng
+ * phóng `yaw` gần hướng tới điểm gặp (dưới TORPEDO_ASSIST) thì trả về đúng hướng đó.
+ */
+function torpedoLead(cam: PerspectiveCamera, pose: { x: number; z: number }, yaw: number, enemy: ShipState | undefined): number {
+  const lead = navalLocal.torpLead;
+  lead.on = false;
+  const ep = enemy && !enemy.sunk && !(enemy.cls === "submarine" && enemy.y < -4) ? shipPose(enemy.team) : undefined;
+  if (!enemy || !ep) return yaw;
+  const sp = NAVAL_WEAPONS.torpedo.speed;
+  let gx = ep.x;
+  let gz = ep.z;
+  for (let k = 0; k < 4; k++) {
+    const t = Math.hypot(gx - pose.x, gz - pose.z) / sp;
+    gx = ep.x + Math.sin(ep.rotY) * enemy.speed * t;
+    gz = ep.z + Math.cos(ep.rotY) * enemy.speed * t;
+  }
+  if (Math.hypot(gx - pose.x, gz - pose.z) > NAVAL_WEAPONS.torpedo.range) return yaw;
+  const want = Math.atan2(gx - pose.x, gz - pose.z);
+  const off = Math.abs(wrap(want - yaw));
+  lead.hit = off < TORPEDO_ASSIST;
+  _l.set(gx, 0.5, gz).project(cam);
+  if (_l.z < 1 && Math.abs(_l.x) < 1.2 && Math.abs(_l.y) < 1.2) {
+    lead.on = true;
+    lead.x = (_l.x + 1) / 2;
+    lead.y = (1 - _l.y) / 2;
+  }
+  return lead.hit ? want : yaw;
+}
+
+/** Hỗ trợ ngắm ngư lôi (rad). */
+const TORPEDO_ASSIST = 0.12;
+
+/** Hỗ trợ ngắm pháo: điểm ngắm cách bóng đón đầu dưới chừng này lần elip tản đạn thì được kéo về bóng. */
+const AIM_ASSIST = 2.5;
 
 /**
  * Thước ngắm pháo chính: elip tản đạn 2σ quanh điểm ngắm (đúng công thức tản đạn của server, dọc hướng bắn dài, ngang
@@ -584,20 +623,18 @@ function gunSight(
   weapon: NavalWeaponId,
   ax: number,
   az: number,
-  yaw: number,
   enemy: ShipState | undefined,
   spread: Group | null,
   ghost: Group | null,
   trail: Group | null,
-) {
+): [number, number] {
   const w = NAVAL_WEAPONS[weapon];
   const gun = navalLocal.gun;
   gun.on = true;
-  const d = navalLocal.aimRange;
-  const sl = 2 * (d * GUN_DISPERSION.range + GUN_DISPERSION.base);
-  const ss = 2 * (d * GUN_DISPERSION.lateral + GUN_DISPERSION.baseLateral);
-  gun.spreadLong = sl;
-  gun.spreadSide = ss;
+  let d = Math.hypot(ax - pose.x, az - pose.z);
+  let yaw = Math.atan2(ax - pose.x, az - pose.z);
+  let sl = 2 * (d * GUN_DISPERSION.range + GUN_DISPERSION.base);
+  let ss = 2 * (d * GUN_DISPERSION.lateral + GUN_DISPERSION.baseLateral);
   gun.onTarget = false;
   gun.lead.on = false;
   gun.enemyRange = 0;
@@ -636,14 +673,30 @@ function gunSight(
     }
     _l.set(gx, 0.5, gz).project(cam);
     if (_l.z < 1 && Math.abs(_l.x) < 1.2 && Math.abs(_l.y) < 1.2) gun.lead = { on: true, x: (_l.x + 1) / 2, y: (1 - _l.y) / 2 };
-    // Bóng đón đầu nằm trong elip 2σ quanh điểm ngắm (theo trục dọc / ngang hướng bắn)?
-    const dx = gx - ax;
-    const dz = gz - az;
-    const along = dx * Math.sin(yaw) + dz * Math.cos(yaw);
-    const side = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+    // Khoảng lệch bóng đón đầu so với elip 2σ quanh điểm ngắm (1 là đúng mép elip, theo trục dọc / ngang hướng bắn).
     const reach = ecls.length * 0.35;
-    gun.onTarget = (along / (sl / 2 + reach)) ** 2 + (side / (ss / 2 + reach * 0.4)) ** 2 < 1;
+    const offset = (px: number, pz: number) => {
+      const dx = gx - px;
+      const dz = gz - pz;
+      const along = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+      const side = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+      return Math.sqrt((along / (sl / 2 + reach)) ** 2 + (side / (ss / 2 + reach * 0.4)) ** 2);
+    };
+    // Hút ngắm: trong chừng 2,5 lần elip thì kéo điểm ngắm về bóng (càng gần kéo càng mạnh, sát bóng thì dính hẳn).
+    const off = offset(ax, az);
+    if (off < AIM_ASSIST && er <= w.range) {
+      const pull = Math.min(1, 1.25 * (1 - off / AIM_ASSIST));
+      ax += (gx - ax) * pull;
+      az += (gz - az) * pull;
+      d = Math.hypot(ax - pose.x, az - pose.z);
+      yaw = Math.atan2(ax - pose.x, az - pose.z);
+      sl = 2 * (d * GUN_DISPERSION.range + GUN_DISPERSION.base);
+      ss = 2 * (d * GUN_DISPERSION.lateral + GUN_DISPERSION.baseLateral);
+    }
+    gun.onTarget = offset(ax, az) < 1;
   }
+  gun.spreadLong = sl;
+  gun.spreadSide = ss;
   if (spread) {
     spread.visible = true;
     spread.position.set(ax, 0.6, az);
@@ -666,6 +719,7 @@ function gunSight(
     lastY = y;
     gun.ladder.push({ x: (_l.x + 1) / 2, y, d: r });
   }
+  return [ax, az];
 }
 
 function showRing(g: Group | null, x: number, z: number, r: number) {

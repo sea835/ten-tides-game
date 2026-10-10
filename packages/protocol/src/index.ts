@@ -1411,7 +1411,8 @@ export type NavalActMessage = z.infer<typeof NavalActMessage>;
  * Hiệu ứng hải chiến server gửi mọi người. `k`: "shell" (đạn pháo bay: o, v), "bomb" (bom rơi: o, v), "splash" (đạn
  * rơi xuống nước), "hit" (trúng tàu: ship, part), "blast" (nổ lớn: tên lửa, ngư lôi), "aa" (loạt phòng không, đạn
  * vạch: o, v), "jet" (máy bay bắn: o, v), "fire" (bộ phận bốc cháy), "wreck" (bộ phận hỏng), "sink" (tàu chìm),
- * "launch" (phóng tên lửa / ngư lôi / máy bay), "depth" (bom chìm nổ), "decoy" (phóng mồi nhử), "down" (bắn rơi).
+ * "launch" (phóng tên lửa / ngư lôi / máy bay), "depth" (bom chìm nổ), "decoy" (phóng mồi nhử), "down" (bắn rơi),
+ * "dmg" (tàu `ship` mất `dmg` máu ở chỗ trúng).
  */
 export interface NavalFxMessage {
   k: string;
@@ -1423,6 +1424,8 @@ export interface NavalFxMessage {
   part?: string;
   weapon?: string;
   team?: string;
+  /** "dmg": sát thương thân tàu vừa nhận (đã tính giáp), hiện số bay lên chỗ trúng. */
+  dmg?: number;
 }
 
 /** Một dòng bảng điểm cuối trận. `support` là tiếp tế, sửa xe, hồi sinh đồng đội; `score` để xếp hạng. */

@@ -127,12 +127,12 @@ export interface NavalWeapon {
 
 export const NAVAL_WEAPONS: Record<NavalWeaponId, NavalWeapon> = {
   bbGun: { id: "bbGun", name: "Pháo chính 406 ly", reload: 7.5, damage: 220, splash: 9, speed: 150, range: 1600, spread: 0.007, fire: 0.3 },
-  ddGun: { id: "ddGun", name: "Pháo 127 ly", reload: 5, damage: 58, splash: 5, speed: 140, range: 1300, spread: 0.006, fire: 0.15 },
+  ddGun: { id: "ddGun", name: "Pháo 127 ly", reload: 4.5, damage: 75, splash: 5, speed: 140, range: 1300, spread: 0.006, fire: 0.15 },
   aa: { id: "aa", name: "Pháo phòng không 40 ly", reload: 0.11, damage: 13, splash: 0, speed: 650, range: 700, spread: 0.018, fire: 0.01 },
   torpedo: { id: "torpedo", name: "Ngư lôi", reload: 14, damage: 450, splash: 8, speed: 25, range: 1200, spread: 0, fire: 0.3 },
   gtorpedo: { id: "gtorpedo", name: "Ngư lôi dẫn đường", reload: 20, damage: 380, splash: 8, speed: 21, range: 65, spread: 0, fire: 0.3 },
-  missile: { id: "missile", name: "Tên lửa chống hạm", reload: 24, damage: 400, splash: 10, speed: 68, range: 28, spread: 0, fire: 0.7 },
-  depth: { id: "depth", name: "Bom chìm", reload: 9, damage: 320, splash: 15, speed: 0, range: 0, spread: 0, fire: 0 },
+  missile: { id: "missile", name: "Tên lửa chống hạm", reload: 22, damage: 410, splash: 10, speed: 68, range: 28, spread: 0, fire: 0.7 },
+  depth: { id: "depth", name: "Bom chìm", reload: 8, damage: 320, splash: 15, speed: 0, range: 0, spread: 0, fire: 0 },
   decoy: { id: "decoy", name: "Mồi nhử", reload: 25, damage: 0, splash: 0, speed: 0, range: 0, spread: 0, fire: 0 },
   jetGun: { id: "jetGun", name: "Pháo máy bay 20 ly", reload: 0.07, damage: 15, splash: 0, speed: 800, range: 600, spread: 0.01, fire: 0.02 },
   bomb: { id: "bomb", name: "Bom 500 kg", reload: 22, damage: 380, splash: 11, speed: 0, range: 0, spread: 0, fire: 0.6 },
@@ -155,6 +155,8 @@ export const UNIT_HP = { missile: 80, gtorpedo: 9999, torpedo: 9999, plane: 260,
 export function armorOf(cls: ShipClassId, weapon: NavalWeaponId): number {
   if (cls === "battleship") return weapon === "ddGun" ? 0.4 : weapon === "aa" || weapon === "jetGun" ? 0.4 : weapon === "bbGun" ? 0.85 : weapon === "torpedo" || weapon === "gtorpedo" ? 0.55 : weapon === "missile" ? 0.85 : 1;
   if (cls === "carrier") return weapon === "ddGun" ? 0.85 : 1;
+  // Tàu khu trục nhỏ, nhanh: bom, tên lửa hay trúng sượt.
+  if (cls === "destroyer") return weapon === "bomb" ? 0.7 : weapon === "missile" ? 0.7 : 1;
   if (cls === "submarine") return weapon === "torpedo" || weapon === "gtorpedo" ? 1.1 : 1;
   return 1;
 }
@@ -179,8 +181,8 @@ export const JET = {
   /** Máy bay yểm trợ cất cánh cùng máy bay dẫn đầu (tự lái), tối đa cùng lúc; bom mỗi chiếc mang, hệ số sát thương bom (bom nhẹ). */
   wingmen: 4,
   wingBombs: 2,
-  wingDamage: 0.5,
-  respawn: 14,
+  wingDamage: 0.4,
+  respawn: 18,
   /** Nạp lại bom khi bay sát tàu mẹ (m). */
   rearm: 90,
 } as const;
@@ -195,7 +197,7 @@ export const TORPEDO_DEPTH = -2.2;
  * khi nổi. Lặn sâu hơn `deep`: ra-đa tàu tên lửa không bắt được, phải tới gần hơn mới thấy. Ngư lôi tàu ngầm mạnh gấp
  * `torpedo` lần (đầu đạn nặng, nổ dưới đáy tàu).
  */
-export const SUB = { depth: -9, shallow: -6, deepest: -30, deep: -16, rate: 2.2, air: 60, recharge: 0.6, torpedo: 3 } as const;
+export const SUB = { depth: -9, shallow: -6, deepest: -30, deep: -16, rate: 2.2, air: 60, recharge: 0.6, torpedo: 2 } as const;
 /** Đám cháy: lớn dần mỗi giây, máu thân tàu mất mỗi giây khi cháy hết cỡ (100), dập mỗi giây, bán kính đứng dập. */
 export const FIRE = { grow: 6, burn: 3.4, partBurn: 4, douse: 34, reach: 5.5, spread: 0.035, max: 4 } as const;
 /** Thời gian chờ hồi sinh trên tàu (giây), giới hạn trận (giây). */

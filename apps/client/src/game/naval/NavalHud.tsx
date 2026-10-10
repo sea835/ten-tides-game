@@ -206,7 +206,7 @@ function Station({ room, s }: { room: IslandRoom; s: ShipState }) {
       if (cls.id === "submarine") keys.push("C: lặn / nổi", "Q/E: nông / sâu hơn", "Chuột phải: kính tiềm vọng (lặn nông)");
     }
     if (role.weapons.includes("torpedo")) keys.push("Chuột trái: phóng ngư lôi theo hướng nhìn");
-    if (role.weapons.includes("depth")) keys.push("Chuột phải: thả bom chìm");
+    if (role.weapons.includes("depth")) keys.push("Chuột phải: bom chìm (tự nhắm tàu ngầm trong 160 m)");
     if (role.weapons.includes("decoy")) keys.push("Chuột phải: phóng mồi nhử");
     if (role.weapons.includes("bbGun") || role.weapons.includes("ddGun")) keys.push("Chuột: đặt elip tản đạn lên bóng đón đầu", "Chuột trái: bắn loạt", "Chuột phải: ống nhòm");
     if (role.weapons.includes("aa")) keys.push("Giữ chuột trái: bắn", "Chuột phải: phóng to", "Ngắm vào vòng đón đầu");
@@ -315,6 +315,7 @@ function Overlay() {
   const cross = useRef<HTMLDivElement>(null);
   const pool = useRef<HTMLDivElement[]>([]);
   const ladderPool = useRef<HTMLDivElement[]>([]);
+  const floatPool = useRef<HTMLDivElement[]>([]);
   const gunLead = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let raf = 0;
@@ -336,6 +337,25 @@ function Overlay() {
         }
       }
       if (cross.current) cross.current.style.display = navalLocal.station >= 0 ? "block" : "none";
+      // Số sát thương, nhãn cháy / phá hủy bay lên.
+      const floats = navalLocal.floats;
+      while (floatPool.current.length < floats.length) {
+        const d = document.createElement("div");
+        el.appendChild(d);
+        floatPool.current.push(d);
+      }
+      floatPool.current.forEach((d, i) => {
+        const f = floats[i];
+        d.style.display = f ? "block" : "none";
+        if (f) {
+          d.className = `nv-float ${f.kind}`;
+          d.style.left = `${f.x * 100}%`;
+          d.style.top = `${f.y * 100}%`;
+          d.style.opacity = String(f.alpha);
+          d.style.fontSize = `${Math.round(15 * f.size)}px`;
+          d.textContent = f.text;
+        }
+      });
       // Thước ngắm pháo: bậc tầm, dấu bóng đón đầu.
       const gun = navalLocal.gun;
       const ladder = gun.on && navalLocal.zoom ? gun.ladder : [];
@@ -356,12 +376,13 @@ function Overlay() {
       });
       const gl = gunLead.current;
       if (gl) {
-        const on = gun.on && gun.lead.on;
-        gl.style.display = on ? "block" : "none";
-        if (on) {
-          gl.style.left = `${gun.lead.x * 100}%`;
-          gl.style.top = `${gun.lead.y * 100}%`;
-          gl.dataset.hit = gun.onTarget ? "1" : "";
+        const tl = navalLocal.torpLead;
+        const lead = gun.on && gun.lead.on ? { ...gun.lead, hit: gun.onTarget } : navalLocal.station >= 0 && tl.on ? tl : null;
+        gl.style.display = lead ? "block" : "none";
+        if (lead) {
+          gl.style.left = `${lead.x * 100}%`;
+          gl.style.top = `${lead.y * 100}%`;
+          gl.dataset.hit = lead.hit ? "1" : "";
         }
       }
       const leads = navalLocal.leads;

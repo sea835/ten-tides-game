@@ -10,7 +10,7 @@ import "./progress.css";
 
 // Hồ sơ quân nhân: bậc thang 30 quân hàm (XP cần, đang ở đâu) và chọn thẻ tên, huy hiệu đã mở khoá.
 
-const XP_KINDS: readonly XpKind[] = ["kill", "headshot", "capture", "resupply", "repair", "revive"];
+const XP_KINDS: readonly XpKind[] = ["kill", "headshot", "capture", "resupply", "repair", "revive", "shipDamage", "sink"];
 
 /** Thanh XP gọn: quân hàm hiện tại, tiến độ lên cấp kế. Dùng ở bảng tài khoản. */
 export function RankLine({ xp }: { xp: number }) {

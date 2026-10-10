@@ -364,6 +364,31 @@
 .nv-lead[data-kind="missile"] {
   border-color: #ffd166;
 }
+/* Số sát thương bay lên chỗ trúng: địch mất máu vàng, tàu mình đỏ; cháy cam; phá hủy bộ phận trắng viền đỏ. */
+.nv-float {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-weight: 800;
+  font-family: system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.8);
+  color: #ffe066;
+}
+.nv-float.own {
+  color: #ff6b5a;
+}
+.nv-float.fire {
+  color: #ff9a4a;
+}
+.nv-float.wreck {
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(200, 40, 30, 0.7);
+}
 /* Thước ngắm pháo: vạch bậc tầm (mỗi 200 m) dọc hướng nhìn, dấu bóng tàu đón đầu. */
 .nv-tick {
   position: absolute;
