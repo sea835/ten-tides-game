@@ -12,6 +12,7 @@ import {
   NAVAL_WEAPONS,
   SMALL_ARMS_SHIP,
   SONAR,
+  SHIP_DAMAGE_XP_STEP,
   SUB,
   TORPEDO_DEPTH,
   UNIT_HP,
@@ -87,6 +88,8 @@ interface Shell {
   weapon: NavalWeaponId;
   /** Giây kể từ lúc bắn (bỏ qua tàu mình lúc mới rời nòng). */
   age: number;
+  /** Hệ số sát thương (bom nhẹ của máy bay yểm trợ). */
+  scale?: number;
 }
 
 interface Flak {
@@ -120,6 +123,9 @@ interface UnitData {
   quiet: number;
   /** Máy bay: chờ bắn, chờ thả bom (bot). */
   gunAt: number;
+  /** Máy bay máy lái: còn bao lâu thì thôi kéo lên vòng lại (giây); số thứ tự trong phi đội (lệch độ cao, hướng lao). */
+  busy: number;
+  slot: number;
 }
 
 interface BotBrain {
@@ -133,12 +139,25 @@ interface BotBrain {
   next: number;
   unit: string;
   zig: number;
+  /** Lái tàu: số giây đứng ì (mắc cạn), còn lùi bao lâu và bẻ lái bên nào khi lùi, lệch hướng / tốc độ né đạn và còn
+   * bao lâu thì đổi, mạn đang quay về phía địch (1 trái, −1 phải). */
+  stuck: number;
+  back: number;
+  backRudder: number;
+  jink: number;
+  jinkSpeed: number;
+  jinkT: number;
+  side: number;
 }
 
 /** Tốc độ đi bộ của máy trên boong (m/s). */
 const BOT_WALK = 3.2;
 /** Chênh lệch tối đa giữa vị trí người lái báo và vị trí đơn vị (m) mỗi giây. */
 const UNIT_SLACK = 1.45;
+/** Tầm súng phóng bom chìm của tàu khu trục (m): tàu ngầm trong tầm thì ném bom chìm thẳng vào chỗ nó. */
+const DEPTH_THROW = 160;
+/** Hệ số sai số ngắm của máy khi phe kia có người chơi. */
+const BOT_EASE = 1.6;
 /** Bot phòng không chỉ thấy tên lửa sát mặt biển trong cự ly này (m). */
 const AA_MISSILE_DETECT = 460;
 /** Đạn phòng không gây ít sát thương hơn lên tên lửa (vỏ nhỏ, nhanh, ngòi cận đích hay nổ sớm): chặn được chừng một nửa. */
@@ -206,6 +225,7 @@ export class Naval {
     this.dousing.clear();
     this.lastHit.clear();
     this.air.clear();
+    this.dealt.clear();
     this.burnAcc.clear();
     this.coolF.clear();
     this.fireF.clear();
@@ -407,17 +427,26 @@ export class Naval {
     if (!role) return;
     const occupant = ship.crew.get(String(station));
     const occ = occupant ? this.room.state.players.get(occupant) : undefined;
-    // Vị trí có người (còn sống) đứng rồi: máy thì nhường, người thì thôi.
-    if (occ && occ.alive && parseSeat(occ.vehicle)) {
-      if (!occ.bot) return;
-      this.leaveStation(occupant!, occ);
-      const b = this.brains.get(occupant!);
-      if (b) b.local = [role.station[0] + 1.5, role.station[1], role.station[2] - 1.5];
-    }
     // Phải đứng gần bàn điều khiển.
     const [lx, ly, lz] = worldToShip(this.pose(ship), p.x, p.y, p.z);
     if (Math.hypot(lx - role.station[0], lz - role.station[2]) > 4.5 || Math.abs(ly - role.station[1]) > 2.5) return;
+    // Vị trí có người (còn sống) đứng rồi: máy thì nhường (sang vị trí người này bỏ trống, hay vị trí trống khác), người thì thôi.
+    if (occ && occ.alive && parseSeat(occ.vehicle)) {
+      if (!occ.bot) return;
+      this.leaveStation(occupant!, occ);
+      const mine = Number(p.role);
+      occ.role = String(Number.isInteger(mine) && mine !== station && !ship.crew.has(String(mine)) ? mine : this.freeStation(ship, station));
+    }
+    p.role = String(station);
     this.man(id, p, ship, station);
+    // Máy bị đổi chỗ vào ngay vị trí mới.
+    if (occ?.bot && occ.alive) this.botMan(occupant!, occ);
+  }
+
+  /** Vị trí chưa ai đứng trên tàu (khác `except`), ưu tiên số nhỏ; không còn thì `except`. */
+  private freeStation(ship: ShipState, except: number): number {
+    for (const k of [0, 1, 2]) if (k !== except && k < this.cls(ship).roles.length && !ship.crew.has(String(k))) return k;
+    return except;
   }
 
   private leaveStation(id: string, p: PlayerState) {
@@ -679,7 +708,7 @@ export class Naval {
     u.speed = speed;
     u.hp = kind === "plane" ? UNIT_HP.plane : kind === "missile" ? UNIT_HP.missile : UNIT_HP.torpedo;
     this.ns.units.set(id, u);
-    this.units.set(id, { bot, wantYaw: yaw, wantPitch: pitch, throttle: 0, life, quiet: 0, gunAt: 0 });
+    this.units.set(id, { bot, wantYaw: yaw, wantPitch: pitch, throttle: 0, life, quiet: 0, gunAt: 0, busy: 0, slot: 0 });
     return id;
   }
 
@@ -721,6 +750,10 @@ export class Naval {
     for (const u of this.ns.units.values()) if (u.owner === owner && u.kind === "missile" && !u.auto) return;
     const pv = shipToWorld(this.pose(ship), vls.mount!.pivot[0], vls.mount!.pivot[1] + 1.5, vls.mount!.pivot[2]);
     this.newUnit("missile", ship, owner, pv, yaw, 1.2, NAVAL_WEAPONS.missile.speed, this.isBot(owner), NAVAL_WEAPONS.missile.range);
+    // Loạt hai quả: quả thứ hai tự dẫn (lệch hướng một chút, địch phải chặn cả hai).
+    const second = shipToWorld(this.pose(ship), vls.mount!.pivot[0] + 1.5, vls.mount!.pivot[1] + 1.5, vls.mount!.pivot[2] - 1.5);
+    const wing = this.newUnit("missile", ship, owner, second, yaw + 0.35, 1.2, NAVAL_WEAPONS.missile.speed, true, NAVAL_WEAPONS.missile.range);
+    this.ns.units.get(wing)!.auto = true;
     this.cool(ship, vls.id, NAVAL_WEAPONS.missile.reload);
     this.fx({ k: "launch", x: pv[0], y: pv[1], z: pv[2], weapon: "missile", ship: ship.team, part: vls.id });
   }
@@ -729,9 +762,24 @@ export class Naval {
     const cls = this.cls(ship);
     const rack = cls.parts.find((p) => p.mount?.weapon === "depth" && this.partOk(ship, p.id) && !this.cooling(ship, p.id));
     if (!rack) return;
-    for (const side of [-1, 1]) {
-      const [x, , z] = shipToWorld(this.pose(ship), side * 2.5, 0, -cls.length / 2 - 2);
-      this.charges.push({ x, y: 0, z, fuse: 2.6 + Math.random() * 0.8, owner, team: ship.team });
+    // Súng phóng bom chìm: tàu ngầm địch (đang thấy) trong tầm ném thì ném một cụm bốn quả quanh chỗ nó sắp tới (sô-na
+    // dẫn); không thì thả cụm ở đuôi và hai mạn.
+    const sub = [...this.ns.ships.values()].find((e) => e.team !== ship.team && !e.sunk && e.cls === "submarine" && this.sees(ship, e));
+    const t = 3;
+    const sx = sub ? sub.x + Math.sin(sub.rotY) * sub.speed * t : 0;
+    const sz = sub ? sub.z + Math.cos(sub.rotY) * sub.speed * t : 0;
+    if (sub && Math.hypot(sx - ship.x, sz - ship.z) < DEPTH_THROW) {
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + Math.random() * 0.6;
+        this.charges.push({ x: sx + Math.cos(a) * 11, y: 0, z: sz + Math.sin(a) * 11, fuse: 2.6 + Math.random() * 0.8, owner, team: ship.team });
+      }
+    } else {
+      for (const side of [-1, 1]) {
+        const [x, , z] = shipToWorld(this.pose(ship), side * 2.5, 0, -cls.length / 2 - 2);
+        this.charges.push({ x, y: 0, z, fuse: 2.6 + Math.random() * 0.8, owner, team: ship.team });
+        const [tx, , tz] = shipToWorld(this.pose(ship), side * (cls.beam / 2 + 24), 0, -cls.length * 0.2);
+        this.charges.push({ x: tx, y: 0, z: tz, fuse: 2.8 + Math.random() * 0.8, owner, team: ship.team });
+      }
     }
     this.cool(ship, rack.id, NAVAL_WEAPONS.depth.reload);
     this.fx({ k: "launch", x: ship.x, y: 0, z: ship.z, weapon: "depth", ship: ship.team, part: rack.id });
@@ -755,20 +803,40 @@ export class Naval {
     const cls = this.cls(ship);
     const cat = cls.parts.find((p) => p.kind === "catapult");
     if (!cat || !this.partOk(ship, cat.id)) return;
-    const at = shipToWorld(this.pose(ship), cat.at[0], cat.at[1] + 1.2, cat.at[2] + 12);
+    const pose = this.pose(ship);
+    const at = shipToWorld(pose, cat.at[0], cat.at[1] + 1.2, cat.at[2] + 12);
     const id = this.newUnit("plane", ship, owner, at, ship.rotY, 0.12, JET.cruise * 0.85, this.isBot(owner), 9999);
     this.ns.units.get(id)!.bombs = JET.bombs;
     ship.jet = id;
     this.fx({ k: "launch", x: at[0], y: at[1], z: at[2], weapon: "plane", ship: ship.team, part: cat.id });
+    // Cả phi đội cất cánh cùng lúc: máy bay yểm trợ xếp hình chữ V hai bên, sau máy bay dẫn đầu, máy tự lái.
+    let wing = [...this.ns.units.values()].filter((u) => u.kind === "plane" && u.auto && u.ship === ship.team).length;
+    for (let k = 1; k <= JET.wingmen && wing < JET.wingmen; k++, wing++) {
+      const side = k % 2 ? 1 : -1;
+      const row = Math.ceil(k / 2);
+      const w = shipToWorld(pose, cat.at[0] + side * row * 14, cat.at[1] + 1.2 + row * 3, cat.at[2] + 12 - row * 16);
+      const wid = this.newUnit("plane", ship, owner, w, ship.rotY, 0.12, JET.cruise * 0.85, true, 9999);
+      const wu = this.ns.units.get(wid)!;
+      wu.bombs = JET.wingBombs;
+      wu.auto = true;
+      this.units.get(wid)!.slot = k;
+    }
   }
 
   private jetGun(owner: string) {
     const ship = [...this.ns.ships.values()].find((s) => s.jet && this.ns.units.get(s.jet)?.owner === owner);
-    const u = ship && this.ns.units.get(ship.jet);
-    if (!u) return;
-    const last = this.aaAt.get(ship.jet) ?? -1;
+    if (ship) this.planeGun(ship.jet);
+  }
+
+  /** Hai khẩu pháo cánh của máy bay `uid` bắn một loạt. */
+  private planeGun(uid: string) {
+    const u = this.ns.units.get(uid);
+    const ship = u && this.ship(u.ship);
+    if (!u || !ship) return;
+    const owner = u.owner;
+    const last = this.aaAt.get(uid) ?? -1;
     if (this.clock - last < NAVAL_WEAPONS.jetGun.reload * 0.9) return;
-    this.aaAt.set(ship.jet, this.clock);
+    this.aaAt.set(uid, this.clock);
     const w = NAVAL_WEAPONS.jetGun;
     const cp = Math.cos(u.pitch);
     const d: V3 = [Math.sin(u.yaw) * cp, Math.sin(u.pitch), Math.cos(u.yaw) * cp];
@@ -784,16 +852,22 @@ export class Naval {
   /** Thả bom: rơi theo quán tính máy bay. */
   private bomb(owner: string) {
     const ship = [...this.ns.ships.values()].find((s) => s.jet && this.ns.units.get(s.jet)?.owner === owner);
-    const u = ship && this.ns.units.get(ship.jet);
+    if (ship) this.planeBomb(ship.jet);
+  }
+
+  /** Máy bay `uid` thả một quả bom. */
+  private planeBomb(uid: string) {
+    const u = this.ns.units.get(uid);
     if (!u || u.bombs <= 0) return;
-    const last = this.aaAt.get(`${ship.jet}:bomb`) ?? -9;
+    const owner = u.owner;
+    const last = this.aaAt.get(`${uid}:bomb`) ?? -9;
     if (this.clock - last < 0.6) return;
-    this.aaAt.set(`${ship.jet}:bomb`, this.clock);
+    this.aaAt.set(`${uid}:bomb`, this.clock);
     u.bombs--;
     const cp = Math.cos(u.pitch);
     const v: V3 = [Math.sin(u.yaw) * cp * u.speed, Math.sin(u.pitch) * u.speed, Math.cos(u.yaw) * cp * u.speed];
     const o: V3 = [u.x, u.y - 1.6, u.z];
-    this.shells.push({ pos: o, v, life: 20, owner, team: u.team, from: "", weapon: "bomb", age: 1 });
+    this.shells.push({ pos: o, v, life: 20, owner, team: u.team, from: "", weapon: "bomb", age: 1, scale: u.auto ? JET.wingDamage : 1 });
     this.fx({ k: "bomb", x: o[0], y: o[1], z: o[2], v, team: u.team });
   }
 
@@ -925,6 +999,8 @@ export class Naval {
     const cls = this.cls(ship);
     dmg *= armorOf(cls.id, weapon);
     ship.hp = Math.max(0, ship.hp - Math.round(dmg));
+    // Số sát thương bay lên chỗ trúng (cả hai phe đều thấy); trầy xước lặt vặt (đạn phòng không, cháy) thì thôi.
+    if (dmg >= 12) this.fx({ k: "dmg", x: at[0], y: at[1], z: at[2], ship: ship.team, weapon, dmg: Math.round(dmg) });
     if (attacker) this.lastHit.set(ship.team, attacker);
     const part = cls.parts.find((p) => p.id === partId);
     if (part && part.kind !== "section") {
@@ -946,7 +1022,14 @@ export class Naval {
     }
     if (attacker) {
       const a = this.room.state.players.get(attacker);
-      if (a && !a.bot && a.team !== ship.team) this.room.clientOf(attacker)?.send(Messages.hit, { kind: "body", armor: true, amount: Math.round(dmg) });
+      if (a && !a.bot && a.team !== ship.team) {
+        this.room.clientOf(attacker)?.send(Messages.hit, { kind: "body", armor: true, amount: Math.round(dmg) });
+        // XP theo sát thương gây ra (cộng dồn, mỗi SHIP_DAMAGE_XP_STEP máu một lần).
+        const sum = (this.dealt.get(attacker) ?? 0) + dmg;
+        const steps = Math.floor(sum / SHIP_DAMAGE_XP_STEP);
+        if (steps > 0) awardXp(attacker, "shipDamage", steps);
+        this.dealt.set(attacker, sum - steps * SHIP_DAMAGE_XP_STEP);
+      }
     }
     // Sức nổ trên boong: người đứng quanh đó trúng mảnh (nổ to thì hiện cả cột lửa khói như đạn pháo).
     if (blast > 0) this.room.explode(at[0], at[1], at[2], "shell", attacker, blast, dmg * 0.6, weapon);
@@ -955,6 +1038,10 @@ export class Naval {
 
   private sink(ship: ShipState, killer: string) {
     if (ship.sunk) return;
+    // Người đánh chìm (hay người bắn trúng cuối cùng) được thưởng lớn.
+    const sinker = killer || this.lastHit.get(ship.team) || "";
+    const by = sinker ? this.room.state.players.get(sinker) : undefined;
+    if (by && !by.bot && by.team !== ship.team) awardXp(sinker, "sink");
     ship.sunk = true;
     ship.hp = 0;
     ship.throttle = 0;
@@ -989,10 +1076,10 @@ export class Naval {
   }
 
   /** Tên lửa, ngư lôi, bom nổ ở `at`: tìm tàu trúng (hay nổ sát tàu ngầm đang lặn). */
-  private impact(weapon: NavalWeaponId, owner: string, team: string, at: V3, ship: ShipState | null, part: string) {
+  private impact(weapon: NavalWeaponId, owner: string, team: string, at: V3, ship: ShipState | null, part: string, scale = 1) {
     const w = NAVAL_WEAPONS[weapon];
     if (ship) {
-      this.hitShip(ship, part, w.damage, weapon, owner, at, w.fire, w.splash);
+      this.hitShip(ship, part, w.damage * scale, weapon, owner, at, w.fire, w.splash);
       this.fx({ k: weapon === "torpedo" || weapon === "gtorpedo" ? "blast" : "hit", x: at[0], y: at[1], z: at[2], ship: ship.team, part, weapon });
       return;
     }
@@ -1158,6 +1245,8 @@ export class Naval {
   }
   private burnAcc = new Map<string, number>();
   private air = new Map<string, number>();
+  /** Sát thương mỗi người đã gây cho tàu địch chưa đổi ra XP (phần lẻ dưới SHIP_DAMAGE_XP_STEP). */
+  private dealt = new Map<string, number>();
   /** Giá trị thực (không làm tròn) của thời gian nạp, độ lớn đám cháy, máu bộ phận: khoá "<tàu>:<bộ phận>". */
   private coolF = new Map<string, number>();
   private fireF = new Map<string, number>();
@@ -1181,6 +1270,8 @@ export class Naval {
     if (!a || !b || a.sunk || b.sunk) return;
     const ca = this.cls(a);
     const cb = this.cls(b);
+    // Tàu ngầm lặn sâu hơn đáy tàu kia: luồn qua bên dưới.
+    if ((ca.id === "submarine" && a.y + ca.deck < -cb.draft - 1) || (cb.id === "submarine" && b.y + cb.deck < -ca.draft - 1)) return;
     const d = Math.hypot(a.x - b.x, a.z - b.z);
     const reach = (ca.length + cb.length) * 0.32;
     if (d >= reach || d < 1e-3) return;
@@ -1307,7 +1398,7 @@ export class Naval {
         const hit = rayShip(this.cls(ship), this.pose(ship), from, dir, len);
         if (!hit) continue;
         const at: V3 = [from[0] + dir[0] * hit.t, from[1] + dir[1] * hit.t, from[2] + dir[2] * hit.t];
-        this.impact(sh.weapon, sh.owner, sh.team, at, ship, hit.part);
+        this.impact(sh.weapon, sh.owner, sh.team, at, ship, hit.part, sh.scale);
         done = true;
         break;
       }
@@ -1424,8 +1515,9 @@ export class Naval {
         if (d.life <= 0) this.ns.units.delete(uid);
         continue;
       }
+      if (u.kind === "plane" && u.auto) this.wingman(uid, u, d, dt);
       if (d.bot || u.kind === "torpedo") this.stepUnit(uid, u, d, dt);
-      if (u.kind === "plane" && d.bot && !this.botOwner(u)) {
+      if (u.kind === "plane" && d.bot && !u.auto && !this.botOwner(u)) {
         // Máy bay không người lái (phi công rời): rơi.
         u.pitch = Math.max(-1, u.pitch - dt * 0.3);
       }
@@ -1473,7 +1565,8 @@ export class Naval {
       // Máy bay bay sát tàu mẹ, thấp: nạp lại bom.
       if (u.kind === "plane") {
         const home = this.ship(u.ship);
-        if (home && u.bombs < JET.bombs && Math.hypot(u.x - home.x, u.z - home.z) < JET.rearm && u.y < 70) u.bombs = JET.bombs;
+        const full = u.auto ? JET.wingBombs : JET.bombs;
+        if (home && u.bombs < full && Math.hypot(u.x - home.x, u.z - home.z) < JET.rearm && u.y < 70) u.bombs = full;
       }
     }
   }
@@ -1529,7 +1622,7 @@ export class Naval {
   private brain(id: string): BotBrain {
     let b = this.brains.get(id);
     if (!b) {
-      b = { local: [0, 0, 0], busy: 0, aimErr: 0, next: 0, unit: "", zig: Math.random() * 10, seenX: NaN, seenZ: NaN };
+      b = { local: [0, 0, 0], busy: 0, aimErr: 0, next: 0, unit: "", zig: Math.random() * 10, seenX: NaN, seenZ: NaN, stuck: 0, back: 0, backRudder: 1, jink: 0, jinkSpeed: 1, jinkT: 0, side: 0 };
       this.brains.set(id, b);
     }
     return b;
@@ -1539,14 +1632,31 @@ export class Naval {
   private botMan(id: string, p: PlayerState) {
     const ship = this.ship(p.team);
     if (!ship || ship.sunk) return;
-    const k = Math.max(0, Math.min(2, Number(p.role) || 0));
-    const occ = ship.crew.get(String(k));
-    if (occ && occ !== id) {
+    let k = Math.max(0, Math.min(2, Number(p.role) || 0));
+    const taken = (n: number) => {
+      const occ = ship.crew.get(String(n));
+      if (!occ || occ === id) return false;
       const q = this.room.state.players.get(occ);
-      if (q && q.alive && parseSeat(q.vehicle)) return;
+      return !!q && q.alive && !!parseSeat(q.vehicle);
+    };
+    // Vị trí của mình đã có người khác đứng: sang vị trí còn trống.
+    if (taken(k)) {
+      const free = [0, 1, 2].find((n) => n < this.cls(ship).roles.length && !taken(n));
+      if (free === undefined) return;
+      k = free;
+      p.role = String(k);
     }
     this.brains.delete(id);
     this.man(id, p, ship, k);
+  }
+
+  /**
+   * Máy đánh với tàu có người chơi thì ngắm kém hơn một chút (người mới vào khỏi bị máy bắn chính xác đè bẹp); máy
+   * đánh máy thì như thường.
+   */
+  private ease(team: string): number {
+    for (const p of this.room.state.players.values()) if (!p.bot && (p.team === "blue" || p.team === "red") && p.team !== team) return BOT_EASE;
+    return 1;
   }
 
   private enemyOf(side: string): ShipState | undefined {
@@ -1626,12 +1736,42 @@ export class Naval {
     }
   }
 
-  /** Lái tàu: giữ cự ly ưa thích, quay mạn về phía địch, tránh đảo, mép bản đồ, lách ngư lôi; tàu ngầm lặn khi gần địch. */
+  /**
+   * Lái tàu: giữ cự ly ưa thích, quay mạn về phía địch (tàu ngầm chĩa mũi khi ống ngư lôi mũi sẵn sàng), đổi hướng,
+   * tốc độ bất chợt để né loạt pháo, lách ngư lôi, dò đường trước mũi (đảo, mép bản đồ) theo tầm quay của tàu; mắc
+   * cạn thì lùi ra rồi bẻ sang phía nước trống.
+   */
   private botHelm(ship: ShipState, cls: ShipClass, enemy: ShipState | undefined, b: BotBrain, dt: number) {
     b.zig += dt;
+    const map = this.room.map;
+    const probe = (yaw: number, dist: number) => shipAground(cls, map, ship.x + Math.sin(yaw) * dist, ship.z + Math.cos(yaw) * dist, yaw);
+    // Mắc cạn / húc đảo: lùi hết máy vài giây, bẻ lái để mũi quay về phía nước trống.
+    if (b.back > 0) {
+      b.back -= dt;
+      this.helm.set(ship.team, { throttle: -1, rudder: b.backRudder });
+      return;
+    }
+    if (Math.abs(ship.speed) < 1 && Math.abs(ship.throttle) > 0.3) b.stuck += dt;
+    else b.stuck = Math.max(0, b.stuck - dt * 2);
+    if (b.stuck > 2) {
+      b.stuck = 0;
+      b.back = 5 + Math.random() * 3;
+      // Lùi thì bánh lái đảo chiều: bẻ dương thì mũi quay sang hướng tăng góc.
+      const reach = cls.length * 0.7 + 40;
+      b.backRudder = !probe(ship.rotY + 0.9, reach) ? 1 : !probe(ship.rotY - 0.9, reach) ? -1 : Math.random() < 0.5 ? 1 : -1;
+      this.helm.set(ship.team, { throttle: -1, rudder: b.backRudder });
+      return;
+    }
     const prefer = { battleship: 750, carrier: 1100, cruiser: 850, destroyer: 520, submarine: 380 }[cls.id];
     let throttle = 0.6;
     let wantYaw = ship.rotY;
+    // Né đạn: mỗi vài giây đổi một góc lệch nhỏ và tốc độ (pháo thủ địch phải canh lại).
+    b.jinkT -= dt;
+    if (b.jinkT <= 0) {
+      b.jinkT = 5 + Math.random() * 6;
+      b.jink = (Math.random() - 0.5) * 0.7;
+      b.jinkSpeed = 0.7 + Math.random() * 0.3;
+    }
     if (enemy && !enemy.sunk && !this.sees(ship, enemy)) {
       // Mất dấu tàu ngầm: tàu khu trục lùng về chỗ thấy lần cuối, tàu khác chạy chữ chi chậm quanh đó.
       if (!Number.isFinite(b.seenX)) {
@@ -1652,19 +1792,29 @@ export class Naval {
       const dz = enemy.z - ship.z;
       const d = Math.hypot(dx, dz);
       const bearing = Math.atan2(dx, dz);
-      if (d > prefer + 120) {
-        wantYaw = bearing + Math.sin(b.zig * 0.15) * 0.25;
+      const bow = cls.parts.find((q) => q.mount?.weapon === "torpedo" && q.mount.rest === 0 && q.mount.arc < 1);
+      if (cls.id === "submarine" && bow && d < 820 && d > 260 && this.partOk(ship, bow.id) && !this.cooling(ship, bow.id) && !this.submerged(enemy)) {
+        // Tàu ngầm: ống ngư lôi mũi sẵn sàng, chĩa mũi vào điểm đón đầu.
+        const t = d / NAVAL_WEAPONS.torpedo.speed;
+        wantYaw = Math.atan2(enemy.x + Math.sin(enemy.rotY) * enemy.speed * t - ship.x, enemy.z + Math.cos(enemy.rotY) * enemy.speed * t - ship.z);
+        throttle = 0.8;
+      } else if (d > prefer + 120) {
+        wantYaw = bearing + b.jink * 0.5;
         throttle = 1;
       } else if (d < prefer - 150 && cls.id !== "submarine") {
-        wantYaw = bearing + Math.PI;
-        throttle = 0.9;
+        wantYaw = bearing + Math.PI + b.jink;
+        throttle = 0.9 * b.jinkSpeed + 0.1;
       } else {
-        // Quay mạn: giữ địch ở ngang mạn (bên nào gần hướng hiện tại hơn).
+        // Quay mạn: giữ địch ở ngang mạn, giữ bên đã chọn (chỉ đổi khi bên kia gần hướng hiện tại hơn hẳn).
         const left = bearing + Math.PI / 2;
         const right = bearing - Math.PI / 2;
-        wantYaw = Math.abs(wrap(left - ship.rotY)) < Math.abs(wrap(right - ship.rotY)) ? left : right;
-        wantYaw += Math.sin(b.zig * 0.2) * 0.3;
-        throttle = 0.75;
+        const dl = Math.abs(wrap(left - ship.rotY));
+        const dr = Math.abs(wrap(right - ship.rotY));
+        if (b.side === 0 || (b.side === 1 ? dl - dr > 0.9 : dr - dl > 0.9)) b.side = dl <= dr ? 1 : -1;
+        // Cự ly lệch khỏi ưa thích: chếch mũi vào / ra một chút.
+        const drift = Math.max(-0.4, Math.min(0.4, (d - prefer) / 400)) * b.side;
+        wantYaw = (b.side === 1 ? left : right) - drift + b.jink;
+        throttle = 0.8 * b.jinkSpeed + 0.2;
       }
       if (cls.id === "submarine") ship.dive = ship.air > 25 && d < 1100 ? true : ship.air < 12 ? false : ship.dive;
       // Gần tàu khu trục (sô-na, bom chìm) hay tàu tên lửa (ra-đa): lặn sâu; còn lại ở độ sâu tấn công.
@@ -1687,19 +1837,24 @@ export class Naval {
         throttle = 1;
       }
     }
-    // Tránh đảo, mép bản đồ: dò trước 160 m; vướng thì bẻ sang phía trống.
-    const map = this.room.map;
-    const probe = (yaw: number, dist: number) => shipAground(cls, map, ship.x + Math.sin(yaw) * dist, ship.z + Math.cos(yaw) * dist, yaw);
-    if (probe(ship.rotY, 120) || probe(wantYaw, 160)) {
-      for (const off of [0.6, -0.6, 1.2, -1.2, 2, -2]) {
-        if (!probe(ship.rotY + off, 140)) {
-          wantYaw = ship.rotY + off;
+    // Dò đường: hướng gần hướng muốn nhất mà dọc đường không vướng đảo, mép bản đồ (dò xa theo cỡ tàu, tốc độ).
+    const reach = Math.max(150, cls.length * 0.9 + Math.abs(ship.speed) * 8);
+    const clear = (yaw: number) => !probe(yaw, reach * 0.45) && !probe(yaw, reach) && !probe(yaw, reach * 1.5);
+    if (!clear(wantYaw)) {
+      let found = false;
+      for (const off of [0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.8, -1.8, 2.3, -2.3, Math.PI]) {
+        if (clear(wantYaw + off)) {
+          wantYaw += off;
+          found = true;
           break;
         }
       }
+      if (!found) throttle = Math.min(throttle, 0.5);
     }
+    // Mũi sắp chạm đảo: giảm máy cho kịp quay.
+    if (probe(ship.rotY, cls.length * 0.35 + Math.abs(ship.speed) * 3)) throttle = Math.min(throttle, 0.45);
     const err = wrap(wantYaw - ship.rotY);
-    const rudder = Math.max(-1, Math.min(1, -err * 3));
+    const rudder = Math.max(-1, Math.min(1, -err * 2.5));
     this.helm.set(ship.team, { throttle, rudder });
   }
 
@@ -1713,7 +1868,8 @@ export class Naval {
     switch (w) {
       case "bbGun":
       case "ddGun": {
-        if (hidden || b.next > 0) return;
+        // Tàu ngầm đang lặn: đạn pháo vô ích (bom chìm lo).
+        if (hidden || b.next > 0 || this.submerged(enemy)) return;
         const spec = NAVAL_WEAPONS[w];
         if (range > spec.range) return;
         let [tx, tz] = [enemy.x, enemy.z];
@@ -1725,7 +1881,7 @@ export class Naval {
         // Tàu địch bẻ lái hay đổi máy thì phải canh lại từ đầu.
         if (Math.abs(enemy.rudder) > 0.3) b.aimErr = Math.min(1.4, b.aimErr + 0.35);
         b.aimErr = b.aimErr > 0 ? Math.max(0.45, b.aimErr * 0.8) : 1.4;
-        const err = range * 0.035 * b.aimErr;
+        const err = range * 0.035 * b.aimErr * this.ease(ship.team);
         tx += (Math.random() - 0.5) * err * 2;
         tz += (Math.random() - 0.5) * err * 2;
         ship.aimX = tx;
@@ -1767,7 +1923,7 @@ export class Naval {
         const tx = best.x + Math.sin(best.yaw) * cp * best.speed * t;
         const ty = best.y + Math.sin(best.pitch) * best.speed * t;
         const tz = best.z + Math.cos(best.yaw) * cp * best.speed * t;
-        const noise = best.kind === "missile" ? 0.06 : 0.025;
+        const noise = (best.kind === "missile" ? 0.06 : 0.025) * this.ease(ship.team);
         ship.aaYaw = Math.atan2(tx - ox, tz - oz) + (Math.random() - 0.5) * noise;
         ship.aaPitch = Math.atan2(ty - oy, Math.hypot(tx - ox, tz - oz)) + (Math.random() - 0.5) * noise;
         this.aaVolley(id, ship);
@@ -1782,17 +1938,15 @@ export class Naval {
         const yaw = Math.atan2(tx - ship.x, tz - ship.z);
         const tube = cls.parts.find((q) => q.mount?.weapon === "torpedo" && this.partOk(ship, q.id) && !this.cooling(ship, q.id) && mountCovers(pose, q.mount!, yaw));
         if (!tube) return;
-        this.torpedo(id, ship, yaw, false);
+        this.torpedo(id, ship, yaw + (Math.random() - 0.5) * 0.1 * (this.ease(ship.team) - 1), false);
         b.next = 6;
         return;
       }
       case "depth": {
         if (enemy.cls !== "submarine") return;
         // Tàu ngầm sắp lọt dưới đuôi tàu (bom chìm chìm mất vài giây: thả sớm một chút).
-        const [lx, , lz] = worldToShip(pose, enemy.x, 0, enemy.z);
-        if (Math.abs(lx) < 22 && lz < cls.length / 2 && lz > -cls.length / 2 - 30) {
-          this.depthCharge(id, ship);
-        }
+        // Tàu ngầm (đang thấy) trong tầm súng phóng bom chìm.
+        if (!hidden && range < DEPTH_THROW - 10) this.depthCharge(id, ship);
         return;
       }
       case "decoy": {
@@ -1802,7 +1956,7 @@ export class Naval {
       }
       case "missile":
       case "gtorpedo": {
-        const mine = [...this.ns.units.entries()].find(([, u]) => u.owner === id && u.kind === w);
+        const mine = [...this.ns.units.entries()].find(([, u]) => u.owner === id && u.kind === w && !u.auto);
         if (mine) {
           const [uid, u] = mine;
           const data = this.units.get(uid)!;
@@ -1837,6 +1991,8 @@ export class Naval {
    * bom thì về sát tàu mẹ nạp.
    */
   private botPilot(id: string, ship: ShipState, enemy: ShipState, ecls: ShipClass, ep: ShipPose, b: BotBrain, dt: number) {
+    void ecls;
+    void ep;
     if (!ship.jet) {
       if (ship.jetWait <= 0 && b.next <= 0) {
         this.launchJet(id, ship);
@@ -1849,6 +2005,31 @@ export class Naval {
     const d = u && this.units.get(ship.jet);
     if (!u || !d) return;
     d.bot = true;
+    this.strike(ship.jet, u, d, ship, enemy, dt);
+  }
+
+  /** Máy bay yểm trợ (máy lái): đánh tàu địch; tàu địch chìm hết thì bay vòng quanh tàu mẹ. */
+  private wingman(uid: string, u: NavalUnitState, d: UnitData, dt: number) {
+    const ship = this.ship(u.ship);
+    const enemy = this.enemyOf(u.team);
+    if (!ship || !enemy || enemy.sunk || this.submerged(enemy)) {
+      const home = ship ?? u;
+      const a = this.clock * 0.25 + d.slot;
+      d.wantYaw = Math.atan2(home.x + Math.sin(a) * 300 - u.x, home.z + Math.cos(a) * 300 - u.z);
+      d.wantPitch = Math.max(-0.3, Math.min(0.4, Math.atan2(120 - u.y, 200)));
+      d.throttle = 0.3;
+      return;
+    }
+    this.strike(uid, u, d, ship, enemy, dt);
+  }
+
+  /**
+   * Máy lái máy bay `uid` đánh tàu địch: lao thấp tới, bắn pháo cánh khi mũi chĩa vào tàu, thả bom khi điểm rơi dự
+   * đoán nằm trên boong, bay qua thì kéo lên vòng lại; hết bom thì về sát tàu mẹ nạp bom.
+   */
+  private strike(uid: string, u: NavalUnitState, d: UnitData, ship: ShipState, enemy: ShipState, dt: number) {
+    const ecls = this.cls(enemy);
+    const ep = this.pose(enemy);
     d.throttle = 0.5;
     const cp = Math.cos(u.pitch);
     const vh = u.speed * cp;
@@ -1860,30 +2041,32 @@ export class Naval {
     const [lx, lz] = lead(T);
     const dist = Math.hypot(lx - u.x, lz - u.z);
     const headTo = Math.atan2(lx - u.x, lz - u.z);
-    let wantY = 95;
-    let wantYaw = headTo;
-    // b.busy: 0 lao vào, 1 bay qua kéo lên (đếm giây).
+    // Phi đội lao vào từ các hướng hơi lệch nhau, độ cao khác nhau (không xếp thành một hàng cho phòng không quét).
+    const spread = d.slot ? (d.slot % 2 ? 1 : -1) * Math.ceil(d.slot / 2) * 0.22 : 0;
+    let wantY = 95 + d.slot * 8;
+    let wantYaw = headTo + (dist > 700 ? spread : 0);
+    // d.busy: 0 lao vào, > 0 bay qua kéo lên (đếm giây).
     if (u.bombs === 0) {
       wantYaw = Math.atan2(ship.x - u.x, ship.z - u.z);
       wantY = 45;
-    } else if (b.busy > 0) {
-      b.busy -= dt;
+    } else if (d.busy > 0) {
+      d.busy -= dt;
       wantYaw = u.yaw;
-      wantY = 110;
+      wantY = 110 + d.slot * 8;
     } else if (dist < 900) {
-      wantY = dist > 420 ? 70 : 40;
+      wantY = (dist > 420 ? 70 : 40) + d.slot * 3;
       const err = Math.abs(wrap(headTo - u.yaw));
-      if (dist < 520 && err < 0.12 && this.clock - (this.aaAt.get(ship.jet) ?? -1) > 0.08) this.jetGun(id);
+      if (dist < 520 && err < 0.12) this.planeGun(uid);
       // Điểm rơi dự đoán nếu thả ngay: phía trước máy bay vh·T mét.
       const ix = u.x + Math.sin(u.yaw) * vh * T;
       const iz = u.z + Math.cos(u.yaw) * vh * T;
       const [elx, , elz] = worldToShip({ x: lx, y: 0, z: lz, rotY: ep.rotY }, ix, 0, iz);
       if (err < 0.1 && Math.abs(elx) < ecls.beam / 2 + 3 && Math.abs(elz) < ecls.length / 2) {
-        this.bomb(id);
-        if (u.bombs === 0) b.busy = 6;
+        this.planeBomb(uid);
+        if (u.bombs === 0) d.busy = 6;
       }
       // Lỡ đà (đã bay qua mục tiêu): kéo lên vòng lại.
-      if (dist < 60) b.busy = 5;
+      if (dist < 60) d.busy = 5 + d.slot * 0.6;
     }
     d.wantYaw = wantYaw;
     d.wantPitch = Math.max(-0.45, Math.min(0.5, Math.atan2(wantY - u.y, 200)));

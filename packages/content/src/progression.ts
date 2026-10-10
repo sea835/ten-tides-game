@@ -7,7 +7,7 @@ import { rarityRank, SKIN, type SkinRarity } from "./skins.ts";
 // ---------------------------------------------------------------------------- XP
 
 /** Các sự kiện được cộng XP. */
-export type XpKind = "kill" | "headshot" | "capture" | "resupply" | "repair" | "revive";
+export type XpKind = "kill" | "headshot" | "capture" | "resupply" | "repair" | "revive" | "shipDamage" | "sink";
 
 /** XP mỗi sự kiện. Hạ gục bằng phát vào đầu tính "headshot" (thay cho "kill", không cộng dồn). */
 export const XP_AWARD: Record<XpKind, number> = {
@@ -17,7 +17,13 @@ export const XP_AWARD: Record<XpKind, number> = {
   resupply: 50,
   repair: 50,
   revive: 150,
+  /** Hải chiến: mỗi SHIP_DAMAGE_XP_STEP máu tàu địch mình bắn mất; đánh chìm tàu địch. */
+  shipDamage: 40,
+  sink: 500,
 };
+
+/** Hải chiến: cứ gây chừng này sát thương cho tàu địch thì được một lần "shipDamage". */
+export const SHIP_DAMAGE_XP_STEP = 500;
 
 /** Nhãn ngắn cho dòng "+100 XP" trên HUD. */
 export const XP_LABEL: Record<XpKind, string> = {
@@ -27,6 +33,8 @@ export const XP_LABEL: Record<XpKind, string> = {
   resupply: "Tiếp tế đạn",
   repair: "Sửa xe tăng",
   revive: "Hồi sinh đồng đội",
+  shipDamage: "Bắn trúng tàu địch",
+  sink: "Đánh chìm tàu địch",
 };
 
 export function isXpKind(k: string): k is XpKind {

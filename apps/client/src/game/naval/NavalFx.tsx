@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { AdditiveBlending, InstancedMesh, MeshBasicMaterial, Object3D, SphereGeometry } from "three";
+import { AdditiveBlending, InstancedMesh, MeshBasicMaterial, Object3D, SphereGeometry, Vector3, type Camera } from "three";
 import { aaAimPoint, aaEye, ballisticAt, mountCovers, NAVAL_WEAPONS, rayShip, shipClass, shipToWorld } from "@tentides/content";
 import { Messages, type NavalFxMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -11,7 +11,7 @@ import { spawnDebris } from "../battle/Debris.tsx";
 import { playCannon, playExplosion, playGunshot } from "../sound/guns.ts";
 import { playFlares, playMissileLaunch } from "../sound/air.ts";
 import { play } from "../sound/sfx.ts";
-import { shipPose } from "./navalRuntime.ts";
+import { navalLocal, shipPose } from "./navalRuntime.ts";
 
 // Hiệu ứng hải chiến: đạn pháo bay cầu vồng (vẽ theo đường đạn đạo từ lúc bắn, dừng khi chạm tàu hay mặt nước), lửa
 // khói đầu nòng, cột nước khi trượt, nổ khi trúng, tia lửa, bộ phận vỡ, khói phóng tên lửa, mồi nhử chớp sáng, bom
@@ -322,6 +322,43 @@ function tickSinks(now: number) {
 /** Phòng đang mở (để tính dáng tàu cho tiếng nổ dây chuyền). */
 let room0: IslandRoom | null = null;
 
+/** Nhãn bay lên ở chỗ trúng (toạ độ thế giới): số sát thương, "CHÁY!", "PHÁ HỦY …". */
+interface Floater {
+  x: number;
+  y: number;
+  z: number;
+  text: string;
+  /** "foe": địch mất máu (vàng), "own": tàu mình mất máu (đỏ), "fire", "wreck". */
+  kind: string;
+  size: number;
+  born: number;
+}
+const floaters: Floater[] = [];
+const FLOAT_LIFE = 1.8;
+
+function floatText(x: number, y: number, z: number, text: string, kind: string, size: number) {
+  if (floaters.length > 40) floaters.shift();
+  floaters.push({ x: x + (Math.random() - 0.5) * 4, y, z: z + (Math.random() - 0.5) * 4, text, kind, size, born: performance.now() / 1000 });
+}
+
+const _fp = new Vector3();
+/** Chiếu nhãn ra màn hình cho HUD (bay lên, mờ dần). */
+function tickFloaters(now: number, cam: Camera) {
+  const out = navalLocal.floats;
+  out.length = 0;
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i]!;
+    const t = now - f.born;
+    if (t > FLOAT_LIFE) {
+      floaters.splice(i, 1);
+      continue;
+    }
+    _fp.set(f.x, f.y + 6 + t * 10, f.z).project(cam);
+    if (_fp.z >= 1 || Math.abs(_fp.x) > 1.1 || Math.abs(_fp.y) > 1.1) continue;
+    out.push({ x: (_fp.x + 1) / 2, y: (1 - _fp.y) / 2, text: f.text, kind: f.kind, alpha: Math.min(1, (FLOAT_LIFE - t) / 0.5), size: f.size * (t < 0.12 ? 1.35 - t * 2.9 : 1) });
+  }
+}
+
 function onFx(room: IslandRoom, m: NavalFxMessage) {
   const now = performance.now() / 1000;
   const mine = (() => {
@@ -355,6 +392,12 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
       if (m.weapon === "missile" || m.weapon === "bomb") boom(m.x, 0.5, m.z, true);
       break;
     }
+    case "dmg": {
+      const me = room.state.players.get(myId(room));
+      const dmg = m.dmg ?? 0;
+      floatText(m.x, m.y, m.z, `−${dmg}`, me && me.team === m.ship ? "own" : "foe", dmg >= 600 ? 1.5 : dmg >= 250 ? 1.2 : 1);
+      break;
+    }
     case "hit":
       // Nổ to (cột lửa khói) server đã gửi qua boom; ở đây thêm tia lửa văng, mảnh thép.
       sparks(m.x, m.y, m.z, 18);
@@ -371,6 +414,7 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
       break;
     }
     case "fire":
+      floatText(m.x, m.y, m.z, "CHÁY!", "fire", 1);
       sparks(m.x, m.y, m.z, 10);
       for (let k = 0; k < 6; k++)
         puffs.push({
@@ -391,11 +435,15 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
           dense: false,
         });
       break;
-    case "wreck":
+    case "wreck": {
+      const s = m.ship ? room.state.naval.ships.get(m.ship) : undefined;
+      const part = s && m.part ? shipClass(s.cls).parts.find((p) => p.id === m.part) : undefined;
+      if (part) floatText(m.x, m.y + 4, m.z, `PHÁ HỦY: ${part.name}`, "wreck", 1.1);
       boom(m.x, m.y, m.z, false);
       spawnDebris(m.x, m.y, m.z, true);
       sparks(m.x, m.y, m.z, 30);
       break;
+    }
     case "sink": {
       // Nước sủi trắng quanh thân, rồi cả con tàu nổ dây chuyền (xem `tickSinks`).
       for (let k = 0; k < 40; k++) {
@@ -626,13 +674,16 @@ export function NavalFx({ room }: { room: IslandRoom }) {
       off();
       shells.length = 0;
       sinkers.length = 0;
+      floaters.length = 0;
+      navalLocal.floats.length = 0;
       room0 = null;
     };
   }, [room]);
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     const now = performance.now() / 1000;
     tickSinks(now);
+    tickFloaters(now, camera);
     // Đạn vạch phòng không theo bộ đếm loạt bắn.
     room.state.naval?.ships.forEach((s, id) => {
       const last = seen.current.get(id);

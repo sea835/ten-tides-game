@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { DoubleSide, Group, MeshBasicMaterial, PlaneGeometry, RingGeometry, Vector3, type PerspectiveCamera } from "three";
+import { CanvasTexture, CircleGeometry, DoubleSide, Group, MeshBasicMaterial, PlaneGeometry, RingGeometry, Vector3, type PerspectiveCamera } from "three";
 import {
   FIRE,
   JET,
   NAVAL_HALF,
+  GUN_DISPERSION,
   NAVAL_WEAPONS,
   SUB,
   ballisticAt,
@@ -96,6 +97,16 @@ export function mountsReady(
 export function NavalControl({ room }: { room: IslandRoom }) {
   const ring = useRef<Group>(null);
   const line = useRef<Group>(null);
+  const spread = useRef<Group>(null);
+  const ghost = useRef<Group>(null);
+  const trail = useRef<Group>(null);
+  // Thước ngắm vẽ đè như HUD (không bị sương, đảo, sóng che).
+  const overlay = { transparent: true, depthWrite: false, depthTest: false, fog: false, side: DoubleSide, toneMapped: false } as const;
+  const ghostMat = useMemo(() => new MeshBasicMaterial({ map: ghostTexture(), ...overlay }), []);
+  const spreadMat = useMemo(() => new MeshBasicMaterial({ color: "#ffb347", opacity: 0.95, ...overlay }), []);
+  const spreadFill = useMemo(() => new MeshBasicMaterial({ color: "#ffb347", opacity: 0.16, ...overlay }), []);
+  const fillGeo = useMemo(() => new CircleGeometry(1, 40).rotateX(-Math.PI / 2), []);
+  const ghostGeo = useMemo(() => new PlaneGeometry(1, 1).rotateX(-Math.PI / 2), []);
   const ctl = useRef({
     fireHeld: false,
     fireClick: false,
@@ -215,6 +226,11 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     const me = room.state.players.get(mid);
     if (ring.current) ring.current.visible = false;
     if (line.current) line.current.visible = false;
+    if (spread.current) spread.current.visible = false;
+    if (ghost.current) ghost.current.visible = false;
+    if (trail.current) trail.current.visible = false;
+    navalLocal.gun.on = false;
+    navalLocal.torpLead.on = false;
     navalLocal.leads.length = 0;
     navalLocal.enemy.on = false;
     if (room.state.battleMode !== "naval" || !me) return;
@@ -375,6 +391,13 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         cam.position.set(px, Math.max(py, 1.2), pz);
         cam.lookAt(_v.set(px + _d.x, Math.max(py, 1.2) + _d.y, pz + _d.z));
         zoom = 4;
+      } else if (role.role === "gunner" && c.altHeld) {
+        // Ống nhòm đài chỉ huy hoả lực: mắt trên nóc thượng tầng (cao hơn mọi khối của tàu), nhìn theo hướng ngắm, phóng
+        // to; tàu mình không che tầm nhìn, đọc được elip tản đạn, bóng đón đầu, bậc tầm.
+        const [ex, ey, ez] = shipToWorld(pose, 0, directorHeight(cls), 0);
+        cam.position.set(ex, ey, ez);
+        cam.lookAt(_v.set(ex + _d.x, ey + _d.y, ez + _d.z));
+        zoom = 4;
       } else {
         // Camera sau và trên tàu, nhìn theo hướng chuột (ngắm xa qua đầu tàu).
         const dist = cls.length * (role.role === "gunner" ? 0.7 : 0.6) + 20;
@@ -383,7 +406,7 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         const bz = Math.cos(view.yaw);
         cam.position.set(target!.x + bx * dist, Math.max(4, pose.y + h + Math.sin(view.pitch) * 12), target!.z + bz * dist);
         cam.lookAt(_v.set(cam.position.x + _d.x, cam.position.y + _d.y, cam.position.z + _d.z));
-        zoom = c.altHeld && (role.role === "gunner" || (role.helm && cls.id !== "destroyer" && cls.id !== "cruiser")) ? 3 : 1;
+        zoom = c.altHeld && role.helm && cls.id !== "destroyer" && cls.id !== "cruiser" ? 3 : 1;
       }
       cam.getWorldDirection(_d);
 
@@ -404,6 +427,8 @@ export function NavalControl({ room }: { room: IslandRoom }) {
           ax = pose.x + (_d.x / flat) * w.range;
           az = pose.z + (_d.z / flat) * w.range;
         }
+        // Hỗ trợ ngắm: elip đặt gần bóng đón đầu thì điểm ngắm hút dần về bóng (gunSight trả về điểm ngắm sau khi hút).
+        [ax, az] = gunSight(cam, pose, cls, weapon, ax, az, enemyShip, spread.current, ghost.current, trail.current);
         navalLocal.aimX = ax;
         navalLocal.aimZ = az;
         navalLocal.aimRange = Math.hypot(ax - pose.x, az - pose.z);
@@ -411,7 +436,6 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         const elev = shellElevation(w.speed, navalLocal.aimRange, -(pose.y + cls.deck + 2));
         navalLocal.flight = Number.isFinite(elev) ? shellTime(w.speed, elev, navalLocal.aimRange) : 0;
         navalLocal.aimYaw = yawToAim;
-        showRing(ring.current, ax, az, w.splash * 1.4);
         c.aimAt += dt;
         if (c.aimAt >= 1 / AIM_HZ) {
           c.aimAt = 0;
@@ -449,9 +473,11 @@ export function NavalControl({ room }: { room: IslandRoom }) {
           }
         }
         if (role.weapons.includes("torpedo")) {
-          const r = mountsReady(ship, cls, "torpedo", aimYaw);
-          showLine(line.current, pose.x, pose.z, aimYaw, r.cover > 0);
-          if (c.fireClick && battle) room.send(Messages.navalFire, { weapon: "torpedo", yaw: aimYaw, pitch: 0 });
+          // Đón đầu ngư lôi: dấu ở điểm gặp nhau; hướng phóng lệch dưới ~7° thì hút về đó.
+          const yaw = torpedoLead(cam, pose, aimYaw, enemyShip);
+          const r = mountsReady(ship, cls, "torpedo", yaw);
+          showLine(line.current, pose.x, pose.z, yaw, r.cover > 0);
+          if (c.fireClick && battle) room.send(Messages.navalFire, { weapon: "torpedo", yaw, pitch: 0 });
         }
         if (role.weapons.includes("gtorpedo") && c.fireClick && battle) room.send(Messages.navalFire, { weapon: "gtorpedo", yaw: aimYaw, pitch: 0 });
         if (role.weapons.includes("missile") && c.fireClick && battle) room.send(Messages.navalFire, { weapon: "missile", yaw: aimYaw, pitch: 0 });
@@ -464,6 +490,9 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     }
     c.fireClick = false;
     c.altClick = false;
+    // Đang đứng vị trí thì LocalPlayer không chạy tới chỗ tính "dưới nước": tự tính theo camera (tàu ngầm nổi lên thì
+    // hết sương xanh, tiếng nước bóp nghẹt).
+    localEnv.underwater = cam.position.y < -0.05;
     markEnemy(cam, me.team, enemyShip, own);
 
     // Ống nhòm / kính tiềm vọng: thu hẹp góc nhìn.
@@ -491,8 +520,206 @@ export function NavalControl({ room }: { room: IslandRoom }) {
       <group ref={line} visible={false}>
         <mesh geometry={lineGeo} material={lineMat} scale={[1, 1, 260]} />
       </group>
+      {/* Thước ngắm pháo: elip tản đạn quanh điểm ngắm (2σ), bóng tàu địch đón đầu, vệt từ tàu địch tới bóng. */}
+      <group ref={spread} visible={false}>
+        <mesh geometry={fillGeo} material={spreadFill} renderOrder={20} />
+        <mesh geometry={ringGeo} material={spreadMat} renderOrder={21} />
+        <mesh geometry={lineGeo} material={spreadMat} position={[0, 0, 1]} scale={[0.012, 1, 2]} renderOrder={21} />
+      </group>
+      <group ref={ghost} visible={false}>
+        <mesh geometry={ghostGeo} material={ghostMat} renderOrder={19} />
+      </group>
+      <group ref={trail} visible={false}>
+        <mesh geometry={lineGeo} material={lineMat} />
+      </group>
     </>
   );
+}
+
+const directors = new Map<string, number>();
+/** Độ cao mắt ống nhòm đài chỉ huy hoả lực (toạ độ riêng của tàu): trên nóc khối cao nhất quanh giữa tàu. */
+function directorHeight(cls: ShipClass): number {
+  let h = directors.get(cls.id);
+  if (h === undefined) {
+    h = cls.deck + 6;
+    for (const b of cls.boxes) if (Math.abs(b.z) < cls.length * 0.3 && Math.abs(b.x) < cls.beam * 0.4) h = Math.max(h, b.y + b.h / 2 + 3);
+    directors.set(cls.id, h);
+  }
+  return h;
+}
+
+/** Ảnh bóng tàu nhìn từ trên (mũi nhọn, đuôi tròn): viền sáng, ruột mờ; vẽ một lần. */
+let ghostTex: CanvasTexture | null = null;
+function ghostTexture(): CanvasTexture {
+  if (ghostTex) return ghostTex;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 256;
+  const g = c.getContext("2d")!;
+  g.beginPath();
+  // Mũi ở trên (v = 1 ứng với mũi tàu sau khi xoay theo hướng tàu).
+  g.moveTo(32, 4);
+  g.quadraticCurveTo(62, 70, 58, 140);
+  g.lineTo(56, 236);
+  g.quadraticCurveTo(32, 254, 8, 236);
+  g.lineTo(6, 140);
+  g.quadraticCurveTo(2, 70, 32, 4);
+  g.closePath();
+  g.fillStyle = "rgba(255, 120, 80, 0.28)";
+  g.fill();
+  g.lineWidth = 6;
+  g.strokeStyle = "rgba(255, 160, 110, 0.95)";
+  g.stroke();
+  ghostTex = new CanvasTexture(c);
+  return ghostTex;
+}
+
+const _l = new Vector3();
+/**
+ * Điểm ngư lôi thẳng gặp tàu địch (tàu địch đi tiếp theo tốc độ, hướng hiện tại): ghi dấu đón đầu lên màn hình; hướng
+ * phóng `yaw` gần hướng tới điểm gặp (dưới TORPEDO_ASSIST) thì trả về đúng hướng đó.
+ */
+function torpedoLead(cam: PerspectiveCamera, pose: { x: number; z: number }, yaw: number, enemy: ShipState | undefined): number {
+  const lead = navalLocal.torpLead;
+  lead.on = false;
+  const ep = enemy && !enemy.sunk && !(enemy.cls === "submarine" && enemy.y < -4) ? shipPose(enemy.team) : undefined;
+  if (!enemy || !ep) return yaw;
+  const sp = NAVAL_WEAPONS.torpedo.speed;
+  let gx = ep.x;
+  let gz = ep.z;
+  for (let k = 0; k < 4; k++) {
+    const t = Math.hypot(gx - pose.x, gz - pose.z) / sp;
+    gx = ep.x + Math.sin(ep.rotY) * enemy.speed * t;
+    gz = ep.z + Math.cos(ep.rotY) * enemy.speed * t;
+  }
+  if (Math.hypot(gx - pose.x, gz - pose.z) > NAVAL_WEAPONS.torpedo.range) return yaw;
+  const want = Math.atan2(gx - pose.x, gz - pose.z);
+  const off = Math.abs(wrap(want - yaw));
+  lead.hit = off < TORPEDO_ASSIST;
+  _l.set(gx, 0.5, gz).project(cam);
+  if (_l.z < 1 && Math.abs(_l.x) < 1.2 && Math.abs(_l.y) < 1.2) {
+    lead.on = true;
+    lead.x = (_l.x + 1) / 2;
+    lead.y = (1 - _l.y) / 2;
+  }
+  return lead.hit ? want : yaw;
+}
+
+/** Hỗ trợ ngắm ngư lôi (rad). */
+const TORPEDO_ASSIST = 0.12;
+
+/** Hỗ trợ ngắm pháo: điểm ngắm cách bóng đón đầu dưới chừng này lần elip tản đạn thì được kéo về bóng. */
+const AIM_ASSIST = 2.5;
+
+/**
+ * Thước ngắm pháo chính: elip tản đạn 2σ quanh điểm ngắm (đúng công thức tản đạn của server, dọc hướng bắn dài, ngang
+ * hẹp), bóng tàu địch ở chỗ nó sẽ tới khi đạn rơi (đi tiếp theo tốc độ, hướng hiện tại trong thời gian đạn bay tới
+ * nó), vệt nối tàu địch tới bóng, bậc tầm 200 m dọc hướng nhìn để đọc cự ly; elip xanh khi bóng đón đầu lọt vào.
+ */
+function gunSight(
+  cam: PerspectiveCamera,
+  pose: { x: number; y: number; z: number; rotY: number },
+  cls: ShipClass,
+  weapon: NavalWeaponId,
+  ax: number,
+  az: number,
+  enemy: ShipState | undefined,
+  spread: Group | null,
+  ghost: Group | null,
+  trail: Group | null,
+): [number, number] {
+  const w = NAVAL_WEAPONS[weapon];
+  const gun = navalLocal.gun;
+  gun.on = true;
+  let d = Math.hypot(ax - pose.x, az - pose.z);
+  let yaw = Math.atan2(ax - pose.x, az - pose.z);
+  let sl = 2 * (d * GUN_DISPERSION.range + GUN_DISPERSION.base);
+  let ss = 2 * (d * GUN_DISPERSION.lateral + GUN_DISPERSION.baseLateral);
+  gun.onTarget = false;
+  gun.lead.on = false;
+  gun.enemyRange = 0;
+  gun.leadMove = 0;
+  const shooterY = -(pose.y + cls.deck + 2);
+  const epose = enemy && !enemy.sunk ? shipPose(enemy.team) : undefined;
+  if (enemy && epose && !(enemy.cls === "submarine" && enemy.y < -4)) {
+    const ecls = shipClass(enemy.cls);
+    const er = Math.hypot(epose.x - pose.x, epose.z - pose.z);
+    gun.enemyRange = er;
+    const elev = shellElevation(w.speed, Math.min(er, w.range), shooterY);
+    const T = Number.isFinite(elev) ? shellTime(w.speed, elev, Math.min(er, w.range)) : 0;
+    // Đón đầu: lặp hai lần (đạn bay tới chỗ mới của địch lâu hơn / nhanh hơn một chút).
+    let gx = epose.x;
+    let gz = epose.z;
+    let t = T;
+    for (let k = 0; k < 2; k++) {
+      gx = epose.x + Math.sin(epose.rotY) * enemy.speed * t;
+      gz = epose.z + Math.cos(epose.rotY) * enemy.speed * t;
+      const r2 = Math.hypot(gx - pose.x, gz - pose.z);
+      const e2 = shellElevation(w.speed, Math.min(r2, w.range), shooterY);
+      if (Number.isFinite(e2)) t = shellTime(w.speed, e2, Math.min(r2, w.range));
+    }
+    gun.leadMove = Math.hypot(gx - epose.x, gz - epose.z);
+    if (ghost) {
+      ghost.visible = true;
+      ghost.position.set(gx, 0.5, gz);
+      ghost.rotation.set(0, epose.rotY + Math.PI, 0);
+      ghost.scale.set(ecls.beam * 1.1, 1, ecls.length * 1.04);
+    }
+    if (trail && gun.leadMove > 3) {
+      trail.visible = true;
+      trail.position.set(epose.x, 0.45, epose.z);
+      trail.rotation.set(0, Math.atan2(gx - epose.x, gz - epose.z) + Math.PI, 0);
+      trail.scale.set(1.5, 1, gun.leadMove);
+    }
+    _l.set(gx, 0.5, gz).project(cam);
+    if (_l.z < 1 && Math.abs(_l.x) < 1.2 && Math.abs(_l.y) < 1.2) gun.lead = { on: true, x: (_l.x + 1) / 2, y: (1 - _l.y) / 2 };
+    // Khoảng lệch bóng đón đầu so với elip 2σ quanh điểm ngắm (1 là đúng mép elip, theo trục dọc / ngang hướng bắn).
+    const reach = ecls.length * 0.35;
+    const offset = (px: number, pz: number) => {
+      const dx = gx - px;
+      const dz = gz - pz;
+      const along = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+      const side = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+      return Math.sqrt((along / (sl / 2 + reach)) ** 2 + (side / (ss / 2 + reach * 0.4)) ** 2);
+    };
+    // Hút ngắm: trong chừng 2,5 lần elip thì kéo điểm ngắm về bóng (càng gần kéo càng mạnh, sát bóng thì dính hẳn).
+    const off = offset(ax, az);
+    if (off < AIM_ASSIST && er <= w.range) {
+      const pull = Math.min(1, 1.25 * (1 - off / AIM_ASSIST));
+      ax += (gx - ax) * pull;
+      az += (gz - az) * pull;
+      d = Math.hypot(ax - pose.x, az - pose.z);
+      yaw = Math.atan2(ax - pose.x, az - pose.z);
+      sl = 2 * (d * GUN_DISPERSION.range + GUN_DISPERSION.base);
+      ss = 2 * (d * GUN_DISPERSION.lateral + GUN_DISPERSION.baseLateral);
+    }
+    gun.onTarget = offset(ax, az) < 1;
+  }
+  gun.spreadLong = sl;
+  gun.spreadSide = ss;
+  if (spread) {
+    spread.visible = true;
+    spread.position.set(ax, 0.6, az);
+    spread.rotation.set(0, yaw, 0);
+    spread.scale.set(ss / 2, 1, sl / 2);
+    const col = gun.onTarget ? "#7dff8a" : "#ffb347";
+    for (const ch of spread.children) (ch as unknown as { material: MeshBasicMaterial }).material.color.set(col);
+  }
+  // Bậc tầm: mỗi 200 m dọc hướng nhìn, chiếu lên màn hình (đọc cự ly theo vạch).
+  gun.ladder.length = 0;
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  let lastY = Infinity;
+  for (let r = 200; r <= w.range; r += 200) {
+    _l.set(pose.x + fx * r, 0, pose.z + fz * r).project(cam);
+    if (_l.z >= 1 || Math.abs(_l.x) > 1 || Math.abs(_l.y) > 1) continue;
+    const y = (1 - _l.y) / 2;
+    // Vạch dồn sát nhau (gần chân trời): bỏ bớt cho đọc được.
+    if (Math.abs(lastY - y) < 0.03) continue;
+    lastY = y;
+    gun.ladder.push({ x: (_l.x + 1) / 2, y, d: r });
+  }
+  return [ax, az];
 }
 
 function showRing(g: Group | null, x: number, z: number, r: number) {

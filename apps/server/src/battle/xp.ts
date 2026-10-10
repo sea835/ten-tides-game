@@ -92,6 +92,6 @@ export function awardXp(playerId: string, kind: XpKind, times = 1): number {
   // Việc hỗ trợ (cả của máy, khách: không có XP) tính luôn vào bảng vinh danh MVP Hỗ trợ.
   if (kind === "resupply" || kind === "repair" || kind === "revive") noteSupport(playerId, times);
   // Điểm chi viện chiến thuật (cả khách; máy thì không): hạ gục tính riêng ở BattleRoom.kill.
-  if (kind !== "kill" && kind !== "headshot") earnPoints(playerId, kind, times);
+  if (kind === "capture" || kind === "resupply" || kind === "repair" || kind === "revive") earnPoints(playerId, kind, times);
   return ROUTE.get(playerId)?.award(playerId, kind, times) ?? 0;
 }
