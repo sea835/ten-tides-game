@@ -44,7 +44,9 @@ export type DecorKind =
   | "anchor"
   | "light"
   | "flag"
-  | "wire";
+  | "wire"
+  /** Thanh giằng: khối dài `h` nghiêng quanh trục dọc tàu một góc `rot` (tâm ở x, y, z). */
+  | "strut";
 
 /** Chi tiết chỉ để vẽ (không va chạm, không trúng đạn riêng); thuộc bộ phận `part` thì cháy đen theo bộ phận đó. */
 export interface ShipDecor {
@@ -543,6 +545,37 @@ function carrier(): ShipClass {
   const deckMain = { x: 1, z: 2, w: 50, d: 212 };
   const deckAngle = { x: 29.5, z: -35, w: 7, d: 90 };
   for (const p of [deckMain, deckAngle]) boxes.push({ x: p.x, y: FD - 0.5, z: p.z, w: p.w, h: 1, d: p.d, mat: "flight", solid: true, part: "mid" });
+  // Vách nhà chứa máy bay nhìn thấy được: men theo mép thân (hẹp dần ở mũi, đuôi) từ boong thân lên tới gầm sàn bay,
+  // mỗi bên vài cửa nhà chứa (mảng tối); dưới sàn bay một tầng hành lang dày, giá đỡ chéo đỡ phần sàn chìa ra hai mạn.
+  const z0 = -h.L / 2 + 4;
+  const z1 = h.L / 2 - 8;
+  const step = 6;
+  for (const sd of [-1, 1]) {
+    for (let z = z0; z < z1; z += step) {
+      const za = z;
+      const zb = Math.min(z1, z + step);
+      const xa = sd * Math.max(1, halfBeamAt(h, za) - 0.35);
+      const xb = sd * Math.max(1, halfBeamAt(h, zb) - 0.35);
+      const base = Math.min(deckAt(h, za), deckAt(h, zb)) - 0.2;
+      decor.push(D("box", (xa + xb) / 2, base, (za + zb) / 2, { w: 0.6, h: FD - 0.9 - base, d: Math.hypot(xb - xa, zb - za) + 0.15, rot: Math.atan2(xb - xa, zb - za), mat: "hull" }));
+    }
+    for (const z of [-50, -10, 30]) decor.push(D("box", sd * (h.B / 2 - 0.02), h.deck + 1.2, z, { w: 0.1, h: 6.5, d: 16, mat: "dark" }));
+  }
+  // Vách đầu (mũi) và đuôi nhà chứa.
+  for (const z of [z0, z1]) decor.push(D("box", 0, deckAt(h, z) - 0.2, z, { w: Math.max(2, 2 * halfBeamAt(h, z) - 0.7), h: FD - 0.9 - deckAt(h, z) + 0.2, d: 0.6, mat: "hull" }));
+  // Tầng hành lang dưới sàn bay (sàn bay trông dày, liền khối), giá đỡ chéo dưới phần chìa ra.
+  decor.push(D("box", deckMain.x, FD - 3.4, deckMain.z, { w: deckMain.w - 2, h: 2.4, d: deckMain.d - 4, mat: "hull" }));
+  for (let z = -90; z <= 90; z += 18) {
+    const hb = halfBeamAt(h, z);
+    for (const sd of [-1, 1]) {
+      const edge = sd > 0 ? deckMain.x + deckMain.w / 2 - 2 : deckMain.x - deckMain.w / 2 + 2;
+      const span = Math.abs(edge) - hb;
+      if (span < 2) continue;
+      const len = Math.hypot(span, 7);
+      // Thanh chéo từ mạn thân (thấp) vươn ra mép sàn (cao): nghiêng quanh trục dọc tàu.
+      decor.push(D("strut", sd * (hb + span / 2), FD - 7.4, z, { w: 1, h: len, d: 1, rot: -sd * Math.atan2(span, 7), mat: "dark" }));
+    }
+  }
   // Lan can quanh mép sàn bay.
   const railY = FD + 0.55;
   boxes.push({ x: -23.95, y: railY, z: deckMain.z, w: 0.1, h: 1.1, d: deckMain.d, mat: "rail", solid: true });
@@ -610,7 +643,7 @@ function carrier(): ShipClass {
     turn: 0.045,
     roles: [
       role("captain", "Thuyền trưởng", "Lái tàu (W/S tốc độ, A/D bẻ lái), bắn ngư lôi hai mạn (chuột trái).", [IX - 0.5, top2 + 0.3, 2], 0, ["torpedo"], true),
-      role("pilot", "Phi công", "Đứng ở máy phóng, chuột trái cất cánh. Bay theo hướng chuột, W/S ga, chuột trái súng, chuột phải thả bom, F bỏ máy bay.", [14, FD, 64], 0, ["jetGun", "bomb"]),
+      role("pilot", "Phi công", "Đứng ở máy phóng, chuột trái cất cánh cả phi đội. Bay theo hướng chuột, W/S ga, chuột trái súng; 1–4 chọn bom, bom chùm, ngư lôi, rocket, chuột phải thả / bắn; F bỏ máy bay.", [14, FD, 64], 0, ["jetGun", "bomb"]),
       role("aa", "Phòng không", "Sáu ổ súng máy phòng không: bắn máy bay, tên lửa, lính trên boong địch.", [18, FD, -30], Math.PI / 2, ["aa"]),
     ],
     parts: [

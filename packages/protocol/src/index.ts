@@ -652,8 +652,11 @@ export const NavalUnitState = schema(
     roll: t.float32().default(0),
     speed: t.float32().default(0),
     hp: t.int16().default(0),
-    /** Máy bay: bom còn lại. */
+    /** Máy bay: bom, bom chùm, ngư lôi, rocket còn lại. */
     bombs: t.uint8().default(0),
+    cluster: t.uint8().default(0),
+    torps: t.uint8().default(0),
+    rockets: t.uint8().default(0),
     /** Tên lửa, ngư lôi dẫn đường người phóng đã thả ra: tự dẫn tới tàu địch (không còn ai lái). */
     auto: t.boolean().default(false),
   },
@@ -1405,7 +1408,7 @@ export type NavalFireMessage = z.infer<typeof NavalFireMessage>;
 /** Máy người lái báo vị trí tên lửa / ngư lôi dẫn đường / máy bay của mình (server kiểm tra tốc độ, va chạm). */
 export const NavalUnitMessage = z.object({ id: id, x: finite, y: finite, z: finite, yaw: finite, pitch: z.number().min(-1.6).max(1.6), roll: z.number().min(-3.2).max(3.2), speed: z.number().min(0).max(400) });
 export type NavalUnitMessage = z.infer<typeof NavalUnitMessage>;
-export const NavalActMessage = z.object({ act: z.enum(["extinguish", "board", "bomb", "eject", "land", "release"]) });
+export const NavalActMessage = z.object({ act: z.enum(["extinguish", "board", "bomb", "cluster", "airTorpedo", "rocket", "eject", "land", "release"]) });
 export type NavalActMessage = z.infer<typeof NavalActMessage>;
 /**
  * Hiệu ứng hải chiến server gửi mọi người. `k`: "shell" (đạn pháo bay: o, v), "bomb" (bom rơi: o, v), "splash" (đạn

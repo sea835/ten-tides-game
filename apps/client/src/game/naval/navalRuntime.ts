@@ -37,6 +37,10 @@ export const navalLocal = {
   leads: [] as { x: number; y: number; kind: string; d: number }[],
   /** Dấu tàu địch trên màn hình (front: ở phía trước camera). */
   enemy: { on: false, front: false, x: 0, y: 0, dist: 0 },
+  /** Dấu mũi máy bay mình lái trên màn hình (súng, rocket bắn theo mũi). */
+  nose: { on: false, x: 0, y: 0 },
+  /** Vũ khí máy bay đang chọn (chuột phải): bom, bom chùm, ngư lôi, rocket. */
+  ord: "bomb" as "bomb" | "cluster" | "torpedo" | "rocket",
   /** Dấu đón đầu ngư lôi của thuyền trưởng (toạ độ màn hình 0–1), hướng phóng đã hút vào điểm gặp. */
   torpLead: { on: false, x: 0, y: 0, hit: false },
   /** Số sát thương / nhãn bay lên chỗ trúng (toạ độ màn hình 0–1, đã chiếu sẵn mỗi khung). */
@@ -58,7 +62,7 @@ export const navalLocal = {
 };
 
 /** Đơn vị mình đang lái (tên lửa, ngư lôi dẫn đường, máy bay): vị trí dự đoán trên máy mình (vẽ, camera). */
-export const myUnit = { id: "", x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, speed: 0 };
+export const myUnit = { id: "", x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, speed: 0, yawRate: 0, pitchRate: 0 };
 
 /** Trạng thái server gần nhất của từng tàu và lúc nó đến (để dự đoán tàu đi tiếp tới hiện tại). */
 const seen = new Map<string, { x: number; z: number; rotY: number; at: number }>();

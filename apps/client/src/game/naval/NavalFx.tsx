@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { AdditiveBlending, InstancedMesh, MeshBasicMaterial, Object3D, SphereGeometry, Vector3, type Camera } from "three";
-import { aaAimPoint, aaEye, ballisticAt, mountCovers, NAVAL_WEAPONS, rayShip, shipClass, shipToWorld } from "@tentides/content";
+import { ROCKET_GRAVITY, aaAimPoint, aaEye, ballisticAt, mountCovers, NAVAL_WEAPONS, rayShip, shipClass, shipToWorld } from "@tentides/content";
 import { Messages, type NavalFxMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { localPosition, shake } from "../shared.ts";
@@ -12,6 +12,7 @@ import { playCannon, playExplosion, playGunshot } from "../sound/guns.ts";
 import { playFlares, playMissileLaunch } from "../sound/air.ts";
 import { play } from "../sound/sfx.ts";
 import { navalLocal, shipPose } from "./navalRuntime.ts";
+import { addDamageMark, wreckMarks } from "./ShipDamage.tsx";
 
 // Hiệu ứng hải chiến: đạn pháo bay cầu vồng (vẽ theo đường đạn đạo từ lúc bắn, dừng khi chạm tàu hay mặt nước), lửa
 // khói đầu nòng, cột nước khi trượt, nổ khi trúng, tia lửa, bộ phận vỡ, khói phóng tên lửa, mồi nhử chớp sáng, bom
@@ -369,6 +370,15 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
     case "shell": {
       const v = m.v ?? [0, 0, 0];
       if (shells.length < MAX_SHELLS) shells.push({ o: [m.x, m.y, m.z], v, born: now, weapon: m.weapon ?? "bbGun", from: m.ship ?? "", smoked: 0 });
+      if (m.weapon === "rocket") {
+        // Rocket rời cánh: chớp lửa nhỏ, tiếng xé gió.
+        effects.flashes.push({ x: m.x, y: m.y, z: m.z, born: now, noLight: true });
+        if (now - (lastBang.get("rocket") ?? 0) > 0.25) {
+          lastBang.set("rocket", now);
+          playMissileLaunch({ x: m.x, y: m.y, z: m.z });
+        }
+        break;
+      }
       const sp = Math.hypot(...v) || 1;
       const big = m.weapon === "bbGun";
       muzzleBlast(m.x, m.y, m.z, [v[0] / sp, v[1] / sp, v[2] / sp], big);
@@ -386,7 +396,7 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
       break;
     case "splash": {
       const size =
-        m.weapon === "bbGun" ? 2.2 : m.weapon === "ddGun" ? 1.2 : m.weapon === "plane" ? 1.8 : m.weapon === "bomb" ? 2 : m.weapon === "missile" ? 1.6 : 1.4;
+        m.weapon === "bbGun" ? 2.2 : m.weapon === "ddGun" ? 1.2 : m.weapon === "plane" ? 1.8 : m.weapon === "bomb" ? 2 : m.weapon === "missile" ? 1.6 : m.weapon === "rocket" ? 0.9 : 1.4;
       waterColumn(m.x, m.z, size);
       play("splash", { at: { x: m.x, y: 0, z: m.z }, volume: Math.min(1, 0.5 + size * 0.25) });
       if (m.weapon === "missile" || m.weapon === "bomb") boom(m.x, 0.5, m.z, true);
@@ -395,6 +405,9 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
     case "dmg": {
       const me = room.state.players.get(myId(room));
       const dmg = m.dmg ?? 0;
+      const hit = m.ship ? room.state.naval.ships.get(m.ship) : undefined;
+      const hp = m.ship ? shipPose(m.ship) : undefined;
+      if (hit && hp) addDamageMark(m.ship!, shipClass(hit.cls), hp, [m.x, m.y, m.z], dmg);
       floatText(m.x, m.y, m.z, `−${dmg}`, me && me.team === m.ship ? "own" : "foe", dmg >= 600 ? 1.5 : dmg >= 250 ? 1.2 : 1);
       break;
     }
@@ -439,6 +452,8 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
       const s = m.ship ? room.state.naval.ships.get(m.ship) : undefined;
       const part = s && m.part ? shipClass(s.cls).parts.find((p) => p.id === m.part) : undefined;
       if (part) floatText(m.x, m.y + 4, m.z, `PHÁ HỦY: ${part.name}`, "wreck", 1.1);
+      const wp = m.ship ? shipPose(m.ship) : undefined;
+      if (s && wp && m.part) wreckMarks(m.ship!, shipClass(s.cls), wp, m.part);
       boom(m.x, m.y, m.z, false);
       spawnDebris(m.x, m.y, m.z, true);
       sparks(m.x, m.y, m.z, 30);
@@ -696,8 +711,9 @@ export function NavalFx({ room }: { room: IslandRoom }) {
     for (let i = shells.length - 1; i >= 0; i--) {
       const sh = shells[i]!;
       const t = now - sh.born;
-      const p = ballisticAt(sh.o, sh.v, t);
-      const prev = ballisticAt(sh.o, sh.v, Math.max(0, t - 1 / 30));
+      const g = sh.weapon === "rocket" ? ROCKET_GRAVITY : 9.81;
+      const p = ballisticAt(sh.o, sh.v, t, g);
+      const prev = ballisticAt(sh.o, sh.v, Math.max(0, t - 1 / 30), g);
       let done = p[1] < 0 || t > 30;
       // Chạm thân tàu (vẽ dừng đúng chỗ; nổ, cột lửa do server gửi).
       if (!done) {
@@ -713,6 +729,11 @@ export function NavalFx({ room }: { room: IslandRoom }) {
       if (done) {
         shells.splice(i, 1);
         continue;
+      }
+      // Rocket: lửa đuôi, vệt khói trắng dày.
+      if (sh.weapon === "rocket" && t - sh.smoked > 0.025) {
+        sh.smoked = t;
+        puffs.push({ x: p[0], y: p[1], z: p[2], vx: 0, vy: 0.3, vz: 0, size: 0.7, grow: 1.4, life: 1.6, age: 0, r: 0.85, g: 0.85, b: 0.85, alpha: 0.45, dense: false });
       }
       // Vệt khói mỏng sau đạn pháo chính.
       if (sh.weapon === "bbGun" && t - sh.smoked > 0.05) {
@@ -737,7 +758,7 @@ export function NavalFx({ room }: { room: IslandRoom }) {
       }
       if (n >= MAX_SHELLS) continue;
       const dist = near(p[0], p[1], p[2]);
-      const r = sh.weapon === "bomb" ? 0.45 : (sh.weapon === "bbGun" ? 0.45 : 0.25) * Math.max(1, dist / 80);
+      const r = sh.weapon === "bomb" ? 0.45 : (sh.weapon === "bbGun" || sh.weapon === "rocket" ? 0.45 : 0.25) * Math.max(1, dist / 80);
       _o.position.set(p[0], p[1], p[2]);
       _o.scale.setScalar(r);
       _o.updateMatrix();

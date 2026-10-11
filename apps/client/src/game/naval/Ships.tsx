@@ -36,6 +36,7 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { localPosition } from "../shared.ts";
 import { embers, puffs } from "../battle/gpuParticles.ts";
 import { shipPose, updateShips } from "./navalRuntime.ts";
+import { ShipDamage } from "./ShipDamage.tsx";
 
 // Vẽ hai chiến hạm: thân, boong, thượng tầng (gộp khối theo vật liệu cho ít lệnh vẽ), tháp pháo, ổ phòng không, ống
 // phóng ngư lôi xoay theo hướng ngắm của người đứng vị trí; hộp va chạm động (Rapier) để đi lại trên boong; bộ phận
@@ -309,6 +310,8 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
           }}
         />
       ))}
+      {/* Vết hư hại tích dần (cháy sém, lỗ thủng, thép rách). */}
+      <ShipDamage room={room} id={id} cls={cls} pose={() => shipPose(id)} />
       {/* Vòng sáng đánh dấu bàn điều khiển các vị trí (đứng vào rồi bấm F). */}
       {cls.roles.map((r, k) => (
         <mesh key={`st${k}`} position={[r.station[0], r.station[1] + 0.06, r.station[2]]} rotation-x={-Math.PI / 2} material={STATION_MAT}>

@@ -20,7 +20,7 @@ export const SHIP_CLASSES: readonly ShipClassId[] = ["battleship", "carrier", "c
 export type NavalRole = "captain" | "navigator" | "gunner" | "aa" | "pilot" | "missile" | "torpedo";
 
 /** Vũ khí của tàu. */
-export type NavalWeaponId = "bbGun" | "ddGun" | "aa" | "torpedo" | "gtorpedo" | "missile" | "depth" | "decoy" | "jetGun" | "bomb";
+export type NavalWeaponId = "bbGun" | "ddGun" | "aa" | "torpedo" | "gtorpedo" | "missile" | "depth" | "decoy" | "jetGun" | "bomb" | "rocket";
 
 /** Bộ phận tàu (trúng đạn, cháy, hỏng). Khoang (bow/mid/stern) không hỏng hẳn, chỉ là chỗ cháy. */
 export type PartKind = "section" | "bridge" | "engine" | "turret" | "aa" | "torpedo" | "vls" | "catapult" | "radar" | "depth" | "decoy" | "periscope";
@@ -136,6 +136,7 @@ export const NAVAL_WEAPONS: Record<NavalWeaponId, NavalWeapon> = {
   decoy: { id: "decoy", name: "Mồi nhử", reload: 25, damage: 0, splash: 0, speed: 0, range: 0, spread: 0, fire: 0 },
   jetGun: { id: "jetGun", name: "Pháo máy bay 20 ly", reload: 0.07, damage: 15, splash: 0, speed: 800, range: 600, spread: 0.01, fire: 0.02 },
   bomb: { id: "bomb", name: "Bom 500 kg", reload: 22, damage: 380, splash: 11, speed: 0, range: 0, spread: 0, fire: 0.6 },
+  rocket: { id: "rocket", name: "Rocket máy bay", reload: 0.3, damage: 130, splash: 5, speed: 230, range: 1000, spread: 0.012, fire: 0.25 },
 };
 
 /**
@@ -178,14 +179,26 @@ export const JET = {
   /** Độ cao bay tối đa (m). */
   ceiling: 420,
   bombs: 3,
+  /** Bom chùm (mỗi quả tách thành CLUSTER_BOMBLETS quả nhỏ), ngư lôi thả từ máy bay, rocket (bắn theo mũi). */
+  cluster: 2,
+  torps: 1,
+  rockets: 8,
+  /** Thả ngư lôi phải bay thấp hơn chừng này (m), không thì ngư lôi vỡ khi chạm nước. */
+  torpAlt: 45,
   /** Máy bay yểm trợ cất cánh cùng máy bay dẫn đầu (tự lái), tối đa cùng lúc; bom mỗi chiếc mang, hệ số sát thương bom (bom nhẹ). */
   wingmen: 4,
   wingBombs: 2,
+  wingRockets: 4,
   wingDamage: 0.4,
   respawn: 18,
   /** Nạp lại bom khi bay sát tàu mẹ (m). */
   rearm: 90,
 } as const;
+
+/** Bom chùm: số quả nhỏ, hệ số sát thương mỗi quả (so với bom thường), độ toả (m/s ngang). */
+export const CLUSTER = { bomblets: 8, scale: 0.32, spread: 7 } as const;
+/** Rocket bay gần thẳng (trọng lực giảm, như có động cơ đẩy). */
+export const ROCKET_GRAVITY = 1.5;
 
 /** Tên lửa: tốc độ quay tối đa (rad/s). */
 export const MISSILE_TURN = 1.15;
@@ -461,6 +474,9 @@ export interface UnitPose {
   pitch: number;
   roll: number;
   speed: number;
+  /** Máy bay: tốc độ quay hướng, chúc ngóc đang có (rad/s) — quán tính, để lượn mượt chứ không giật. */
+  yawRate?: number;
+  pitchRate?: number;
 }
 
 /** Quay dần hướng `cur` về `want` (rad), tối đa `rate` rad mỗi giây. */
@@ -493,16 +509,29 @@ export function jetStep(u: UnitPose, wantYaw: number, wantPitch: number, throttl
   const target = Math.max(JET.min, Math.min(JET.max, JET.cruise + throttle * (throttle > 0 ? JET.max - JET.cruise : JET.cruise - JET.min)));
   let speed = u.speed + Math.max(-JET.accel * dt, Math.min(JET.accel * dt, target - u.speed));
   const agility = 0.55 + 0.45 * Math.min(1, speed / JET.cruise);
+  // Quán tính: tốc độ quay muốn có tỉ lệ với độ lệch (gần tới hướng thì chậm lại, khỏi vọt qua), tốc độ quay thật đuổi
+  // theo nó mượt (máy bay vào vòng lượn, ra khỏi vòng lượn từ từ chứ không giật cục).
   const dyaw = wrap(wantYaw - u.yaw);
-  const yaw = steerToward(u.yaw, wantYaw, JET.turn * agility, dt);
-  let pitch = Math.max(-1.1, Math.min(1.0, steerToward(u.pitch, wantPitch, JET.climb * agility, dt)));
+  const maxYaw = JET.turn * agility;
+  const wantYawRate = Math.max(-maxYaw, Math.min(maxYaw, dyaw * 2.6));
+  const yawRate = (u.yawRate ?? 0) + (wantYawRate - (u.yawRate ?? 0)) * (1 - Math.exp(-dt * 4.5));
+  const yaw = u.yaw + yawRate * dt;
+  const maxPitch = JET.climb * agility;
+  const wantPitchRate = Math.max(-maxPitch, Math.min(maxPitch, (wantPitch - u.pitch) * 3));
+  let pitchRate = (u.pitchRate ?? 0) + (wantPitchRate - (u.pitchRate ?? 0)) * (1 - Math.exp(-dt * 5.5));
+  let pitch = u.pitch + pitchRate * dt;
+  if (pitch > 1 || pitch < -1.1) {
+    pitch = Math.max(-1.1, Math.min(1, pitch));
+    pitchRate = 0;
+  }
   // Thiếu tốc: mũi chúc dần xuống. Leo dốc thì chậm lại, bổ nhào thì nhanh lên.
   if (speed < JET.min + 6) pitch = steerToward(pitch, -0.5, 0.6, dt);
   speed -= Math.sin(pitch) * 9.81 * dt * 0.6;
-  const roll = steerToward(u.roll, Math.max(-1.2, Math.min(1.2, dyaw * 2.2)), 2.4, dt);
+  // Nghiêng cánh theo vòng lượn (lượn gắt nghiêng nhiều), mượt.
+  const roll = u.roll + (Math.max(-1.25, Math.min(1.25, (yawRate / JET.turn) * 1.15)) - u.roll) * (1 - Math.exp(-dt * 4));
   const cp = Math.cos(pitch);
   const y = Math.min(JET.ceiling, u.y + Math.sin(pitch) * speed * dt);
-  return { x: u.x + Math.sin(yaw) * cp * speed * dt, y, z: u.z + Math.cos(yaw) * cp * speed * dt, yaw, pitch, roll, speed };
+  return { x: u.x + Math.sin(yaw) * cp * speed * dt, y, z: u.z + Math.cos(yaw) * cp * speed * dt, yaw: wrap(yaw), pitch, roll, speed, yawRate, pitchRate };
 }
 
 /**

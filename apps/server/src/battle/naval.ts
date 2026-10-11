@@ -13,6 +13,8 @@ import {
   SMALL_ARMS_SHIP,
   SONAR,
   SHIP_DAMAGE_XP_STEP,
+  CLUSTER,
+  ROCKET_GRAVITY,
   SUB,
   TORPEDO_DEPTH,
   UNIT_HP,
@@ -88,8 +90,10 @@ interface Shell {
   weapon: NavalWeaponId;
   /** Giây kể từ lúc bắn (bỏ qua tàu mình lúc mới rời nòng). */
   age: number;
-  /** Hệ số sát thương (bom nhẹ của máy bay yểm trợ). */
+  /** Hệ số sát thương (bom nhẹ của máy bay yểm trợ, bom chùm). */
   scale?: number;
+  /** Trọng lực (m/s²) — rocket bay gần thẳng. */
+  g?: number;
 }
 
 interface Flak {
@@ -126,6 +130,9 @@ interface UnitData {
   /** Máy bay máy lái: còn bao lâu thì thôi kéo lên vòng lại (giây); số thứ tự trong phi đội (lệch độ cao, hướng lao). */
   busy: number;
   slot: number;
+  /** Máy bay máy lái: tốc độ quay hướng, chúc ngóc (quán tính, xem jetStep). */
+  yawRate: number;
+  pitchRate: number;
 }
 
 interface BotBrain {
@@ -708,7 +715,7 @@ export class Naval {
     u.speed = speed;
     u.hp = kind === "plane" ? UNIT_HP.plane : kind === "missile" ? UNIT_HP.missile : UNIT_HP.torpedo;
     this.ns.units.set(id, u);
-    this.units.set(id, { bot, wantYaw: yaw, wantPitch: pitch, throttle: 0, life, quiet: 0, gunAt: 0, busy: 0, slot: 0 });
+    this.units.set(id, { bot, wantYaw: yaw, wantPitch: pitch, throttle: 0, life, quiet: 0, gunAt: 0, busy: 0, slot: 0, yawRate: 0, pitchRate: 0 });
     return id;
   }
 
@@ -799,6 +806,8 @@ export class Naval {
 
   /** Phi công đứng ở máy phóng: cất cánh nếu đã có máy bay. */
   private launchJet(owner: string, ship: ShipState) {
+    // Máy bay dẫn đầu đã mất mà chưa kịp báo (phòng hờ): giải phóng chỗ.
+    if (ship.jet && !this.ns.units.has(ship.jet)) ship.jet = "";
     if (ship.jet || ship.jetWait > 0) return;
     const cls = this.cls(ship);
     const cat = cls.parts.find((p) => p.kind === "catapult");
@@ -806,7 +815,7 @@ export class Naval {
     const pose = this.pose(ship);
     const at = shipToWorld(pose, cat.at[0], cat.at[1] + 1.2, cat.at[2] + 12);
     const id = this.newUnit("plane", ship, owner, at, ship.rotY, 0.12, JET.cruise * 0.85, this.isBot(owner), 9999);
-    this.ns.units.get(id)!.bombs = JET.bombs;
+    this.rearmPlane(this.ns.units.get(id)!);
     ship.jet = id;
     this.fx({ k: "launch", x: at[0], y: at[1], z: at[2], weapon: "plane", ship: ship.team, part: cat.id });
     // Cả phi đội cất cánh cùng lúc: máy bay yểm trợ xếp hình chữ V hai bên, sau máy bay dẫn đầu, máy tự lái.
@@ -817,8 +826,8 @@ export class Naval {
       const w = shipToWorld(pose, cat.at[0] + side * row * 14, cat.at[1] + 1.2 + row * 3, cat.at[2] + 12 - row * 16);
       const wid = this.newUnit("plane", ship, owner, w, ship.rotY, 0.12, JET.cruise * 0.85, true, 9999);
       const wu = this.ns.units.get(wid)!;
-      wu.bombs = JET.wingBombs;
       wu.auto = true;
+      this.rearmPlane(wu);
       this.units.get(wid)!.slot = k;
     }
   }
@@ -849,11 +858,6 @@ export class Naval {
     this.fx({ k: "jet", x: u.x, y: u.y, z: u.z, v: [d[0], d[1], d[2]], team: u.team });
   }
 
-  /** Thả bom: rơi theo quán tính máy bay. */
-  private bomb(owner: string) {
-    const ship = [...this.ns.ships.values()].find((s) => s.jet && this.ns.units.get(s.jet)?.owner === owner);
-    if (ship) this.planeBomb(ship.jet);
-  }
 
   /** Máy bay `uid` thả một quả bom. */
   private planeBomb(uid: string) {
@@ -871,10 +875,82 @@ export class Naval {
     this.fx({ k: "bomb", x: o[0], y: o[1], z: o[2], v, team: u.team });
   }
 
+  /** Nạp đủ vũ khí cho máy bay (lúc cất cánh, bay sát tàu mẹ). Máy bay yểm trợ mang ít hơn, không có bom chùm, ngư lôi. */
+  private rearmPlane(u: NavalUnitState) {
+    u.bombs = u.auto ? JET.wingBombs : JET.bombs;
+    u.cluster = u.auto ? 0 : JET.cluster;
+    u.torps = u.auto ? 0 : JET.torps;
+    u.rockets = u.auto ? JET.wingRockets : JET.rockets;
+  }
+
+  /** Bom chùm: thả một quả, nổ bung thành chùm bom nhỏ rơi toả rộng (phủ cả boong tàu địch). */
+  private planeCluster(uid: string) {
+    const u = this.ns.units.get(uid);
+    if (!u || u.cluster <= 0) return;
+    const last = this.aaAt.get(`${uid}:bomb`) ?? -9;
+    if (this.clock - last < 0.8) return;
+    this.aaAt.set(`${uid}:bomb`, this.clock);
+    u.cluster--;
+    const cp = Math.cos(u.pitch);
+    for (let k = 0; k < CLUSTER.bomblets; k++) {
+      const a = (k / CLUSTER.bomblets) * Math.PI * 2 + Math.random() * 0.5;
+      const r = CLUSTER.spread * (0.5 + Math.random() * 0.5);
+      const v: V3 = [Math.sin(u.yaw) * cp * u.speed + Math.cos(a) * r, Math.sin(u.pitch) * u.speed - Math.random() * 2, Math.cos(u.yaw) * cp * u.speed + Math.sin(a) * r];
+      const o: V3 = [u.x, u.y - 1.6, u.z];
+      this.shells.push({ pos: o, v, life: 20, owner: u.owner, team: u.team, from: "", weapon: "bomb", age: 1, scale: CLUSTER.scale });
+      this.fx({ k: "bomb", x: o[0], y: o[1], z: o[2], v, team: u.team });
+    }
+  }
+
+  /** Ngư lôi thả từ máy bay: bay thấp thì ngư lôi xuống nước chạy thẳng theo hướng máy bay; bay cao thì vỡ khi chạm nước. */
+  private planeTorpedo(uid: string) {
+    const u = this.ns.units.get(uid);
+    const ship = u && this.ship(u.ship);
+    if (!u || !ship || u.torps <= 0) return;
+    u.torps--;
+    const ahead = Math.max(20, u.speed * 0.8);
+    const at: V3 = [u.x + Math.sin(u.yaw) * ahead, TORPEDO_DEPTH, u.z + Math.cos(u.yaw) * ahead];
+    if (u.y > JET.torpAlt) {
+      this.fx({ k: "splash", x: at[0], y: 0, z: at[2], weapon: "torpedo" });
+      return;
+    }
+    const w = NAVAL_WEAPONS.torpedo;
+    this.newUnit("torpedo", ship, u.owner, at, u.yaw, 0, w.speed, true, w.range / w.speed);
+    this.fx({ k: "splash", x: at[0], y: 0, z: at[2], weapon: "ddGun" });
+  }
+
+  /** Rocket: bắn một cặp theo mũi máy bay (hai cánh), bay gần thẳng. */
+  private planeRocket(uid: string) {
+    const u = this.ns.units.get(uid);
+    if (!u || u.rockets <= 0) return;
+    const w = NAVAL_WEAPONS.rocket;
+    const last = this.aaAt.get(`${uid}:rocket`) ?? -9;
+    if (this.clock - last < w.reload) return;
+    this.aaAt.set(`${uid}:rocket`, this.clock);
+    u.rockets--;
+    const cp = Math.cos(u.pitch);
+    for (const side of [-1, 1]) {
+      const yaw = u.yaw + (Math.random() - 0.5) * w.spread * 2;
+      const pitch = u.pitch + (Math.random() - 0.5) * w.spread * 2;
+      const sp = w.speed + u.speed;
+      const v: V3 = [Math.sin(yaw) * Math.cos(pitch) * sp, Math.sin(pitch) * sp, Math.cos(yaw) * Math.cos(pitch) * sp];
+      const o: V3 = [u.x + Math.cos(u.yaw) * side * 2.4 + Math.sin(u.yaw) * cp * 3, u.y - 0.6, u.z - Math.sin(u.yaw) * side * 2.4 + Math.cos(u.yaw) * cp * 3];
+      this.shells.push({ pos: o, v, life: w.range / sp + 1, owner: u.owner, team: u.team, from: "", weapon: "rocket", age: 1, g: ROCKET_GRAVITY });
+      this.fx({ k: "shell", x: o[0], y: o[1], z: o[2], v, weapon: "rocket", ship: "" });
+    }
+  }
+
   act(id: string, msg: NavalActMessage) {
     const p = this.room.state.players.get(id);
     if (!p || !p.alive) return;
-    if (msg.act === "bomb") return this.bomb(id);
+    if (msg.act === "bomb" || msg.act === "cluster" || msg.act === "airTorpedo" || msg.act === "rocket") {
+      const ship = [...this.ns.ships.values()].find((s) => s.jet && this.ns.units.get(s.jet)?.owner === id);
+      if (!ship) return;
+      if (msg.act === "bomb") return this.planeBomb(ship.jet);
+      if (msg.act === "cluster") return this.planeCluster(ship.jet);
+      if (msg.act === "airTorpedo") return this.planeTorpedo(ship.jet);
+      return this.planeRocket(ship.jet);
+    }
     if (msg.act === "eject") {
       // Phi công bỏ máy bay (máy bay rơi), về lại tàu.
       for (const s of this.ns.ships.values()) {
@@ -1153,6 +1229,11 @@ export class Naval {
       if (ship.cool.get(k) !== shown) ship.cool.set(k, shown);
     }
     if (ship.decoy > 0) ship.decoy = Math.max(0, ship.decoy - dt);
+    // Máy bay dẫn đầu không còn (mất mà không qua downUnit): giải phóng chỗ, tính giờ có máy bay mới.
+    if (ship.jet && !this.ns.units.has(ship.jet)) {
+      ship.jet = "";
+      ship.jetWait = JET.respawn;
+    }
     if (ship.jetWait > 0) ship.jetWait = Math.max(0, ship.jetWait - dt);
     if (ship.sunk) {
       // Chìm dần, nghiêng mũi.
@@ -1386,8 +1467,9 @@ export class Naval {
       sh.age += dt;
       sh.life -= dt;
       const from = sh.pos;
-      const to = ballisticAt(sh.pos, sh.v, dt);
-      const nv: V3 = [sh.v[0], sh.v[1] - 9.81 * dt, sh.v[2]];
+      const g = sh.g ?? 9.81;
+      const to = ballisticAt(sh.pos, sh.v, dt, g);
+      const nv: V3 = [sh.v[0], sh.v[1] - g * dt, sh.v[2]];
       const seg: V3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
       const len = Math.hypot(...seg);
       const dir: V3 = [seg[0] / len, seg[1] / len, seg[2] / len];
@@ -1549,9 +1631,10 @@ export class Naval {
         const dmg = u.kind === "plane" ? 220 : NAVAL_WEAPONS[weapon].damage * boost;
         this.hitShip(hitShip, part, dmg, weapon, u.owner, [u.x, u.y, u.z], NAVAL_WEAPONS[weapon].fire, NAVAL_WEAPONS[weapon].splash);
         this.fx({ k: "blast", x: u.x, y: u.y, z: u.z, ship: hitShip.team, part, weapon });
+        // Máy bay đâm vào tàu: qua downUnit (giải phóng chỗ máy bay của tàu mẹ, tính giờ có máy bay mới) trước khi xoá.
+        if (u.kind === "plane") this.downUnit(uid, "");
         this.ns.units.delete(uid);
         this.units.delete(uid);
-        if (u.kind === "plane") this.downUnit(uid, "");
         continue;
       }
       const underwater = u.kind === "torpedo" || u.kind === "gtorpedo";
@@ -1565,8 +1648,7 @@ export class Naval {
       // Máy bay bay sát tàu mẹ, thấp: nạp lại bom.
       if (u.kind === "plane") {
         const home = this.ship(u.ship);
-        const full = u.auto ? JET.wingBombs : JET.bombs;
-        if (home && u.bombs < full && Math.hypot(u.x - home.x, u.z - home.z) < JET.rearm && u.y < 70) u.bombs = full;
+        if (home && Math.hypot(u.x - home.x, u.z - home.z) < JET.rearm && u.y < 70) this.rearmPlane(u);
       }
     }
   }
@@ -1578,7 +1660,7 @@ export class Naval {
 
   /** Đơn vị do server lái (ngư lôi thẳng, đơn vị của máy, đơn vị bị mồi nhử lừa). */
   private stepUnit(uid: string, u: NavalUnitState, d: UnitData, dt: number) {
-    const pose: UnitPose = { x: u.x, y: u.y, z: u.z, yaw: u.yaw, pitch: u.pitch, roll: u.roll, speed: u.speed };
+    const pose: UnitPose = { x: u.x, y: u.y, z: u.z, yaw: u.yaw, pitch: u.pitch, roll: u.roll, speed: u.speed, yawRate: d.yawRate, pitchRate: d.pitchRate };
     if (u.auto) this.homing(u, d);
     // Mồi nhử: tên lửa, ngư lôi dẫn đường lao về mồi nhử gần nhất.
     for (const dec of this.ns.units.values()) {
@@ -1601,6 +1683,8 @@ export class Naval {
     u.pitch = next.pitch;
     u.roll = next.roll;
     u.speed = next.speed;
+    d.yawRate = next.yawRate ?? 0;
+    d.pitchRate = next.pitchRate ?? 0;
   }
 
   private tickRespawn(dt: number) {
@@ -2057,6 +2141,7 @@ export class Naval {
       wantY = (dist > 420 ? 70 : 40) + d.slot * 3;
       const err = Math.abs(wrap(headTo - u.yaw));
       if (dist < 520 && err < 0.12) this.planeGun(uid);
+      if (dist < 750 && dist > 250 && err < 0.06) this.planeRocket(uid);
       // Điểm rơi dự đoán nếu thả ngay: phía trước máy bay vh·T mét.
       const ix = u.x + Math.sin(u.yaw) * vh * T;
       const iz = u.z + Math.cos(u.yaw) * vh * T;

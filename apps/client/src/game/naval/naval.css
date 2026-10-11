@@ -458,3 +458,81 @@
     width: 260px;
   }
 }
+
+/* Máy bay: thanh máu thân, vũ khí (đang chọn sáng lên), dấu mũi máy bay (súng, rocket bắn theo đây). */
+.nv-planehp {
+  position: relative;
+  height: 12px;
+  margin: 4px 0 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.nv-planehp i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #4bd36b, #9be36a);
+}
+.nv-planehp.low i {
+  background: linear-gradient(90deg, #e0392f, #ff7a55);
+}
+.nv-planehp span {
+  position: relative;
+  display: block;
+  text-align: center;
+  font:
+    600 10px/12px system-ui,
+    sans-serif;
+}
+.nv-ords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.nv-ords span {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11.5px;
+}
+.nv-ords span b {
+  color: #ffd27a;
+}
+.nv-ords span.on {
+  background: #ffd27a;
+  color: #222;
+  text-shadow: none;
+}
+.nv-ords span.on b {
+  color: #222;
+}
+.nv-ords span.empty {
+  opacity: 0.45;
+}
+.nv-nose {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid rgba(140, 255, 160, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+.nv-nose::before,
+.nv-nose::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 2px;
+  margin-top: -1px;
+  background: rgba(140, 255, 160, 0.9);
+}
+.nv-nose::before {
+  right: 100%;
+}
+.nv-nose::after {
+  left: 100%;
+}

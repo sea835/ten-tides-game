@@ -272,6 +272,9 @@ function decorGeometry(d: ShipDecor, out: Bucket) {
     case "window":
       out.add("glass", part, box(d.w ?? 1, d.h ?? 1, d.d ?? 1, x, y, z));
       return;
+    case "strut":
+      out.add(d.mat ?? "dark", part, new BoxGeometry(d.w ?? 1, d.h ?? 1, d.d ?? 1).rotateZ(d.rot ?? 0).translate(x, y, z));
+      return;
     case "fin":
       out.add(d.mat ?? "hull", part, box(d.w ?? 1, d.h ?? 1, d.d ?? 1, x, y, z));
       return;
