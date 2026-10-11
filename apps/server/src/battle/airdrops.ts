@@ -40,8 +40,8 @@ export class Airdrops {
   tick(dt: number) {
     const s = this.host.state;
     if (s.phase !== "battle") return;
-    // Chiến trường không có thùng thính định kỳ, chỉ có thùng chi viện gọi bằng điểm chiến thuật.
-    if (s.battleMode !== "war") this.next -= dt;
+    // Chiến trường, hải chiến không có thùng thính định kỳ (chiến trường chỉ có thùng chi viện gọi bằng điểm chiến thuật).
+    if (s.battleMode !== "war" && s.battleMode !== "naval") this.next -= dt;
     if (this.next <= 0) {
       const [lo, hi] = AIRDROP.every;
       this.next = sec(lo + this.host.random() * (hi - lo));

@@ -55,6 +55,7 @@ import { viewReach } from "./DayCycle.tsx";
 import { Ships } from "./naval/Ships.tsx";
 import { NavalUnits } from "./naval/NavalUnits.tsx";
 import { NavalFx } from "./naval/NavalFx.tsx";
+import { NavalSounds } from "./naval/NavalSounds.tsx";
 import { NavalControl } from "./naval/NavalControl.tsx";
 
 const HORIZON = "#c4e4f3";
@@ -283,6 +284,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           {battle && <BattleEffects room={room} world={world} />}
           {naval && <NavalUnits room={room} />}
           {naval && <NavalFx room={room} />}
+          {naval && <NavalSounds room={room} />}
           {naval && <NavalControl room={room} />}
           {battle && <ViewModel room={room} />}
           {battle && <Killcam room={room} />}

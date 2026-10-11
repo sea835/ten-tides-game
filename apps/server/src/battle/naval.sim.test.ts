@@ -56,7 +56,8 @@ describe("hải chiến (mô phỏng máy đấu máy)", () => {
       expect(b.hp < b.maxHp || r.hp < r.maxHp).toBe(true);
       // Mọi người trên tàu đều ở vị trí (máy) hay còn sống.
       for (const p of room.state.players.values()) expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
-    });
+      // Mô phỏng 6 phút trận: chạy song song với cả bộ kiểm thử thì quá 30 giây mặc định.
+    }, 120_000);
   }
 });
 
@@ -83,5 +84,34 @@ describe("hải chiến: đổi vị trí với máy", () => {
     expect(naval.seatOf(bot)?.station).toBe(0);
     expect(ship.crew.get("0")).toBe("nb_blue1");
     expect(ship.crew.get("1")).toBe("nb_blue0");
+  });
+});
+
+describe("hải chiến: tàu sân bay cất cánh lại", () => {
+  it("máy bay dẫn đầu đâm vào tàu địch: hết giờ chờ thì cất cánh được phi đội mới", () => {
+    const { room } = navalRoom("carrier", "battleship");
+    const naval = room.naval as unknown as { launchJet: (id: string, s: unknown) => void };
+    const ship = room.state.naval.ships.get("blue")!;
+    const enemy = room.state.naval.ships.get("red")!;
+    const pilot = [...room.state.players.entries()].find(([, p]) => p.team === "blue" && p.role === "1")![0];
+    naval.launchJet(pilot, ship);
+    const first = ship.jet;
+    expect(first).not.toBe("");
+    // Đưa máy bay vào giữa thân tàu địch.
+    const u = room.state.naval.units.get(first)!;
+    u.x = enemy.x;
+    u.y = enemy.y + 8;
+    u.z = enemy.z;
+    const tick = (s: number) => {
+      for (let k = 0; k < s / 0.05; k++) (room as unknown as { tick: (dt: number) => void }).tick(0.05);
+    };
+    tick(0.1);
+    expect(room.state.naval.units.has(first)).toBe(false);
+    expect(ship.jet).toBe("");
+    expect(ship.jetWait).toBeGreaterThan(0);
+    tick(ship.jetWait + 0.5);
+    naval.launchJet(pilot, ship);
+    expect(ship.jet).not.toBe("");
+    expect(ship.jet).not.toBe(first);
   });
 });

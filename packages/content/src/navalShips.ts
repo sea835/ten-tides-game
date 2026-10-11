@@ -610,7 +610,7 @@ function carrier(): ShipClass {
     turn: 0.045,
     roles: [
       role("captain", "Thuyền trưởng", "Lái tàu (W/S tốc độ, A/D bẻ lái), bắn ngư lôi hai mạn (chuột trái).", [IX - 0.5, top2 + 0.3, 2], 0, ["torpedo"], true),
-      role("pilot", "Phi công", "Đứng ở máy phóng, chuột trái cất cánh. Bay theo hướng chuột, W/S ga, chuột trái súng, chuột phải thả bom, F bỏ máy bay.", [14, FD, 64], 0, ["jetGun", "bomb"]),
+      role("pilot", "Phi công", "Đứng ở máy phóng, chuột trái cất cánh cả phi đội. Bay theo hướng chuột, W/S ga, chuột trái súng; 1–4 chọn bom, bom chùm, ngư lôi, rocket, chuột phải thả / bắn; F bỏ máy bay.", [14, FD, 64], 0, ["jetGun", "bomb"]),
       role("aa", "Phòng không", "Sáu ổ súng máy phòng không: bắn máy bay, tên lửa, lính trên boong địch.", [18, FD, -30], Math.PI / 2, ["aa"]),
     ],
     parts: [

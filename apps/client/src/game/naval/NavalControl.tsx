@@ -123,6 +123,11 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     aaAt: 0,
     station: -1,
     fov: 0,
+    camX: 0,
+    camY: 0,
+    camZ: 0,
+    camRoll: 0,
+    rocketAt: 0,
   });
   const ringGeo = useMemo(() => new RingGeometry(0.82, 1, 40).rotateX(-Math.PI / 2), []);
   const ringMat = useMemo(
@@ -170,6 +175,12 @@ export function NavalControl({ room }: { room: IslandRoom }) {
       }
       const m = mine();
       if (!m || e.repeat) return;
+      // Đang lái máy bay: 1–4 chọn vũ khí chuột phải.
+      if (myUnit.id && room.state.naval.units.get(myUnit.id)?.kind === "plane") {
+        const pick = ({ Digit1: "bomb", Digit2: "cluster", Digit3: "torpedo", Digit4: "rocket" } as const)[e.code as "Digit1"];
+        if (pick) navalLocal.ord = pick;
+        return;
+      }
       const role = m.cls.roles[m.st.station]!;
       if (!role.helm || myUnit.id) return;
       if (e.code === "KeyW" || e.code === "KeyS") {
@@ -296,16 +307,23 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     if (!unit) myUnit.id = "";
     else if (myUnit.id !== uid) {
       myUnit.id = uid;
-      Object.assign(myUnit, { x: unit.x, y: unit.y, z: unit.z, yaw: unit.yaw, pitch: unit.pitch, roll: unit.roll, speed: unit.speed });
+      Object.assign(myUnit, { x: unit.x, y: unit.y, z: unit.z, yaw: unit.yaw, pitch: unit.pitch, roll: unit.roll, speed: unit.speed, yawRate: 0, pitchRate: 0 });
       look.yaw = unit.yaw + Math.PI;
       look.pitch = unit.kind === "missile" ? -0.1 : 0;
       smoothView(0, true);
+      // Camera bắt đầu ngay sau đơn vị (khỏi bay vèo từ chỗ cũ tới).
+      c.camX = -Math.sin(unit.yaw) * 20;
+      c.camY = 4.5;
+      c.camZ = -Math.cos(unit.yaw) * 20;
+      c.camRoll = 0;
     }
 
     viewDir(_d);
     const aimYaw = view.yaw + Math.PI;
     const aimPitch = -view.pitch;
     let zoom = 1;
+    let planeFov = 0;
+    navalLocal.nose.on = false;
 
     if (unit) {
       // ---------------------------------------------------------------- lái đơn vị (nhìn từ đầu đạn / sau máy bay)
@@ -342,30 +360,58 @@ export function NavalControl({ room }: { room: IslandRoom }) {
         released.add(uid);
         room.send(Messages.navalAct, { act: "release" });
       }
-      const back = kind === "plane" ? 20 : kind === "missile" ? 8 : 16;
+      // Bay nhanh thì camera lùi xa hơn một chút.
+      const back = kind === "plane" ? 19 + Math.max(0, myUnit.speed - JET.cruise) * 0.12 : kind === "missile" ? 8 : 16;
       const up = kind === "plane" ? 4.5 : kind === "missile" ? 2.6 : 7;
-      cam.position.set(myUnit.x - _d.x * back, myUnit.y - _d.y * back + up, myUnit.z - _d.z * back);
+      // Camera bám sau đơn vị: độ lệch (so với đơn vị) đuổi theo hướng nhìn mượt mà, không dính cứng.
+      const k = 1 - Math.exp(-dt * (kind === "plane" ? 7 : 12));
+      c.camX += (-_d.x * back - c.camX) * k;
+      c.camY += (-_d.y * back + up - c.camY) * k;
+      c.camZ += (-_d.z * back - c.camZ) * k;
+      // Giữ đúng khoảng cách (quay ngoắt thì camera lượn vòng quanh, không đi xuyên qua thân).
+      const want = Math.hypot(back, up);
+      const len = Math.hypot(c.camX, c.camY, c.camZ) || 1;
+      c.camX *= want / len;
+      c.camY *= want / len;
+      c.camZ *= want / len;
+      cam.position.set(myUnit.x + c.camX, myUnit.y + c.camY, myUnit.z + c.camZ);
       if (kind === "gtorpedo") cam.position.y = Math.max(3, cam.position.y);
       else cam.position.y = Math.max(0.8, cam.position.y);
       cam.lookAt(_t.set(myUnit.x + _d.x * 60, myUnit.y + _d.y * 60 + (kind === "gtorpedo" ? 0 : up * 0.5), myUnit.z + _d.z * 60));
       if (kind === "plane") {
-        cam.rotateZ(-myUnit.roll * 0.25);
+        // Nghiêng camera theo cánh (mượt), góc nhìn rộng ra khi bay nhanh.
+        c.camRoll += (myUnit.roll * 0.35 - c.camRoll) * (1 - Math.exp(-dt * 5));
+        cam.rotateZ(-c.camRoll);
+        planeFov = Math.max(0, myUnit.speed - JET.cruise) * 0.12;
+        // Dấu mũi máy bay (súng, rocket bắn theo mũi).
+        const cpn = Math.cos(myUnit.pitch);
+        _t.set(myUnit.x + Math.sin(myUnit.yaw) * cpn * 400, myUnit.y + Math.sin(myUnit.pitch) * 400, myUnit.z + Math.cos(myUnit.yaw) * cpn * 400).project(cam);
+        navalLocal.nose = _t.z < 1 ? { on: true, x: (_t.x + 1) / 2, y: (1 - _t.y) / 2 } : { on: false, x: 0, y: 0 };
         // Súng, bom.
         if (c.fireHeld && battle && now - c.gunAt > 0.075) {
           c.gunAt = now;
           room.send(Messages.navalFire, { weapon: "jetGun", yaw: myUnit.yaw, pitch: Math.max(-1.6, Math.min(1.6, myUnit.pitch)) });
           shake.amount = Math.min(0.25, shake.amount + 0.03);
         }
-        if (c.altClick && battle) room.send(Messages.navalAct, { act: "bomb" });
-        // Điểm bom rơi dự đoán.
+        // Chuột phải: vũ khí đang chọn (1 bom, 2 bom chùm, 3 ngư lôi, 4 rocket — giữ chuột phải bắn rocket liên tục).
+        const ord = navalLocal.ord;
+        if (battle && (c.altClick || (ord === "rocket" && c.altHeld))) {
+          const act = ord === "bomb" ? "bomb" : ord === "cluster" ? "cluster" : ord === "torpedo" ? "airTorpedo" : "rocket";
+          if (ord !== "rocket" || now - c.rocketAt > NAVAL_WEAPONS.rocket.reload) {
+            c.rocketAt = now;
+            room.send(Messages.navalAct, { act });
+          }
+        }
+        // Điểm bom rơi dự đoán (bom, bom chùm: vòng to hơn); ngư lôi: đường chạy trên mặt nước theo hướng bay.
         const cp = Math.cos(myUnit.pitch);
         const v = [Math.sin(myUnit.yaw) * cp * myUnit.speed, Math.sin(myUnit.pitch) * myUnit.speed, Math.cos(myUnit.yaw) * cp * myUnit.speed] as const;
         const o = [myUnit.x, myUnit.y - 1.6, myUnit.z] as const;
         const disc = v[1] * v[1] + 2 * 9.81 * o[1];
         const tHit = (v[1] + Math.sqrt(Math.max(0, disc))) / 9.81;
         const p = ballisticAt(o, v, tHit);
-        showRing(ring.current, p[0], p[2], NAVAL_WEAPONS.bomb.splash);
-        navalLocal.bombT = tHit;
+        if (ord === "bomb" || ord === "cluster") showRing(ring.current, p[0], p[2], ord === "cluster" ? 26 : NAVAL_WEAPONS.bomb.splash);
+        else if (ord === "torpedo") showLine(line.current, myUnit.x, myUnit.z, myUnit.yaw, myUnit.y <= JET.torpAlt);
+        navalLocal.bombT = ord === "bomb" || ord === "cluster" ? tHit : 0;
       }
     } else {
       // ---------------------------------------------------------------- ở vị trí trên tàu
@@ -497,7 +543,7 @@ export function NavalControl({ room }: { room: IslandRoom }) {
 
     // Ống nhòm / kính tiềm vọng: thu hẹp góc nhìn.
     const baseFov = getSettings().fov;
-    const wantFov = zoom > 1 ? (2 * Math.atan(Math.tan((baseFov * Math.PI) / 360) / zoom) * 180) / Math.PI : baseFov;
+    const wantFov = zoom > 1 ? (2 * Math.atan(Math.tan((baseFov * Math.PI) / 360) / zoom) * 180) / Math.PI : baseFov + planeFov;
     aimZoom.value = zoom;
     navalLocal.zoom = zoom > 1;
     if (Math.abs(cam.fov - wantFov) > 0.01) {

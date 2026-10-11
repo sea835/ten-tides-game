@@ -201,18 +201,20 @@ const COMMON = /* glsl */ `
 
   // Sóng bước sóng len mờ dần khi ô lưới ở khoảng cách dist quá thưa so với nó (khỏi răng cưa thành vân vòng).
   float waveFade(float len, float dist) {
-    return 1.0 - uWaveFade * smoothstep(len * 3.0, len * 7.0, dist);
+    return 1.0 - smoothstep(len * 3.0 * uWaveFade, len * 7.0 * uWaveFade, dist);
   }
 
   vec3 waves(vec2 p, float amp, float dist, out vec3 normal) {
     vec3 tangent = vec3(1.0, 0.0, 0.0);
     vec3 binormal = vec3(0.0, 0.0, 1.0);
     vec3 o = vec3(0.0);
-    // Ba tầng sóng mềm (độ dốc thấp, đỉnh tròn): sóng lừng dài, sóng chéo, sóng con. Gợn nhỏ hơn do bản đồ pháp
-    // tuyến lo ở fragment — lưới thưa ở xa không đủ đỉnh cho sóng ngắn hơn (trước đây 5 tầng, tầng 5,5 m nhấp nháy).
-    o += gerstner(vec4(1.0, 0.35, 0.085, 36.0), p, amp * waveFade(36.0, dist), tangent, binormal);
-    o += gerstner(vec4(0.55, 1.0, 0.07, 21.0), p, amp * waveFade(21.0, dist), tangent, binormal);
-    o += gerstner(vec4(-0.45, 0.9, 0.055, 12.5), p, amp * waveFade(12.5, dist), tangent, binormal);
+    // Năm tầng sóng toả nhiều hướng (sóng lừng chính, sóng chéo ngược, sóng con lăn tăn theo đủ hướng) nên mặt biển
+    // gợn đan chéo, sống động chứ không trôi một chiều; mỗi tầng tắt dần khi ô lưới ở đó quá thưa so với bước sóng.
+    o += gerstner(vec4(1.0, 0.3, 0.08, 44.0), p, amp * waveFade(44.0, dist), tangent, binormal);
+    o += gerstner(vec4(-0.65, 1.0, 0.065, 27.0), p, amp * waveFade(27.0, dist), tangent, binormal);
+    o += gerstner(vec4(0.85, -0.7, 0.06, 17.0), p, amp * waveFade(17.0, dist), tangent, binormal);
+    o += gerstner(vec4(0.15, 1.0, 0.055, 11.0), p, amp * waveFade(11.0, dist), tangent, binormal);
+    o += gerstner(vec4(-1.0, -0.25, 0.05, 7.5), p, amp * waveFade(7.5, dist), tangent, binormal);
     normal = normalize(cross(binormal, tangent));
     return o;
   }
@@ -284,7 +286,10 @@ const fragmentShader = /* glsl */ `
     float detail = 1.0 - smoothstep(30.0, 160.0, dist);
     vec3 r1 = texture2D(uRipple, p * 0.045 + vec2(uTime * 0.018, uTime * 0.011)).xyz * 2.0 - 1.0;
     vec3 r2 = texture2D(uRipple, p * 0.11 + vec2(-uTime * 0.021, uTime * 0.027)).xyz * 2.0 - 1.0;
-    vec2 ripple = (r1.xy * 0.6 + r2.xy * 0.4) * (0.35 + 0.65 * detail) * (0.7 + 0.5 * uWaveScale);
+    // Lớp gợn thứ ba xoay chéo, trôi ngược chiều: gợn đan nhau, không lộ một hướng trôi.
+    vec2 q = mat2(0.6, -0.8, 0.8, 0.6) * p;
+    vec3 r3 = texture2D(uRipple, q * 0.073 + vec2(uTime * 0.013, -uTime * 0.024)).xyz * 2.0 - 1.0;
+    vec2 ripple = (r1.xy * 0.42 + r2.xy * 0.3 + r3.xy * 0.33) * (0.35 + 0.65 * detail) * (0.7 + 0.5 * uWaveScale);
     vec3 n = normalize(vec3(vNormalW.x + ripple.x * 0.55, vNormalW.y, vNormalW.z + ripple.y * 0.55));
 
     // Màu nước ba nấc theo độ sâu: ngọc lam trong vắt ven bờ → xanh ngọc → xanh thẫm ngoài khơi (ánh sáng bị hấp
@@ -575,7 +580,8 @@ export function Water({ world, tidal = false }: { world: World; tidal?: boolean 
   // Bản đồ rộng hẹp khác nhau (chiến trường rộng hơn đảo): tấm độ sâu phủ đúng cả bản đồ.
   useEffect(() => {
     material.uniforms.uHalf!.value = world.half ?? MAP_HALF_SIZE;
-    material.uniforms.uWaveFade!.value = big ? 1 : 0;
+    // Lưới biển hải chiến thưa hơn (trải rộng): sóng ngắn tắt gần hơn.
+    material.uniforms.uWaveFade!.value = big ? 1 : 1.8;
   }, [material, world, big]);
   material.uniforms.uDepth!.value = depthMap;
   material.uniforms.uDepthBias!.value = headroom;

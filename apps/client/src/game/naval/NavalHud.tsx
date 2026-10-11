@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { FIRE, JET, NAVAL_WEAPONS, SUB, shipClass, type NavalWeaponId, type ShipClass } from "@tentides/content";
+import { FIRE, JET, NAVAL_WEAPONS, SUB, UNIT_HP, shipClass, type NavalWeaponId, type ShipClass } from "@tentides/content";
 import type { ShipState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { mountsReady } from "./NavalControl.tsx";
@@ -173,22 +173,52 @@ function Station({ room, s }: { room: IslandRoom; s: ShipState }) {
   let keys: string[] = [];
   if (unit) {
     if (unit.kind === "plane") {
-      keys = ["Chuột: hướng bay", "W/S: ga", "Chuột trái: pháo 20 ly", "Chuột phải: thả bom", "F: bỏ máy bay"];
+      keys = ["Chuột: hướng bay", "W/S: ga", "Chuột trái: pháo 20 ly (theo dấu mũi)", "1–4: chọn vũ khí", "Chuột phải: thả / bắn", "F: bỏ máy bay"];
+      const hp = Math.max(0, unit.hp) / UNIT_HP.plane;
       lines.push(
         <div key="p" className="nv-wl ok">
-          <b>Máy bay</b> {Math.round(myUnit.speed * 3.6)} km/h · cao {Math.round(myUnit.y)} m · bom {unit.bombs}/{JET.bombs} · thân {Math.max(0, unit.hp)}
+          <b>Máy bay</b> {Math.round(myUnit.speed * 3.6)} km/h · cao {Math.round(myUnit.y)} m
+          <div className={`nv-planehp ${hp < 0.35 ? "low" : ""}`}>
+            <i style={{ width: `${hp * 100}%` }} />
+            <span>Thân máy bay {Math.round(hp * 100)}%</span>
+          </div>
         </div>,
       );
-      if (unit.bombs < JET.bombs)
-        lines.push(
-          <div key="r" className="nv-wl">
-            Bay thấp (dưới 70 m) sát tàu mẹ để nạp bom
-          </div>,
-        );
-      if (navalLocal.bombT > 0)
+      const ords = [
+        { id: "bomb", key: "1", name: "Bom 500 kg", n: unit.bombs, max: JET.bombs },
+        { id: "cluster", key: "2", name: "Bom chùm", n: unit.cluster, max: JET.cluster },
+        { id: "torpedo", key: "3", name: "Ngư lôi", n: unit.torps, max: JET.torps },
+        { id: "rocket", key: "4", name: "Rocket", n: unit.rockets, max: JET.rockets },
+      ];
+      lines.push(
+        <div key="ord" className="nv-ords">
+          {ords.map((o) => (
+            <span key={o.id} className={`${navalLocal.ord === o.id ? "on" : ""} ${o.n <= 0 ? "empty" : ""}`}>
+              <b>{o.key}</b> {o.name} {o.n}/{o.max}
+            </span>
+          ))}
+        </div>,
+      );
+      const tip =
+        navalLocal.ord === "torpedo"
+          ? myUnit.y > JET.torpAlt
+            ? `Ngư lôi: hạ thấp dưới ${JET.torpAlt} m rồi thả (bay cao thì ngư lôi vỡ); vạch vàng là đường chạy`
+            : "Ngư lôi: thả theo hướng bay, vạch vàng là đường chạy — nhắm trước mũi tàu địch"
+          : navalLocal.ord === "rocket"
+            ? "Rocket: bắn theo dấu mũi máy bay, giữ chuột phải bắn liên tục; bổ nhào vào tàu địch"
+            : navalLocal.bombT > 0
+              ? `${navalLocal.ord === "cluster" ? "Bom chùm toả rộng" : "Bom"} chạm nước sau ${navalLocal.bombT.toFixed(1)}s (vòng cam trên mặt biển)`
+              : "";
+      if (tip)
         lines.push(
           <div key="b" className="nv-wl">
-            Bom chạm nước sau {navalLocal.bombT.toFixed(1)}s (vòng cam trên mặt biển)
+            {tip}
+          </div>,
+        );
+      if (unit.bombs < JET.bombs || unit.rockets < JET.rockets || unit.torps < JET.torps || unit.cluster < JET.cluster)
+        lines.push(
+          <div key="r" className="nv-wl">
+            Bay thấp (dưới 70 m) sát tàu mẹ để nạp lại vũ khí
           </div>,
         );
     } else {
@@ -317,6 +347,7 @@ function Overlay() {
   const ladderPool = useRef<HTMLDivElement[]>([]);
   const floatPool = useRef<HTMLDivElement[]>([]);
   const gunLead = useRef<HTMLDivElement>(null);
+  const nose = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -337,6 +368,14 @@ function Overlay() {
         }
       }
       if (cross.current) cross.current.style.display = navalLocal.station >= 0 ? "block" : "none";
+      const nz = nose.current;
+      if (nz) {
+        nz.style.display = navalLocal.nose.on ? "block" : "none";
+        if (navalLocal.nose.on) {
+          nz.style.left = `${navalLocal.nose.x * 100}%`;
+          nz.style.top = `${navalLocal.nose.y * 100}%`;
+        }
+      }
       // Số sát thương, nhãn cháy / phá hủy bay lên.
       const floats = navalLocal.floats;
       while (floatPool.current.length < floats.length) {
@@ -409,6 +448,7 @@ function Overlay() {
     <div className="nv-overlay" ref={root}>
       <div className="nv-enemy" ref={enemy} />
       <div className="nv-cross" ref={cross} />
+      <div className="nv-nose" ref={nose} />
       <div className="nv-gunlead" ref={gunLead}>
         <span>đón đầu</span>
       </div>
