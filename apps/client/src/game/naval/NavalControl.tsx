@@ -26,7 +26,7 @@ import {
 import { Messages, type NavalUnitState, type ShipState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
-import { localEnv, localPosition, shake } from "../shared.ts";
+import { debugCam, localEnv, localPosition, shake } from "../shared.ts";
 import { aimZoom, getSettings } from "../settings.ts";
 import { menuOpen, seat } from "../battle/runtime.ts";
 import { seatOwner } from "../battle/vehicleParts.tsx";
@@ -549,6 +549,12 @@ export function NavalControl({ room }: { room: IslandRoom }) {
     if (Math.abs(cam.fov - wantFov) > 0.01) {
       cam.fov += (wantFov - cam.fov) * Math.min(1, dt * 12);
       cam.updateProjectionMatrix();
+    }
+    // Dev: camera tự do (window.__tentides.debugCam) đè camera vị trí để chụp ảnh kiểm tra.
+    if (import.meta.env.DEV && debugCam.enabled) {
+      cam.position.copy(debugCam.position);
+      cam.lookAt(debugCam.target);
+      return;
     }
     if (shake.amount > 0.005) {
       const a = shake.amount * 0.3;

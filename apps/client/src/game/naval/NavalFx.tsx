@@ -12,6 +12,7 @@ import { playCannon, playExplosion, playGunshot } from "../sound/guns.ts";
 import { playFlares, playMissileLaunch } from "../sound/air.ts";
 import { play } from "../sound/sfx.ts";
 import { navalLocal, shipPose } from "./navalRuntime.ts";
+import { addDamageMark, wreckMarks } from "./ShipDamage.tsx";
 
 // Hiệu ứng hải chiến: đạn pháo bay cầu vồng (vẽ theo đường đạn đạo từ lúc bắn, dừng khi chạm tàu hay mặt nước), lửa
 // khói đầu nòng, cột nước khi trượt, nổ khi trúng, tia lửa, bộ phận vỡ, khói phóng tên lửa, mồi nhử chớp sáng, bom
@@ -404,6 +405,9 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
     case "dmg": {
       const me = room.state.players.get(myId(room));
       const dmg = m.dmg ?? 0;
+      const hit = m.ship ? room.state.naval.ships.get(m.ship) : undefined;
+      const hp = m.ship ? shipPose(m.ship) : undefined;
+      if (hit && hp) addDamageMark(m.ship!, shipClass(hit.cls), hp, [m.x, m.y, m.z], dmg);
       floatText(m.x, m.y, m.z, `−${dmg}`, me && me.team === m.ship ? "own" : "foe", dmg >= 600 ? 1.5 : dmg >= 250 ? 1.2 : 1);
       break;
     }
@@ -448,6 +452,8 @@ function onFx(room: IslandRoom, m: NavalFxMessage) {
       const s = m.ship ? room.state.naval.ships.get(m.ship) : undefined;
       const part = s && m.part ? shipClass(s.cls).parts.find((p) => p.id === m.part) : undefined;
       if (part) floatText(m.x, m.y + 4, m.z, `PHÁ HỦY: ${part.name}`, "wreck", 1.1);
+      const wp = m.ship ? shipPose(m.ship) : undefined;
+      if (s && wp && m.part) wreckMarks(m.ship!, shipClass(s.cls), wp, m.part);
       boom(m.x, m.y, m.z, false);
       spawnDebris(m.x, m.y, m.z, true);
       sparks(m.x, m.y, m.z, 30);
