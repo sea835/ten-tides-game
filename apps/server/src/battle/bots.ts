@@ -193,6 +193,8 @@ export class Bots {
   private heliIdle = new Map<string, number>();
   /** Máy đang (hay vừa) khoá IGLA vào trực thăng nào, tới lúc nào (giây trận). */
   private aaClaim = new Map<string, { by: string; until: number }>();
+  /** Bậc giảm tải do phòng đặt khi nhịp quá hạn (0 = bình thường): bậc càng cao máy nhìn quanh, chọn đường càng thưa. */
+  thinkLevel = 0;
 
   constructor(private readonly room: BattleRoom) {
     this.pilots = new HeliPilots(room);

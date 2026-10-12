@@ -106,6 +106,7 @@ import {
 import { applyProgress, applySkins, resolveIdentity, type Identity } from "../account.ts";
 import { isPlausibleMove, sanitizeGait } from "../movement.ts";
 import { randomRoomCode } from "../roomCode.ts";
+import { TickBudget, TickStats, liveRooms, type RoomHealth } from "../tickStats.ts";
 import { Airdrops } from "./airdrops.ts";
 import { Destruction } from "./destruction.ts";
 import { Bots } from "./bots.ts";
@@ -263,6 +264,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   gadgets = new Gadgets(this);
   /** Điểm chi viện chiến thuật: UAV, mưa pháo, thùng chi viện, Juggernaut, TOW (streaks.ts). */
   streaks = new Streaks(this);
+  /** Đo thời gian nhịp (tickStats.ts); quá hạn thì giảm tải máy. */
+  readonly perf = new TickStats();
+  private budget = new TickBudget();
+  private perfTicks = 0;
+  private perfLogAt = 0;
 
   async onCreate() {
     this.roomId = await this.uniqueRoomCode();
@@ -273,6 +279,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.bots = new Bots(this);
     this.vehicles = new Vehicles(this);
     this.war = new War(this);
+    liveRooms.add(this);
 
     this.onMessage(Messages.move, MoveMessage, (client, move) => {
       const id = this.playerOf(client);
@@ -719,6 +726,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   }
 
   onDispose() {
+    liveRooms.delete(this);
     // Phòng đóng giữa trận: ghi nốt XP đang chờ.
     this.rewards.dispose();
     this.stats.dispose();
@@ -1119,6 +1127,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   }
 
   private tick(dt: number) {
+    const perf = this.perf;
+    perf.begin();
     const s = this.state;
     if (s.phase === "prep" || s.phase === "battle") this.tickSky(dt);
     this.secondAcc += dt;
@@ -1140,8 +1150,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     // Thùng thính (sinh tồn) và thùng chi viện (mọi chế độ) rơi.
     this.airdrops.tick(dt);
     this.streaks.tick(dt);
+    perf.mark("world");
     if (s.battleMode === "war") this.war.tick(dt);
+    perf.mark("war");
     if (s.battleMode === "naval") this.naval.tick(dt);
+    perf.mark("naval");
     this.tickTimers(dt);
     this.gadgets.tick(dt);
     this.tickThrown(dt);
@@ -1152,8 +1165,59 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       smoke.timeLeft -= dt;
       if (smoke.timeLeft <= 0) s.smokes.delete(key);
     }
+    perf.mark("combat");
     this.bots.tick(dt);
+    perf.mark("bots");
     if (s.phase === "prep" || s.phase === "battle") this.vehicles.tick(dt);
+    perf.mark("vehicles");
+    perf.end();
+    this.watchLoad();
+  }
+
+  // -------------------------------------------------------------------------- đo nhịp
+
+  /** Mỗi vài giây: p95 nhịp gần đây vượt hạn thì cho máy suy nghĩ thưa hơn; mỗi phút in tóm tắt (phòng có người). */
+  private watchLoad() {
+    if (++this.perfTicks % 40 === 0) {
+      const p95 = this.perf.summary(100).tick.p95;
+      const change = this.budget.update(p95, Date.now());
+      if (change) {
+        this.bots.thinkLevel = this.budget.level;
+        const msg = `[${this.roomId}] nhịp p95 ${p95} ms: ${change > 0 ? "quá hạn " + this.budget.budget + " ms, máy nghĩ thưa hơn" : "đã ổn, máy nghĩ dày lại"} (bậc ${this.budget.level})`;
+        if (change > 0) console.warn(msg);
+        else console.log(msg);
+      }
+    }
+    const now = Date.now();
+    if (now < this.perfLogAt) return;
+    const first = this.perfLogAt === 0;
+    this.perfLogAt = now + 60_000;
+    if (first || !this.clients.length) return;
+    const { tick, sync, phases } = this.perf.summary();
+    const parts = Object.entries(phases)
+      .filter(([, x]) => x.p95 >= 0.05)
+      .map(([name, x]) => `${name} ${x.avg}/${x.p95}`)
+      .join(" ");
+    const h = this.health();
+    console.log(`[${this.roomId}] ${h.mode}/${h.phase} ${h.humans} người ${h.bots} máy ${this.state.vehicles.size} xe ${this.state.projectiles.size} đạn: nhịp p50 ${tick.p50} p95 ${tick.p95} max ${tick.max} ms; gửi p95 ${sync.p95} ms; phần (tb/p95) ${parts}${this.budget.level ? `; giảm tải bậc ${this.budget.level}` : ""}`);
+  }
+
+  /** Ảnh chụp cho /health. */
+  health(): RoomHealth {
+    const s = this.state;
+    let humans = 0;
+    let bots = 0;
+    for (const p of s.players.values()) {
+      if (p.bot) bots++;
+      else humans++;
+    }
+    const { tick, sync } = this.perf.summary();
+    return { kind: "battle", mode: s.battleMode, phase: s.phase, clients: this.clients.length, humans, bots, tick, sync, load: this.budget.level };
+  }
+
+  /** Colyseus gửi trạng thái (đồng hồ phòng, tức nhịp, chạy bên trong): đo riêng phần mã hoá, gửi. */
+  override broadcastPatch(): boolean {
+    return this.perf.patch(() => super.broadcastPatch());
   }
 
   private backToLobby() {
