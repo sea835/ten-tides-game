@@ -9,6 +9,7 @@ import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, keys, look, smoothView, view } from "../input.ts";
 import { getSettings, aimZoom } from "../settings.ts";
 import { localPosition, shake } from "../shared.ts";
+import { sideColor } from "../teamColors.ts";
 import { playCannon, playCannonReady, tankEngine } from "../sound/guns.ts";
 import { effects, getBattleHud, menuOpen, seat, setBattleHud } from "./runtime.ts";
 import { Carrier, CarrierSeat, useVehicleFx } from "./Carriers.tsx";
@@ -73,8 +74,7 @@ G.brake.rotateX(Math.PI / 2);
 /** Màu đội (theo id đội), để phân biệt xe mình với xe địch. */
 export function teamColor(team: string): string {
   if (!team) return "#9a9a8a";
-  if (team === "blue") return "#2f6bff";
-  if (team === "red") return "#e0332b";
+  if (team === "blue" || team === "red") return sideColor(team);
   let h = 0;
   for (let i = 0; i < team.length; i++) h = (h * 31 + team.charCodeAt(i)) >>> 0;
   return TEAM_COLORS[h % TEAM_COLORS.length]!;

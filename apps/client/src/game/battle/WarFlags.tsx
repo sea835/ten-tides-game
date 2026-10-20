@@ -5,11 +5,11 @@ import { Callbacks } from "@colyseus/sdk";
 import { DoubleSide, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, RingGeometry, type Mesh } from "three";
 import type { FlagState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
+import { useSettings } from "../settings.ts";
+import { NEUTRAL_SIDE, sideColor } from "../teamColors.ts";
 
 // Cứ điểm trên chiến trường: lá cờ trên đỉnh cột (bay phần phật, màu phe đang giữ: xanh, đỏ, trắng là chưa ai),
 // vòng tròn trên mặt đất đánh dấu vùng chiếm, chữ cái nổi trên cao để nhìn từ xa biết cứ điểm nào.
-
-export const SIDE_COLORS: Record<string, string> = { blue: "#2f6bff", red: "#e0332b", "": "#e8e8e0" };
 
 const cloth = new PlaneGeometry(2.2, 1.4, 12, 4).translate(1.1, 0, 0);
 const ringGeo = new RingGeometry(0.97, 1, 64).rotateX(-Math.PI / 2);
@@ -17,11 +17,12 @@ const ringGeo = new RingGeometry(0.97, 1, 64).rotateX(-Math.PI / 2);
 function Flag({ id, f, mySide }: { id: string; f: FlagState; mySide: string }) {
   const mesh = useRef<Mesh>(null);
   const [owner, setOwner] = useState(f.owner);
+  const colorblind = useSettings().colorblind;
   const mats = useMemo(() => {
-    const flag = new MeshStandardMaterial({ color: SIDE_COLORS[owner] ?? "#e8e8e0", side: DoubleSide, roughness: 0.8 });
-    const ring = new MeshBasicMaterial({ color: SIDE_COLORS[owner] ?? "#e8e8e0", transparent: true, opacity: 0.45, depthWrite: false });
+    const flag = new MeshStandardMaterial({ color: sideColor(owner, NEUTRAL_SIDE, colorblind), side: DoubleSide, roughness: 0.8 });
+    const ring = new MeshBasicMaterial({ color: sideColor(owner, NEUTRAL_SIDE, colorblind), transparent: true, opacity: 0.45, depthWrite: false });
     return { flag, ring };
-  }, [owner]);
+  }, [owner, colorblind]);
   useEffect(() => () => void (mats.flag.dispose(), mats.ring.dispose()), [mats]);
   // Lá cờ bay: dịch đỉnh lưới theo sóng (chỉ khi ở gần mới cần mượt, cờ nhỏ nên rẻ).
   const base = useMemo(() => Float32Array.from(cloth.attributes.position!.array), []);

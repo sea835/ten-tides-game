@@ -3,6 +3,7 @@ import { Crosshair, Flag, HeartHandshake } from "lucide-react";
 import { Messages, type MatchSummaryMessage, type MatchSummaryRow, type MvpKind } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { useRoomSnapshot } from "../game/useRoomSnapshot.ts";
+import { sideColor } from "../game/teamColors.ts";
 import { CallingCard } from "./CallingCard.tsx";
 import { RankBadge } from "./RankBadge.tsx";
 import { VictoryPodium } from "./VictoryPodium.tsx";
@@ -30,8 +31,6 @@ export function useMatchSummary(room: IslandRoom): MatchSummaryMessage | null {
   }, [phase]);
   return phase === "ended" ? summary : null;
 }
-
-const TEAM_COLOR: Record<string, string> = { blue: "#2f6bff", red: "#e0332b" };
 
 function MvpCard({ kind, row, value, place }: { kind: MvpKind; row: MatchSummaryRow | undefined; value: number; place: number }) {
   const meta = MVP_META[kind];
@@ -104,7 +103,7 @@ export function MatchShowcase({ room, summary }: { room: IslandRoom; summary: Ma
                 <tr key={r.id} className={r.id === me ? "me" : ""}>
                   <td>{place}</td>
                   <td className="mvp-name">
-                    {teams && r.team && <i className="b-team-dot" style={{ background: TEAM_COLOR[r.team] ?? "#9aa" }} />}
+                    {teams && r.team && <i className="b-team-dot" style={{ background: sideColor(r.team, "#9aa") }} />}
                     <RankBadge rank={r.rank} size={15} />
                     {r.name}
                     {summary.mvp.some((m) => m.id === r.id) && <em className="mvp-tag">MVP</em>}

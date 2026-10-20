@@ -28,6 +28,7 @@ import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { openGunsmith } from "../../gunsmith/openGunsmith.ts";
 import { useAccount } from "../../account/account.ts";
+import { MenuButtons } from "../menu/MenuButtons.tsx";
 import { StudioBackdrop } from "../../studio/StudioBackdrop.tsx";
 import { roomLook } from "../../studio/looks.ts";
 import { ClassPicker } from "./GadgetHud.tsx";
@@ -494,6 +495,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
               <span className="cc-pulse" /> Chờ chủ phòng ra lệnh xuất kích…
             </p>
           )}
+          <MenuButtons tutorial />
           <details className="cc-keys">
             <summary>
               <Keyboard size={15} aria-hidden /> Phím điều khiển

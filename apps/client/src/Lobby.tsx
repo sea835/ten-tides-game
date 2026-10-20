@@ -10,6 +10,7 @@ import { lobbyLook } from "./studio/looks.ts";
 import { platform } from "./game/platform.ts";
 import { QuickPlay } from "./lobby/QuickPlay.tsx";
 import { useInvite } from "./lobby/useInvite.ts";
+import { MenuButtons, MenuPanels } from "./game/menu/MenuButtons.tsx";
 
 const NAME_KEY = "tentides.name";
 
@@ -159,8 +160,10 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
           </form>
 
           {error && <p className="error">{error}</p>}
+          <MenuButtons />
         </div>
       </div>
+      <MenuPanels />
       {gacha && <GachaScreen onClose={() => setGacha(false)} />}
     </main>
   );

@@ -37,13 +37,13 @@ import { localPosition } from "../shared.ts";
 import { embers, puffs } from "../battle/gpuParticles.ts";
 import { shipPose, updateShips } from "./navalRuntime.ts";
 import { ShipDamage } from "./ShipDamage.tsx";
+import { sideColor } from "../teamColors.ts";
 
 // Vẽ hai chiến hạm: thân, boong, thượng tầng (gộp khối theo vật liệu cho ít lệnh vẽ), tháp pháo, ổ phòng không, ống
 // phóng ngư lôi xoay theo hướng ngắm của người đứng vị trí; hộp va chạm động (Rapier) để đi lại trên boong; bộ phận
 // hỏng thì cháy đen; đám cháy bốc lửa, khói; vệt sóng sau đuôi, sóng mũi; tàu chìm thì chúi mũi chìm dần. Tàu ngầm
 // địch đang lặn ở xa thì không thấy (chỉ thấy khi tới gần hay lúc nó vừa phóng ngư lôi).
 
-const TEAM = { blue: "#2f6bff", red: "#e0332b" } as Record<string, string>;
 const MAT_COLOR: Record<ModelMat, string> = {
   hull: "#4f565d",
   deck: "#6f7378",
@@ -151,7 +151,7 @@ function ShipView({ room, id, cls }: { room: IslandRoom; id: string; cls: ShipCl
   const meshes = useRef(new Map<string, Mesh[]>());
   const anim = useRef({ shots: -1, aaShots: -1, kick: 0, emit: 0, partsKey: "" });
   const team = room.state.naval.ships.get(id)?.team ?? id;
-  const accent = TEAM[team] ?? "#cccccc";
+  const accent = sideColor(team, "#cccccc");
   const hull = useMemo(() => buildShipModel(cls, new Color(accent)), [cls, accent]);
   useEffect(() => () => hull.forEach((h) => h.geometry.dispose()), [hull]);
   const mats = useMemo(() => {

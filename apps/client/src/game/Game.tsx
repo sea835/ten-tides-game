@@ -57,6 +57,7 @@ import { NavalUnits } from "./naval/NavalUnits.tsx";
 import { NavalFx } from "./naval/NavalFx.tsx";
 import { NavalSounds } from "./naval/NavalSounds.tsx";
 import { NavalControl } from "./naval/NavalControl.tsx";
+import { WebglGuard } from "../robust/WebglGuard.tsx";
 
 const HORIZON = "#c4e4f3";
 
@@ -256,6 +257,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
     <div className="game" ref={wrapper}>
       <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} gl={glOptions} camera={{ fov: 60, near: 0.1, far: 500 }} onCreated={onCreated}>
         <FrameDriver />
+        <WebglGuard />
         <ShadowScheduler hz={profile.shadowHz} />
         <color attach="background" args={[HORIZON]} />
         <fog attach="fog" args={[HORIZON, 70, 230]} />
