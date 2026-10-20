@@ -85,6 +85,7 @@ import {
   RespawnMessage,
   SquadOrderMessage,
   WarCommandMessage,
+  ReviveMessage,
   TankFireMessage,
   VehicleMoveMessage,
   VehicleSeatMessage,
@@ -114,6 +115,7 @@ import { MatchStats } from "./mvp.ts";
 import { Vehicles } from "./vehicles.ts";
 import { DEFAULT_BOTS, applyBattleSettings, clampBots } from "./settings.ts";
 import { War, type Side } from "./war.ts";
+import { Downed } from "./downed.ts";
 import { Naval, parseSeat } from "./naval.ts";
 import { VoiceRelay } from "./voice.ts";
 import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize, priceOf, receive, reloadStep, reloadTime, resetKit, setMag, weaponIn, type GunSlot } from "./kit.ts";
@@ -263,6 +265,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   gadgets = new Gadgets(this);
   /** Điểm chi viện chiến thuật: UAV, mưa pháo, thùng chi viện, Juggernaut, TOW (streaks.ts). */
   streaks = new Streaks(this);
+  /** Trọng thương: nằm gục chờ đồng đội cứu (Chiến trường, Đồng đội; downed.ts). */
+  downed = new Downed(this);
 
   async onCreate() {
     this.roomId = await this.uniqueRoomCode();
@@ -287,7 +291,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       const naval = this.state.battleMode === "naval";
       if (naval) this.naval.deckMove(move);
       const carry = naval ? this.naval.carrySpeed(p) : 0;
-      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half, p.gear.boost > 0 ? ADRENALINE.speed : 1, carry)) {
+      if (!p.alive || !isPlausibleMove(p, move, elapsed, this.map.world.heightAt, this.map.half, p.gear.boost > 0 ? ADRENALINE.speed : 1, carry) || !this.downed.crawlOk(p, move, elapsed)) {
         client.send(Messages.correct, naval ? this.naval.correctOf(p) : ({ x: p.x, y: p.y, z: p.z } satisfies CorrectMessage));
         return;
       }
@@ -307,6 +311,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       p.lean = p.prone || p.swimming ? 0 : Math.round((move.lean ?? 0) * 8) / 8;
       // Dáng nhất thời (trượt, lao người, trên không) chỉ để máy khác diễn lại; lao người phải kèm nằm sấp.
       p.gait = sanitizeGait(move.gait ?? 0, p.prone);
+      // Nằm gục: chỉ bò (downed.ts).
+      this.downed.pose(p);
     });
 
     this.onMessage(Messages.start, (client) => {
@@ -363,7 +369,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.switchSlot, SwitchMessage, (client, { slot }) => {
       const id = this.playerOf(client);
       const p = id && this.state.players.get(id);
-      if (!id || !p || !p.alive || p.vehicle) return;
+      if (!id || !p || !p.alive || p.vehicle || p.downed > 0) return;
       const kit = p.kit;
       if (isGunSlot(slot) && !kit[slot]) return;
       if ((slot === "frag" || slot === "smoke" || slot === "mine") && kit[slot] <= 0) return;
@@ -389,7 +395,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
     this.onMessage(Messages.gadget, GadgetMessage, (client, m) => {
       const id = this.playerOf(client);
-      if (id) this.gadgets.use(id, m);
+      if (id && !this.downed.blocks(id)) this.gadgets.use(id, m);
     });
 
     // Sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới.
@@ -408,7 +414,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.heal, HealMessage, (client, { kind }) => {
       const id = this.playerOf(client);
       const p = id && this.state.players.get(id);
-      if (!id || !p || !p.alive || p.vehicle || p.kit[kind] <= 0 || p.hp >= HEALS[kind].cap) return;
+      if (!id || !p || !p.alive || p.downed > 0 || p.vehicle || p.kit[kind] <= 0 || p.hp >= HEALS[kind].cap) return;
       this.cancelTimer(id);
       this.timers.set(id, { kind: "heal", left: HEALS[kind].seconds, heal: kind });
       p.kit.healing = kind;
@@ -421,7 +427,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
     this.onMessage(Messages.vehicleEnter, (client) => {
       const id = this.playerOf(client);
-      if (id) this.vehicles.enter(id);
+      if (id && !this.downed.blocks(id)) this.vehicles.enter(id);
     });
 
     this.onMessage(Messages.vehicleExit, (client) => {
@@ -517,7 +523,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
     this.onMessage(Messages.streak, StreakMessage, (client, m) => {
       const id = this.playerOf(client);
-      if (id) this.streaks.call(id, m);
+      if (id && !this.downed.blocks(id)) this.streaks.call(id, m);
     });
     this.onMessage(Messages.towSteer, TowSteerMessage, (client, m) => {
       const id = this.playerOf(client);
@@ -584,6 +590,16 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.onMessage(Messages.respawn, RespawnMessage, (client, { at, role }) => {
       const id = this.playerOf(client);
       if (id && this.state.battleMode === "war") this.war.respawn(id, at, role);
+    });
+
+    // Trọng thương: giữ F cứu đồng đội nằm gục; người nằm gục bỏ cuộc để chết hẳn, hồi sinh (downed.ts).
+    this.onMessage(Messages.revive, ReviveMessage, (client, { target, on }) => {
+      const id = this.playerOf(client);
+      if (id) this.downed.hold(id, target, on);
+    });
+    this.onMessage(Messages.giveUp, (client) => {
+      const id = this.playerOf(client);
+      if (id) this.downed.finish(id);
     });
 
     this.onMessage(Messages.possess, PossessMessage, (client, { id: botId, slot }) => {
@@ -789,6 +805,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.airdrops.clear();
     this.gadgets.clear();
     this.streaks.clear();
+    this.downed.clear();
     this.destruction.reset();
     const squad = s.battleMode === "squad";
     const war = s.battleMode === "war";
@@ -938,7 +955,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const s = this.state;
     const p = s.players.get(id);
     const b = s.players.get(botId);
-    if (!p || p.alive || p.bot || !p.team || !b || !b.bot || !b.alive || b.team !== p.team || !this.fighting() || this.state.battleMode === "war") return;
+    if (!p || p.alive || p.bot || !p.team || !b || !b.bot || !b.alive || b.downed > 0 || b.team !== p.team || !this.fighting() || this.state.battleMode === "war") return;
     const money = p.kit.money;
     copyKit(b.kit, p.kit);
     p.kit.money = money;
@@ -1142,6 +1159,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.streaks.tick(dt);
     if (s.battleMode === "war") this.war.tick(dt);
     if (s.battleMode === "naval") this.naval.tick(dt);
+    this.downed.tick(dt);
     this.tickTimers(dt);
     this.gadgets.tick(dt);
     this.tickThrown(dt);
@@ -1170,6 +1188,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     this.airdrops.clear();
     this.gadgets.clear();
     this.streaks.clear();
+    this.downed.clear();
     this.destruction.reset();
     s.flags.clear();
     for (const [id, p] of s.players) {
@@ -1209,7 +1228,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   fire(id: string, weaponId: string, o: [number, number, number], rays: [number, number, number][], hits: { target: string; part: "head" | "body"; d: number; ray: number }[]) {
     const p = this.state.players.get(id);
-    if (!p || !p.alive || p.vehicle) return;
+    if (!p || !p.alive || p.vehicle || p.downed > 0) return;
     const kit = p.kit;
     const slot = kit.active;
     if (!isGunSlot(slot) || kit[slot] !== weaponId) return;
@@ -1393,7 +1412,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   reload(id: string) {
     const p = this.state.players.get(id);
-    if (!p || !p.alive || p.vehicle) return;
+    if (!p || !p.alive || p.vehicle || p.downed > 0) return;
     const kit = p.kit;
     const slot = kit.active;
     if (!isGunSlot(slot) || kit.reloading) return;
@@ -1409,7 +1428,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     if (t?.kind === "heal") this.cancelTimer(id);
   }
 
-  private cancelTimer(id: string) {
+  cancelTimer(id: string) {
     this.timers.delete(id);
     const p = this.state.players.get(id);
     if (p) {
@@ -1477,19 +1496,25 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (kit.armorHp <= 0) kit.armor = 0;
       armor = true;
     }
+    const overkill = Math.round(amount) - p.hp;
     p.hp = Math.max(0, p.hp - Math.max(1, Math.round(amount)));
     const hurt: HurtMessage = { x: from?.[0] ?? p.x, z: from?.[1] ?? p.z, amount: Math.round(amount), armor };
     this.clientOf(id)?.send(Messages.hurt, hurt);
     this.cancelHeal(id);
     this.stats.onDamage(id, attacker);
-    const killed = p.hp <= 0;
-    if (killed) this.kill(id, attacker, weapon, part === "head");
-    return { amount, armor, killed };
+    // Chí mạng: Chiến trường, Đồng đội thì thường chỉ nằm gục chờ cứu (downed.ts); `killed` vẫn báo true cho người
+    // bắn (dấu hạ gục), vé, mạng chỉ tính khi chết hẳn.
+    const lethal = p.hp <= 0;
+    const downed = lethal && this.downed.tryDown(id, p, part, overkill, attacker, weapon);
+    if (lethal && !downed) this.kill(id, attacker, weapon, part === "head");
+    return { amount, armor, killed: lethal, downed };
   }
 
   kill(id: string, killer: string, weapon: string, headshot: boolean) {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return;
+    // Đang nằm gục mà chết hẳn: mạng tính cho người đã bắn gục (downed.ts).
+    if (p.downed > 0) ({ killer, weapon, headshot } = this.downed.credit(id, killer, weapon, headshot));
     if (this.state.battleMode === "naval") this.naval.onDeath(id);
     if (p.vehicle) this.vehicles.leave(id);
     // Mất giáp Juggernaut; Minigun không rơi lại.
@@ -1580,7 +1605,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private pickup(id: string, key: string) {
     const p = this.state.players.get(id);
     const item = this.state.groundItems.get(key);
-    if (!p || !p.alive || p.vehicle || !item) return;
+    if (!p || !p.alive || p.vehicle || p.downed > 0 || !item) return;
     if (Math.hypot(item.x - p.x, item.z - p.z) > PICKUP_RADIUS || Math.abs(item.y - p.y) > 2.5) return;
     // Giáp Juggernaut (thùng chi viện): mặc vào, nhận Minigun.
     const jugg = item.itemId === "jugg" ? this.streaks.wear(p) : undefined;
@@ -1663,7 +1688,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
    */
   melee(id: string, yaw: number, targetId?: string) {
     const p = this.state.players.get(id);
-    if (!p || !p.alive || p.vehicle) return;
+    if (!p || !p.alive || p.vehicle || p.downed > 0) return;
     const now = Date.now();
     if (now - (this.lastMeleeAt.get(id) ?? 0) < MELEE.cooldown * 1000 * 0.85) return;
     this.lastMeleeAt.set(id, now);
@@ -1693,7 +1718,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   throwGrenade(id: string, kind: "frag" | "smoke" | "flash", o: [number, number, number], v: [number, number, number]) {
     const p = this.state.players.get(id);
-    if (!p || !p.alive || p.vehicle || p.kit[kind] <= 0 || !this.fighting()) return;
+    if (!p || !p.alive || p.vehicle || p.downed > 0 || p.kit[kind] <= 0 || !this.fighting()) return;
     if (Math.hypot(o[0] - p.x, o[2] - p.z) > 3 || Math.abs(o[1] - p.y - 1.4) > 1.5) return;
     const speed = Math.hypot(...v);
     const k = speed > 24 ? 24 / speed : 1;
@@ -1834,7 +1859,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   private placeMine(id: string) {
     const p = this.state.players.get(id);
-    if (!p || !p.alive || p.vehicle || p.kit.mine <= 0 || !this.fighting()) return;
+    if (!p || !p.alive || p.vehicle || p.downed > 0 || p.kit.mine <= 0 || !this.fighting()) return;
     p.kit.mine -= 1;
     if (p.kit.mine <= 0 && p.kit.active === "mine") p.kit.active = p.kit.primary1 ? "primary1" : p.kit.pistol ? "pistol" : "";
     this.mines.push({ x: p.x, y: p.y, z: p.z, owner: id, armIn: MINE.arm, fuse: -1 });

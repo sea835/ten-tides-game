@@ -169,7 +169,11 @@ export function Shooter({ room }: { room: IslandRoom }) {
   }, [physics, rapier]);
 
   const kit = () => room.state.players.get(myId(room))?.kit;
-  const alive = () => room.state.players.get(myId(room))?.alive ?? false;
+  // Nằm gục (trọng thương) chờ cứu thì không bắn, không đổi súng, không nạp đạn (server cũng chặn).
+  const alive = () => {
+    const me = room.state.players.get(myId(room));
+    return !!me?.alive && me.downed <= 0;
+  };
 
   // Lệnh từ bàn phím, chuột.
   useEffect(() => {
@@ -289,7 +293,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
         input.current.firePressed = true;
         input.current.firePressedAt = performance.now();
         // Gục rồi: bấm để xem người kế tiếp.
-        if (!alive()) nextSpectate(room);
+        if (!room.state.players.get(myId(room))?.alive) nextSpectate(room);
       }
       if (e.button === 2) {
         if (getSettings().toggleAim) input.current.aimToggle = !input.current.aimToggle;
@@ -453,7 +457,7 @@ export function Shooter({ room }: { room: IslandRoom }) {
     const inp = input.current;
     const now = performance.now();
     updateRecoil(dt, now);
-    if (!me || !k || !me.alive || menuOpen() || seat.id) {
+    if (!me || !k || !me.alive || me.downed > 0 || menuOpen() || seat.id) {
       stance.aiming = false;
       inp.fire = false;
       // Chết / gục / lên xe: bỏ hết lệnh bắn đang chờ, không thì hồi sinh xong súng tự nhả đạn.

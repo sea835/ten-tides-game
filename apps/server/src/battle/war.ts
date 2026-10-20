@@ -1,24 +1,29 @@
-import { CLASSES, MAX_HP, ROLES, WATER_LEVEL, baseAhead, WEAPON, classOfRole, floorBelow, launcherExtras, insideBox, isSoldierClass, warSquadLeader, type SquadRole } from "@tentides/content";
-import { FlagState, Messages, WAR_TICKETS_DEFAULT, type CorrectMessage, type PlayerState } from "@tentides/protocol";
+import { CLASSES, DEFENDER_TICKETS, MAX_HP, ROLES, WATER_LEVEL, baseAhead, WEAPON, classOfRole, floorBelow, launcherExtras, insideBox, isSoldierClass, warRoles, warSquadLeader, type SquadRole } from "@tentides/content";
+import { FlagState, Messages, WAR_MINUTES_DEFAULT, WAR_TICKETS_DEFAULT, type CorrectMessage, type PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, ammoOf, receive, resetKit, weaponIn } from "./kit.ts";
 import { awardXp } from "./xp.ts";
 
-// Chiến trường 50 vs 50: phe Xanh (căn cứ phía tây) đấu phe Đỏ (phía đông). Mỗi phe có số vé quân; mỗi người gục
-// mất một vé; phe giữ quá 4/7 cứ điểm thì cứ 3 giây đối phương mất thêm một vé. Đứng trong vùng một cứ điểm mà không
-// có địch thì chiếm dần (đông người chiếm nhanh hơn), có cả hai phe thì giằng co. Gục rồi thì chờ vài giây, chọn lớp
-// lính và chỗ hồi sinh (căn cứ, cứ điểm phe mình giữ, hay cạnh đội trưởng tổ mình). Đứng cạnh hòm đạn dã chiến (Kho
-// Quân Nhu, căn cứ) thì được tiếp đạn. Mỗi phe ba xe tăng ở căn cứ, xe nổ thì một lúc sau có xe mới.
-// Hết vé là thua.
+// Chiến trường 50 vs 50: phe Xanh (căn cứ phía tây) đấu phe Đỏ (phía đông). Mỗi phe có số vé quân; mỗi người chết
+// hẳn mất một vé (nằm gục chờ cứu thì chưa mất); phe giữ nhiều cứ điểm hơn thì đối phương mất vé dần, hơn càng nhiều
+// cứ điểm thì mất càng nhanh (BLEED_PER_MIN). Đứng trong vùng một cứ điểm mà không có địch thì chiếm dần (đông người
+// chiếm nhanh hơn), có cả hai phe thì giằng co. Gục rồi thì chờ vài giây, chọn lớp lính và chỗ hồi sinh (căn cứ, cứ
+// điểm phe mình giữ, hay cạnh đội trưởng tổ mình). Đứng cạnh hòm đạn dã chiến (Kho Quân Nhu, căn cứ) thì được tiếp
+// đạn. Mỗi phe ba xe tăng ở căn cứ, xe nổ thì một lúc sau có xe mới. Bản đồ trận đánh lịch sử (Omaha, Stalingrad...)
+// có phe tấn công, phe phòng thủ: phe phòng thủ giữ sẵn mấy cứ điểm phía mình nhưng ít vé hơn (warMaps.ts).
+// Hết vé là thua; hết giờ (chủ phòng chọn 15 / 20 / 30 phút) thì phe còn nhiều vé hơn thắng.
 
 export type Side = "blue" | "red";
 export const SIDES: readonly Side[] = ["blue", "red"];
-/** Vé quân lúc đầu mỗi phe (mặc định; chủ phòng chỉnh qua `state.warTickets`), thời gian chờ hồi sinh, nhịp trừ vé theo cứ điểm (giây). */
+/** Vé quân lúc đầu mỗi phe (mặc định; chủ phòng chỉnh qua `state.warTickets`), thời gian chờ hồi sinh (giây). */
 export const WAR_TICKETS = WAR_TICKETS_DEFAULT;
 export const RESPAWN_SECONDS = 8;
-const BLEED_EVERY = 3;
-/** Giữ quá phần này số cứ điểm (4/7) thì đối phương bị trừ vé dần. */
-const BLEED_SHARE = 4 / 7;
+/**
+ * Trừ vé theo cứ điểm: số vé mỗi phút phe kém bị trừ, theo số cứ điểm phe kia hơn (quy về bản đồ 7 cứ điểm). Hơn 1
+ * (4–3) thì rỉ chậm (một vé mỗi 25 giây) để trận không giằng co mãi; hơn 3 trở lên thì mất nhanh. Chỉnh cùng nhịp gục
+ * của máy (~14 người chết mỗi phút mỗi phe khi 50 vs 50) để trận 300 vé kéo dài chừng 15–22 phút (war.test.ts).
+ */
+export const BLEED_PER_MIN: readonly number[] = [0, 2.4, 4.8, 8, 12, 16, 20, 24];
 /** Hòm đạn dã chiến: bán kính đứng cạnh, thời gian chờ giữa hai lần tiếp đạn (giây). */
 const SUPPLY_RADIUS = 3.5;
 const SUPPLY_COOLDOWN = 15;
@@ -47,7 +52,8 @@ function botAA(name: string): boolean {
 }
 
 export class War {
-  private bleed = 0;
+  /** Phần vé lẻ đang trừ dở của mỗi phe (trừ đủ một vé thì trừ thật). */
+  private bleed: Record<Side, number> = { blue: 0, red: 0 };
   private tankTimer: Record<Side, number> = { blue: 0, red: 0 };
   /** Người chơi đã tự chọn lớp lính gần nhất (để tự hồi sinh). */
   private lastRole = new Map<string, SquadRole>();
@@ -55,6 +61,8 @@ export class War {
   private supplyAt = new Map<string, number>();
   private clock = 0;
   private supplyScan = 0;
+  /** Giới hạn thời gian trận (giây, theo cài đặt phòng lúc vào trận). */
+  private limit = WAR_MINUTES_DEFAULT * 60;
 
   constructor(private readonly room: BattleRoom) {}
 
@@ -104,10 +112,22 @@ export class War {
       fs.r = f.r;
       s.flags.set(f.id, fs);
     }
-    s.ticketsBlue = s.settings.warTickets || WAR_TICKETS;
-    s.ticketsRed = s.settings.warTickets || WAR_TICKETS;
-    this.bleed = 0;
+    // Bản đồ bất đối xứng: phe phòng thủ giữ sẵn các cứ điểm phía mình, bù lại ít vé hơn.
+    const tickets = s.settings.warTickets || WAR_TICKETS;
+    const roles = warRoles(s.settings.warMap);
+    const defender: Side | "" = roles ? (roles.attacker === "blue" ? "red" : "blue") : "";
+    for (const id of roles?.held ?? []) {
+      const f = s.flags.get(id);
+      if (!f || !defender) continue;
+      f.owner = defender;
+      f.progress = defender === "blue" ? 1 : -1;
+    }
+    s.ticketsBlue = defender === "blue" ? Math.round(tickets * DEFENDER_TICKETS) : tickets;
+    s.ticketsRed = defender === "red" ? Math.round(tickets * DEFENDER_TICKETS) : tickets;
+    this.bleed = { blue: 0, red: 0 };
     this.clock = 0;
+    // Giới hạn thời gian theo cài đặt lúc vào trận (đếm từ lúc hết pha chuẩn bị).
+    this.limit = (s.settings.warMinutes || WAR_MINUTES_DEFAULT) * 60;
     this.supplyAt.clear();
     this.tankTimer = { blue: 0, red: 0 };
     // Vùng an toàn không dùng: phủ cả bản đồ.
@@ -232,11 +252,12 @@ export class War {
     p.hp = MAX_HP;
     p.maxHp = MAX_HP;
     p.alive = true;
+    p.downed = p.revive = 0;
     p.crouching = p.prone = p.aiming = false;
     p.vehicle = "";
   }
 
-  /** Gục: mất một vé, chờ hồi sinh. */
+  /** Chết hẳn (không phải lúc mới nằm gục): mất một vé, chờ hồi sinh. */
   onDeath(id: string) {
     const s = this.room.state;
     const p = s.players.get(id);
@@ -333,7 +354,7 @@ export class War {
   /** Chiếm xong cứ điểm: ai phe mình còn sống đứng trong vùng đều được XP chiếm cứ điểm. */
   private creditCapture(f: FlagState, side: Side) {
     for (const [id, p] of this.room.state.players) {
-      if (!p.alive || p.team !== side || !inFlag(f, p)) continue;
+      if (!p.alive || p.downed > 0 || p.team !== side || !inFlag(f, p)) continue;
       awardXp(id, "capture");
       this.room.stats.noteCapture(id);
     }
@@ -366,7 +387,8 @@ export class War {
       let blue = 0;
       let red = 0;
       for (const p of s.players.values()) {
-        if (!p.alive) continue;
+        // Người đang nằm gục không giữ, không chiếm được cứ điểm.
+        if (!p.alive || p.downed > 0) continue;
         if (!inFlag(f, p)) continue;
         if (p.team === "blue") blue++;
         else if (p.team === "red") red++;
@@ -392,15 +414,20 @@ export class War {
         this.creditCapture(f, "red");
       }
     }
-    // Phe giữ quá 4/7 cứ điểm: cứ 3 giây đối phương mất một vé.
-    this.bleed += dt;
-    if (this.bleed >= BLEED_EVERY) {
-      this.bleed -= BLEED_EVERY;
-      const drain = bleedOf(s.flags.values());
-      s.ticketsRed = Math.max(0, s.ticketsRed - drain.red);
-      s.ticketsBlue = Math.max(0, s.ticketsBlue - drain.blue);
+    // Phe giữ nhiều cứ điểm hơn: đối phương mất vé dần (nhanh hơn khi cách biệt lớn).
+    const drain = bleedOf(s.flags.values());
+    for (const side of SIDES) {
+      this.bleed[side] += (drain[side] * dt) / 60;
+      if (this.bleed[side] < 1) continue;
+      const n = Math.floor(this.bleed[side]);
+      this.bleed[side] -= n;
+      if (side === "blue") s.ticketsBlue = Math.max(0, s.ticketsBlue - n);
+      else s.ticketsRed = Math.max(0, s.ticketsRed - n);
     }
     this.clock += dt;
+    // Đồng hồ trận (IslandState.timeLeft / phaseDuration: lúc đánh nhau chiến trường không dùng vào việc khác).
+    s.timeLeft = Math.max(0, Math.ceil(this.limit - this.clock));
+    s.phaseDuration = Math.ceil(this.limit);
     this.supplyScan -= dt;
     if (this.supplyScan <= 0) {
       this.supplyScan = 1;
@@ -420,12 +447,39 @@ export class War {
       this.spawnTank(side);
       this.seatTankers();
     }
-    // Hết vé: thua.
+    // Hết vé: thua. Hết giờ: phe còn nhiều vé hơn thắng (bằng vé thì phe giữ nhiều cứ điểm hơn).
     if (s.ticketsBlue <= 0 || s.ticketsRed <= 0) this.room.endWar(s.ticketsBlue > 0 ? "blue" : "red");
+    else if (this.clock >= this.limit) this.room.endWar(timeWinner(s.ticketsBlue, s.ticketsRed, s.flags.values(), s.settings.warMap));
+  }
+
+  /** Giây trận đã đánh (sau pha chuẩn bị). */
+  elapsed(): number {
+    return this.clock;
   }
 }
 
-/** Số vé mỗi phe bị trừ trong một nhịp trừ vé: phe giữ quá 4/7 số cứ điểm làm đối phương mất một vé. */
+/**
+ * Hết giờ: phe còn nhiều vé hơn thắng; bằng vé thì phe giữ nhiều cứ điểm hơn; vẫn hoà thì phe đang chiếm dở nhiều hơn
+ * (tổng tiến độ), rồi phe phòng thủ (bản đồ bất đối xứng: phe tấn công không chiếm nổi), cuối cùng là phe Xanh.
+ */
+export function timeWinner(blue: number, red: number, flags: Iterable<{ owner: string; progress: number }>, mapId?: string): Side {
+  if (blue !== red) return blue > red ? "blue" : "red";
+  let held = 0;
+  let push = 0;
+  for (const f of flags) {
+    held += f.owner === "blue" ? 1 : f.owner === "red" ? -1 : 0;
+    push += f.progress;
+  }
+  if (held) return held > 0 ? "blue" : "red";
+  if (Math.abs(push) > 1e-3) return push > 0 ? "blue" : "red";
+  const roles = warRoles(mapId);
+  return roles ? (roles.attacker === "blue" ? "red" : "blue") : "blue";
+}
+
+/**
+ * Số vé mỗi phút mỗi phe bị trừ theo cứ điểm: phe giữ ít cứ điểm hơn mất vé theo số cứ điểm thua kém (BLEED_PER_MIN,
+ * quy về bản đồ 7 cứ điểm); hai phe giữ bằng nhau thì không ai mất.
+ */
 export function bleedOf(flags: Iterable<{ owner: string }>): { blue: number; red: number } {
   let blue = 0;
   let red = 0;
@@ -435,5 +489,7 @@ export function bleedOf(flags: Iterable<{ owner: string }>): { blue: number; red
     if (f.owner === "blue") blue++;
     else if (f.owner === "red") red++;
   }
-  return { red: total && blue > total * BLEED_SHARE ? 1 : 0, blue: total && red > total * BLEED_SHARE ? 1 : 0 };
+  const lead = total ? Math.min(BLEED_PER_MIN.length - 1, Math.round((Math.abs(blue - red) * 7) / total)) : 0;
+  const rate = BLEED_PER_MIN[lead] ?? 0;
+  return { red: blue > red ? rate : 0, blue: red > blue ? rate : 0 };
 }

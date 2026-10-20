@@ -208,6 +208,13 @@ export const PlayerState = schema(
     vehicle: t.string().default(""),
     /** Chiến trường: còn bao nhiêu giây nữa được hồi sinh (0 là chọn chỗ được rồi). */
     respawn: t.float32().default(0),
+    /**
+     * Trọng thương (Chiến trường, Đồng đội): còn bao nhiêu giây trước khi chết hẳn vì mất máu (0 là không bị thương
+     * nặng). Đang nằm gục thì vẫn `alive` nhưng không bắn, không chiếm cứ điểm được, chỉ bò chậm.
+     */
+    downed: t.float32().default(0),
+    /** Đang được đồng đội cứu: tiến độ 0–100 (0 là không ai cứu). */
+    revive: t.uint8().default(0),
     /** Quân hàm, thẻ tên, huy hiệu (gom một ref cho đỡ tốn chỗ: schema giới hạn số trường). */
     badge: t.ref(BadgeState).default(() => new BadgeState()),
     /** Lớp lính, số lượt khí tài, Adrenaline (GearState). */
@@ -710,6 +717,8 @@ export const RoomSettingsState = schema(
     vehiclesEnabled: t.boolean().default(true),
     /** Chiến trường 50 vs 50: bản đồ chủ phòng chọn (mã trong WAR_MAP_LIST của content; rỗng là bản đồ gốc). */
     warMap: t.string().default("frontier"),
+    /** Chiến trường: giới hạn thời gian trận (phút, WAR_MINUTES); hết giờ thì phe nhiều vé hơn thắng. */
+    warMinutes: t.uint8().default(20),
     /** Hải chiến: lớp tàu của mỗi phe (SHIP_CLASSES của content). */
     shipBlue: t.string().default("battleship"),
     shipRed: t.string().default("destroyer"),
@@ -1032,6 +1041,9 @@ export const WAR_MAX_PER_SIDE = 50;
 export const WAR_TICKETS_MIN = 150;
 export const WAR_TICKETS_MAX = 500;
 export const WAR_TICKETS_DEFAULT = 300;
+/** Chiến trường: các mức giới hạn thời gian trận (phút) chủ phòng chọn, và mức mặc định. */
+export const WAR_MINUTES = [15, 20, 30] as const;
+export const WAR_MINUTES_DEFAULT = 20;
 /**
  * Chủ phòng chỉnh (chỉ ở sảnh): số máy (chiến trường: mỗi phe), thời tiết và giờ trong ngày ("random" là để máy bốc
  * thăm), chế độ, vé quân, bật / tắt xe cơ giới. Khung ở đây chỉ chặn số vô lý; server tự kẹp về khoảng hợp lệ.
@@ -1045,6 +1057,8 @@ export const BattleSettingsMessage = z
     tickets: z.int().min(0).max(5000),
     vehicles: z.boolean(),
     map: z.string().max(32),
+    /** Chiến trường: giới hạn thời gian (phút); server làm tròn về mức gần nhất trong WAR_MINUTES. */
+    minutes: z.int().min(1).max(120),
   })
   .partial();
 export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
@@ -1217,6 +1231,12 @@ export interface PointsMessage {
 export const RespawnMessage = z.object({ at: z.string().max(8), role: z.enum(["rifle", "sniper", "support", "antitank", "tanker"]) });
 export type RespawnMessage = z.infer<typeof RespawnMessage>;
 /** Chiến trường (ở sảnh): chọn phe. */
+/**
+ * Trọng thương: giữ F cạnh đồng đội đang nằm gục để cứu (`target` là người gục; `on` false là buông phím). Server tự
+ * cộng tiến độ khi người cứu còn đứng sát, còn đủ điều kiện.
+ */
+export const ReviveMessage = z.object({ target: z.string().max(64), on: z.boolean() });
+export type ReviveMessage = z.infer<typeof ReviveMessage>;
 export const PickSideMessage = z.object({ side: z.enum(["blue", "red"]) });
 /** Đã gục: nhập vào một máy còn sống trong đội mình (theo id, hay theo ô 1–5 trong đội: xem `squadSlots`). */
 export const PossessMessage = z.object({ id: id.optional(), slot: z.int().min(1).max(5).optional() });
@@ -1356,6 +1376,9 @@ export const Messages = {
   ping: "ping",
   radio: "radio",
   respawn: "respawn",
+  /** Trọng thương: giữ F cứu đồng đội (ReviveMessage); người đang nằm gục bỏ cuộc để chết hẳn, hồi sinh. */
+  revive: "revive",
+  giveUp: "giveUp",
   pickSide: "pickSide",
   /** Server báo mọi người: một phe vừa chiếm được cứ điểm. */
   flag: "flag",

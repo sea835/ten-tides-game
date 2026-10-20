@@ -7,6 +7,7 @@ import { GAIT, type PlayerState } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
 import { currentWorld } from "./world.ts";
 import { Character, type Motion } from "./Character.tsx";
+import { downedLabel } from "./battle/DownedHud.tsx";
 import { useChat } from "./chatStore.ts";
 import { useRoomSnapshot } from "./useRoomSnapshot.ts";
 import { WEAPON, gadgetIn, isEmplacement, shipClass, shipToWorld, withAttachments, worldToShip } from "@tentides/content";
@@ -190,6 +191,8 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
     shadow.current = { on: true, detail: true, at: 0 };
   }, [far]);
   const war = useRoomSnapshot(room, (s) => s.battleMode === "war");
+  // Đồng đội nằm gục: dấu chữ thập đỏ với số giây còn chảy máu (cứu bằng F, xem DownedHud).
+  const downedSec = useRoomSnapshot(room, () => (player.alive ? Math.ceil(player.downed) : 0));
   const mate = useRoomSnapshot(room, (s) => {
     const me = s.players.get(myId(room));
     return !!me?.team && me.team === player.team;
@@ -383,6 +386,11 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
         <group ref={avatar} />
       ) : (
         <Character ref={avatar} color={player.color} weapon={look.weapon} sight={look.sight} atts={look.atts} gunSkin={look.skin} throwable={look.throwable} knife={look.knife} outfit={look.outfit} armor={look.armor} helmet={look.helmet} ground={ground} motion={motion} />
+      )}
+      {mate && alive && !inTank && downedSec > 0 && (
+        <Html position={[0, 1.15, 0]} center zIndexRange={[4, 0]} className="b-downed-mark">
+          {downedLabel(downedSec)}
+        </Html>
       )}
       {/* Đồng đội: dấu tên trên đầu (luôn thấy, để biết ai là người mình). */}
       {/* Chiến trường (49 đồng đội): dấu hình thoi trên đầu vẽ bằng một khối nhỏ, nhẹ hơn nhãn chữ. */}

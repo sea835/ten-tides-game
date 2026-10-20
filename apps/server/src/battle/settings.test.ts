@@ -5,7 +5,7 @@ import { BattleRoom } from "./BattleRoom.ts";
 import { Bots } from "./bots.ts";
 import { Vehicles } from "./vehicles.ts";
 import { War } from "./war.ts";
-import { applyBattleSettings, clampBots, clampTickets, convertBots } from "./settings.ts";
+import { applyBattleSettings, clampBots, clampMinutes, clampTickets, convertBots } from "./settings.ts";
 
 /** Số xe cơ giới (bỏ qua vũ khí cố định — ổ đại liên, cối — luôn có dù tắt xe). */
 const motorized = (room: BattleRoom) => [...room.state.vehicles.values()].filter((v) => !isEmplacement(v.kind)).length;
@@ -42,6 +42,20 @@ describe("cài đặt phòng: kẹp giá trị", () => {
     expect(clampTickets(10)).toBe(WAR_TICKETS_MIN);
     expect(clampTickets(9999)).toBe(WAR_TICKETS_MAX);
     expect(clampTickets(333.6)).toBe(334);
+  });
+
+  it("giới hạn thời gian chiến trường: 15 / 20 / 30 phút, mặc định 20", () => {
+    expect(new IslandState().settings.warMinutes).toBe(20);
+    expect(clampMinutes(15)).toBe(15);
+    expect(clampMinutes(30)).toBe(30);
+    expect(clampMinutes(1)).toBe(15);
+    expect(clampMinutes(120)).toBe(30);
+    expect(clampMinutes(Number.NaN)).toBe(20);
+    expect(BattleSettingsMessage.safeParse({ minutes: 30 }).success).toBe(true);
+    expect(BattleSettingsMessage.safeParse({ minutes: 0 }).success).toBe(false);
+    const st = new IslandState();
+    applyBattleSettings(st, { minutes: 28 });
+    expect(st.settings.warMinutes).toBe(30);
   });
 
   it("đổi chế độ thì số máy về mặc định của chế độ mới", () => {

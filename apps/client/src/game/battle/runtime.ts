@@ -252,9 +252,11 @@ export interface HudState {
   toast: { at: number; text: string } | null;
   /** Đứng cạnh xe tăng lên được (id xe). */
   nearTank: string;
+  /** Đứng sát đồng đội đang nằm gục (id): F là giữ để cứu (DownedHud). */
+  nearDowned: string;
 }
 
-let hud: HudState = { buyOpen: false, scoreboard: false, settingsOpen: false, hit: null, hurts: [], nearItem: null, spectating: "", myMines: [], toast: null, nearTank: "" };
+let hud: HudState = { buyOpen: false, scoreboard: false, settingsOpen: false, hit: null, hurts: [], nearItem: null, spectating: "", myMines: [], toast: null, nearTank: "", nearDowned: "" };
 const listeners = new Set<() => void>();
 
 export function getBattleHud(): HudState {
