@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Check, Coins, Lock, Sparkles, X } from "lucide-react";
-import { GACHA, RARITY, SKIN, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS, WEAPON, rarityRank, skinFitsWeapon, type SkinDef, type SkinRarity } from "@tentides/content";
+import { Check, Coins, Hexagon, Lock, Sparkles, X } from "lucide-react";
+import { GACHA, RARITY, SKIN, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS, WEAPON, effectiveOdds, nextRollOdds, rarityRank, skinFitsWeapon, type SkinDef, type SkinRarity } from "@tentides/content";
 import { ApiError, equipSkin, refreshProfile, rollGacha, useAccount, type RollOutcome } from "../account/account.ts";
 import { SkinSwatch } from "./SkinSwatch.tsx";
+import { CraftTab } from "./CraftTab.tsx";
 import { gachaBuildUp, playUi } from "../game/sound/ui.ts";
 import { useDecorPause } from "../studio/decorPause.ts";
 import "./gacha.css";
@@ -11,12 +12,14 @@ import "./gacha.css";
 
 const weaponName = (id: string) => WEAPON.get(id)?.name ?? id.toUpperCase();
 const rarityVar = (r: SkinRarity) => ({ "--rarity": RARITY[r].color }) as CSSProperties;
+/** Phần trăm gọn: 0,1 → "10%", 0,0388 → "3,88%". */
+const pct = (x: number) => `${(x * 100).toLocaleString("vi-VN", { maximumFractionDigits: x >= 0.1 ? 1 : 2 })}%`;
 
 export function GachaScreen({ onClose }: { onClose: () => void }) {
   // Bảng phủ kín sảnh: nền 3D phía sau thôi vẽ (kính mờ khỏi phải làm mờ lại mỗi khung).
   useDecorPause();
   const account = useAccount();
-  const [tab, setTab] = useState<"roll" | "inventory">("roll");
+  const [tab, setTab] = useState<"roll" | "inventory" | "craft">("roll");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reveal, setReveal] = useState<RollOutcome | null>(null);
@@ -45,6 +48,7 @@ export function GachaScreen({ onClose }: { onClose: () => void }) {
   }
   const { profile } = account;
   const coins = profile.user.coins;
+  const shards = profile.shards ?? 0;
 
   async function roll(count: 1 | 10) {
     setBusy(true);
@@ -70,7 +74,13 @@ export function GachaScreen({ onClose }: { onClose: () => void }) {
             <button role="tab" aria-selected={tab === "inventory"} className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>
               Kho súng
             </button>
+            <button role="tab" aria-selected={tab === "craft"} className={tab === "craft" ? "active" : ""} onClick={() => setTab("craft")}>
+              Đổi mảnh
+            </button>
           </div>
+          <span className="coin-pill shard-pill" title="Mảnh skin: skin trùng ra mảnh, dùng để đổi skin chọn sẵn">
+            <Hexagon size={15} aria-hidden /> {shards.toLocaleString("vi-VN")}
+          </span>
           <span className="coin-pill" title="Xu">
             <Coins size={15} aria-hidden /> {coins.toLocaleString("vi-VN")}
           </span>
@@ -81,6 +91,8 @@ export function GachaScreen({ onClose }: { onClose: () => void }) {
 
         {tab === "roll" ? (
           <RollTab coins={coins} pity={profile.pity} busy={busy} onRoll={roll} owned={profile.skins.length} />
+        ) : tab === "craft" ? (
+          <CraftTab skins={profile.skins} shards={shards} onError={setError} />
         ) : (
           <InventoryTab skins={profile.skins} equipped={profile.equipped} onError={setError} />
         )}
@@ -96,6 +108,9 @@ export function GachaScreen({ onClose }: { onClose: () => void }) {
 function RollTab({ coins, pity, busy, onRoll, owned }: { coins: number; pity: { sinceEpic: number; sinceLegendary: number }; busy: boolean; onRoll: (n: 1 | 10) => void; owned: number }) {
   // Vài skin đẹp nhất làm ảnh bìa banner.
   const featured = useMemo(() => SKINS.filter((s) => s.rarity === "legendary").slice(0, 4), []);
+  // Tỷ lệ thực tế (tính cả bảo hiểm) và tỷ lệ lượt kế tiếp theo bộ đếm bảo hiểm hiện tại.
+  const eff = useMemo(() => effectiveOdds(), []);
+  const next = nextRollOdds(pity);
   return (
     <div className="gacha-roll">
       <section className="gacha-banner">
@@ -116,11 +131,21 @@ function RollTab({ coins, pity, busy, onRoll, owned }: { coins: number; pity: { 
             {SKIN_RARITIES.slice()
               .reverse()
               .map((r) => (
-                <li key={r} style={rarityVar(r)}>
+                <li key={r} style={rarityVar(r)} title="Tỷ lệ gốc mỗi lượt / tỷ lệ thực tế trung bình khi tính cả bảo hiểm">
                   <span className="dot" /> {RARITY[r].name} <b>{RARITY[r].weight}%</b>
+                  <small className="rate-eff">thực tế {pct(eff[r])}</small>
                 </li>
               ))}
           </ul>
+          <p className="rates-note">
+            Tỷ lệ gốc là xác suất mỗi lượt khi chưa chạm bảo hiểm. “Thực tế” là trung bình lâu dài đã tính bảo hiểm (Sử thi+ mỗi {GACHA.epicPity} lượt, Huyền thoại mỗi {GACHA.legendaryPity} lượt).
+            {" "}
+            {next.legendary >= 1
+              ? "Lượt quay kế tiếp chắc chắn ra Huyền thoại."
+              : next.common + next.rare === 0
+                ? `Lượt quay kế tiếp: Sử thi ${pct(next.epic)}, Huyền thoại ${pct(next.legendary)}.`
+                : "Skin trùng đổi ra mảnh để đổi skin bạn muốn."}
+          </p>
         </div>
       </section>
 
@@ -218,7 +243,7 @@ function Reveal({ outcome, onDone, onAgain, coins }: { outcome: RollOutcome; onD
                     <span className="card-rarity">{RARITY[r.rarity].name}</span>
                     <span>{def?.weapon ? weaponName(def.weapon) : "Mọi súng"}</span>
                   </div>
-                  {r.isNew ? <span className="card-new">MỚI</span> : <span className="card-dupe">x{r.count}</span>}
+                  {r.isNew ? <span className="card-new">MỚI</span> : <span className="card-dupe">x{r.count}{r.shards ? ` · +${r.shards} mảnh` : ""}</span>}
                 </div>
               </div>
             </div>
