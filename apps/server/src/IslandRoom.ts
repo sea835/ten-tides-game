@@ -1,4 +1,4 @@
-import { Room, matchMaker, type Client } from "@colyseus/core";
+import { Room, type Client } from "@colyseus/core";
 import {
   ANCHORS,
   ANCHOR_PARTICIPANT_RADIUS,
@@ -81,9 +81,10 @@ import { chronicle, createPremise, diaryPage, narrateDawn, narrateDusk, narrateP
 import { computeAwards } from "./awards.ts";
 import { GameLogWriter, type GameLogFile } from "./gameLog.ts";
 import { Hazards, type HazardEvent } from "./hazards.ts";
-import { applySkins, resolveIdentity } from "./account.ts";
+import { applySkins } from "./account.ts";
 import { isPlausibleMove } from "./movement.ts";
-import { randomRoomCode } from "./roomCode.ts";
+import { authenticate, uniqueRoomCode } from "./roomCommon.ts";
+import { TickStats, liveRooms, type RoomHealth } from "./tickStats.ts";
 import { syncState } from "./sync.ts";
 import { Wildlife, type Bite } from "./wildlife.ts";
 import { PlayController, type PlayHost } from "./playRoom.ts";
@@ -127,6 +128,8 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   private kicked = new Set<string>();
   private lastMoveAt = new Map<string, number>();
   private lastChatAt = new Map<string, number>();
+  /** Đo thời gian nhịp thực (tickStats.ts), để /health báo. */
+  private readonly perf = new TickStats();
   private eventTimers = new Map<string, number>();
   /** Ai đã bấm sẵn sàng. Chỉ công khai con số, không công khai là ai. */
   private ready = new Set<string>();
@@ -152,7 +155,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   }
 
   async onCreate() {
-    this.roomId = await this.uniqueRoomCode();
+    this.roomId = await uniqueRoomCode();
     const seed = seedFromString(`${this.roomId}:${Date.now()}`);
     this.game = createGame(seed);
     this.logFile = { version: 1, roomId: this.roomId, seed, createdAt: new Date().toISOString(), actions: [], chat: [] };
@@ -409,14 +412,17 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     });
 
     this.clock.setInterval(() => this.tick(), 1000);
-    this.clock.setInterval(() => this.realtimeTick(REALTIME_STEP_MS / 1000), REALTIME_STEP_MS);
+    this.clock.setInterval(() => {
+      this.perf.begin();
+      this.realtimeTick(REALTIME_STEP_MS / 1000);
+      this.perf.end();
+    }, REALTIME_STEP_MS);
+    liveRooms.add(this);
   }
 
   async onAuth(_client: Client, options: unknown): Promise<AuthData> {
-    const auth = JoinOptions.parse(options);
-    // Có phiên đăng nhập hợp lệ thì gắn với tài khoản (id u<id>, tên tài khoản), không thì là khách như cũ.
-    const { playerId, name, skins } = await resolveIdentity(auth);
-    if (this.kicked.has(playerId)) throw new Error("Chủ phòng đã mời bạn ra khỏi phòng này.");
+    const { auth, identity } = await authenticate(options, this.kicked);
+    const { playerId, name, skins } = identity;
     // Ván đã bắt đầu thì chỉ người cũ (cùng token) mới vào lại được.
     if (this.game.phase !== "lobby" && !this.game.players[playerId]) throw new Error("Ván đã bắt đầu, không vào thêm được.");
     return { ...auth, name, playerId, skins };
@@ -493,7 +499,19 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     }
   }
 
+  /** Ảnh chụp cho /health. */
+  health(): RoomHealth {
+    const { tick, sync } = this.perf.summary();
+    return { kind: "island", mode: "island", phase: this.game.phase, clients: this.clients.length, humans: this.state.players.size, bots: 0, tick, sync, load: 0 };
+  }
+
+  /** Colyseus gửi trạng thái: đo riêng phần mã hoá, gửi. */
+  override broadcastPatch(): boolean {
+    return this.perf.patch(() => super.broadcastPatch());
+  }
+
   onDispose() {
+    liveRooms.delete(this);
     return this.logWriter.save();
   }
 
@@ -918,13 +936,5 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   private pickColor(): string {
     const used = new Set([...this.state.players.values()].map((p) => p.color));
     return PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0]!;
-  }
-
-  private async uniqueRoomCode(): Promise<string> {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const code = randomRoomCode();
-      if (!(await matchMaker.getRoomById(code))) return code;
-    }
-    throw new Error("Không tạo được mã phòng mới");
   }
 }

@@ -9,7 +9,8 @@
     "serve": "tsx src/index.ts",
     "typecheck": "tsc -p .",
     "sim": "tsx src/tools/simulate.ts",
-    "replay": "tsx src/tools/replay.ts"
+    "replay": "tsx src/tools/replay.ts",
+    "bench": "tsx scripts/benchWar.ts"
   },
   "dependencies": {
     "@colyseus/core": "^0.18.17",

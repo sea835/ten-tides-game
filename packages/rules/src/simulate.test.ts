@@ -20,7 +20,8 @@ describe("mô phỏng bằng bot", () => {
     expect([...endings.values()].reduce((a, b) => a + b, 0)).toBe(500);
     // Với đủ vai ẩn và nhiều ván, phải thấy nhiều loại kết thúc khác nhau.
     expect(endings.size).toBeGreaterThanOrEqual(4);
-  });
+    // 500 ván mô phỏng mất ~25 giây khi máy rảnh, chạy song song với cả bộ kiểm thử thì quá 30 giây mặc định.
+  }, 120_000);
 
   it("phát lại chuỗi hành động từ seed ra đúng cùng một ván (event sourcing)", () => {
     const game = playBotGame(42, 4, config);

@@ -30,3 +30,4 @@ export * from "./difficulty.ts";
 export * from "./supply.ts";
 export * from "./economy.ts";
 export * from "./challenges.ts";
+export * from "./spatialGrid.ts";

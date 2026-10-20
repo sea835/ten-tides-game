@@ -1,4 +1,4 @@
-import { HELI, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
+import { HELI, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, SpatialGrid, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
 import { DIFFICULTY, botHitChance, difficultyOf, type DifficultyTuning } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
@@ -44,6 +44,24 @@ const SLOTS: readonly [number, number][] = [
 ];
 /** Xe tăng đi sau đội hình một đoạn. */
 const TANK_SLOT: [number, number] = [0, -18];
+/** Giãn cách tối thiểu giữa hai lần tìm đường của một máy (giây, nhân với bậc giảm tải + 1), và đích đổi xa hơn thì tìm ngay (m). */
+const PLAN_GAP = 0.6;
+const PLAN_JUMP = 25;
+/** Lưới người còn sống cho máy dò quanh mình: cạnh ô (m), và khoảng nới khi hỏi (người đã nhích đi trong nhịp). */
+const NEAR_CELL = 32;
+const NEAR_SLACK = 8;
+
+/** Một người còn sống trong lưới: chỗ đứng lúc dựng lưới, thứ tự trong danh sách (để xếp hạng như cũ khi bằng nhau). */
+interface NearEntry {
+  x: number;
+  z: number;
+  i: number;
+  id: string;
+  p: PlayerState;
+}
+
+/** Số người phe địch (so với phe `side`) đang có mặt trong cứ điểm. */
+const enemyIn = (side: string, fl: { blue: number; red: number }) => (side === "blue" ? fl.red : fl.blue);
 
 interface Brain {
   wx: number;
@@ -85,6 +103,8 @@ interface Brain {
   pgx: number;
   pgz: number;
   replan: boolean;
+  /** Lần tìm đường A* gần nhất (giây trận): máy không tìm lại dày hơn mỗi PLAN_GAP giây trừ khi kẹt hay đích đổi xa. */
+  planAt: number;
   /** Đo kẹt: chỗ đứng lúc bắt đầu đo, thời gian đã đo, số lần kẹt liền; đang lùi ra chỗ trống (giây, toạ độ). */
   progX: number;
   progZ: number;
@@ -194,6 +214,20 @@ export class Bots {
   private heliIdle = new Map<string, number>();
   /** Máy đang (hay vừa) khoá IGLA vào trực thăng nào, tới lúc nào (giây trận). */
   private aaClaim = new Map<string, { by: string; until: number }>();
+  /** Người còn sống theo ô (dựng lại đầu mỗi nhịp), các ô nhớ dùng lại, bộ đệm kết quả hỏi lưới. */
+  private nearGrid = new SpatialGrid<NearEntry>(NEAR_CELL);
+  private nearPool: NearEntry[] = [];
+  private nearOut: NearEntry[] = [];
+  /** Số trong id (bot12 → 12) để xếp đội trưởng, khỏi tách chuỗi mỗi nhịp. */
+  private idNums = new Map<string, number>();
+  /** Hướng địch tới của từng khu vực, tính một lần mỗi nhịp (nhiều máy cùng nhắm một cứ điểm). */
+  private threatMemo = new Map<string, number>();
+  /**
+   * Bậc giảm tải do phòng đặt khi nhịp quá hạn (0 = bình thường, tối đa 3): bậc càng cao máy nhìn quanh, tìm đường,
+   * chọn chỗ chiến thuật càng thưa (nhìn quanh chậm thêm nửa lần mỗi bậc, giãn cách tìm đường nhân lên, hạn mức A* chia ra).
+   * Bước đi, bắn, né vẫn mỗi nhịp.
+   */
+  thinkLevel = 0;
 
   constructor(private readonly room: BattleRoom) {
     this.pilots = new HeliPilots(room);
@@ -494,7 +528,7 @@ export class Bots {
   }
 
   private fresh(x: number, z: number, slot: number): Brain {
-    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0, path: null, pathI: 0, pgx: x, pgz: z, replan: false, progX: x, progZ: z, progT: 0, stuckN: 0, unstick: 0, ux: x, uz: z, lookYaw: 0, lookAt: 0, tacKey: "", tacX: x, tacZ: z, tacKind: "", shots: 0, lostAt: -99, hurtAt: -99, retreat: 0, rx: x, rz: z, smokeCd: 0 };
+    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0, path: null, pathI: 0, pgx: x, pgz: z, replan: false, planAt: -99, progX: x, progZ: z, progT: 0, stuckN: 0, unstick: 0, ux: x, uz: z, lookYaw: 0, lookAt: 0, tacKey: "", tacX: x, tacZ: z, tacKind: "", shots: 0, lostAt: -99, hurtAt: -99, retreat: 0, rx: x, rz: z, smokeCd: 0 };
   }
 
   /** Trực thăng còn trong vùng trời an toàn quanh sân đỗ nhà (đang cất, hạ cánh, nạp đạn): máy không nhắm vào. */
@@ -521,9 +555,33 @@ export class Bots {
       if (!p.team || !p.alive) continue;
       const cur = this.leaders.get(p.team);
       const curP = cur ? s.players.get(cur) : undefined;
-      // Người chơi luôn làm đội trưởng; giữa các máy thì máy "leader", rồi máy có số nhỏ nhất.
-      const rank = (q: PlayerState, qid: string) => (!q.bot ? 0 : q.role === "leader" ? 1 : q.vehicle ? 3 : 2) * 1000 + (Number(qid.replace(/\D/g, "")) || 0);
-      if (!curP || rank(p, id) < rank(curP, cur!)) this.leaders.set(p.team, id);
+      if (!curP || this.rank(p, id) < this.rank(curP, cur!)) this.leaders.set(p.team, id);
+    }
+  }
+
+  /** Người chơi luôn làm đội trưởng; giữa các máy thì máy "leader", rồi máy có số nhỏ nhất. */
+  private rank(q: PlayerState, qid: string): number {
+    let n = this.idNums.get(qid);
+    if (n === undefined) {
+      n = Number(qid.replace(/\D/g, "")) || 0;
+      this.idNums.set(qid, n);
+    }
+    return (!q.bot ? 0 : q.role === "leader" ? 1 : q.vehicle ? 3 : 2) * 1000 + n;
+  }
+
+  /** Dựng lại lưới người còn sống (đầu nhịp): mỗi máy chỉ dò những người ở gần thay vì cả trăm người. */
+  private indexAlive(alive: [string, PlayerState][]) {
+    this.nearGrid.clear();
+    for (let i = 0; i < alive.length; i++) {
+      const [id, p] = alive[i]!;
+      let e = this.nearPool[i];
+      if (!e) this.nearPool[i] = e = { x: 0, z: 0, i: 0, id, p };
+      e.x = p.x;
+      e.z = p.z;
+      e.i = i;
+      e.id = id;
+      e.p = p;
+      this.nearGrid.upsert(e);
     }
   }
 
@@ -534,8 +592,8 @@ export class Bots {
     // Hải chiến: máy do naval.ts điều khiển (đứng vị trí trên tàu).
     if (s.battleMode === "naval") return;
     this.time += dt;
-    this.planLeft = 8000;
-    this.tacLeft = 4;
+    this.planLeft = 8000 / (1 + this.thinkLevel);
+    this.tacLeft = Math.max(1, 4 - this.thinkLevel);
     // Tường bị phá, nhà sập mở ra lối đi mới: dò lại vùng đó (vài giây một lần).
     if (Math.floor(this.time / 3) !== Math.floor((this.time - dt) / 3)) {
       this.nav().refresh();
@@ -545,6 +603,8 @@ export class Bots {
     // Người trong tầm: danh sách ngắn gọn để các máy duyệt nhanh.
     const alive: [string, PlayerState][] = [];
     for (const e of s.players) if (e[1].alive) alive.push(e);
+    this.indexAlive(alive);
+    this.threatMemo.clear();
     for (const [id, p] of alive) {
       if (!p.bot) continue;
       let b = this.brains.get(id);
@@ -571,41 +631,26 @@ export class Bots {
   }
 
   /** Nhìn quanh: chỉ thấy trong hình nón phía trước (hay sát bên), không bị tường, đồi, khói che. */
-  private scan(id: string, p: PlayerState, b: Brain, alive: [string, PlayerState][], eye: [number, number, number], range: number, cone: boolean, tanks: boolean) {
+  private scan(id: string, p: PlayerState, b: Brain, eye: [number, number, number], range: number, cone: boolean, tanks: boolean) {
     const s = this.room.state;
-    const fx = Math.sin(p.rotY);
-    const fz = Math.cos(p.rotY);
-    const canSee = (o: PlayerState, r: number) => {
-      const dx = o.x - p.x;
-      const dz = o.z - p.z;
-      const d = Math.hypot(dx, dz);
-      // Ngồi xổm, nằm sấp, đứng yên thì khó phát hiện hơn; áo ghillie (lính Bắn Tỉa) giảm 70% tầm bị phát hiện.
-      const stealth = (o.prone ? 0.45 : o.crouching ? 0.7 : 1) * (o.moving ? 1 : 0.8) * (o.kit.outfit === "ghillie" ? 0.3 : 1);
-      if (d > r * (o.vehicle ? 1.6 : stealth)) return false;
-      if (cone && d > 5 && (dx * fx + dz * fz) / (d || 1) < 0.35) return false;
-      return this.visible(eye, o.x, o.y + (o.vehicle ? 1.6 : o.prone ? 0.3 : o.crouching ? 0.8 : 1.2), o.z);
-    };
-    // Xạ thủ vũ khí cố định lộ người ra ngoài: bắn được như lính đi bộ.
-    // Pháo xe tăng không ngóc lên bắn trực thăng đang bay.
-    const airborne = (o: PlayerState) => {
-      const v = o.vehicle ? s.vehicles.get(o.vehicle) : undefined;
-      return !!v && v.kind === "heli" && (v.y - this.height(v.x, v.z) > 6 || this.heliShielded(v, o.vehicle));
-    };
-    const usable = (o: PlayerState) => o.alive && o.downed <= 0 && this.hostile(p, o) && ((tanks && !airborne(o)) || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
     const cur = b.target ? s.players.get(b.target) : undefined;
-    b.sees = !!cur && usable(cur) && canSee(cur, range * 1.3);
+    b.sees = !!cur && this.usable(p, cur, tanks) && this.canSee(p, cur, eye, range * 1.3, cone);
     if (!b.sees) {
-      // Chỉ dò tia tới vài người gần nhất trong tầm (dò tia tốn kém, 50 máy thì không dò tất cả).
-      const near: { id: string; o: PlayerState; d: number }[] = [];
-      for (const [oid, o] of alive) {
-        if (oid === id || !usable(o)) continue;
+      // Chỉ dò tia tới vài người gần nhất trong tầm (dò tia tốn kém, 50 máy thì không dò tất cả). Hỏi lưới người còn
+      // sống (dựng đầu nhịp) chứ không duyệt cả trăm người; bằng khoảng cách thì giữ thứ tự cũ.
+      const near: { id: string; o: PlayerState; d: number; i: number }[] = [];
+      const found = this.nearGrid.collect(p.x, p.z, range * 1.6 + NEAR_SLACK, this.nearOut);
+      for (const e of found) {
+        const o = e.p;
+        if (e.id === id) continue;
         const d = Math.hypot(o.x - p.x, o.z - p.z);
-        if (d > range * (o.vehicle ? 1.6 : 1)) continue;
-        near.push({ id: oid, o, d });
+        if (d > range * (o.vehicle ? 1.6 : 1) || !this.usable(p, o, tanks)) continue;
+        near.push({ id: e.id, o, d, i: e.i });
       }
-      near.sort((a, c) => a.d - c.d);
+      found.length = 0;
+      near.sort((a, c) => a.d - c.d || a.i - c.i);
       for (const n of near.slice(0, 4)) {
-        if (!canSee(n.o, range)) continue;
+        if (!this.canSee(p, n.o, eye, range, cone)) continue;
         if (n.id !== b.target) b.react = ((p.role === "sniper" ? 1.1 : 0.8) + Math.random() * 0.7) * this.tuneFor(n.o).react;
         b.target = n.id;
         b.sees = true;
@@ -619,7 +664,7 @@ export class Bots {
       b.lz = t.z;
       b.seen = 4;
     } else b.seen -= 0.3;
-    if (b.seen <= 0 || (t && (!t.alive || !usable(t)))) {
+    if (b.seen <= 0 || (t && (!t.alive || !this.usable(p, t, tanks)))) {
       // Mất dấu hẳn: thôi, đi dò quanh chỗ thấy lần cuối (máy trong đội người chơi thì về đội hình).
       if (b.target) {
         b.wx = b.lx + (Math.random() - 0.5) * 10;
@@ -628,6 +673,31 @@ export class Bots {
       b.target = "";
       b.sees = false;
     }
+  }
+
+  /** Máy `p` thấy được `o` trong tầm `r` không: trong hình nón phía trước (hay sát bên), không bị tường, đồi, khói che. */
+  private canSee(p: PlayerState, o: PlayerState, eye: [number, number, number], r: number, cone: boolean): boolean {
+    const dx = o.x - p.x;
+    const dz = o.z - p.z;
+    const d = Math.hypot(dx, dz);
+    // Ngồi xổm, nằm sấp, đứng yên thì khó phát hiện hơn; áo ghillie (lính Bắn Tỉa) giảm 70% tầm bị phát hiện.
+    const stealth = (o.prone ? 0.45 : o.crouching ? 0.7 : 1) * (o.moving ? 1 : 0.8) * (o.kit.outfit === "ghillie" ? 0.3 : 1);
+    if (d > r * (o.vehicle ? 1.6 : stealth)) return false;
+    if (cone && d > 5 && (dx * Math.sin(p.rotY) + dz * Math.cos(p.rotY)) / (d || 1) < 0.35) return false;
+    return this.visible(eye, o.x, o.y + (o.vehicle ? 1.6 : o.prone ? 0.3 : o.crouching ? 0.8 : 1.2), o.z);
+  }
+
+  /**
+   * `o` có đáng để máy `p` nhắm không: còn sống, phe địch, đi bộ (hay xạ thủ vũ khí cố định lộ người ra ngoài).
+   * Pháo xe tăng (`tanks`) bắn được xe, nhưng không ngóc lên bắn trực thăng đang bay.
+   */
+  private usable(p: PlayerState, o: PlayerState, tanks: boolean): boolean {
+    return o.alive && o.downed <= 0 && this.hostile(p, o) && ((tanks && !this.airborne(o)) || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
+  }
+
+  private airborne(o: PlayerState): boolean {
+    const v = o.vehicle ? this.room.state.vehicles.get(o.vehicle) : undefined;
+    return !!v && v.kind === "heli" && (v.y - this.height(v.x, v.z) > 6 || this.heliShielded(v, o.vehicle));
   }
 
   /** Hướng (radian) từ khu vực (x, z) về phía địch có thể tới: cứ điểm gần nhất chưa phải của phe mình, hay căn cứ địch. */
@@ -662,13 +732,12 @@ export class Bots {
     } else {
       if (cmd) this.commands.delete(id);
       let f = b.goal ? s.flags.get(b.goal) : undefined;
-      const enemyIn = (fl: { blue: number; red: number }) => (side === "blue" ? fl.red : fl.blue);
-      const secured = f && f.owner === side && Math.abs(f.progress) >= 1 && enemyIn(f) === 0;
+      const secured = f && f.owner === side && Math.abs(f.progress) >= 1 && enemyIn(side, f) === 0;
       if (!f || now > b.goalUntil || (secured && Math.random() < 0.75)) {
         const flags = [...s.flags.entries()];
         const dist = ([, fl]: (typeof flags)[number]) => Math.hypot(fl.x - p.x, fl.z - p.z);
         const attack = flags.filter(([, fl]) => fl.owner !== side).sort((a, c) => dist(a) - dist(c));
-        const defend = flags.filter(([, fl]) => fl.owner === side && enemyIn(fl) > 0);
+        const defend = flags.filter(([, fl]) => fl.owner === side && enemyIn(side, fl) > 0);
         let pick = attack[Math.random() < 0.65 || attack.length < 2 ? 0 : 1];
         // Phe mình đang giữ cứ điểm bị đánh: máy giữ nhà ở lại phòng thủ (súng máy, bắn tỉa hay ở lại hơn).
         if (defend.length && Math.random() < (p.role === "support" || p.role === "sniper" ? 0.5 : 0.35)) pick = defend[Math.floor(Math.random() * defend.length)];
@@ -683,7 +752,14 @@ export class Bots {
       }
       area = { key: `flag:${b.goal}:${f.owner === side ? "d" : "a"}`, x: f.x, z: f.z, r: f.r, defend: f.owner === side };
     }
-    const threat = this.threatYaw(side, area.x, area.z);
+    // Cứ điểm: cả chục máy cùng nhắm một chỗ, mà cứ điểm chỉ đổi chủ trong war.tick (trước nhịp máy): nhớ trong nhịp.
+    let threat: number;
+    if (area.key.startsWith("flag:")) {
+      const memoKey = `${side}|${area.key}`;
+      const known = this.threatMemo.get(memoKey);
+      if (known === undefined) this.threatMemo.set(memoKey, (threat = this.threatYaw(side, area.x, area.z)));
+      else threat = known;
+    } else threat = this.threatYaw(side, area.x, area.z);
     let x: number;
     let z: number;
     let kind: Brain["tacKind"] = "open";
@@ -782,12 +858,19 @@ export class Bots {
     }
     const nav = this.nav();
     const path = b.path;
-    const moved = !path || Math.hypot(gx - b.pgx, gz - b.pgz) > Math.max(3, d * 0.15);
-    if (moved || b.replan || b.pathI >= path.length) {
+    const shift = path ? Math.hypot(gx - b.pgx, gz - b.pgz) : Infinity;
+    const moved = !path || shift > Math.max(3, d * 0.15);
+    // Tìm đường tốn kém nhất trong cả nhịp máy: đích nhích nhẹ (đang đuổi theo ai đó) hay hết đường dở thì chờ đủ giãn
+    // cách rồi mới tìm lại, trong lúc đó cứ theo đường cũ; kẹt (replan), chưa có đường, đích đổi xa thì tìm ngay.
+    const wait = this.time - b.planAt < PLAN_GAP * (1 + this.thinkLevel) && !b.replan && !!path && shift < PLAN_JUMP;
+    if (wait && (moved || b.pathI >= path.length)) {
+      if (b.pathI >= path.length) return d > 1.5 ? [dx / d, dz / d] : null;
+    } else if (moved || b.replan || b.pathI >= path.length) {
       if (d < 4 || nav.clearLine(p.x, p.z, gx, gz)) {
         b.path = [{ x: gx, z: gz }];
       } else if (this.planLeft > 1500) {
         const before = nav.expanded;
+        b.planAt = this.time;
         const found = nav.findPath(p.x, p.z, gx, gz, Math.min(3500, this.planLeft));
         this.planLeft -= nav.expanded - before;
         b.path = found && found.length ? found : [{ x: gx, z: gz }];
@@ -889,9 +972,9 @@ export class Bots {
     const range = (SIGHT[p.role] ?? SIGHT[""]!) * (b.tacKind === "overwatch" && p.prone ? 1.5 : 1) * this.tune.sight;
     b.scan -= dt;
     if (b.scan <= 0) {
-      b.scan = 0.3 + Math.random() * 0.1;
+      b.scan = (0.3 + Math.random() * 0.1) * (1 + this.thinkLevel * 0.5);
       const had = b.sees;
-      this.scan(id, p, b, alive, eye, range, true, false);
+      this.scan(id, p, b, eye, range, true, false);
       if (had && !b.sees) b.lostAt = this.time;
     }
 
@@ -1300,8 +1383,8 @@ export class Bots {
     const eye: [number, number, number] = [tank.x, tank.y + TANK.gunY + 0.4, tank.z];
     b.scan -= dt;
     if (b.scan <= 0) {
-      b.scan = 0.35 + Math.random() * 0.1;
-      this.scan(id, p, b, alive, eye, SIGHT.tanker!, false, true);
+      b.scan = (0.35 + Math.random() * 0.1) * (1 + this.thinkLevel * 0.5);
+      this.scan(id, p, b, eye, SIGHT.tanker!, false, true);
     }
     const target = b.sees && b.target ? s.players.get(b.target) : undefined;
     // Đi đâu: theo đội hình; không có đội trưởng thì lang thang trong vùng; đang bắn nhau thì dừng lại cho bắn trúng.
