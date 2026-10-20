@@ -29,6 +29,7 @@ import { useAccount } from "../../account/account.ts";
 import { StudioBackdrop } from "../../studio/StudioBackdrop.tsx";
 import { roomLook } from "../../studio/looks.ts";
 import { ClassPicker } from "./GadgetHud.tsx";
+import { RoomShare } from "./RoomShare.tsx";
 import { SIDE_NAME } from "./WarHud.tsx";
 import "./command.css";
 
@@ -376,6 +377,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
                 </span>
               )}
             </h3>
+            <RoomShare room={room} isHost={isHost} />
             {!naval && (
               <Slider
                 label={war ? "Quân số (hai phe)" : squad ? "Lính AI (gồm 5 lính mỗi người)" : "Lính AI cùng chơi"}

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Lobby } from "./Lobby.tsx";
-import { canResume, forgetLastRoom, resumeRoom, wasKicked, type IslandRoom } from "./net.ts";
+import { canResume, forgetLastRoom, resumeRoom, takeInvite, wasKicked, type IslandRoom } from "./net.ts";
 import { GunsmithHost } from "./gunsmith/GunsmithHost.tsx";
 import { installUiSounds } from "./game/sound/ui.ts";
 
@@ -23,6 +23,8 @@ export function App() {
     void resumeRoom().then((r) => {
       if (!live) return;
       if (r) {
+        // Nối lại được phiên cũ thì bỏ link mời (không tự vào phòng khác sau khi rời trận này).
+        takeInvite();
         setNotice(null);
         setRoom(r);
       }
