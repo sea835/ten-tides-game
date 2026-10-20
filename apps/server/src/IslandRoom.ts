@@ -84,6 +84,7 @@ import { Hazards, type HazardEvent } from "./hazards.ts";
 import { applySkins } from "./account.ts";
 import { isPlausibleMove } from "./movement.ts";
 import { authenticate, uniqueRoomCode } from "./roomCommon.ts";
+import { TickStats, liveRooms, type RoomHealth } from "./tickStats.ts";
 import { syncState } from "./sync.ts";
 import { Wildlife, type Bite } from "./wildlife.ts";
 import { PlayController, type PlayHost } from "./playRoom.ts";
@@ -127,6 +128,8 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   private kicked = new Set<string>();
   private lastMoveAt = new Map<string, number>();
   private lastChatAt = new Map<string, number>();
+  /** Đo thời gian nhịp thực (tickStats.ts), để /health báo. */
+  private readonly perf = new TickStats();
   private eventTimers = new Map<string, number>();
   /** Ai đã bấm sẵn sàng. Chỉ công khai con số, không công khai là ai. */
   private ready = new Set<string>();
@@ -409,7 +412,12 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     });
 
     this.clock.setInterval(() => this.tick(), 1000);
-    this.clock.setInterval(() => this.realtimeTick(REALTIME_STEP_MS / 1000), REALTIME_STEP_MS);
+    this.clock.setInterval(() => {
+      this.perf.begin();
+      this.realtimeTick(REALTIME_STEP_MS / 1000);
+      this.perf.end();
+    }, REALTIME_STEP_MS);
+    liveRooms.add(this);
   }
 
   async onAuth(_client: Client, options: unknown): Promise<AuthData> {
@@ -491,7 +499,19 @@ export class IslandRoom extends Room<{ state: IslandState }> {
     }
   }
 
+  /** Ảnh chụp cho /health. */
+  health(): RoomHealth {
+    const { tick, sync } = this.perf.summary();
+    return { kind: "island", mode: "island", phase: this.game.phase, clients: this.clients.length, humans: this.state.players.size, bots: 0, tick, sync, load: 0 };
+  }
+
+  /** Colyseus gửi trạng thái: đo riêng phần mã hoá, gửi. */
+  override broadcastPatch(): boolean {
+    return this.perf.patch(() => super.broadcastPatch());
+  }
+
   onDispose() {
+    liveRooms.delete(this);
     return this.logWriter.save();
   }
 

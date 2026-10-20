@@ -16,12 +16,15 @@ import {
   type PublicUser,
 } from "../db/accounts.ts";
 import { accountsEnabled } from "../db/pool.ts";
+import { healthReport } from "../health.ts";
+import { clientIp as ipOf } from "./clientIp.ts";
+import { allowOrigin } from "./cors.ts";
 import { RateLimiter } from "./rateLimit.ts";
 import { CardBody, Credentials, EquipBody, LoadoutBody, LoginBody, RollBody } from "./schemas.ts";
 
 // API HTTP cho tài khoản và gacha, chạy chung cổng với Colyseus (gắn vào app express của transport).
-// Mọi câu trả lời là JSON. CORS: Colyseus đã đặt header cho mọi request (cho phép mọi origin, có Authorization);
-// ở đây đặt thêm cho chắc khi chạy tách riêng (test).
+// Mọi câu trả lời là JSON. CORS: Colyseus đã đặt header cho mọi request (index.ts thay luật chọn origin theo
+// CORS_ORIGINS); ở đây đặt lại theo cùng luật cho chắc khi chạy tách riêng (test).
 
 const MAX_BODY = 16 * 1024;
 
@@ -45,14 +48,15 @@ function fail(res: ServerResponse, status: number, error: string, message: strin
 }
 
 function cors(req: Req, res: ServerResponse) {
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
+  res.setHeader("Access-Control-Allow-Origin", allowOrigin(req.headers.origin));
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Vary", "Origin");
 }
 
+/** IP người gọi: sau proxy của Render thì đọc X-Forwarded-For (clientIp.ts), không thì địa chỉ socket. */
 function clientIp(req: Req): string {
-  return req.socket.remoteAddress ?? "?";
+  return ipOf(req.headers, req.socket.remoteAddress);
 }
 
 /** Đọc body JSON (Colyseus có khi đã đọc sẵn vào req.body). */
@@ -105,6 +109,9 @@ function catalog() {
 type Handler = (req: Req, res: ServerResponse) => Promise<void>;
 
 const routes: Record<string, Handler> = {
+  // Số liệu vận hành: số phòng, số người, nhịp p95 từng phòng, bộ nhớ (không có mã phòng, tên người chơi).
+  "GET /api/health": async (_req, res) => send(res, 200, healthReport()),
+
   "GET /api/status": async (_req, res) => send(res, 200, { accounts: accountsEnabled() }),
 
   "GET /api/gacha/catalog": async (_req, res) => send(res, 200, catalog()),
@@ -164,14 +171,16 @@ const routes: Record<string, Handler> = {
 };
 
 /** Những đường không cần database. */
-const WITHOUT_DB = new Set(["GET /api/status", "GET /api/gacha/catalog"]);
+const WITHOUT_DB = new Set(["GET /api/status", "GET /api/gacha/catalog", "GET /api/health"]);
 
 /**
  * Xử lý một request HTTP. Trả về true nếu đã xử lý (đường /api/...), false để chuyển cho handler khác.
  * Không bao giờ ném lỗi ra ngoài: lỗi database chỉ thành câu trả lời 500.
  */
 export async function handleApi(req: Req, res: ServerResponse): Promise<boolean> {
-  const path = (req.url ?? "/").split("?")[0]!;
+  let path = (req.url ?? "/").split("?")[0]!;
+  // /health ngắn gọn cho bộ kiểm tra sống của hạ tầng (cùng nội dung /api/health).
+  if (path === "/health") path = "/api/health";
   if (!path.startsWith("/api/")) return false;
   cors(req, res);
   if (req.method === "OPTIONS") {

@@ -16,6 +16,14 @@ export interface GameLogFile {
 
 const LOG_DIR = process.env.GAME_LOG_DIR ?? "logs";
 
+/** Các lần ghi đang chạy dở: chờ hết khi tắt server để không mất log ván. */
+const inflight = new Set<Promise<void>>();
+
+/** Chờ mọi lần ghi log ván đang dở xong (gọi lúc tắt server). */
+export async function flushGameLogs(): Promise<void> {
+  while (inflight.size) await Promise.allSettled([...inflight]);
+}
+
 /** Ghi log ván ra đĩa. Mỗi lần ghi thay cả file; lần ghi sau chờ lần trước xong. */
 export class GameLogWriter {
   readonly path: string;
@@ -33,6 +41,9 @@ export class GameLogWriter {
         await writeFile(this.path, body);
       })
       .catch((e) => console.error(`Không ghi được log ván ${this.log.roomId}:`, e));
-    return this.pending;
+    const mine = this.pending;
+    inflight.add(mine);
+    void mine.finally(() => inflight.delete(mine));
+    return mine;
   }
 }
