@@ -280,6 +280,12 @@ export function squadSlots(mates: readonly { id: string; role: string }[]): (str
   return slots;
 }
 
+/**
+ * Số lần người dẫn đội được nhập xác một máy cùng đội mỗi trận (gục thì nhập vào máy còn sống). Trước đây không giới
+ * hạn: 5 máy thành 6 mạng, gục chẳng mất gì. Hai lần: gục vẫn còn đường gỡ, nhưng phải giữ mạng.
+ */
+export const POSSESS_LIMIT = 2;
+
 /** Màu đội (tên, màu vẽ trên HUD, trên xe tăng). */
 export const TEAM_COLORS = ["#3d8bff", "#ff5a4a", "#ffc233", "#3fcf6a", "#c46bff", "#ff8a2a", "#35d6d0", "#ff5fb0", "#a0a0a0", "#8fd14f"] as const;
 

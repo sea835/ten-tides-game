@@ -408,6 +408,22 @@
 .bm-site.fortress {
   fill: rgba(130, 120, 100, 0.6);
 }
+/* Trạm tiếp tế trên bản đồ: vòng tầm mua (nét đứt) và ô thùng hàng ở giữa. */
+.bm-supply circle {
+  fill: rgba(255, 196, 107, 0.12);
+  stroke: #ffc46b;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.bm-supply rect {
+  fill: #e69a2a;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+.bm-supply path {
+  stroke: #fff;
+  stroke-width: 1.4;
+}
 .bm-label {
   fill: #fff;
   font-size: 11px;
@@ -668,6 +684,22 @@
   font-size: 12px;
   opacity: 0.85;
 }
+/* Trạm tiếp tế (Sinh tồn, Đồng đội): ở trạm thì mua được, không thì chỉ hướng tới trạm gần nhất. */
+.b-money .b-supply {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #ffc46b;
+}
+.b-money .b-supply.ok {
+  color: #9fe870;
+}
+.b-supply-arrow {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
 .b-progress {
   position: absolute;
   left: 50%;
@@ -868,6 +900,70 @@
 .b-buy-msg {
   color: #ff9a8a;
   opacity: 1;
+}
+/* Cửa hàng bị khoá: xa trạm tiếp tế. */
+.b-buy-lock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 196, 107, 0.45);
+  background: rgba(255, 170, 60, 0.12);
+  color: #ffc46b;
+}
+.b-buy-lock .b-supply-arrow {
+  width: 22px;
+  height: 22px;
+}
+.b-buy-lock span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.b-buy-lock small {
+  font-size: 12px;
+  color: #e8e8e8;
+  opacity: 0.85;
+}
+/* Thẻ súng kèm nút mua theo cấu hình Kho Quân Nhu. */
+.b-buy-gun {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.b-buy-loadout {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  background: rgba(0, 242, 254, 0.08);
+  color: inherit;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+.b-buy-loadout span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.b-buy-loadout small {
+  font-size: 10.5px;
+  opacity: 0.7;
+}
+.b-buy-loadout b {
+  color: #9fe870;
+}
+.b-buy-loadout:hover:not(:disabled) {
+  background: rgba(0, 242, 254, 0.18);
+}
+.b-buy-loadout:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .b-buy footer {
   font-size: 12px;
@@ -1244,6 +1340,15 @@
   color: #fff;
   opacity: 0.8;
 }
+/* Số lượt nhập xác còn lại (đội trưởng). */
+.b-squad-souls {
+  margin: -2px 0 4px;
+  font-size: 11px;
+  color: #ffd23a;
+}
+.b-squad-souls.none {
+  color: #ff9a8a;
+}
 .b-mate-row {
   display: grid;
   grid-template-columns: 16px 1fr auto;
@@ -1300,6 +1405,12 @@
 .b-possess h3 {
   margin: 0 0 8px;
   font-size: 16px;
+}
+.b-possess h3 small {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #ffd23a;
 }
 .b-possess div {
   display: flex;

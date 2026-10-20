@@ -1,4 +1,5 @@
 import { HELI, MAX_HP, ROLES, SMOKE_CLEAR, SMOKE_SIGHT, SQUAD_ROLES, START_MONEY, TANK, WATER_LEVEL, WEAPON, deckTop, flightTime, insideBox, isEmplacement, raycastBoxes, raycastTrunks, type SquadRole } from "@tentides/content";
+import { DIFFICULTY, botHitChance, difficultyOf, type DifficultyTuning } from "@tentides/content";
 import type { PlayerState } from "@tentides/protocol";
 import type { BattleRoom } from "./BattleRoom.ts";
 import { addAmmo, isGunSlot, magOf, receive, resetKit, weaponIn } from "./kit.ts";
@@ -456,7 +457,7 @@ export class Bots {
     if (!b || !me || !a || attacker === target) return;
     // Bị bắn: quay về phía đạn tới, biết đại khái chỗ kẻ bắn (lệch vài mét theo khoảng cách), chưa khoá mục tiêu
     // cho tới khi tự nhìn thấy.
-    if (b.target !== attacker) b.react = 0.45 + Math.random() * 0.4;
+    if (b.target !== attacker) b.react = (0.45 + Math.random() * 0.4) * this.tuneFor(a).react;
     const d = Math.hypot(a.x - me.x, a.z - me.z);
     const err = Math.min(12, 1 + d * 0.12);
     b.target = attacker;
@@ -600,7 +601,7 @@ export class Bots {
       near.sort((a, c) => a.d - c.d);
       for (const n of near.slice(0, 4)) {
         if (!canSee(n.o, range)) continue;
-        if (n.id !== b.target) b.react = (p.role === "sniper" ? 1.1 : 0.8) + Math.random() * 0.7;
+        if (n.id !== b.target) b.react = ((p.role === "sniper" ? 1.1 : 0.8) + Math.random() * 0.7) * this.tuneFor(n.o).react;
         b.target = n.id;
         b.sees = true;
         break;
@@ -880,7 +881,7 @@ export class Bots {
     const eyeH = p.prone ? 0.35 : p.crouching ? 1.05 : 1.55;
     const eye: [number, number, number] = [p.x, p.y + eyeH, p.z];
     // Bắn tỉa đã vào chỗ rình: nhìn xa hơn hẳn (ống ngắm 8x).
-    const range = (SIGHT[p.role] ?? SIGHT[""]!) * (b.tacKind === "overwatch" && p.prone ? 1.5 : 1);
+    const range = (SIGHT[p.role] ?? SIGHT[""]!) * (b.tacKind === "overwatch" && p.prone ? 1.5 : 1) * this.tune.sight;
     b.scan -= dt;
     if (b.scan <= 0) {
       b.scan = 0.3 + Math.random() * 0.1;
@@ -1076,7 +1077,7 @@ export class Bots {
   private lob(id: string, p: PlayerState, tx: number, ty: number, tz: number, kind: "frag" | "smoke") {
     const o: [number, number, number] = [p.x, p.y + 1.5, p.z];
     const dist = Math.hypot(tx - o[0], tz - o[2]);
-    const err = 0.8 + dist * 0.06;
+    const err = (0.8 + dist * 0.06) * this.tune.spread;
     const ax = tx + (Math.random() - 0.5) * 2 * err;
     const az = tz + (Math.random() - 0.5) * 2 * err;
     const dx = ax - o[0];
@@ -1087,7 +1088,7 @@ export class Bots {
     p.rotY = Math.atan2(dx, dz);
     this.room.throwGrenade(id, kind, o, [dx / T, (dy + 0.5 * 20 * T * T) / T, dz / T]);
     const b = this.brains.get(id);
-    if (b && kind === "frag") b.nade = 9 + Math.random() * 6;
+    if (b && kind === "frag") b.nade = (9 + Math.random() * 6) * this.tune.nade;
   }
 
   /** Súng máy bắn áp chế vào chỗ địch vừa nấp (không trúng ai, chỉ ghìm đầu, người chơi thấy đạn vèo qua). */
@@ -1158,7 +1159,7 @@ export class Bots {
     const flight = flightTime(def.velocity, d, def.boost);
     const drop = 0.5 * 9.81 * flight * flight;
     // Trực thăng nhỏ, chao liệng: khó trúng hơn xe tăng nhiều.
-    const err = (0.012 + d * 0.00012) * (v.kind === "heli" ? 3 : 1);
+    const err = (0.012 + d * 0.00012) * (v.kind === "heli" ? 3 : 1) * this.tune.spread;
     const ty = v.y + 1.2 + drop - rocketEye[1];
     const aimYaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 2 * err;
     const aimPitch = Math.atan2(ty, d) + (Math.random() - 0.5) * err;
@@ -1339,6 +1340,19 @@ export class Bots {
     return raycastBoxes(this.room.map.index, eye, dir, len, true) === Infinity && raycastTrunks(this.room.map.world, eye, dir, len, this.room.map.treeDead) === Infinity;
   }
 
+  /** Hệ số độ khó của phòng (content/difficulty.ts): tầm nhìn, lựu đạn, độ lệch RPG, pháo thủ hải chiến. */
+  get tune(): DifficultyTuning {
+    return difficultyOf(this.room.state.settings.botDifficulty);
+  }
+
+  /**
+   * Hệ số độ khó khi máy đánh `target`: đánh người chơi thì theo độ khó chủ phòng chọn; máy đánh máy giữ mốc "Khó"
+   * (cách bắn cũ), để trận giữa các đạo quân máy không đổi nhịp theo độ khó.
+   */
+  tuneFor(target: PlayerState | undefined): DifficultyTuning {
+    return !target || target.bot ? DIFFICULTY.hard : this.tune;
+  }
+
   private shoot(id: string, b: Brain, dt: number, weaponId: string, eye: [number, number, number], target: PlayerState, d: number) {
     const me = this.room.state.players.get(id);
     // Bị bom choáng loá mắt thì không bắn được.
@@ -1348,7 +1362,8 @@ export class Bots {
       b.pause -= dt;
       return;
     }
-    if (b.burst <= 0) b.burst = def.auto ? (def.class === "lmg" ? 6 : 3) + Math.floor(Math.random() * 5) : 1;
+    const tune = this.tuneFor(target);
+    if (b.burst <= 0) b.burst = def.auto ? Math.max(2, Math.round(((def.class === "lmg" ? 6 : 3) + Math.floor(Math.random() * 5)) * tune.burst)) : 1;
     let targetId = "";
     for (const [tid, t] of this.room.state.players) if (t === target) targetId = tid;
     const aimY = target.y + (target.prone ? 0.25 : target.crouching ? 0.8 : 1.2);
@@ -1360,8 +1375,8 @@ export class Bots {
       return;
     }
     // Máy bắn kém dần theo khoảng cách, bắn liền nhiều phát thì kém đi (giật súng). Bắn tỉa, nằm bắn thì giữ chính xác xa hơn.
-    const reach = def.class === "sniper" ? 420 : def.class === "dmr" ? 260 : 140;
-    let chance = Math.max(0.05, Math.min(def.class === "sniper" ? 0.55 : 0.42, 0.5 - d / reach));
+    // Độ khó nhân vào xác suất trúng và hạ trần (content/difficulty.ts).
+    let chance = botHitChance(def.class, d, tune);
     if (me.prone || me.crouching) chance *= 1.15;
     if (target.prone) chance *= 0.6;
     else if (target.crouching) chance *= 0.8;
@@ -1371,19 +1386,19 @@ export class Bots {
     const hits: { target: string; part: "head" | "body"; d: number; ray: number }[] = [];
     for (let k = 0; k < pellets; k++) {
       const hit = Math.random() < chance;
-      const miss = hit ? 0.15 : 1.2 + Math.random() * 1.5;
+      const miss = hit ? 0.15 : (1.2 + Math.random() * 1.5) * tune.spread;
       const a = Math.random() * Math.PI * 2;
       const lie = target.prone && hit;
       const tx = target.x + Math.cos(a) * miss * (hit ? 0.3 : 1) + (lie ? Math.sin(target.rotY) * 0.1 : 0);
       const ty = aimY + Math.sin(a) * miss * (lie ? 0.15 : 0.6);
       const tz = target.z + Math.sin(a) * miss * (hit ? 0.3 : 1) + (lie ? Math.cos(target.rotY) * 0.1 : 0);
       rays.push([tx - eye[0], ty - eye[1], tz - eye[2]]);
-      if (hit) hits.push({ target: targetId, part: Math.random() < (def.class === "sniper" ? 0.18 : 0.08) ? "head" : "body", d: Math.hypot(tx - eye[0], ty - eye[1], tz - eye[2]), ray: k });
+      if (hit) hits.push({ target: targetId, part: Math.random() < (def.class === "sniper" ? 0.18 : 0.08) * tune.head ? "head" : "body", d: Math.hypot(tx - eye[0], ty - eye[1], tz - eye[2]), ray: k });
     }
     // Đầu nòng ngay trước mặt.
     this.room.fire(id, weaponId, eye, rays, hits);
     b.burst -= 1;
-    if (b.burst <= 0) b.pause = 0.35 + Math.random() * 0.6 + (def.auto ? 0 : 0.4);
+    if (b.burst <= 0) b.pause = (0.35 + Math.random() * 0.6 + (def.auto ? 0 : 0.4)) * tune.pause;
     else b.pause = 60 / def.rpm;
   }
 

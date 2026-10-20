@@ -500,6 +500,13 @@
 .cc-sky button:disabled {
   cursor: default;
 }
+/* Độ khó của máy: bốn nút một hàng. */
+.cc-sky.cc-diff {
+  grid-template-columns: repeat(4, 1fr);
+}
+.cc-sky.cc-diff button {
+  justify-content: center;
+}
 .cc-sky button:not(:disabled):hover {
   border-color: var(--cc-line-hi);
 }

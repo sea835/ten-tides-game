@@ -1739,7 +1739,7 @@ export class Naval {
    * đánh máy thì như thường.
    */
   private ease(team: string): number {
-    for (const p of this.room.state.players.values()) if (!p.bot && (p.team === "blue" || p.team === "red") && p.team !== team) return BOT_EASE;
+    for (const p of this.room.state.players.values()) if (!p.bot && (p.team === "blue" || p.team === "red") && p.team !== team) return BOT_EASE * this.room.bots.tune.naval;
     return 1;
   }
 

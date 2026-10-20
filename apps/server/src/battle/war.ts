@@ -226,6 +226,8 @@ export class War {
     for (const extra of launcherExtras(spec.extras, aa && classOfRole(role) === "engineer")) receive(p.kit, extra, []);
     // Máy (trừ bắn tỉa) mang thêm một quả lựu đạn để ném vào địch nấp sau tường, trong nhà.
     if (p.bot && role !== "sniper") receive(p.kit, "frag", []);
+    // Người có bộ lắp ráp Gunsmith cho khẩu vừa phát: lắp sẵn (gunsmith.ts kiểm tra luật lớp lính).
+    this.room.gunsmithKit(p);
     p.kit.active = "primary1";
     p.role = role;
     this.room.gadgets.equip(p, classOfRole(role));

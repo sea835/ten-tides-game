@@ -60,6 +60,8 @@ import { ClassIcon, GadgetHud, GadgetSlots } from "./GadgetHud.tsx";
 import "./battle.css";
 import { KillSkulls } from "./KillSkulls.tsx";
 import { WarCommandMap } from "./WarCommand.tsx";
+import { ShopLock, SupplyHint, SupplyMarks, useSupply } from "./supply.tsx";
+import { LoadoutBuy } from "./loadoutBuy.tsx";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
 // bản đồ nhỏ, la bàn, tâm ngắm co giãn theo độ toả, dấu trúng, hướng bị bắn, ống ngắm, cửa hàng (B),
@@ -387,6 +389,8 @@ export function BattleMinimap({ room, big, overlay, svgRef, handlers }: { room: 
           )}
         </g>
       ))}
+      {/* Sinh tồn, Đồng đội: trạm tiếp tế (giữa trận chỉ mua được trong vòng quanh trạm). */}
+      {!war && !naval && <SupplyMarks room={room} u={u} />}
       {/* Chiến trường: cứ điểm (vòng màu phe giữ, chữ cái). */}
       {war &&
         [...room.state.flags.entries()].map(([id, f]) => (
@@ -552,6 +556,7 @@ function Vitals({ room }: { room: IslandRoom }) {
         <span>
           <kbd>B</kbd> cửa hàng
         </span>
+        <SupplyHint room={room} />
       </div>
     </>
   );
@@ -703,6 +708,8 @@ function BuyMenu({ room }: { room: IslandRoom }) {
   });
   const [msg, setMsg] = useState("");
   useEffect(() => room.onMessage(Messages.rejected, (r: { reason: string }) => setMsg(r.reason)), [room]);
+  // Sinh tồn / Đồng đội giữa trận: chỉ mua được ở trạm tiếp tế (supply.tsx), xa trạm thì khoá cả cửa hàng.
+  const supply = useSupply(room);
   if (!hud.buyOpen || !kit) return null;
   const buy = (item: string) => {
     setMsg("");
@@ -710,7 +717,7 @@ function BuyMenu({ room }: { room: IslandRoom }) {
     playBuy();
   };
   const item = (id: string, label: string, price: number, sub?: string) => (
-    <button key={id} className="b-buy-item" disabled={price > kit.money} onClick={() => buy(id)}>
+    <button key={id} className="b-buy-item" disabled={price > kit.money || !supply.ok} onClick={() => buy(id)}>
       <ItemIcon id={id} />
       <span className="n">{label}</span>
       {sub && <span className="s">{sub}</span>}
@@ -743,12 +750,21 @@ function BuyMenu({ room }: { room: IslandRoom }) {
           </button>
         ))}
       </nav>
+      <ShopLock info={supply} />
       <div className="b-buy-body">
         {tab === "guns" &&
           [...byClass.entries()].map(([cls, list]) => (
             <section key={cls}>
               <h4>{CLASS_LABEL[cls]}</h4>
-              {list.map((w) => item(w.id, w.name, w.price, `${w.damage}${w.pellets > 1 ? `×${w.pellets}` : ""} sát thương · ${w.rpm} phát/phút · băng ${w.mag} · đạn bay ${w.velocity} m/s`))}
+              {list.map((w) => {
+                const gun = item(w.id, w.name, w.price, `${w.damage}${w.pellets > 1 ? `×${w.pellets}` : ""} sát thương · ${w.rpm} phát/phút · băng ${w.mag} · đạn bay ${w.velocity} m/s`);
+                // Có bộ lắp ráp đã lưu trong Kho Quân Nhu: thêm nút mua súng kèm cả bộ.
+                return (
+                  <LoadoutBuy key={w.id} room={room} weaponId={w.id} money={kit.money} locked={!supply.ok} onBuy={() => setMsg("")}>
+                    {gun}
+                  </LoadoutBuy>
+                );
+              })}
             </section>
           ))}
         {tab === "guns" && <p className="b-buy-note">M249, AWM và giáp, mũ cấp 3 chỉ có trong Kho vũ khí, trên tàu và ở bãi mìn. Mua súng được tặng 2 băng đạn.</p>}
@@ -797,7 +813,7 @@ function BuyMenu({ room }: { room: IslandRoom }) {
         {tab === "outfit" && (
           <section className="b-outfits">
             {OUTFITS.map((o) => (
-              <button key={o.id} className={`b-outfit ${kit.outfit === o.id ? "on" : ""}`} onClick={() => buy(`outfit:${o.id}`)}>
+              <button key={o.id} className={`b-outfit ${kit.outfit === o.id ? "on" : ""}`} disabled={!supply.ok} onClick={() => buy(`outfit:${o.id}`)}>
                 <i className={`sw ${o.id}`} />
                 {o.name}
               </button>

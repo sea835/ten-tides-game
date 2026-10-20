@@ -63,3 +63,19 @@ export function loadoutAtts(l: Partial<WeaponLoadout>): string {
     .filter(Boolean)
     .join(",");
 }
+
+/** Các món của bộ lắp ráp theo id đồ cửa hàng Battleground ("sight:x4", "att:comp"): ống ngắm trước, rồi bốn ô kia. */
+export function loadoutItems(l: Partial<WeaponLoadout>): string[] {
+  const out: string[] = [];
+  if (l.sight) out.push(`sight:${l.sight}`);
+  for (const slot of ["muzzle", "grip", "mag", "stock"] as const) if (l[slot]) out.push(`att:${l[slot]}`);
+  return out;
+}
+
+/** Giá cửa hàng của một món trong bộ lắp ráp ("sight:…" / "att:…"); 0 là hàng hiếm, không bán. */
+export function loadoutItemPrice(item: string): number {
+  const [kind, id] = item.split(":");
+  if (kind === "sight") return SIGHTS[id as keyof typeof SIGHTS]?.price ?? 0;
+  if (kind === "att") return ATTACHMENTS[id as keyof typeof ATTACHMENTS]?.price ?? 0;
+  return 0;
+}
