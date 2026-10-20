@@ -3,8 +3,9 @@
 // nên hai lần chạy cùng tham số cho cùng một trận (dấu vân tay cuối cùng giống nhau), để so trước/sau khi tối ưu.
 //
 //   pnpm --filter @tentides/server bench -- --seconds 120 --side 50 --humans 6 --seed 1
+//   pnpm --filter @tentides/server bench -- --mode solo --side 100   (sinh tồn: 100 máy trên đảo nhỏ, dò người dày)
 //
-// --side: số người mỗi phe (kể cả người chơi), --load: bậc giảm tải máy cố định (mặc định để phòng tự chỉnh),
+// --mode war|solo|squad, --side: số máy mỗi phe (war) hay tổng số máy (solo, squad), --load: bậc giảm tải máy cố định (mặc định để phòng tự chỉnh),
 // --json: in kết quả dạng JSON (để so bằng script).
 
 import { createHash } from "node:crypto";
@@ -19,6 +20,8 @@ function arg(name: string, fallback: number): number {
   return i >= 0 ? Number(process.argv[i + 1]) : fallback;
 }
 
+const modeIdx = process.argv.indexOf("--mode");
+const mode = modeIdx >= 0 ? process.argv[modeIdx + 1]! : "war";
 const seconds = arg("seconds", 120);
 const side = arg("side", 50);
 const humans = arg("humans", 6);
@@ -40,7 +43,7 @@ Date.now = () => clock;
 
 const room = new BattleRoom();
 room.broadcast = (() => {}) as typeof room.broadcast;
-room.state.battleMode = "war";
+room.state.battleMode = mode;
 room.bots = new Bots(room);
 room.vehicles = new Vehicles(room);
 room.war = new War(room);
@@ -51,21 +54,24 @@ for (let h = 0; h < humans; h++) {
   p.name = `P${h}`;
   p.created = true;
   room.state.players.set(`human${h}`, p);
-  room.war.assign(`human${h}`);
+  if (mode === "war") room.war.assign(`human${h}`);
 }
 room.state.bots = side;
 priv.startMatch();
 priv.beginBattle();
 room.state.ticketsBlue = room.state.ticketsRed = 100_000;
+// Sinh tồn: vùng bo thu hẹp giết dần; giữ vùng an toàn lớn để đo tải máy chứ không đo lúc hết người.
 
 const all: number[] = [];
+const botsMs: number[] = [];
 const t0 = performance.now();
 const ticks = Math.round(seconds * 20);
-for (let k = 0; k < ticks && room.state.phase === "battle"; k++) {
+for (let k = 0; k < ticks && (room.state.phase === "battle" || room.state.phase === "prep"); k++) {
   if (fixedLoad >= 0) room.bots.thinkLevel = fixedLoad;
   priv.tick(0.05);
   clock += 50;
   all.push(room.perf.tick.recent(1)[0]!);
+  botsMs.push(room.perf.phases.get("bots")!.recent(1)[0]!);
 }
 const wall = performance.now() - t0;
 
@@ -90,6 +96,8 @@ const result = {
   p95: r2(pct(0.95)),
   max: r2(sorted[sorted.length - 1]!),
   wallMs: Math.round(wall),
+  botsAvg: r2(botsMs.reduce((a, b) => a + b, 0) / botsMs.length),
+  botsP95: r2(botsMs.slice().sort((a, b) => a - b)[Math.floor(botsMs.length * 0.95)]!),
   botsAvgLast60s: phases.bots?.avg ?? 0,
   botsP95Last60s: phases.bots?.p95 ?? 0,
   phasesLast60s: Object.fromEntries(Object.entries(phases).map(([k, v]) => [k, `${v.avg}/${v.p95}`])),
@@ -99,8 +107,8 @@ const result = {
 };
 if (json) console.log(JSON.stringify(result));
 else {
-  console.log(`Chiến trường ${result.entities} người (${result.bots} máy), ${result.seconds} giây trận, chạy ${result.wallMs} ms`);
-  console.log(`nhịp: tb ${result.avg} p50 ${result.p50} p95 ${result.p95} max ${result.max} ms`);
+  console.log(`${mode} ${result.entities} người (${result.bots} máy), ${result.seconds} giây trận, chạy ${result.wallMs} ms`);
+  console.log(`nhịp: tb ${result.avg} p50 ${result.p50} p95 ${result.p95} max ${result.max} ms; phần máy: tb ${result.botsAvg} p95 ${result.botsP95} ms`);
   console.log(`từng phần 60 giây cuối (tb/p95 ms): ${Object.entries(result.phasesLast60s).map(([k, v]) => `${k} ${v}`).join(", ")}`);
   console.log(`hạ gục ${result.kills}, bậc giảm tải ${result.load}, dấu vân tay ${result.fingerprint}`);
 }

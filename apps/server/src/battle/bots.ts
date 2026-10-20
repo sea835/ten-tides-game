@@ -43,6 +43,9 @@ const SLOTS: readonly [number, number][] = [
 ];
 /** Xe tăng đi sau đội hình một đoạn. */
 const TANK_SLOT: [number, number] = [0, -18];
+/** Giãn cách tối thiểu giữa hai lần tìm đường của một máy (giây, nhân với bậc giảm tải + 1), và đích đổi xa hơn thì tìm ngay (m). */
+const PLAN_GAP = 0.6;
+const PLAN_JUMP = 25;
 /** Lưới người còn sống cho máy dò quanh mình: cạnh ô (m), và khoảng nới khi hỏi (người đã nhích đi trong nhịp). */
 const NEAR_CELL = 32;
 const NEAR_SLACK = 8;
@@ -99,6 +102,8 @@ interface Brain {
   pgx: number;
   pgz: number;
   replan: boolean;
+  /** Lần tìm đường A* gần nhất (giây trận): máy không tìm lại dày hơn mỗi PLAN_GAP giây trừ khi kẹt hay đích đổi xa. */
+  planAt: number;
   /** Đo kẹt: chỗ đứng lúc bắt đầu đo, thời gian đã đo, số lần kẹt liền; đang lùi ra chỗ trống (giây, toạ độ). */
   progX: number;
   progZ: number;
@@ -518,7 +523,7 @@ export class Bots {
   }
 
   private fresh(x: number, z: number, slot: number): Brain {
-    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0, path: null, pathI: 0, pgx: x, pgz: z, replan: false, progX: x, progZ: z, progT: 0, stuckN: 0, unstick: 0, ux: x, uz: z, lookYaw: 0, lookAt: 0, tacKey: "", tacX: x, tacZ: z, tacKind: "", shots: 0, lostAt: -99, hurtAt: -99, retreat: 0, rx: x, rz: z, smokeCd: 0 };
+    return { wx: x, wz: z, target: "", lx: x, ly: 0, lz: z, sees: false, seen: 0, react: 0, burst: 0, pause: 0, scan: Math.random() * 0.4, strafe: 0, slot, nade: 2 + Math.random() * 3, goal: "", goalUntil: 0, ga: 0, gr: 0, at: "", atScan: Math.random(), detour: 0, detourDir: 1, tankSpeed: 0, stuck: 0, backUp: 0, path: null, pathI: 0, pgx: x, pgz: z, replan: false, planAt: -99, progX: x, progZ: z, progT: 0, stuckN: 0, unstick: 0, ux: x, uz: z, lookYaw: 0, lookAt: 0, tacKey: "", tacX: x, tacZ: z, tacKind: "", shots: 0, lostAt: -99, hurtAt: -99, retreat: 0, rx: x, rz: z, smokeCd: 0 };
   }
 
   /** Trực thăng còn trong vùng trời an toàn quanh sân đỗ nhà (đang cất, hạ cánh, nạp đạn): máy không nhắm vào. */
@@ -843,12 +848,19 @@ export class Bots {
     }
     const nav = this.nav();
     const path = b.path;
-    const moved = !path || Math.hypot(gx - b.pgx, gz - b.pgz) > Math.max(3, d * 0.15);
-    if (moved || b.replan || b.pathI >= path.length) {
+    const shift = path ? Math.hypot(gx - b.pgx, gz - b.pgz) : Infinity;
+    const moved = !path || shift > Math.max(3, d * 0.15);
+    // Tìm đường tốn kém nhất trong cả nhịp máy: đích nhích nhẹ (đang đuổi theo ai đó) hay hết đường dở thì chờ đủ giãn
+    // cách rồi mới tìm lại, trong lúc đó cứ theo đường cũ; kẹt (replan), chưa có đường, đích đổi xa thì tìm ngay.
+    const wait = this.time - b.planAt < PLAN_GAP * (1 + this.thinkLevel) && !b.replan && !!path && shift < PLAN_JUMP;
+    if (wait && (moved || b.pathI >= path.length)) {
+      if (b.pathI >= path.length) return d > 1.5 ? [dx / d, dz / d] : null;
+    } else if (moved || b.replan || b.pathI >= path.length) {
       if (d < 4 || nav.clearLine(p.x, p.z, gx, gz)) {
         b.path = [{ x: gx, z: gz }];
       } else if (this.planLeft > 1500) {
         const before = nav.expanded;
+        b.planAt = this.time;
         const found = nav.findPath(p.x, p.z, gx, gz, Math.min(3500, this.planLeft));
         this.planLeft -= nav.expanded - before;
         b.path = found && found.length ? found : [{ x: gx, z: gz }];
