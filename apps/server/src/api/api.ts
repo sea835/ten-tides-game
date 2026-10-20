@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { GACHA, RARITY, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS, validateLoadout } from "@tentides/content";
+import { COIN_RULES, GACHA, RARITY, SHARDS, SKINS, SKIN_RARITIES, SKIN_WEAPON_IDS, effectiveOdds, validateLoadout } from "@tentides/content";
 import type { z } from "zod";
 import {
   AccountError,
+  craftSkin,
   equipCard,
   equipSkin,
   equippedSkins,
@@ -15,9 +16,11 @@ import {
   userFromSession,
   type PublicUser,
 } from "../db/accounts.ts";
+import { challengeStatus } from "../db/challenges.ts";
 import { accountsEnabled } from "../db/pool.ts";
+import { listPublicRooms, pickQuickRoom } from "../rooms.ts";
 import { RateLimiter } from "./rateLimit.ts";
-import { CardBody, Credentials, EquipBody, LoadoutBody, LoginBody, RollBody } from "./schemas.ts";
+import { CardBody, CraftBody, Credentials, EquipBody, LoadoutBody, LoginBody, QuickModeQuery, RollBody } from "./schemas.ts";
 
 // API HTTP cho tài khoản và gacha, chạy chung cổng với Colyseus (gắn vào app express của transport).
 // Mọi câu trả lời là JSON. CORS: Colyseus đã đặt header cho mọi request (cho phép mọi origin, có Authorization);
@@ -29,6 +32,8 @@ const MAX_BODY = 16 * 1024;
 const authLimiter = new RateLimiter(10, 60_000);
 /** Quay gacha: tối đa 30 lần mỗi phút mỗi IP (chặn bấm liên hồi, script). */
 const rollLimiter = new RateLimiter(30, 60_000);
+/** Danh sách phòng, Chơi nhanh: sảnh làm mới vài giây một lần, nhiều người chung một IP (quán net) nên rộng tay. */
+const roomsLimiter = new RateLimiter(120, 60_000);
 
 type Req = IncomingMessage & { body?: unknown };
 
@@ -80,6 +85,15 @@ async function parseBody<S extends z.ZodType>(req: Req, schema: S): Promise<z.in
   return parsed.data;
 }
 
+/** Tham số ?mode=... (Chơi nhanh, lọc danh sách phòng). Không có thì undefined, sai thì lỗi 400. */
+function modeParam(req: Req, required: boolean) {
+  const raw = new URL(req.url ?? "/", "http://x").searchParams.get("mode");
+  if (raw === null && !required) return undefined;
+  const parsed = QuickModeQuery.safeParse(raw);
+  if (!parsed.success) throw new AccountError("invalid", 400, "Chế độ không hợp lệ.");
+  return parsed.data;
+}
+
 function bearer(req: Req): string {
   const h = req.headers.authorization ?? "";
   return h.startsWith("Bearer ") ? h.slice(7).trim() : "";
@@ -91,12 +105,17 @@ async function requireUser(req: Req): Promise<PublicUser> {
   return user;
 }
 
-/** Danh mục gacha (không cần đăng nhập): độ hiếm, tỷ lệ, giá, bảo hiểm, toàn bộ skin. */
+/**
+ * Danh mục gacha (không cần đăng nhập): độ hiếm, tỷ lệ gốc và tỷ lệ thực tế khi tính cả bảo hiểm, giá, bảo hiểm,
+ * mảnh (trùng ra bao nhiêu, đổi tốn bao nhiêu), toàn bộ skin.
+ */
 function catalog() {
+  const odds = effectiveOdds();
   return {
-    rarities: SKIN_RARITIES.map((id) => ({ id, ...RARITY[id] })),
+    rarities: SKIN_RARITIES.map((id) => ({ id, ...RARITY[id], effective: odds[id] })),
     costs: { 1: GACHA.cost1, 10: GACHA.cost10 },
     pity: { epic: GACHA.epicPity, legendary: GACHA.legendaryPity },
+    shards: SHARDS,
     weapons: SKIN_WEAPON_IDS,
     skins: SKINS,
   };
@@ -108,6 +127,21 @@ const routes: Record<string, Handler> = {
   "GET /api/status": async (_req, res) => send(res, 200, { accounts: accountsEnabled() }),
 
   "GET /api/gacha/catalog": async (_req, res) => send(res, 200, catalog()),
+
+  /** Phòng công khai đang mở (lọc theo ?mode= nếu có). */
+  "GET /api/rooms": async (req, res) => {
+    if (!roomsLimiter.take(clientIp(req))) return fail(res, 429, "rate_limited", "Làm mới chậm lại một chút.");
+    const mode = modeParam(req, false);
+    const rooms = await listPublicRooms();
+    send(res, 200, { rooms: mode ? rooms.filter((r) => r.mode === mode) : rooms });
+  },
+
+  /** Chơi nhanh: mã phòng công khai nên vào (cùng chế độ, còn chỗ), hay null để client tạo phòng mới. */
+  "GET /api/quickplay": async (req, res) => {
+    if (!roomsLimiter.take(clientIp(req))) return fail(res, 429, "rate_limited", "Thử lại sau một chút.");
+    const mode = modeParam(req, true)!;
+    send(res, 200, { code: pickQuickRoom(await listPublicRooms(), mode) });
+  },
 
   "POST /api/register": async (req, res) => {
     if (!authLimiter.take(clientIp(req))) return fail(res, 429, "rate_limited", "Thử quá nhiều lần, đợi một phút rồi thử lại.");
@@ -139,6 +173,19 @@ const routes: Record<string, Handler> = {
     send(res, 200, await rollGacha(user.id, count));
   },
 
+  "POST /api/gacha/craft": async (req, res) => {
+    const user = await requireUser(req);
+    if (!rollLimiter.take(`${clientIp(req)}:${user.id}`)) return fail(res, 429, "rate_limited", "Chậm lại một chút.");
+    const { skinId } = await parseBody(req, CraftBody);
+    send(res, 200, await craftSkin(user.id, skinId));
+  },
+
+  /** Thử thách ngày, tuần (kèm tiến độ) và xu trận đã nhận hôm nay / giới hạn ngày. */
+  "GET /api/challenges": async (req, res) => {
+    const user = await requireUser(req);
+    send(res, 200, { ...(await challengeStatus(user.id)), rules: { dailyCap: COIN_RULES.dailyCap, soloFactor: COIN_RULES.soloFactor } });
+  },
+
   "POST /api/skins/equip": async (req, res) => {
     const user = await requireUser(req);
     const { weaponId, skinId } = await parseBody(req, EquipBody);
@@ -164,7 +211,7 @@ const routes: Record<string, Handler> = {
 };
 
 /** Những đường không cần database. */
-const WITHOUT_DB = new Set(["GET /api/status", "GET /api/gacha/catalog"]);
+const WITHOUT_DB = new Set(["GET /api/status", "GET /api/gacha/catalog", "GET /api/rooms", "GET /api/quickplay"]);
 
 /**
  * Xử lý một request HTTP. Trả về true nếu đã xử lý (đường /api/...), false để chuyển cho handler khác.

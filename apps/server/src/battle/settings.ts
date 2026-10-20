@@ -63,5 +63,6 @@ export function applyBattleSettings(state: IslandState, s: BattleSettingsMessage
   if (s.weather !== undefined) state.settings.weatherPick = s.weather;
   if (s.time !== undefined) state.settings.timePick = s.time;
   if (s.map !== undefined) state.settings.warMap = warMapId(s.map);
+  if (s.public !== undefined) state.settings.publicRoom = s.public;
   return changed;
 }

@@ -110,6 +110,7 @@ import { Airdrops } from "./airdrops.ts";
 import { Destruction } from "./destruction.ts";
 import { Bots } from "./bots.ts";
 import { MatchRewards } from "./rewards.ts";
+import { LISTING_SYNC_MS, ListingSync, listingMeta, quickPlayMode } from "../rooms.ts";
 import { MatchStats } from "./mvp.ts";
 import { Vehicles } from "./vehicles.ts";
 import { DEFAULT_BOTS, applyBattleSettings, clampBots } from "./settings.ts";
@@ -217,7 +218,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private entrants = 0;
   private rand = Math.random;
   /** Thưởng xu sau trận cho người có tài khoản. */
-  private rewards = new MatchRewards((id, msg) => this.clientOf(id)?.send(Messages.xp, msg));
+  private rewards = new MatchRewards(
+    (id, msg) => this.clientOf(id)?.send(Messages.xp, msg),
+    (id, msg) => this.clientOf(id)?.send(Messages.reward, msg),
+  );
   /** Số liệu vinh danh MVP (hạ gục, trợ giúp, chiếm cứ điểm, hỗ trợ) và bảng tổng kết trận vừa xong (gửi lại người vào sau). */
   stats = new MatchStats();
   private summary: MatchSummaryMessage | null = null;
@@ -264,11 +268,14 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   /** Điểm chi viện chiến thuật: UAV, mưa pháo, thùng chi viện, Juggernaut, TOW (streaks.ts). */
   streaks = new Streaks(this);
 
-  async onCreate() {
+  async onCreate(options?: unknown) {
     this.roomId = await this.uniqueRoomCode();
     this.state.mode = "battle";
     this.state.phase = "lobby";
     this.state.bots = clampBots("solo", DEFAULT_BOTS);
+    // Chơi nhanh: chế độ chọn sẵn, phòng công khai (phòng tạo bằng mã thì riêng tư, chủ phòng bật công khai được).
+    const quick = quickPlayMode(options);
+    if (quick) applyBattleSettings(this.state, { mode: quick, public: true });
     this.setupMap((crypto.getRandomValues(new Uint32Array(1))[0]! % 0xfffffff) + 1);
     this.bots = new Bots(this);
     this.vehicles = new Vehicles(this);
@@ -643,6 +650,10 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       });
 
     this.clock.setInterval(() => this.tick(TICK_MS / 1000), TICK_MS);
+    // Danh sách "Phòng đang mở": metadata matchmaking (chế độ, bản đồ, số người, pha), chỉ ghi khi có đổi.
+    this.metadata = listingMeta(this.state);
+    const listing = new ListingSync(this);
+    this.clock.setInterval(() => listing.sync(), LISTING_SYNC_MS);
   }
 
   async onAuth(_client: Client, options: unknown): Promise<AuthData> {

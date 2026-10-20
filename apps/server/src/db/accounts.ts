@@ -5,15 +5,23 @@ import {
   EMPTY_LOADOUT,
   LOADOUT_SLOTS,
   SKIN,
+  COIN_RULES,
   canUseCard,
   canUseEmblem,
+  capDailyCoins,
+  checkCraft,
+  dayKey,
+  dupeShards,
   gachaCost,
   rankOf,
   rollSkins,
   skinFitsWeapon,
   type RollResult,
+  type StatTally,
   type WeaponLoadout,
 } from "@tentides/content";
+import type { RewardChallenge } from "@tentides/protocol";
+import { recordStatsTx } from "./challenges.ts";
 import { accountsEnabled, db, transaction } from "./pool.ts";
 import { SESSION_DAYS, burnPasswordCheck, hashPassword, hashSessionToken, newSessionToken, verifyPassword } from "./password.ts";
 
@@ -30,6 +38,8 @@ export interface Profile {
   skins: { skinId: string; count: number }[];
   equipped: Record<string, string>;
   pity: { sinceEpic: number; sinceLegendary: number };
+  /** Mảnh skin (quay trùng ra mảnh, đổi mảnh lấy skin). */
+  shards: number;
   /** Quân hàm: tổng XP, quân hàm 1–30, thẻ tên và huy hiệu đang lắp. */
   progress: Progress;
   /** Gunsmith: bộ phụ kiện ưa thích theo từng khẩu. */
@@ -122,8 +132,8 @@ export async function equippedSkins(userId: number): Promise<Record<string, stri
 
 export async function profile(userId: number): Promise<Profile> {
   const [u, skins, equipped, loadouts] = await Promise.all([
-    db().query<UserRow & ProgressRow & { pity_epic: number; pity_legendary: number }>(
-      "SELECT id, username, coins, pity_epic, pity_legendary, xp, calling_card, emblem FROM users WHERE id = $1",
+    db().query<UserRow & ProgressRow & { pity_epic: number; pity_legendary: number; shards: number }>(
+      "SELECT id, username, coins, pity_epic, pity_legendary, shards, xp, calling_card, emblem FROM users WHERE id = $1",
       [userId],
     ),
     db().query<{ skin_id: string; count: number }>("SELECT skin_id, count FROM user_skins WHERE user_id = $1 AND count > 0 ORDER BY obtained_at", [userId]),
@@ -137,6 +147,7 @@ export async function profile(userId: number): Promise<Profile> {
     skins: skins.rows.filter((r) => SKIN.has(r.skin_id)).map((r) => ({ skinId: r.skin_id, count: r.count })),
     equipped,
     pity: { sinceEpic: row.pity_epic, sinceLegendary: row.pity_legendary },
+    shards: row.shards,
     progress: toProgress(row),
     loadouts,
   };
@@ -234,9 +245,12 @@ export async function equipSkin(userId: number, weaponId: string, skinId: string
 // ---------------------------------------------------------------------------- gacha
 
 export interface RollOutcome {
-  results: (RollResult & { count: number; isNew: boolean })[];
+  /** `shards`: số mảnh lượt này ra (skin trùng), 0 nếu là skin mới. */
+  results: (RollResult & { count: number; isNew: boolean; shards: number })[];
   coins: number;
   pity: { sinceEpic: number; sinceLegendary: number };
+  /** Số mảnh sau lượt quay. */
+  shards: number;
 }
 
 /** Ngẫu nhiên dùng cho gacha thật: crypto, không đoán trước được. */
@@ -246,7 +260,10 @@ export async function rollGacha(userId: number, count: 1 | 10, rng: () => number
   const cost = gachaCost(count);
   return transaction(async (c) => {
     // Khoá dòng người dùng: hai lần bấm quay cùng lúc không trừ xu hay đếm bảo hiểm sai.
-    const { rows } = await c.query<{ coins: number; pity_epic: number; pity_legendary: number }>("SELECT coins, pity_epic, pity_legendary FROM users WHERE id = $1 FOR UPDATE", [userId]);
+    const { rows } = await c.query<{ coins: number; pity_epic: number; pity_legendary: number; shards: number }>(
+      "SELECT coins, pity_epic, pity_legendary, shards FROM users WHERE id = $1 FOR UPDATE",
+      [userId],
+    );
     const u = rows[0];
     if (!u) throw new AccountError("unauthorized", 401, "Phiên đăng nhập không còn hợp lệ.");
     if (u.coins < cost) throw new AccountError("not_enough_coins", 402, `Không đủ xu (cần ${cost}).`);
@@ -255,16 +272,42 @@ export async function rollGacha(userId: number, count: 1 | 10, rng: () => number
     await c.query("UPDATE users SET coins = $2, pity_epic = $3, pity_legendary = $4 WHERE id = $1", [userId, coins, rolled.pity.sinceEpic, rolled.pity.sinceLegendary]);
     const results: RollOutcome["results"] = [];
     const each = Math.round(cost / count);
+    let shards = u.shards;
     for (const r of rolled.results) {
       const up = await c.query<{ count: number }>(
         "INSERT INTO user_skins (user_id, skin_id, count) VALUES ($1, $2, 1) ON CONFLICT (user_id, skin_id) DO UPDATE SET count = user_skins.count + 1 RETURNING count",
         [userId, r.skinId],
       );
-      await c.query("INSERT INTO gacha_rolls (user_id, skin_id, rarity, cost) VALUES ($1, $2, $3, $4)", [userId, r.skinId, r.rarity, each]);
       const total = up.rows[0]!.count;
-      results.push({ ...r, count: total, isNew: total === 1 });
+      // Skin trùng: đổi ra mảnh theo độ hiếm (count vẫn tăng để biết đã trùng bao nhiêu lần).
+      const got = dupeShards(r.rarity, total);
+      shards += got;
+      await c.query("INSERT INTO gacha_rolls (user_id, skin_id, rarity, cost, shards) VALUES ($1, $2, $3, $4, $5)", [userId, r.skinId, r.rarity, each, got]);
+      results.push({ ...r, count: total, isNew: total === 1, shards: got });
     }
-    return { results, coins, pity: rolled.pity };
+    if (shards !== u.shards) await c.query("UPDATE users SET shards = $2 WHERE id = $1", [userId, shards]);
+    return { results, coins, pity: rolled.pity, shards };
+  });
+}
+
+/** Đổi mảnh lấy một skin chọn sẵn (chưa có trong kho). Trả về số mảnh còn lại. */
+export async function craftSkin(userId: number, skinId: string): Promise<{ skinId: string; shards: number }> {
+  return transaction(async (c) => {
+    // Khoá dòng người dùng: hai lần bấm đổi cùng lúc không trừ mảnh hai lần.
+    const { rows } = await c.query<{ shards: number }>("SELECT shards FROM users WHERE id = $1 FOR UPDATE", [userId]);
+    const u = rows[0];
+    if (!u) throw new AccountError("unauthorized", 401, "Phiên đăng nhập không còn hợp lệ.");
+    const owned = await c.query<{ count: number }>("SELECT count FROM user_skins WHERE user_id = $1 AND skin_id = $2", [userId, skinId]);
+    const check = checkCraft(skinId, owned.rows[0]?.count ?? 0, u.shards);
+    if (!check.ok) throw new AccountError(check.code, check.code === "not_enough_shards" ? 402 : check.code === "owned" ? 409 : 400, check.reason);
+    const shards = u.shards - check.cost;
+    await c.query("UPDATE users SET shards = $2 WHERE id = $1", [userId, shards]);
+    await c.query(
+      "INSERT INTO user_skins (user_id, skin_id, count) VALUES ($1, $2, 1) ON CONFLICT (user_id, skin_id) DO UPDATE SET count = user_skins.count + 1",
+      [userId, skinId],
+    );
+    await c.query("INSERT INTO skin_crafts (user_id, skin_id, shards) VALUES ($1, $2, $3)", [userId, skinId, check.cost]);
+    return { skinId, shards };
   });
 }
 
@@ -274,26 +317,55 @@ export interface MatchReward {
   userId: number;
   kills: number;
   placement: number;
+  /** Xu trận (đã nhân hệ số phòng một người), chưa áp giới hạn ngày. */
   coins: number;
   /** XP kiếm được trong trận (hạ gục, chiếm cứ điểm...). */
   xp?: number;
+  /** Số liệu trận cho thử thách ngày / tuần. */
+  stats?: StatTally;
 }
 
-/** Cộng xu, XP và ghi kết quả trận. Không có database thì bỏ qua. */
-export async function recordMatch(mode: string, rewards: readonly MatchReward[]): Promise<void> {
-  if (!accountsEnabled() || rewards.length === 0) return;
-  await transaction(async (c) => {
-    for (const r of rewards) {
+/** Kết quả đã ghi của một người: xu trận thực nhận, có chạm giới hạn ngày không, thử thách vừa xong. */
+export interface RecordedReward {
+  userId: number;
+  coins: number;
+  /** Xu trận trước khi áp giới hạn ngày. */
+  earned: number;
+  capped: boolean;
+  /** Xu trận đã nhận hôm nay, sau trận này. */
+  today: number;
+  challenges: RewardChallenge[];
+}
+
+/**
+ * Cộng xu (áp giới hạn xu mỗi ngày), XP, ghi kết quả trận và tiến độ thử thách (thử thách xong tự nhận thưởng, không
+ * tính vào giới hạn). Không có database thì bỏ qua. Khoá dòng người dùng theo thứ tự id để hai phòng cùng ghi không
+ * kẹt lẫn nhau.
+ */
+export async function recordMatch(mode: string, rewards: readonly MatchReward[], now = Date.now()): Promise<RecordedReward[]> {
+  if (!accountsEnabled() || rewards.length === 0) return [];
+  const today = dayKey(now);
+  return transaction(async (c) => {
+    const out: RecordedReward[] = [];
+    for (const r of [...rewards].sort((a, b) => a.userId - b.userId)) {
+      const { rows } = await c.query<{ coin_day: string; coins_today: number }>("SELECT coin_day, coins_today FROM users WHERE id = $1 FOR UPDATE", [r.userId]);
+      const u = rows[0];
+      if (!u) continue;
+      const before = u.coin_day === today ? u.coins_today : 0;
+      const { granted, capped } = capDailyCoins(r.coins, before, COIN_RULES.dailyCap);
       const xp = Math.max(0, Math.floor(r.xp ?? 0));
-      await c.query("UPDATE users SET coins = coins + $2, xp = xp + $3 WHERE id = $1", [r.userId, r.coins, xp]);
+      await c.query("UPDATE users SET coins = coins + $2, xp = xp + $3, coin_day = $4, coins_today = $5 WHERE id = $1", [r.userId, granted, xp, today, before + granted]);
       await c.query("INSERT INTO match_results (user_id, mode, kills, placement, coins_earned, xp_earned) VALUES ($1, $2, $3, $4, $5, $6)", [
         r.userId,
         mode,
         r.kills,
         r.placement,
-        r.coins,
+        granted,
         xp,
       ]);
+      const challenges = r.stats ? await recordStatsTx(c, r.userId, r.stats, now) : [];
+      out.push({ userId: r.userId, coins: granted, earned: Math.max(0, Math.floor(r.coins)), capped, today: before + granted, challenges });
     }
+    return out;
   });
 }

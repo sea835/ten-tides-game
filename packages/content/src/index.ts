@@ -25,3 +25,5 @@ export * from "./tide.ts";
 export * from "./volcano.ts";
 export * from "./snap.ts";
 export * from "./streaks.ts";
+export * from "./economy.ts";
+export * from "./challenges.ts";

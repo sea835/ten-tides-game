@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RateLimiter } from "./rateLimit.ts";
-import { Credentials, EquipBody, LoginBody, RollBody } from "./schemas.ts";
+import { CraftBody, Credentials, EquipBody, LoginBody, QuickModeQuery, RollBody } from "./schemas.ts";
 
 describe("kiểm tra dữ liệu API", () => {
   it("tên đăng nhập 3–20 ký tự, chữ có dấu được, ký tự lạ thì không", () => {
@@ -26,6 +26,16 @@ describe("kiểm tra dữ liệu API", () => {
     expect(EquipBody.safeParse({ weaponId: "akm", skinId: "" }).success).toBe(true);
     expect(EquipBody.safeParse({ weaponId: "bazooka", skinId: "gold" }).success).toBe(false);
     expect(EquipBody.safeParse({ weaponId: "akm" }).success).toBe(false);
+  });
+});
+
+describe("đổi mảnh, chơi nhanh", () => {
+  it("đổi mảnh: skin phải có thật; chế độ chơi nhanh chỉ bốn chế độ", () => {
+    expect(CraftBody.safeParse({ skinId: "gold" }).success).toBe(true);
+    expect(CraftBody.safeParse({ skinId: "khong-co" }).success).toBe(false);
+    expect(CraftBody.safeParse({}).success).toBe(false);
+    for (const m of ["war", "naval", "squad", "solo"]) expect(QuickModeQuery.safeParse(m).success).toBe(true);
+    for (const m of ["story", "", null]) expect(QuickModeQuery.safeParse(m).success).toBe(false);
   });
 });
 

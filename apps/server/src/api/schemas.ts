@@ -1,4 +1,5 @@
-import { GUNSMITH_WEAPON_IDS, SKIN_WEAPON_IDS } from "@tentides/content";
+import { GUNSMITH_WEAPON_IDS, SKIN, SKIN_WEAPON_IDS } from "@tentides/content";
+import { QUICK_MODES } from "@tentides/protocol";
 import { z } from "zod";
 
 // Kiểm tra mọi dữ liệu client gửi lên API tài khoản.
@@ -40,3 +41,9 @@ export const LoadoutBody = z.object({
   loadout: z.object({ muzzle: ShortId, grip: ShortId, mag: ShortId, stock: ShortId, sight: ShortId }).partial().strict(),
   skinId: ShortId.optional(),
 });
+
+/** Đổi mảnh lấy một skin (có đủ mảnh, chưa có skin hay không thì database kiểm tra). */
+export const CraftBody = z.object({ skinId: z.string().max(64).refine((id) => SKIN.has(id), "Không có skin này.") });
+
+/** Chế độ Chơi nhanh, danh sách phòng lọc theo chế độ (?mode=...). */
+export const QuickModeQuery = z.enum(QUICK_MODES, { error: "Chế độ không hợp lệ." });
