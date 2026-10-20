@@ -28,7 +28,7 @@ import { getPrivate } from "./privateStore.ts";
 import { debugCam, knock, localAim, localEnv, localMotion, localPosition, shake } from "./shared.ts";
 import { climbTop, climbTrees, trunkAt, type ClimbTree } from "./Trees.tsx";
 import { isBusy, useRoomSnapshot } from "./useRoomSnapshot.ts";
-import { ADRENALINE, DIVE, JUGGERNAUT, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
+import { ADRENALINE, DIVE, DOWNED, JUGGERNAUT, LEAN, PRONE_SPEED, PRONE_TIME, WEAPON, gadgetIn } from "@tentides/content";
 import { groundProbe } from "./character/motionFx.ts";
 import { bodies, getBattleHud, localAvatar, localBody, recoil, seat, setBattleHud, stance } from "./battle/runtime.ts";
 import { muzzleOffset } from "./GunModel.tsx";
@@ -347,6 +347,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
       // Battleground: F là nhặt đồ gần nhất (đứng cạnh xe tăng thì lên xe, đang lái thì xuống xe); Q/E để nghiêng người.
       if (room.state.mode === "battle") {
         if (e.code !== "KeyF") return;
+        // Đứng cạnh đồng đội nằm gục: F là giữ để cứu (DownedHud lo).
+        if (getBattleHud().nearDowned) return;
         // Hải chiến: F là vào / rời vị trí trên tàu, dập lửa, leo lên tàu (NavalControl lo).
         if (room.state.battleMode === "naval") return;
         const near = getBattleHud().nearItem;
@@ -503,6 +505,8 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const battle = room.state.mode === "battle";
     // Battleground: gục rồi thì đứng im (camera đi theo người khác).
     const dead = battle && !!sheet && !sheet.alive;
+    // Trọng thương (chờ đồng đội cứu): nằm sấp, chỉ bò chậm, không đứng dậy, nhảy, chạy (server cũng chặn).
+    const downed = battle && !dead && (sheet?.downed ?? 0) > 0;
     const frozen = room.state.paused || isBusy(room.state, myId(room)) || stunned || dead;
     const dizzy = sheet?.dizzy ?? 0;
     s.clock += dt;
@@ -530,9 +534,10 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     };
     // Đang chạy nước rút bấm Z: lao người tới trước rồi nằm sấp (dolphin dive), không thì nằm xuống / đứng dậy như cũ.
     const diveReady = !s.prone && (keys.has("ShiftLeft") || keys.has("ShiftRight")) && !stance.aiming && !stance.holdFire && !s.crouching && Math.hypot(s.vx, s.vz) > BATTLE_WALK + 0.5;
+    if (downed && !s.prone) setProne(true);
     if (s.pronePressed) {
       s.pronePressed = false;
-      if (battle && !frozen && !s.swimming && !s.climb && !s.slide && !s.vault && !s.dive && s.grounded) {
+      if (battle && !downed && !frozen && !s.swimming && !s.climb && !s.slide && !s.vault && !s.dive && s.grounded) {
         if (diveReady) {
           setProne(true);
           // Hạ súng suốt cú lao (dài hơn nằm xuống thường).
@@ -550,7 +555,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     if (s.prone && (!battle || s.swimming || s.climb || dead)) s.prone = false;
     if (!s.prone) s.dive = null;
     if (s.diveHold && !(keys.has("ShiftLeft") || keys.has("ShiftRight"))) s.diveHold = false;
-    if (s.prone && !s.dive && !frozen && keys.has("Space")) {
+    if (s.prone && !s.dive && !frozen && !downed && keys.has("Space")) {
       setProne(false);
       s.jumpPressAt = -1;
     }
@@ -577,7 +582,7 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const shift = keys.has("ShiftLeft") || keys.has("ShiftRight");
     // Battleground: chạy thì đứng dậy; đang ngắm thì không chạy được; chạy không tốn sức bền.
     if (battle && shift && s.crouching && (forward !== 0 || strafe !== 0)) s.crouching = false;
-    if (battle && shift && s.prone && !s.dive && !s.diveHold && (forward !== 0 || strafe !== 0)) setProne(false);
+    if (battle && !downed && shift && s.prone && !s.dive && !s.diveHold && (forward !== 0 || strafe !== 0)) setProne(false);
     const wantsRun = shift && (forward !== 0 || strafe !== 0) && !frozen && !s.prone && !(battle && (stance.aiming || stance.holdFire || s.crouching));
     const running = wantsRun && (battle || (!s.exhausted && s.energy > 0));
     // Vừa chạy vừa bắn: giữ Shift và bóp cò thì không chạy nước rút (không bắn được) mà chạy bắn,
@@ -599,7 +604,9 @@ export function LocalPlayer({ room, world }: { room: IslandRoom; world: World })
     const proneMoving = performance.now() - stance.swapAt < PRONE_TIME * 1000 && stance.swapDur === PRONE_TIME;
     const landSpeed = battle
       ? s.prone
-        ? PRONE_SPEED * (stance.aiming ? 0.6 : 1) * (proneMoving ? 0.2 : 1)
+        ? downed
+          ? DOWNED.crawl
+          : PRONE_SPEED * (stance.aiming ? 0.6 : 1) * (proneMoving ? 0.2 : 1)
         : (running ? BATTLE_RUN : runAndGun ? BATTLE_RUN_GUN : s.crouching ? BATTLE_CROUCH : BATTLE_WALK) * (gun?.speed ?? 1) * (stance.aiming ? 0.68 : 1)
       : running
         ? MAX_RUN_SPEED

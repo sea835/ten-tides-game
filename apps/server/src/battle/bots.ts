@@ -552,6 +552,11 @@ export class Bots {
         b = this.fresh(p.x, p.z, 0);
         this.brains.set(id, b);
       }
+      // Nằm gục chờ đồng đội cứu: không làm gì (downed.ts).
+      if (p.downed > 0) {
+        p.moving = false;
+        continue;
+      }
       const tank = p.vehicle ? s.vehicles.get(p.vehicle) : undefined;
       if (tank && tank.hp > 0) {
         // Máy lái xe tăng, trực thăng (ghế lái); ngồi xe khác (xe trinh sát, thuyền) thì ngồi yên theo xe.
@@ -586,7 +591,7 @@ export class Bots {
       const v = o.vehicle ? s.vehicles.get(o.vehicle) : undefined;
       return !!v && v.kind === "heli" && (v.y - this.height(v.x, v.z) > 6 || this.heliShielded(v, o.vehicle));
     };
-    const usable = (o: PlayerState) => o.alive && this.hostile(p, o) && ((tanks && !airborne(o)) || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
+    const usable = (o: PlayerState) => o.alive && o.downed <= 0 && this.hostile(p, o) && ((tanks && !airborne(o)) || !o.vehicle || this.room.vehicles.emplacements.exposed(o));
     const cur = b.target ? s.players.get(b.target) : undefined;
     b.sees = !!cur && usable(cur) && canSee(cur, range * 1.3);
     if (!b.sees) {
@@ -913,6 +918,8 @@ export class Bots {
     const order = p.team ? this.orders.get(p.team) : undefined;
     const board = this.boardStep(id, p);
     const battle = s.phase === "battle";
+    // Không thấy địch mà đồng đội gần đó nằm gục: chạy tới cứu (downed.ts).
+    const rescue = !board && b.retreat <= 0 && !b.sees && battle ? room.downed.botRescue(id, p) : null;
     if (board) {
       // Lệnh lên xe: chạy tới xe (theo đường đi được), không dừng lại đấu súng.
       if (p.vehicle) return;
@@ -926,6 +933,13 @@ export class Bots {
       goal = { x: b.rx, z: b.rz };
       speed = 7.2;
       p.aiming = p.prone = p.crouching = false;
+    } else if (rescue) {
+      p.aiming = p.prone = false;
+      p.crouching = rescue.near;
+      if (!rescue.near) {
+        goal = rescue;
+        speed = 7;
+      } else faceMove = false;
     } else if (target && target.alive && battle && !b.sees) {
       // Mất dấu: tuỳ vai. Súng máy xả áp chế vào chỗ địch vừa nấp; tay súng ném lựu đạn vào chỗ đó; bắn tỉa nằm yên
       // rình tiếp; còn lại đi dò tới chỗ thấy lần cuối (máy theo đội không đi quá xa đội hình), súng chĩa về đó.

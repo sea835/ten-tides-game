@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { mapForState, warSquadLeader } from "@tentides/content";
+import { mapForState, warRoleOf, warRoles, warSquadLeader } from "@tentides/content";
 import { CLASSES, isSoldierClass } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
@@ -13,6 +13,13 @@ import { setBattleHud } from "./runtime.ts";
 // Kích / Bắn Tỉa / Quân Nhu / Kỹ Thuật hay lái tăng, chọn căn cứ, cứ điểm phe mình giữ hay cạnh đội trưởng tổ mình).
 
 export const SIDE_NAME: Record<string, string> = { blue: "Phe Xanh", red: "Phe Đỏ" };
+/** Vai của phe trên bản đồ trận đánh lịch sử (bản đồ đối xứng không có vai). */
+export const ROLE_NAME: Record<string, string> = { attack: "Tấn công", defend: "Phòng thủ" };
+
+/** Đồng hồ trận: mm:ss. */
+function clockText(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
 /** Bốn lớp lính (CLASSES) theo vai trò server dùng khi hồi sinh, cộng lái tăng (mang khí tài Kỹ Thuật). */
 const ROLE_LIST = [
   { id: "rifle", cls: "assault", name: CLASSES.assault.name, icon: CLASSES.assault.icon, info: CLASSES.assault.info },
@@ -29,33 +36,65 @@ export function WarTop({ room }: { room: IslandRoom }) {
     blue: st.ticketsBlue,
     red: st.ticketsRed,
     side: st.players.get(myId(room))?.team ?? "",
+    left: st.phase === "battle" ? st.timeLeft : 0,
+    map: st.settings.warMap,
+    start: st.settings.warTickets,
     flags: [...st.flags.entries()].map(([id, f]) => ({ id, owner: f.owner, p: Math.round(f.progress * 20) / 20 })).sort((a, b) => a.id.localeCompare(b.id)),
   }));
-  const max = Math.max(300, s.blue, s.red);
+  const max = Math.max(s.start, s.blue, s.red);
+  const role = warRoleOf(s.map, s.side);
   return (
     <div className="w-top">
       <div className={`w-tickets blue ${s.side === "blue" ? "mine" : ""}`}>
         <span>{SIDE_NAME.blue}</span>
+        {s.side === "blue" && role && <em className={`w-role ${role}`}>{ROLE_NAME[role]}</em>}
         <i>
           <u style={{ width: `${(s.blue / max) * 100}%` }} />
         </i>
         <b>{s.blue}</b>
       </div>
-      <div className="w-flags">
-        {s.flags.map((f) => (
-          <span key={f.id} className={`w-flag ${f.owner || "neutral"} ${f.owner && f.owner === s.side ? "ours" : ""}`} title={`Cứ điểm ${f.id}`}>
-            {f.id}
-            {!f.owner && f.p !== 0 && <em style={{ width: `${Math.abs(f.p) * 100}%`, background: f.p > 0 ? "#2f6bff" : "#e0332b" }} />}
-          </span>
-        ))}
+      <div className="w-mid">
+        {s.left > 0 && (
+          <div className={`w-clock ${s.left <= 60 ? "urgent" : ""}`} title="Hết giờ thì phe còn nhiều vé hơn thắng">
+            {clockText(s.left)}
+          </div>
+        )}
+        <div className="w-flags">
+          {s.flags.map((f) => (
+            <span key={f.id} className={`w-flag ${f.owner || "neutral"} ${f.owner && f.owner === s.side ? "ours" : ""}`} title={`Cứ điểm ${f.id}`}>
+              {f.id}
+              {!f.owner && f.p !== 0 && <em style={{ width: `${Math.abs(f.p) * 100}%`, background: f.p > 0 ? "#2f6bff" : "#e0332b" }} />}
+            </span>
+          ))}
+        </div>
       </div>
       <div className={`w-tickets red ${s.side === "red" ? "mine" : ""}`}>
         <b>{s.red}</b>
         <i>
           <u style={{ width: `${(s.red / max) * 100}%` }} />
         </i>
+        {s.side === "red" && role && <em className={`w-role ${role}`}>{ROLE_NAME[role]}</em>}
         <span>{SIDE_NAME.red}</span>
       </div>
+    </div>
+  );
+}
+
+/** Đầu trận (chuẩn bị, vài giây đầu): phe mình tấn công hay phòng thủ, giữ / cần chiếm những cứ điểm nào. */
+export function WarBriefing({ room }: { room: IslandRoom }) {
+  const s = useRoomSnapshot(room, (st) => ({ phase: st.phase, map: st.settings.warMap, side: st.players.get(myId(room))?.team ?? "", left: st.timeLeft, total: st.phaseDuration }));
+  const roles = warRoles(s.map);
+  const role = warRoleOf(s.map, s.side);
+  // Chuẩn bị, và ~15 giây đầu của trận (đồng hồ trận đếm ngược từ phaseDuration).
+  const early = s.phase === "prep" || (s.phase === "battle" && s.total - s.left < 15);
+  if (!roles || !role || !early) return null;
+  const held = roles.held.join(", ");
+  return (
+    <div className={`w-brief ${role}`}>
+      <b>
+        {SIDE_NAME[s.side]} · {ROLE_NAME[role]}
+      </b>
+      <span>{role === "attack" ? `Chiếm các cứ điểm địch đã giữ sẵn (${held}); phe thủ được lợi thế nhưng ít vé hơn` : `Giữ các cứ điểm ${held}; bạn ít vé hơn nên đừng để mất`}</span>
     </div>
   );
 }

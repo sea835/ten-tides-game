@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Bot,
+  Clock,
   CloudFog,
   CloudLightning,
   Copy,
@@ -22,7 +23,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { BOT_DIFFICULTIES, DIFFICULTY_BRIEF, DIFFICULTY_LABEL, SHIP_CLASSES, WAR_MAP_LIST, isBotDifficulty, shipClass } from "@tentides/content";
-import { BATTLE_TIMES, MAX_BATTLE_BOTS, MIN_BATTLE_BOTS, Messages, WAR_MAX_PER_SIDE, WAR_TICKETS_MAX, WAR_TICKETS_MIN, type BattleSettingsMessage } from "@tentides/protocol";
+import { BATTLE_TIMES, MAX_BATTLE_BOTS, MIN_BATTLE_BOTS, Messages, WAR_MAX_PER_SIDE, WAR_MINUTES, WAR_TICKETS_MAX, WAR_TICKETS_MIN, type BattleSettingsMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { openGunsmith } from "../../gunsmith/openGunsmith.ts";
@@ -232,6 +233,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
     weather: st.settings.weatherPick,
     time: st.settings.timePick,
     tickets: st.settings.warTickets,
+    minutes: st.settings.warMinutes,
     vehicles: st.settings.vehiclesEnabled,
     warMap: st.settings.warMap,
     shipBlue: st.settings.shipBlue,
@@ -423,6 +425,22 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
                 onChange={(v) => send({ tickets: v })}
               />
             )}
+            {war && (
+              <div className="cc-field">
+                <span className="cc-field-head">
+                  <Clock size={16} aria-hidden />
+                  <span>Giới hạn thời gian</span>
+                </span>
+                <div className="cc-sky" role="radiogroup" aria-label="Giới hạn thời gian trận">
+                  {WAR_MINUTES.map((m) => (
+                    <button key={m} role="radio" aria-checked={s.minutes === m} className={s.minutes === m ? "on" : ""} disabled={!isHost} onClick={() => send({ minutes: m })}>
+                      <span>{m} phút</span>
+                    </button>
+                  ))}
+                </div>
+                <small className="cc-note">Hết giờ thì phe còn nhiều vé hơn thắng.</small>
+              </div>
+            )}
             <div className="cc-field">
               <span className="cc-field-head">
                 <Sun size={16} aria-hidden />
@@ -469,7 +487,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
           {isHost ? (
             <button className="cc-start" data-ui="clack" onClick={() => room.send(Messages.start)}>
               <Crosshair size={20} aria-hidden /> Xuất kích
-              <small>{naval ? `${shipClass(s.shipBlue).name} vs ${shipClass(s.shipRed).name}` : war ? `${perSide} vs ${perSide} · ${s.tickets} vé` : `${s.players.length + troops} người`}</small>
+              <small>{naval ? `${shipClass(s.shipBlue).name} vs ${shipClass(s.shipRed).name}` : war ? `${perSide} vs ${perSide} · ${s.tickets} vé · ${s.minutes} phút` : `${s.players.length + troops} người`}</small>
             </button>
           ) : (
             <p className="cc-wait">

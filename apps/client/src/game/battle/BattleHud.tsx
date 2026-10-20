@@ -42,7 +42,8 @@ import { ItemIcon } from "./ItemIcons.tsx";
 import { SquadHud, TankHud, TankPrompt, lastOrder, teamName } from "./SquadHud.tsx";
 import { teamColor } from "./Vehicles.tsx";
 import { NavalHud } from "../naval/NavalHud.tsx";
-import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
+import { CaptureBar, Deploy, SIDE_NAME, WarBriefing, WarTop, useFlagToasts } from "./WarHud.tsx";
+import { DownedHud } from "./DownedHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
 import { Suppression } from "./Suppression.tsx";
 import { SpeakingMark, VoiceChat, VoiceSettingsSection } from "../voice/VoiceChat.tsx";
@@ -913,7 +914,7 @@ function DeathAndWin({ room, onLeave, summary }: { room: IslandRoom; onLeave: ()
           <>
             <Trophy size={48} />
             <h1>WINNER WINNER!</h1>
-            <p>{s.naval ? `${SIDE_NAME[s.team]} thắng: tàu địch bị đánh chìm (hay hết giờ, tàu địch hư hại nặng hơn)` : s.war ? `${SIDE_NAME[s.team]} thắng: phe địch hết vé quân` : s.squad ? "Đội bạn là đội cuối cùng còn trụ lại" : "Bạn là người cuối cùng còn sống"} · {s.kills} hạ gục</p>
+            <p>{s.naval ? `${SIDE_NAME[s.team]} thắng: tàu địch bị đánh chìm (hay hết giờ, tàu địch hư hại nặng hơn)` : s.war ? `${SIDE_NAME[s.team]} thắng: phe địch hết vé quân (hay hết giờ mà mình còn nhiều vé hơn)` : s.squad ? "Đội bạn là đội cuối cùng còn trụ lại" : "Bạn là người cuối cùng còn sống"} · {s.kills} hạ gục</p>
           </>
         ) : (
           <>
@@ -1148,6 +1149,8 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       {fighting && (war ? <WarTop room={room} /> : naval ? null : <TopBar room={room} />)}
       {naval && <NavalHud room={room} />}
       {fighting && war && <CaptureBar room={room} />}
+      {fighting && war && <WarBriefing room={room} />}
+      {fighting && <DownedHud room={room} />}
       {fighting && war && <Deploy room={room} />}
       <div className="b-right">
         <BattleMinimap room={room} />

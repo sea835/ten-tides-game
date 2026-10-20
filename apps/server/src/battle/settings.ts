@@ -2,6 +2,8 @@ import {
   MAX_BATTLE_BOTS,
   MIN_BATTLE_BOTS,
   WAR_MAX_PER_SIDE,
+  WAR_MINUTES,
+  WAR_MINUTES_DEFAULT,
   WAR_TICKETS_DEFAULT,
   WAR_TICKETS_MAX,
   WAR_TICKETS_MIN,
@@ -30,6 +32,12 @@ export function clampBots(mode: string, n: number): number {
 export function clampTickets(n: number): number {
   if (!Number.isFinite(n)) return WAR_TICKETS_DEFAULT;
   return Math.max(WAR_TICKETS_MIN, Math.min(WAR_TICKETS_MAX, Math.round(n)));
+}
+
+/** Giới hạn thời gian chiến trường: mức gần nhất trong WAR_MINUTES (15, 20, 30 phút). */
+export function clampMinutes(n: number): number {
+  if (!Number.isFinite(n)) return WAR_MINUTES_DEFAULT;
+  return WAR_MINUTES.reduce((best, m) => (Math.abs(m - n) < Math.abs(best - n) ? m : best), WAR_MINUTES_DEFAULT);
 }
 
 /** Số máy mặc định của sinh tồn / đồng đội (phòng mới tạo, hay vừa rời chiến trường). */
@@ -66,5 +74,6 @@ export function applyBattleSettings(state: IslandState, s: BattleSettingsMessage
   if (s.map !== undefined) state.settings.warMap = warMapId(s.map);
   if (s.difficulty !== undefined) state.settings.botDifficulty = s.difficulty;
   if (s.public !== undefined) state.settings.publicRoom = s.public;
+  if (s.minutes !== undefined) state.settings.warMinutes = clampMinutes(s.minutes);
   return changed;
 }

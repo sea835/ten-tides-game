@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { WATER_LEVEL, floorBelow, insideBox, warSquadLeader } from "@tentides/content";
+import { WAR_MAP_LIST, WATER_LEVEL, floorBelow, insideBox, warRoleOf, warRoles, warSquadLeader } from "@tentides/content";
 import { PlayerState } from "@tentides/protocol";
 import { BattleRoom } from "./BattleRoom.ts";
 import { Bots } from "./bots.ts";
 import { Vehicles } from "./vehicles.ts";
-import { WAR_TICKETS, War, bleedOf } from "./war.ts";
+import { WAR_TICKETS, War, bleedOf, timeWinner } from "./war.ts";
 
-function makeWar(humans = 1, perSide = 50) {
+function makeWar(humans = 1, perSide = 50, map = "frontier") {
   const room = new BattleRoom();
   room.broadcast = (() => {}) as typeof room.broadcast;
   room.state.battleMode = "war";
+  room.state.settings.warMap = map;
   room.bots = new Bots(room);
   room.vehicles = new Vehicles(room);
   room.war = new War(room);
@@ -49,12 +50,19 @@ describe("chiến trường 50 vs 50", () => {
     for (const p of room.state.players.values()) expect(Math.hypot(p.x - z.x, p.z - z.z)).toBeLessThan(z.r);
   });
 
-  it("trừ vé: phe giữ quá 4/7 cứ điểm làm đối phương mất 1 vé mỗi nhịp 3 giây", () => {
+  it("trừ vé theo cứ điểm: hơn một cứ điểm đã rỉ vé, hơn càng nhiều mất càng nhanh", () => {
     const flags = (b: number, r: number) => Array.from({ length: 7 }, (_, i) => ({ owner: i < b ? "blue" : i < b + r ? "red" : "" }));
-    expect(bleedOf(flags(4, 3))).toEqual({ blue: 0, red: 0 });
-    expect(bleedOf(flags(5, 2))).toEqual({ blue: 0, red: 1 });
-    expect(bleedOf(flags(1, 6))).toEqual({ blue: 1, red: 0 });
-    expect(bleedOf(flags(4, 0))).toEqual({ blue: 0, red: 0 });
+    expect(bleedOf(flags(3, 3))).toEqual({ blue: 0, red: 0 });
+    expect(bleedOf(flags(0, 0))).toEqual({ blue: 0, red: 0 });
+    const lead1 = bleedOf(flags(4, 3)).red;
+    const lead3 = bleedOf(flags(5, 2)).red;
+    const lead5 = bleedOf(flags(6, 1)).red;
+    expect(bleedOf(flags(4, 3)).blue).toBe(0);
+    expect(lead1).toBeGreaterThan(0);
+    expect(lead3).toBeGreaterThan(lead1 * 2);
+    expect(bleedOf(flags(6, 0)).red).toBeGreaterThan(lead5);
+    expect(bleedOf(flags(1, 6)).blue).toBe(lead5);
+    expect(bleedOf(flags(1, 6)).red).toBe(0);
     const room = makeWar(1);
     const ids = [...room.state.flags.keys()];
     // Mọi người tạm gục (chưa tới lượt hồi sinh): không ai chiếm, không ai bắn, chỉ còn trừ vé theo cứ điểm.
@@ -62,16 +70,99 @@ describe("chiến trường 50 vs 50", () => {
       p.alive = false;
       p.respawn = 1e6;
     }
-    ids.forEach((id, i) => {
-      const f = room.state.flags.get(id)!;
-      f.owner = i < 5 ? "blue" : "red";
-      f.progress = i < 5 ? 1 : -1;
-    });
-    const red = room.state.ticketsRed;
-    const blue = room.state.ticketsBlue;
-    for (let k = 0; k < 70; k++) room.war.tick(0.05);
-    expect(room.state.ticketsRed).toBe(red - 1);
-    expect(room.state.ticketsBlue).toBe(blue);
+    const drained = (blue: number, seconds: number) => {
+      ids.forEach((id, i) => {
+        const f = room.state.flags.get(id)!;
+        f.owner = i < blue ? "blue" : "red";
+        f.progress = i < blue ? 1 : -1;
+      });
+      room.state.ticketsBlue = room.state.ticketsRed = 300;
+      for (let k = 0; k < seconds * 20; k++) room.war.tick(0.05);
+      return { red: 300 - room.state.ticketsRed, blue: 300 - room.state.ticketsBlue };
+    };
+    // 4–3: rỉ chậm (khoảng 2 vé mỗi phút), bên thua mới mất.
+    expect(drained(4, 60)).toEqual({ red: 2, blue: 0 });
+    // 6–1: nhanh hơn hẳn.
+    const fast = drained(6, 60);
+    expect(fast.blue).toBe(0);
+    expect(fast.red).toBeGreaterThanOrEqual(15);
+    expect(fast.red).toBeGreaterThan(lead1 * 5);
+  });
+
+  it("hết giờ: phe nhiều vé hơn thắng; bằng vé thì phe giữ nhiều cứ điểm hơn", () => {
+    expect(timeWinner(100, 80, [])).toBe("blue");
+    expect(timeWinner(80, 100, [{ owner: "blue", progress: 1 }])).toBe("red");
+    expect(timeWinner(90, 90, [{ owner: "red", progress: -1 }, { owner: "red", progress: -1 }, { owner: "blue", progress: 1 }])).toBe("red");
+    expect(timeWinner(90, 90, [{ owner: "", progress: 0.4 }])).toBe("blue");
+    expect(timeWinner(90, 90, [{ owner: "", progress: -0.4 }])).toBe("red");
+    // Bản đồ bất đối xứng, hoà hoàn toàn: phe phòng thủ (phe Đỏ ở Omaha) thắng.
+    expect(timeWinner(90, 90, [], "normandy")).toBe("red");
+
+    const room = makeWar(1);
+    expect(room.state.settings.warMinutes).toBe(20);
+    for (const p of room.state.players.values()) {
+      p.alive = false;
+      p.respawn = 1e6;
+    }
+    for (let k = 0; k < 20 * 10; k++) room.war.tick(0.05);
+    expect(room.state.phaseDuration).toBe(20 * 60);
+    expect(room.state.phase).toBe("battle");
+    expect(room.state.timeLeft).toBe(20 * 60 - 10);
+    // Còn 1 giây: phe Đỏ nhiều vé hơn thì thắng khi hết giờ.
+    (room.war as unknown as { clock: number }).clock = 20 * 60 - 1;
+    room.state.ticketsBlue = 120;
+    room.state.ticketsRed = 200;
+    for (let k = 0; k < 21; k++) room.war.tick(0.05);
+    expect(room.state.phase).toBe("ended");
+    expect(room.state.winner).toBe("red");
+  });
+
+  it("giới hạn thời gian theo cài đặt phòng", () => {
+    const room = new BattleRoom();
+    room.broadcast = (() => {}) as typeof room.broadcast;
+    room.state.battleMode = "war";
+    room.state.settings.warMinutes = 15;
+    room.bots = new Bots(room);
+    room.vehicles = new Vehicles(room);
+    room.war = new War(room);
+    (room as unknown as { setupMap: (seed: number) => void }).setupMap(99);
+    const p = new PlayerState();
+    p.created = true;
+    room.state.players.set("human0", p);
+    room.state.bots = 5;
+    (room as unknown as { startMatch: () => void }).startMatch();
+    (room as unknown as { beginBattle: () => void }).beginBattle();
+    for (let k = 0; k < 20; k++) room.war.tick(0.05);
+    expect(room.state.phaseDuration).toBe(15 * 60);
+    expect(room.state.timeLeft).toBe(15 * 60 - 1);
+  });
+
+  it("bản đồ bất đối xứng: phe phòng thủ giữ sẵn cứ điểm phía mình và ít vé hơn; bản đồ đối xứng không đổi", () => {
+    const sym = makeWar(1, 50, "frontier");
+    expect([...sym.state.flags.values()].every((f) => f.owner === "")).toBe(true);
+    expect(sym.state.ticketsBlue).toBe(300);
+    expect(sym.state.ticketsRed).toBe(300);
+    const omaha = makeWar(1, 50, "normandy");
+    const owners = Object.fromEntries([...omaha.state.flags.entries()].map(([id, f]) => [id, f.owner]));
+    expect(owners).toEqual({ A: "", B: "", C: "", D: "", E: "red", F: "red", G: "red" });
+    expect([...omaha.state.flags.values()].filter((f) => f.owner === "red").every((f) => f.progress === -1)).toBe(true);
+    // Phe Xanh tấn công đủ vé, phe Đỏ phòng thủ 80%.
+    expect(omaha.state.ticketsBlue).toBe(300);
+    expect(omaha.state.ticketsRed).toBe(240);
+    expect(warRoleOf("normandy", "blue")).toBe("attack");
+    expect(warRoleOf("normandy", "red")).toBe("defend");
+    expect(warRoleOf("frontier", "red")).toBe("");
+    // Mọi cứ điểm giữ sẵn nằm đúng phía phe phòng thủ (gần căn cứ phe đó hơn căn cứ phe kia).
+    const base = (side: "blue" | "red") => omaha.war.base(side);
+    for (const f of omaha.state.flags.values()) {
+      if (f.owner !== "red") continue;
+      expect(Math.hypot(f.x - base("red").x, f.z - base("red").z)).toBeLessThan(Math.hypot(f.x - base("blue").x, f.z - base("blue").z));
+    }
+    for (const id of WAR_MAP_LIST.filter((m) => m.roles).map((m) => m.id)) {
+      const r = warRoles(id)!;
+      expect(r.held.length).toBeGreaterThanOrEqual(2);
+      expect(r.held.length).toBeLessThanOrEqual(4);
+    }
   });
 
   it("chỗ hồi sinh (căn cứ, cứ điểm, cạnh đội trưởng) không kẹt trong khối, không dưới nước", () => {
@@ -119,14 +210,13 @@ describe("chiến trường 50 vs 50", () => {
   it("máy tự chiếm cứ điểm, gục thì hồi sinh, trận kết thúc khi một phe hết vé; mỗi nhịp đủ nhanh", () => {
     const room = makeWar(1);
     const r = room as unknown as { tick: (dt: number) => void };
-    // Vé ít hơn mặc định (300) cho trận thử ngắn lại và chắc chắn kết thúc (hai phe máy ngang sức, trừ vé chỉ khi
-    // một phe giữ hơn 4/7 cứ điểm): chỉ cần kiểm tra trận kết thúc khi một phe hết vé.
-    room.state.ticketsBlue = room.state.ticketsRed = 60;
+    // Vé mặc định (300), giới hạn 20 phút: hai phe máy ngang sức, trừ vé theo cứ điểm khiến trận kết thúc trong
+    // khoảng 15–20 phút (hết vé, hay hết giờ thì phe nhiều vé hơn thắng).
     let worst = 0;
     const t0 = performance.now();
     let ticks = 0;
     let captured = 0;
-    for (; ticks < 20 * 60 * 30 && room.state.phase === "battle"; ticks++) {
+    for (; ticks < 20 * 60 * 25 && room.state.phase === "battle"; ticks++) {
       const a = performance.now();
       r.tick(0.05);
       worst = Math.max(worst, performance.now() - a);
@@ -136,6 +226,9 @@ describe("chiến trường 50 vs 50", () => {
     console.log(`chiến trường: ${(ticks / 20 / 60).toFixed(1)} phút, nhịp ${avg.toFixed(2)} ms (chậm nhất ${worst.toFixed(1)}), cứ điểm có chủ tối đa ${captured}, vé ${room.state.ticketsBlue}/${room.state.ticketsRed}, thắng ${room.state.winner}`);
     expect(captured).toBeGreaterThan(2);
     expect(room.state.phase).toBe("ended");
+    expect(["blue", "red"]).toContain(room.state.winner);
+    expect(ticks / 20 / 60).toBeGreaterThan(8);
+    expect(ticks / 20 / 60).toBeLessThanOrEqual(20.1);
     expect(avg).toBeLessThan(25);
   }, 300000);
 });

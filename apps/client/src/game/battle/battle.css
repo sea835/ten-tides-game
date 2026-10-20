@@ -2360,3 +2360,144 @@
   font-size: 12.5px;
   font-weight: 700;
 }
+
+/* Trọng thương: viền đỏ cho người nằm gục, thanh chảy máu, thanh được cứu; lời nhắc cứu đồng đội. */
+.b-downed {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  place-items: end center;
+  padding-bottom: 14vh;
+  background: radial-gradient(ellipse at center, rgba(120, 0, 0, 0) 40%, rgba(150, 10, 10, 0.55) 100%);
+  animation: b-downed-pulse 1.4s ease-in-out infinite;
+}
+@keyframes b-downed-pulse {
+  50% {
+    box-shadow: inset 0 0 120px rgba(200, 20, 20, 0.45);
+  }
+}
+.b-downed-card {
+  width: min(360px, 86vw);
+  padding: 10px 16px 12px;
+  border-radius: 12px;
+  background: rgba(10, 6, 6, 0.62);
+  text-align: center;
+}
+.b-downed-card h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  color: #ff6a5a;
+}
+.b-downed-time {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.b-downed-time.saved {
+  color: #7dff9b;
+}
+.b-downed-bar {
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.b-downed-bar u {
+  display: block;
+  height: 100%;
+  background: #ff4b3a;
+  transition: width 0.1s linear;
+}
+.b-downed-bar.rev u {
+  background: #4cd96b;
+}
+.b-downed-bar.give u {
+  background: #ffd23a;
+}
+.b-revive-prompt {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translateX(-50%);
+  min-width: 190px;
+  padding: 7px 14px 9px;
+  border-radius: 10px;
+  background: rgba(8, 14, 20, 0.66);
+  text-align: center;
+  font-size: 13.5px;
+  pointer-events: none;
+}
+.b-downed-mark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+  color: #ff7a6a;
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+}
+.b-downed-mark.near {
+  color: #9dffb4;
+}
+
+/* Đồng hồ trận, vai tấn công / phòng thủ của chiến trường bất đối xứng. */
+.w-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.w-clock {
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.w-clock.urgent {
+  color: #ff6a5a;
+}
+.w-role {
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.18);
+}
+.w-role.attack {
+  background: #c8501a;
+}
+.w-role.defend {
+  background: #2a7d52;
+}
+.w-brief {
+  position: absolute;
+  left: 50%;
+  top: 130px;
+  transform: translateX(-50%);
+  width: min(380px, 88vw);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(8, 14, 20, 0.66);
+  text-align: center;
+  font-size: 12.5px;
+  pointer-events: none;
+}
+.w-brief b {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 14px;
+}
+.w-brief.attack b {
+  color: #ff9d5c;
+}
+.w-brief.defend b {
+  color: #6fe0a0;
+}
