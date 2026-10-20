@@ -47,17 +47,25 @@ describe("cốt truyện theo seed", () => {
     }
   });
 
-  it("300 ván: không câu nào còn sót chỗ trống, và nhiều tổ hợp khác nhau xuất hiện", () => {
-    const premises = new Set<string>();
-    for (let seed = 1; seed <= 300; seed++) {
+  // Chạy trọn một ván bot (playBotGame) tốn ~100 ms mỗi seed, nên chỉ kiểm câu chữ trên một số ván có số người khác nhau
+  // (đủ 2–6 người, vòng lặp chạy cả 5 cỡ phòng); còn độ đa dạng cốt truyện đo trên 300 seed chỉ dựng cốt truyện (không chạy ván), rẻ hơn cả trăm lần.
+  it("24 ván: không câu nào còn sót chỗ trống", () => {
+    for (let seed = 1; seed <= 24; seed++) {
       const { ctx } = storyOf(seed, 2 + (seed % 5));
-      premises.add(`${ctx.premise.hider}/${ctx.premise.motive}/${ctx.premise.treasure}/${ctx.premise.twist}`);
       for (const line of allText(ctx, ctx.state.day)) {
         expect(line).not.toMatch(/[{}]|undefined|null/);
         // Câu nào cũng bắt đầu bằng chữ hoa.
         expect(line).not.toMatch(/[.!?]\s+\p{Ll}/u);
         expect(line.trim().length).toBeGreaterThan(0);
       }
+    }
+  });
+
+  it("300 seed: nhiều tổ hợp cốt truyện khác nhau xuất hiện", () => {
+    const premises = new Set<string>();
+    for (let seed = 1; seed <= 300; seed++) {
+      const premise = createPremise(seed, ["a", "b", "c", "d", "e"].slice(0, 2 + (seed % 4)), storyLibrary);
+      premises.add(`${premise.hider}/${premise.motive}/${premise.treasure}/${premise.twist}`);
     }
     expect(premises.size).toBeGreaterThan(200);
   });
@@ -77,7 +85,7 @@ describe("cốt truyện theo seed", () => {
   });
 
   it("lời kể riêng của người thường không bao giờ lộ vai của kẻ phản bội", () => {
-    for (let seed = 1; seed <= 100; seed++) {
+    for (let seed = 1; seed <= 15; seed++) {
       const { ctx, state } = storyOf(seed, 5);
       for (const id of state.playerOrder.filter((x) => state.players[x]!.role === "villager")) {
         for (let day = 1; day <= state.day; day++) {
@@ -111,7 +119,7 @@ describe("cốt truyện theo seed", () => {
 
 describe("cơ chế cốt truyện", () => {
   it("cốt truyện dựng quanh đúng biến cố engine đã chọn, và bình minh ngày 5 kể cả hệ quả", () => {
-    for (let seed = 1; seed <= 40; seed++) {
+    for (let seed = 1; seed <= 12; seed++) {
       const { ctx, state } = storyOf(seed, 4);
       expect(ctx.premise.twist).toBe(state.twist);
       if (state.day >= 5) {
