@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { WEAPON, XP_LABEL, isXpKind, rankDef } from "@tentides/content";
-import { Messages, type XpMessage } from "@tentides/protocol";
+import { Messages, type RewardMessage, type XpMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../net.ts";
+import { refreshProfile } from "../account/account.ts";
 import { useRoomSnapshot } from "../game/useRoomSnapshot.ts";
 import { CallingCard } from "./CallingCard.tsx";
 import { RankBadge } from "./RankBadge.tsx";
 import { noteXp, resetMatchXp } from "./matchXp.ts";
+import { noteReward, resetMatchReward } from "./matchReward.ts";
 import "./progress.css";
 
 // Phần quân hàm trong trận: băng rôn thẻ tên của kẻ vừa hạ mình ("Bạn bị hạ bởi ..."), dòng "+100 XP" khi được
@@ -73,8 +75,21 @@ export function XpFeed({ room }: { room: IslandRoom }) {
   // XP trận này cho màn vinh danh cuối trận: xoá khi về sảnh / chuẩn bị trận mới.
   const phase = useRoomSnapshot(room, (s) => s.phase);
   useEffect(() => {
-    if (phase === "lobby" || phase === "prep") resetMatchXp();
+    if (phase === "lobby" || phase === "prep") {
+      resetMatchXp();
+      resetMatchReward();
+    }
   }, [phase]);
+  // Thưởng hết trận đã ghi vào tài khoản (xu thực nhận, giới hạn ngày, thử thách xong).
+  useEffect(
+    () =>
+      room.onMessage(Messages.reward, (m: RewardMessage) => {
+        noteReward(m);
+        // Xu, XP và thưởng thử thách vừa vào tài khoản: nạp lại hồ sơ.
+        void refreshProfile();
+      }),
+    [room],
+  );
   useEffect(() => {
     lastRank.current = room.state.players.get(myId(room))?.badge.rank ?? 0;
     return room.onMessage(Messages.xp, (m: XpMessage) => {

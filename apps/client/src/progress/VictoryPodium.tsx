@@ -8,6 +8,7 @@ import { playUi } from "../game/sound/ui.ts";
 import { StageBoundary, decor3d } from "../studio/webgl.tsx";
 import { matchXp } from "./matchXp.ts";
 import { RankBadge } from "./RankBadge.tsx";
+import { RewardSummary } from "./RewardSummary.tsx";
 import type { PodiumHero } from "./PodiumStage.tsx";
 
 // Màn vinh danh điện ảnh cuối trận: bục 3D với ba người điểm cao nhất (PodiumStage, nạp lười; máy yếu thì bục 2D),
@@ -284,6 +285,7 @@ export function VictoryPodium({ room, summary }: { room: IslandRoom; summary: Ma
           ) : (
             <p className="vp-guest">Đăng nhập để tích XP, lên quân hàm và mở khoá thẻ tên, huy hiệu.</p>
           )}
+          {signedIn && <RewardSummary />}
           {medals.length > 0 && t >= T_MEDAL && (
             <div className="vp-medals">
               {medals.map((m, i) => (
