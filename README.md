@@ -144,6 +144,9 @@ Biến môi trường:
 - `GAME_LOG_DIR`: thư mục ghi log ván (seed + chuỗi hành động + chat), mặc định `logs/`.
 - `VITE_SERVER_URL`: địa chỉ server cho client, dùng khi server không nằm cùng máy (vd. `wss://tentides.fly.dev`).
 - `DATABASE_URL`: chuỗi kết nối PostgreSQL để bật tài khoản, kho skin và gacha (vd. `postgres://tentides:tentides@localhost:5432/tentides`). Không đặt thì server chỉ cho chơi khách.
+- `CORS_ORIGINS`: danh sách origin được gọi API và matchmaking, cách nhau dấu phẩy, có thể dùng `*` cho tên miền con (vd. `https://tentides.vercel.app,https://*.vercel.app`). Không đặt thì cho phép mọi origin (như trước) và server cảnh báo lúc khởi động; nên đặt khi chạy thật.
+- `TRUST_PROXY`: `1` khi server đứng sau proxy để giới hạn tần suất theo IP thật (đọc `X-Forwarded-For`), `0` để tắt. Tự bật khi có biến `RENDER`. `TRUST_PROXY_HOPS`: số tầng proxy của mình (mặc định 2 trên Render: Cloudflare + bộ cân bằng tải, 1 nơi khác); IP người dùng là mục thứ N từ bên phải của `X-Forwarded-For`, không bao giờ là mục ngoài cùng bên trái vì ai cũng tự gắn được. Xem `apps/server/src/api/clientIp.ts`.
+- Vận hành: `GET /health` (hay `/api/health`) trả số phòng, số người, nhịp p95 từng phòng, bộ nhớ, độ trễ vòng lặp. Mỗi phút mỗi phòng Battleground in một dòng tóm tắt nhịp (p50/p95/max). Đo tốc độ nhịp với 100 máy: `pnpm --filter @tentides/server bench -- --seconds 120` (xem `apps/server/scripts/benchWar.ts`).
 
 ### Tài khoản, skin súng và gacha (PostgreSQL)
 
