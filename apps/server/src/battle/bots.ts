@@ -221,7 +221,11 @@ export class Bots {
   private idNums = new Map<string, number>();
   /** Hướng địch tới của từng khu vực, tính một lần mỗi nhịp (nhiều máy cùng nhắm một cứ điểm). */
   private threatMemo = new Map<string, number>();
-  /** Bậc giảm tải do phòng đặt khi nhịp quá hạn (0 = bình thường): bậc càng cao máy nhìn quanh, chọn đường càng thưa. */
+  /**
+   * Bậc giảm tải do phòng đặt khi nhịp quá hạn (0 = bình thường, tối đa 3): bậc càng cao máy nhìn quanh, tìm đường,
+   * chọn chỗ chiến thuật càng thưa (nhìn quanh chậm thêm nửa lần mỗi bậc, giãn cách tìm đường nhân lên, hạn mức A* chia ra).
+   * Bước đi, bắn, né vẫn mỗi nhịp.
+   */
   thinkLevel = 0;
 
   constructor(private readonly room: BattleRoom) {
@@ -587,8 +591,8 @@ export class Bots {
     // Hải chiến: máy do naval.ts điều khiển (đứng vị trí trên tàu).
     if (s.battleMode === "naval") return;
     this.time += dt;
-    this.planLeft = 8000;
-    this.tacLeft = 4;
+    this.planLeft = 8000 / (1 + this.thinkLevel);
+    this.tacLeft = Math.max(1, 4 - this.thinkLevel);
     // Tường bị phá, nhà sập mở ra lối đi mới: dò lại vùng đó (vài giây một lần).
     if (Math.floor(this.time / 3) !== Math.floor((this.time - dt) / 3)) {
       this.nav().refresh();
@@ -962,7 +966,7 @@ export class Bots {
     const range = (SIGHT[p.role] ?? SIGHT[""]!) * (b.tacKind === "overwatch" && p.prone ? 1.5 : 1);
     b.scan -= dt;
     if (b.scan <= 0) {
-      b.scan = 0.3 + Math.random() * 0.1;
+      b.scan = (0.3 + Math.random() * 0.1) * (1 + this.thinkLevel * 0.5);
       const had = b.sees;
       this.scan(id, p, b, eye, range, true, false);
       if (had && !b.sees) b.lostAt = this.time;
@@ -1364,7 +1368,7 @@ export class Bots {
     const eye: [number, number, number] = [tank.x, tank.y + TANK.gunY + 0.4, tank.z];
     b.scan -= dt;
     if (b.scan <= 0) {
-      b.scan = 0.35 + Math.random() * 0.1;
+      b.scan = (0.35 + Math.random() * 0.1) * (1 + this.thinkLevel * 0.5);
       this.scan(id, p, b, eye, SIGHT.tanker!, false, true);
     }
     const target = b.sees && b.target ? s.players.get(b.target) : undefined;
