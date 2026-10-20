@@ -1,4 +1,4 @@
-import { Room, matchMaker, type Client } from "@colyseus/core";
+import { Room, type Client } from "@colyseus/core";
 import { ADRENALINE, AT_MINE, isSoldierClass, squadSlots, withDynamicSlots } from "@tentides/content";
 import { AaLockMessage, GadgetMessage, PickClassMessage, PingMessage, RadioMessage, SquadBoardMessage, StreakMessage, TowSteerMessage } from "@tentides/protocol";
 import { Comms } from "./comms.ts";
@@ -60,7 +60,6 @@ import {
   GroundItemState,
   HealMessage,
   IslandState,
-  JoinOptions,
   KICKED_CLOSE_CODE,
   KickMessage,
   KillState,
@@ -103,9 +102,9 @@ import {
   type ShotMessage,
   VoiceMessages,
 } from "@tentides/protocol";
-import { applyProgress, applySkins, resolveIdentity, type Identity } from "../account.ts";
+import { applyProgress, applySkins, type Identity } from "../account.ts";
 import { isPlausibleMove, sanitizeGait } from "../movement.ts";
-import { randomRoomCode } from "../roomCode.ts";
+import { authenticate, uniqueRoomCode } from "../roomCommon.ts";
 import { TickBudget, TickStats, liveRooms, type RoomHealth } from "../tickStats.ts";
 import { Airdrops } from "./airdrops.ts";
 import { Destruction } from "./destruction.ts";
@@ -271,7 +270,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   private perfLogAt = 0;
 
   async onCreate() {
-    this.roomId = await this.uniqueRoomCode();
+    this.roomId = await uniqueRoomCode();
     this.state.mode = "battle";
     this.state.phase = "lobby";
     this.state.bots = clampBots("solo", DEFAULT_BOTS);
@@ -653,10 +652,8 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   }
 
   async onAuth(_client: Client, options: unknown): Promise<AuthData> {
-    const auth = JoinOptions.parse(options);
-    // Có phiên đăng nhập hợp lệ thì gắn với tài khoản (id u<id>, tên tài khoản, skin), không thì là khách như cũ.
-    const { playerId, name, skins, progress } = await resolveIdentity(auth);
-    if (this.kicked.has(playerId)) throw new Error("Chủ phòng đã mời bạn ra khỏi phòng này.");
+    const { identity } = await authenticate(options, this.kicked);
+    const { playerId, name, skins, progress } = identity;
     const humans = [...this.state.players.values()].filter((p) => !p.bot).length;
     if (!this.state.players.has(playerId) && humans >= MAX_PLAYERS) throw new Error("Phòng đã đủ người.");
     return { name, playerId, skins, progress };
@@ -2009,14 +2006,6 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   randomSpawn(p: PlayerState) {
     this.placeAtSpawn(p);
-  }
-
-  private async uniqueRoomCode(): Promise<string> {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const code = randomRoomCode();
-      if (!(await matchMaker.getRoomById(code))) return code;
-    }
-    throw new Error("Không tạo được mã phòng mới");
   }
 }
 

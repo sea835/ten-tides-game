@@ -1,4 +1,4 @@
-import { Room, matchMaker, type Client } from "@colyseus/core";
+import { Room, type Client } from "@colyseus/core";
 import {
   ANCHORS,
   ANCHOR_PARTICIPANT_RADIUS,
@@ -81,9 +81,9 @@ import { chronicle, createPremise, diaryPage, narrateDawn, narrateDusk, narrateP
 import { computeAwards } from "./awards.ts";
 import { GameLogWriter, type GameLogFile } from "./gameLog.ts";
 import { Hazards, type HazardEvent } from "./hazards.ts";
-import { applySkins, resolveIdentity } from "./account.ts";
+import { applySkins } from "./account.ts";
 import { isPlausibleMove } from "./movement.ts";
-import { randomRoomCode } from "./roomCode.ts";
+import { authenticate, uniqueRoomCode } from "./roomCommon.ts";
 import { syncState } from "./sync.ts";
 import { Wildlife, type Bite } from "./wildlife.ts";
 import { PlayController, type PlayHost } from "./playRoom.ts";
@@ -152,7 +152,7 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   }
 
   async onCreate() {
-    this.roomId = await this.uniqueRoomCode();
+    this.roomId = await uniqueRoomCode();
     const seed = seedFromString(`${this.roomId}:${Date.now()}`);
     this.game = createGame(seed);
     this.logFile = { version: 1, roomId: this.roomId, seed, createdAt: new Date().toISOString(), actions: [], chat: [] };
@@ -413,10 +413,8 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   }
 
   async onAuth(_client: Client, options: unknown): Promise<AuthData> {
-    const auth = JoinOptions.parse(options);
-    // Có phiên đăng nhập hợp lệ thì gắn với tài khoản (id u<id>, tên tài khoản), không thì là khách như cũ.
-    const { playerId, name, skins } = await resolveIdentity(auth);
-    if (this.kicked.has(playerId)) throw new Error("Chủ phòng đã mời bạn ra khỏi phòng này.");
+    const { auth, identity } = await authenticate(options, this.kicked);
+    const { playerId, name, skins } = identity;
     // Ván đã bắt đầu thì chỉ người cũ (cùng token) mới vào lại được.
     if (this.game.phase !== "lobby" && !this.game.players[playerId]) throw new Error("Ván đã bắt đầu, không vào thêm được.");
     return { ...auth, name, playerId, skins };
@@ -918,13 +916,5 @@ export class IslandRoom extends Room<{ state: IslandState }> {
   private pickColor(): string {
     const used = new Set([...this.state.players.values()].map((p) => p.color));
     return PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0]!;
-  }
-
-  private async uniqueRoomCode(): Promise<string> {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const code = randomRoomCode();
-      if (!(await matchMaker.getRoomById(code))) return code;
-    }
-    throw new Error("Không tạo được mã phòng mới");
   }
 }
