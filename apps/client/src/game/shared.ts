@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { getSettings } from "./settings.ts";
 
 /** Vị trí chân nhân vật của mình, LocalPlayer ghi mỗi khung hình để các phần khác đọc. */
 export const localPosition = new Vector3();
@@ -56,8 +57,22 @@ export const sky = { time: 0.35, elevation: 1, night: 0 };
 /** Camera tự do khi dev (window.__tentides.debugCam): bật lên thì camera đứng ở `position`, nhìn về `target`. */
 export const debugCam = { enabled: false, position: new Vector3(0, 120, 160), target: new Vector3(0, 0, 0) };
 
-/** Rung màn hình: cường độ giảm dần theo thời gian (bị đánh, cây đổ gần, nổ). */
-export const shake = { amount: 0 };
+/** Bật "Giảm rung camera" thì mỗi cú rung thêm chỉ còn chừng này. */
+export const REDUCED_SHAKE = 0.2;
+let shakeAmount = 0;
+
+/**
+ * Rung màn hình: cường độ giảm dần theo thời gian (bị đánh, cây đổ gần, nổ). Nơi gây rung cộng thẳng vào `amount`,
+ * nơi đọc (camera) tự giảm dần; cài đặt "Giảm rung camera" thu nhỏ phần cộng thêm ngay ở đây, khỏi sửa từng nơi.
+ */
+export const shake = {
+  get amount(): number {
+    return shakeAmount;
+  },
+  set amount(v: number) {
+    shakeAmount = v > shakeAmount && getSettings().reduceShake ? shakeAmount + (v - shakeAmount) * REDUCED_SHAKE : v;
+  },
+};
 
 /**
  * Bị áp chế (đạn sượt sát đầu, 0–1): Effects cộng vào khi có đạn bay dưới 1 m, lớp phủ Suppression đọc để tối mép

@@ -7,12 +7,12 @@ import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { localPosition } from "../shared.ts";
 import { puffs } from "../battle/gpuParticles.ts";
 import { myUnit } from "./navalRuntime.ts";
+import { sideColor } from "../teamColors.ts";
 
 // Vẽ ngư lôi (thân chìm dưới nước, vệt bọt trên mặt nước để thấy mà né), tên lửa (khói đuôi, lửa động cơ), máy bay
 // tiêm kích bom (màu phe), mồi nhử (đốm sáng rơi chậm). Đơn vị mình đang lái vẽ theo vị trí dự đoán trên máy mình;
 // đơn vị khác đi tiếp theo vận tốc rồi kéo dần về vị trí server.
 
-const TEAM = { blue: "#3f74ff", red: "#e0392f" } as Record<string, string>;
 
 export function NavalUnits({ room }: { room: IslandRoom }) {
   const list = useRoomSnapshot(room, (s) => [...(s.naval?.units.entries() ?? [])].map(([id, u]) => `${id}:${u.kind}:${u.team}`).join(","));
@@ -32,7 +32,7 @@ export function NavalUnits({ room }: { room: IslandRoom }) {
 function Unit({ room, id, kind, team }: { room: IslandRoom; id: string; kind: string; team: string }) {
   const g = useRef<Group>(null);
   const st = useRef({ x: NaN, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, sx: NaN, sz: NaN, sy: NaN, age: 0, trail: 0 });
-  const color = TEAM[team] ?? "#cccccc";
+  const color = sideColor(team, "#cccccc");
   const mats = useMemo(
     () => ({
       body: new MeshStandardMaterial({ color: kind === "plane" ? "#7d858c" : kind === "missile" ? "#e8e6df" : "#2c3136", roughness: 0.5, metalness: 0.4 }),

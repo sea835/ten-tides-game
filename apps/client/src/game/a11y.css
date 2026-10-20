@@ -1,0 +1,56 @@
+/* Hỗ trợ dễ nhìn (a11y.ts). */
+
+/*
+ * Cỡ HUD: phóng các khung bám mép màn hình (máu, súng, bản đồ nhỏ, bảng tàu...) bằng `zoom` để khung giữ nguyên chỗ
+ * bám (mép, giữa) mà chữ, nút to ra. Không phóng lớp phủ cả màn hình, tâm ngắm, dấu chiếu từ cảnh 3D (đặt theo điểm
+ * ảnh thật nên phóng là lệch chỗ).
+ */
+:root {
+  --hud-scale: 1;
+  --team-blue: #2f6bff;
+  --team-red: #e0332b;
+}
+.battle-hud :is(
+    .b-vitals,
+    .b-weapons,
+    .b-money,
+    .b-right,
+    .b-top,
+    .w-top,
+    .b-compass,
+    .b-squad,
+    .b-possess,
+    .b-pickup,
+    .b-progress,
+    .b-toast,
+    .b-tank-panel,
+    .w-capture,
+    .cm-feed,
+    .st-points,
+    .b-spectate,
+    .nv-top,
+    .nv-own,
+    .nv-station,
+    .nv-prompt,
+    .nv-hint,
+    .tut-coach
+  ) {
+  zoom: var(--hud-scale, 1);
+}
+
+/* Màu phe cho người mù màu: phe Đỏ thành cam ở các khung HUD vẽ bằng CSS (cờ, vé quân, thanh chiếm, thẻ tàu). */
+.cb-teams .w-tickets.red u,
+.cb-teams .w-flag.red,
+.cb-teams .w-capture-bar u.red {
+  background: var(--team-red);
+}
+.cb-teams .w-tickets.red span,
+.cb-teams .w-tickets.red b {
+  color: #ffbe7a;
+}
+.cb-teams .nv-card.red {
+  border-top-color: var(--team-red);
+}
+.cb-teams .nv-card.red .nv-bar i {
+  background: linear-gradient(90deg, var(--team-red), #ffc27a);
+}

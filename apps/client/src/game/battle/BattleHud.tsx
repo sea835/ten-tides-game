@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type Ref, type SVGProps } from "react";
-import { Crosshair as CrossIcon, LogOut, Settings as Gear, ShoppingCart, Skull, Trophy, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref, type SVGProps } from "react";
+import { Crosshair as CrossIcon, LogOut, ShoppingCart, Skull, Trophy, Users, X } from "lucide-react";
 import {
   AMMO,
   ARMOR,
@@ -30,10 +30,8 @@ import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { look } from "../input.ts";
 import { localPosition } from "../shared.ts";
-import { DEFAULT_SETTINGS, getSettings, setSettings, useSettings } from "../settings.ts";
-import { DEFAULT_GRAPHICS, QUALITY_LABEL, setGraphics, toggleStats, useGraphics, useStatsOpen, type Quality } from "../graphics.ts";
+import { getSettings } from "../settings.ts";
 import { playBuy, playCountdown, playTinnitus, playZoneTick } from "../sound/guns.ts";
-import { DEFAULT_VOLUME, audio, type VolumeKey } from "../sound/engine.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { mapOfKey, useMapKey } from "../world.ts";
 import { gun, nextSpectate } from "./Shooter.tsx";
@@ -45,7 +43,7 @@ import { NavalHud } from "../naval/NavalHud.tsx";
 import { CaptureBar, Deploy, SIDE_NAME, WarTop, useFlagToasts } from "./WarHud.tsx";
 import { AirdropMarks, AirdropNotice } from "./Airdrops.tsx";
 import { Suppression } from "./Suppression.tsx";
-import { SpeakingMark, VoiceChat, VoiceSettingsSection } from "../voice/VoiceChat.tsx";
+import { SpeakingMark, VoiceChat } from "../voice/VoiceChat.tsx";
 import { KillerBanner, XpFeed } from "../../progress/BattleProgress.tsx";
 import { RankBadge } from "../../progress/RankBadge.tsx";
 import { CommsHud, PingMarks } from "./CommsHud.tsx";
@@ -60,6 +58,8 @@ import { ClassIcon, GadgetHud, GadgetSlots } from "./GadgetHud.tsx";
 import "./battle.css";
 import { KillSkulls } from "./KillSkulls.tsx";
 import { WarCommandMap } from "./WarCommand.tsx";
+import { SettingsButton, SettingsPanel } from "../menu/SettingsPanel.tsx";
+import { TutorialCoach } from "../tutorial/TutorialCoach.tsx";
 
 // Giao diện trận Battleground: thanh máu, giáp, súng và đạn, vùng an toàn, số người còn sống, bảng hạ gục,
 // bản đồ nhỏ, la bàn, tâm ngắm co giãn theo độ toả, dấu trúng, hướng bị bắn, ống ngắm, cửa hàng (B),
@@ -956,155 +956,8 @@ function DeathAndWin({ room, onLeave, summary }: { room: IslandRoom; onLeave: ()
   return null;
 }
 
-// ---------------------------------------------------------------------------- cài đặt
-
-const FPS_CHOICES = [30, 60, 90, 120, 0];
-const DPR_CHOICES = [0, 1, 1.25, 1.5, 2];
-
-/** Phần đồ hoạ của bảng cài đặt: mức chất lượng, giới hạn khung hình, độ phân giải, tự thích ứng, số liệu F3. */
-function GraphicsSettings() {
-  const g = useGraphics();
-  const stats = useStatsOpen();
-  const native = window.devicePixelRatio || 1;
-  return (
-    <>
-      <div className="b-set-title">Đồ hoạ</div>
-      <div className="b-set-row">
-        <span>Chất lượng</span>
-        <div className="b-set-seg">
-          {(["high", "medium", "low"] as Quality[]).map((q) => (
-            <button key={q} className={g.quality === q ? "on" : ""} onClick={() => setGraphics({ quality: q })}>
-              {QUALITY_LABEL[q]}
-            </button>
-          ))}
-        </div>
-        <em>P</em>
-      </div>
-      <label className="b-set-row">
-        <span>Giới hạn khung hình</span>
-        <select value={g.fpsCap} onChange={(e) => setGraphics({ fpsCap: Number(e.target.value) })}>
-          {FPS_CHOICES.map((f) => (
-            <option key={f} value={f}>
-              {f === 0 ? "Không giới hạn (nóng máy)" : `${f} FPS`}
-            </option>
-          ))}
-        </select>
-        <em />
-      </label>
-      <label className="b-set-row">
-        <span>Độ phân giải vẽ</span>
-        <select value={g.maxDpr} onChange={(e) => setGraphics({ maxDpr: Number(e.target.value) })}>
-          {DPR_CHOICES.filter((d) => d <= Math.max(1, native)).map((d) => (
-            <option key={d} value={d}>
-              {d === 0 ? "Tự động theo chất lượng" : d >= native ? `${d}x (gốc của màn hình)` : `${d}x`}
-            </option>
-          ))}
-        </select>
-        <em />
-      </label>
-      <label className="b-set-check">
-        <input type="checkbox" checked={g.adaptive} onChange={(e) => setGraphics({ adaptive: e.target.checked })} /> Tự hạ độ phân giải khi bị giật
-      </label>
-      <label className="b-set-check">
-        <input type="checkbox" checked={stats} onChange={toggleStats} /> Hiện số liệu hiệu năng (F3)
-      </label>
-    </>
-  );
-}
-
-/** Âm lượng tổng và từng nhóm (tiếng súng / hiệu ứng, nền và thời tiết, nhạc). */
-function SoundSettings() {
-  const snd = useSyncExternalStore(audio.subscribe, () => audio.settings);
-  const row = (label: string, key: VolumeKey) => (
-    <label className="b-set-row">
-      <span>{label}</span>
-      <input type="range" min={0} max={1} step={0.05} value={snd.volume[key]} onChange={(e) => audio.setVolume(key, Number(e.target.value))} />
-      <em>{snd.volume[key] === 0 ? "Tắt" : `${Math.round(snd.volume[key] * 100)}%`}</em>
-    </label>
-  );
-  return (
-    <>
-      <div className="b-set-title">Âm thanh</div>
-      {row("Âm lượng tổng", "master")}
-      {row("Súng, bước chân, hiệu ứng", "sfx")}
-      {row("Môi trường, mưa gió", "ambience")}
-      {row("Nhạc nền", "music")}
-      <label className="b-set-check">
-        <input type="checkbox" checked={snd.muted} onChange={(e) => audio.setMuted(e.target.checked)} /> Tắt hết âm thanh (M)
-      </label>
-    </>
-  );
-}
-
-export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const s = useSettings();
-  if (!open) return null;
-  const slider = (label: string, key: "sensitivity" | "adsSensitivity" | "scopeSensitivity" | "fov" | "smoothing" | "headBob", min: number, max: number, step: number, fmt: (v: number) => string) => (
-    <label className="b-set-row">
-      <span>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={s[key]} onChange={(e) => setSettings({ [key]: Number(e.target.value) })} />
-      <em>{fmt(s[key])}</em>
-    </label>
-  );
-  return (
-    <div className="b-settings" onMouseDown={(e) => e.stopPropagation()}>
-      <header>
-        <Gear size={18} /> Cài đặt
-        <button className="x" onClick={onClose} aria-label="Đóng">
-          <X size={18} />
-        </button>
-      </header>
-      {slider("Độ nhạy chuột", "sensitivity", 0.1, 3, 0.05, (v) => v.toFixed(2))}
-      {slider("Độ nhạy khi ngắm", "adsSensitivity", 0.1, 2, 0.05, (v) => v.toFixed(2))}
-      {slider("Độ nhạy ống ngắm", "scopeSensitivity", 0.1, 2, 0.05, (v) => v.toFixed(2))}
-      {slider("Góc nhìn (FOV)", "fov", 55, 100, 1, (v) => `${v}°`)}
-      {slider("Làm mượt camera", "smoothing", 0, 1, 0.05, (v) => (v === 0 ? "Tắt" : `${Math.round(v * 100)}%`))}
-      {slider("Nhún camera khi đi", "headBob", 0, 1, 0.05, (v) => (v === 0 ? "Tắt" : `${Math.round(v * 100)}%`))}
-      <label className="b-set-check">
-        <input type="checkbox" checked={s.invertY} onChange={(e) => setSettings({ invertY: e.target.checked })} /> Đảo trục dọc chuột
-      </label>
-      <label className="b-set-check">
-        <input type="checkbox" checked={s.toggleAim} onChange={(e) => setSettings({ toggleAim: e.target.checked })} /> Bấm chuột phải một lần để ngắm (không cần giữ)
-      </label>
-      <SoundSettings />
-      <VoiceSettingsSection />
-      <GraphicsSettings />
-      <button
-        className="ghost"
-        onClick={() => {
-          setSettings(DEFAULT_SETTINGS);
-          setGraphics({ fpsCap: DEFAULT_GRAPHICS.fpsCap, maxDpr: DEFAULT_GRAPHICS.maxDpr, adaptive: DEFAULT_GRAPHICS.adaptive });
-          for (const [k, v] of Object.entries(DEFAULT_VOLUME) as [VolumeKey, number][]) audio.setVolume(k, v);
-        }}
-      >
-        Về mặc định
-      </button>
-    </div>
-  );
-}
-
-export function SettingsButton() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code === "KeyO" && !(e.target instanceof HTMLInputElement)) {
-        setOpen((o) => !o);
-        document.exitPointerLock?.();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  useEffect(() => setBattleHud({ settingsOpen: open }), [open]);
-  return (
-    <>
-      <button className="b-gear-btn" onClick={() => setOpen((o) => !o)} title="Cài đặt (O)">
-        <Gear size={18} />
-      </button>
-      <SettingsPanel open={open} onClose={() => setOpen(false)} />
-    </>
-  );
-}
+// Bảng cài đặt và nút bánh răng chuyển sang menu/SettingsPanel.tsx (mở được cả ở sảnh); giữ tên cũ cho chỗ import.
+export { SettingsButton, SettingsPanel };
 
 export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
   const phase = useRoomSnapshot(room, (s) => s.phase);
@@ -1167,6 +1020,7 @@ export function BattleHud({ room, onLeave }: { room: IslandRoom; onLeave: () => 
       <KillerBanner room={room} />
       <XpFeed room={room} />
       <SettingsButton />
+      <TutorialCoach room={room} />
     </div>
   );
 }
