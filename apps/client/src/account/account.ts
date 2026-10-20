@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_SERVER_PORT } from "@tentides/protocol";
 import type { SkinRarity, WeaponLoadout } from "@tentides/content";
+import type { PublicRoomInfo, QuickMode } from "@tentides/protocol";
 
 // Tài khoản phía client: gọi API HTTP của server (chung cổng với Colyseus), giữ phiên đăng nhập trong localStorage
 // (khác token khách: token khách theo tab, phiên đăng nhập giữ qua các lần mở trình duyệt), và một store nhỏ cho React.
@@ -51,6 +52,8 @@ export interface Profile {
   skins: { skinId: string; count: number }[];
   equipped: Record<string, string>;
   pity: { sinceEpic: number; sinceLegendary: number };
+  /** Mảnh skin (server cũ chưa có thì thiếu). */
+  shards?: number;
   /** Quân hàm (server cũ chưa có thì thiếu). */
   progress?: Progress;
   /** Gunsmith: bộ phụ kiện ưa thích theo khẩu. */
@@ -65,9 +68,36 @@ export interface Progress {
 }
 
 export interface RollOutcome {
-  results: { skinId: string; rarity: SkinRarity; count: number; isNew: boolean }[];
+  /** `shards`: mảnh lượt này ra (skin trùng), 0 nếu là skin mới. */
+  results: { skinId: string; rarity: SkinRarity; count: number; isNew: boolean; shards?: number }[];
   coins: number;
   pity: { sinceEpic: number; sinceLegendary: number };
+  shards?: number;
+}
+
+export interface ChallengeView {
+  id: string;
+  title: string;
+  stat: string;
+  target: number;
+  progress: number;
+  coins: number;
+  xp: number;
+  claimed: boolean;
+}
+
+export interface ChallengeSet {
+  period: "daily" | "weekly";
+  key: string;
+  /** Lúc kỳ này kết thúc (ms, UTC). */
+  endsAt: number;
+  items: ChallengeView[];
+}
+
+export interface ChallengeStatus {
+  daily: ChallengeSet;
+  weekly: ChallengeSet;
+  coins: { today: number; cap: number };
 }
 
 export class ApiError extends Error {
@@ -186,9 +216,31 @@ export async function logout(): Promise<void> {
 export async function rollGacha(count: 1 | 10): Promise<RollOutcome> {
   const out = await api<RollOutcome>("POST", "/api/gacha/roll", { count });
   // Cập nhật xu ngay, kho skin nạp lại ở nền.
-  if (state.status === "user") set({ status: "user", profile: { ...state.profile, user: { ...state.profile.user, coins: out.coins }, pity: out.pity } });
+  if (state.status === "user") set({ status: "user", profile: { ...state.profile, user: { ...state.profile.user, coins: out.coins }, pity: out.pity, shards: out.shards ?? state.profile.shards } });
   void refreshProfile();
   return out;
+}
+
+/** Đổi mảnh lấy một skin chưa có. */
+export async function craftSkin(skinId: string): Promise<void> {
+  const out = await api<{ skinId: string; shards: number }>("POST", "/api/gacha/craft", { skinId });
+  if (state.status === "user") set({ status: "user", profile: { ...state.profile, shards: out.shards } });
+  await refreshProfile();
+}
+
+/** Thử thách ngày, tuần và xu trận đã nhận hôm nay (thử thách xong tự nhận thưởng ở server). */
+export function fetchChallenges(): Promise<ChallengeStatus> {
+  return api<ChallengeStatus>("GET", "/api/challenges");
+}
+
+/** Phòng công khai đang mở (không cần đăng nhập). */
+export async function fetchPublicRooms(): Promise<PublicRoomInfo[]> {
+  return (await api<{ rooms: PublicRoomInfo[] }>("GET", "/api/rooms")).rooms;
+}
+
+/** Chơi nhanh: mã phòng công khai nên vào, hay null nếu chưa có phòng hợp (tạo phòng mới). */
+export async function fetchQuickRoom(mode: QuickMode): Promise<string | null> {
+  return (await api<{ code: string | null }>("GET", `/api/quickplay?mode=${mode}`)).code;
 }
 
 export async function equipSkin(weaponId: string, skinId: string): Promise<void> {

@@ -65,5 +65,6 @@ export function applyBattleSettings(state: IslandState, s: BattleSettingsMessage
   if (s.time !== undefined) state.settings.timePick = s.time;
   if (s.map !== undefined) state.settings.warMap = warMapId(s.map);
   if (s.difficulty !== undefined) state.settings.botDifficulty = s.difficulty;
+  if (s.public !== undefined) state.settings.publicRoom = s.public;
   return changed;
 }

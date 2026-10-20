@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Coins, Crosshair, Gem, LogIn, LogOut, Medal, UserPlus, UserRound } from "lucide-react";
+import { Coins, Crosshair, Gem, Hexagon, LogIn, LogOut, Medal, Target, UserPlus, UserRound } from "lucide-react";
 import { openGunsmith } from "../gunsmith/openGunsmith.ts";
 import { RankLine, ServiceRecord } from "../progress/ServiceRecord.tsx";
 import { Emblem } from "../progress/Emblem.tsx";
+import { ChallengesPanel } from "../progress/ChallengesPanel.tsx";
 import { ApiError, initAccount, login, logout, register, useAccount } from "./account.ts";
 import "./account.css";
 
@@ -19,6 +20,7 @@ export function AccountPanel({ onUsername, onOpenGacha }: { onUsername: (name: s
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [record, setRecord] = useState(false);
+  const [challenges, setChallenges] = useState(false);
 
   useEffect(() => initAccount(), []);
 
@@ -45,6 +47,7 @@ export function AccountPanel({ onUsername, onOpenGacha }: { onUsername: (name: s
             <div className="account-name">{user.username}</div>
             <div className="account-coins">
               <Coins size={13} aria-hidden /> {user.coins.toLocaleString("vi-VN")} xu
+              <Hexagon size={13} aria-hidden className="account-shard" /> {(account.profile.shards ?? 0).toLocaleString("vi-VN")} mảnh
             </div>
           </div>
           <button className="ghost account-logout" onClick={() => void logout()} title="Đăng xuất">
@@ -63,7 +66,11 @@ export function AccountPanel({ onUsername, onOpenGacha }: { onUsername: (name: s
             <Medal size={15} aria-hidden /> Quân hàm · Thẻ tên
           </button>
         </div>
+        <button className="account-challenges" onClick={() => setChallenges(true)}>
+          <Target size={15} aria-hidden /> Thử thách ngày · tuần
+        </button>
         {record && <ServiceRecord onClose={() => setRecord(false)} />}
+        {challenges && <ChallengesPanel onClose={() => setChallenges(false)} />}
       </div>
     );
   }

@@ -717,6 +717,8 @@ export const RoomSettingsState = schema(
     shipRed: t.string().default("destroyer"),
     /** Độ khó của máy (BOT_DIFFICULTIES): độ chính xác, phản ứng, lựu đạn... theo bảng DIFFICULTY của content. */
     botDifficulty: t.string().default("normal"),
+    /** Phòng công khai: hiện trong danh sách "Phòng đang mở" và Chơi nhanh vào được. Phòng tạo bằng mã thì riêng tư. */
+    publicRoom: t.boolean().default(false),
   },
   "RoomSettingsState",
 );
@@ -1056,6 +1058,8 @@ export const BattleSettingsMessage = z
     vehicles: z.boolean(),
     map: z.string().max(32),
     difficulty: z.enum(BOT_DIFFICULTIES),
+    /** Phòng công khai (hiện trong danh sách phòng đang mở, Chơi nhanh vào được). */
+    public: z.boolean(),
   })
   .partial();
 export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
@@ -1374,6 +1378,8 @@ export const Messages = {
   flag: "flag",
   /** Server báo riêng: vừa được cộng XP (XpMessage). */
   xp: "xp",
+  /** Server báo riêng sau khi ghi thưởng hết trận vào tài khoản: xu thực nhận, giới hạn ngày, thử thách xong (RewardMessage). */
+  reward: "reward",
   /** Server báo mọi người lúc hết trận: bảng vinh danh MVP và bảng điểm đầy đủ (MatchSummaryMessage). */
   matchSummary: "matchSummary",
   /** Dùng khí tài lớp lính (GadgetMessage); chọn lớp lính ở sảnh (PickClassMessage). */
@@ -1481,6 +1487,53 @@ export interface XpMessage {
   amount: number;
   match: number;
   rank: number;
+}
+
+/** Thử thách vừa hoàn thành (tự nhận thưởng) lúc hết trận. */
+export interface RewardChallenge {
+  id: string;
+  title: string;
+  coins: number;
+  xp: number;
+}
+
+/**
+ * Thưởng hết trận đã ghi vào tài khoản (chỉ người có tài khoản): xu trận thực nhận sau khi giảm (phòng một người với
+ * máy) và áp giới hạn ngày, xu trận trước khi áp giới hạn, có chạm giới hạn ngày không, thử thách vừa xong.
+ */
+export interface RewardMessage {
+  coins: number;
+  /** Xu trận trước khi áp giới hạn ngày (đã nhân hệ số phòng một người). */
+  earned: number;
+  /** Hệ số xu theo số người thật (1, hay 0,6 khi một mình với máy). */
+  factor: number;
+  capped: boolean;
+  /** Xu trận đã nhận hôm nay (sau trận này) và giới hạn ngày. */
+  today: number;
+  cap: number;
+  challenges: RewardChallenge[];
+}
+
+/** Chế độ Chơi nhanh chọn được. */
+export const QUICK_MODES = ["war", "naval", "squad", "solo"] as const;
+export type QuickMode = (typeof QUICK_MODES)[number];
+
+/** Metadata phòng Battleground cho danh sách phòng (Colyseus matchmaking): cập nhật vài giây một lần khi có đổi. */
+export interface RoomListingMeta {
+  public: boolean;
+  mode: string;
+  /** Bản đồ chiến trường, lớp tàu hai phe ("battleship:destroyer"), hay rỗng (đảo sinh tồn). */
+  map: string;
+  /** Số người thật trong phòng (kể cả người đang rớt mạng được giữ chỗ) và tối đa. */
+  humans: number;
+  max: number;
+  phase: string;
+  host: string;
+}
+
+/** Một phòng công khai trong danh sách "Phòng đang mở" (GET /api/rooms). */
+export interface PublicRoomInfo extends Omit<RoomListingMeta, "public"> {
+  code: string;
 }
 
 /** Mã đóng kết nối khi bị chủ phòng mời ra. */

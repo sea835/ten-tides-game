@@ -1,4 +1,4 @@
-import { XP_AWARD, rankOf, type XpKind } from "@tentides/content";
+import { XP_AWARD, addStats, isChallengeStat, rankOf, type ChallengeStat, type StatTally, type XpKind } from "@tentides/content";
 import type { PlayerState, XpMessage } from "@tentides/protocol";
 import { userIdOfPlayer } from "../account.ts";
 import { noteSupport } from "./mvp.ts";
@@ -10,6 +10,8 @@ import { earnPoints } from "./streaks.ts";
 // Khách, máy: không có XP. Ngoài lúc đang đánh (sảnh chờ, hết trận): không cộng.
 //
 // Tính năng khác (hồi sinh, tiếp tế, sửa xe...) chỉ cần gọi awardXp(playerId, kind): hàm tự tìm phòng người đó đang ở.
+// Sổ cũng đếm số liệu cho thử thách ngày / tuần (chiếm cứ điểm, hồi sinh, sửa chữa...) theo chính các sự kiện XP đó;
+// việc không có XP thì gọi noteStat(playerId, key). Hết trận MatchRewards lấy ra ghi tiến độ thử thách.
 
 interface Entry {
   userId: number;
@@ -18,7 +20,19 @@ interface Entry {
   /** XP kiếm được từ lúc ghi database lần cuối. */
   earned: number;
   player: PlayerState;
+  /** Số liệu thử thách trong trận này (chưa ghi). */
+  stats: StatTally;
 }
+
+/** Sự kiện XP nào đếm vào số liệu thử thách nào (hạ gục lấy từ kết quả trận, headshot đếm thêm riêng). */
+const XP_STAT: Partial<Record<XpKind, ChallengeStat>> = {
+  headshot: "headshots",
+  capture: "captures",
+  revive: "revives",
+  repair: "repairs",
+  resupply: "resupplies",
+  sink: "sinks",
+};
 
 /** Gửi riêng cho một người (phòng truyền vào: tìm client theo id người chơi rồi send). */
 export type XpNotify = (playerId: string, msg: XpMessage) => void;
@@ -41,7 +55,7 @@ export class XpLedger {
     const userId = userIdOfPlayer(playerId);
     if (userId === null) return;
     const old = this.entries.get(playerId);
-    const e: Entry = old ? { ...old, player } : { userId, base: Math.max(0, baseXp), earned: 0, player };
+    const e: Entry = old ? { ...old, player } : { userId, base: Math.max(0, baseXp), earned: 0, player, stats: {} };
     this.entries.set(playerId, e);
     ROUTE.set(playerId, this);
     player.badge.rank = rankOf(e.base + e.earned);
@@ -55,9 +69,30 @@ export class XpLedger {
     if (!e || !n) return 0;
     const amount = XP_AWARD[kind] * n;
     e.earned += amount;
+    const stat = XP_STAT[kind];
+    if (stat) e.stats[stat] = (e.stats[stat] ?? 0) + n;
     e.player.badge.rank = rankOf(e.base + e.earned);
     this.notify(playerId, { kind, amount, match: e.earned, rank: e.player.badge.rank });
     return amount;
+  }
+
+  /** Đếm số liệu thử thách không gắn với XP (vd. sửa bộ phận tàu, nếu tính năng đó không cộng XP). Ngoài trận: bỏ qua. */
+  stat(playerId: string, key: ChallengeStat, times = 1): boolean {
+    const e = this.entries.get(playerId);
+    const n = Math.max(0, Math.floor(times));
+    if (!this.active || !e || !n) return false;
+    addStats(e.stats, { [key]: n });
+    return true;
+  }
+
+  /** Lấy hết số liệu thử thách đang chờ (theo id người chơi) và xoá, để ghi tiến độ lúc hết trận. */
+  drainStats(): Map<string, { userId: number; stats: StatTally }> {
+    const out = new Map<string, { userId: number; stats: StatTally }>();
+    for (const [id, e] of this.entries) {
+      if (Object.keys(e.stats).length) out.set(id, { userId: e.userId, stats: e.stats });
+      e.stats = {};
+    }
+    return out;
   }
 
   /** XP đang chờ ghi của một người. */
@@ -94,4 +129,14 @@ export function awardXp(playerId: string, kind: XpKind, times = 1): number {
   // Điểm chi viện chiến thuật (cả khách; máy thì không): hạ gục tính riêng ở BattleRoom.kill.
   if (kind === "capture" || kind === "resupply" || kind === "repair" || kind === "revive") earnPoints(playerId, kind, times);
   return ROUTE.get(playerId)?.award(playerId, kind, times) ?? 0;
+}
+
+/**
+ * Đếm số liệu thử thách `key` (xem ChallengeStat trong content) cho người chơi `playerId` ở phòng người đó đang chơi,
+ * cho việc không đi qua awardXp. Khách, máy, ngoài trận: bỏ qua. Việc đã gọi awardXp ("revive", "repair", "capture"...)
+ * thì đã được đếm sẵn: đừng gọi cả hai.
+ */
+export function noteStat(playerId: string, key: string, times = 1): boolean {
+  if (!isChallengeStat(key)) return false;
+  return ROUTE.get(playerId)?.stat(playerId, key, times) ?? false;
 }

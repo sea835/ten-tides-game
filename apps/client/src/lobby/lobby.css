@@ -1,0 +1,172 @@
+/* ---------- Chơi nhanh, Phòng đang mở, link mời ---------- */
+
+.quick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+}
+.quick-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
+.quick-title.list {
+  margin-top: 4px;
+  color: var(--muted);
+  justify-content: space-between;
+}
+.quick-refresh {
+  opacity: 0.5;
+}
+.quick-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.quick-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 8px;
+  font-size: 13px;
+}
+.quick-rooms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 188px;
+  overflow: auto;
+}
+.quick-room {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+.qr-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.qr-main b {
+  font-weight: 600;
+}
+.qr-main small {
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qr-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: none;
+  font-size: 11.5px;
+}
+.qr-phase {
+  color: var(--success);
+}
+.qr-phase.prep,
+.qr-phase.battle {
+  color: var(--caution);
+}
+.qr-phase.ended {
+  color: var(--faint);
+}
+.qr-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+.quick-empty,
+.quick-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+.quick-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+}
+/* Chia sẻ phòng trong Trung tâm chỉ huy: công tắc phòng công khai, nút link mời. */
+.cc-share {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cc-public,
+.cc-invite {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--cc-line-hi, var(--line-strong));
+  background: rgba(0, 0, 0, 0.3);
+}
+.cc-public span {
+  display: flex;
+  flex-direction: column;
+}
+.cc-public strong {
+  font-size: 13.5px;
+}
+.cc-public small {
+  font-size: 11.5px;
+  color: var(--cc-muted, var(--muted));
+}
+.cc-public svg {
+  flex: none;
+  color: var(--cc-muted, var(--muted));
+}
+.cc-public.on {
+  border-color: var(--cc-amber, var(--accent));
+  background: rgba(255, 215, 0, 0.08);
+}
+.cc-public.on svg {
+  color: var(--cc-amber, var(--accent));
+}
+.cc-public:disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+.cc-invite {
+  justify-content: center;
+  font-size: 13px;
+}
+.cc-invite:hover {
+  border-color: var(--cc-amber, var(--accent));
+}
+.invite-banner {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: rgba(242, 180, 65, 0.12);
+  border: 1px solid rgba(242, 180, 65, 0.35);
+  color: var(--accent-hi);
+}

@@ -1,7 +1,7 @@
 import { Client, type Room } from "@colyseus/sdk";
-import { BATTLE_ROOM_NAME, DEFAULT_SERVER_PORT, IslandState, KICKED_CLOSE_CODE, ROOM_NAME } from "@tentides/protocol";
+import { BATTLE_ROOM_NAME, DEFAULT_SERVER_PORT, IslandState, KICKED_CLOSE_CODE, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, ROOM_NAME, type QuickMode } from "@tentides/protocol";
 import { listenPrivate } from "./game/privateStore.ts";
-import { sessionToken } from "./account/account.ts";
+import { fetchQuickRoom, sessionToken } from "./account/account.ts";
 
 export type IslandRoom = Room<any, IslandState>;
 
@@ -123,6 +123,65 @@ export async function createBattleRoom(name: string): Promise<IslandRoom> {
 
 export async function joinRoom(code: string, name: string): Promise<IslandRoom> {
   return whenReady(await client.joinById(code.trim().toUpperCase(), joinOptions(name), IslandState));
+}
+
+/**
+ * Chơi nhanh: vào phòng công khai cùng chế độ còn chỗ, không có (hay vừa đầy trong lúc bấm) thì tạo phòng công khai
+ * mới với chế độ đó. Không hỏi được server (rớt mạng, server cũ) cũng rơi về tạo phòng mới.
+ */
+export async function quickPlay(mode: QuickMode, name: string): Promise<IslandRoom> {
+  let code: string | null = null;
+  try {
+    code = await fetchQuickRoom(mode);
+  } catch {
+    code = null;
+  }
+  if (code) {
+    try {
+      return await joinRoom(code, name);
+    } catch {
+      // Phòng vừa đầy / vừa đóng / vừa vào trận: tạo phòng mới.
+    }
+  }
+  return whenReady(await client.create(BATTLE_ROOM_NAME, { ...joinOptions(name), quick: mode }, IslandState));
+}
+
+/** Mã phòng hợp lệ (đúng độ dài, đúng bảng chữ): để lọc tham số ?join= trên địa chỉ. */
+export function parseRoomCode(raw: string | null | undefined): string | null {
+  const code = (raw ?? "").trim().toUpperCase();
+  return code.length === ROOM_CODE_LENGTH && [...code].every((c) => ROOM_CODE_ALPHABET.includes(c)) ? code : null;
+}
+
+/** Link mời vào phòng: mở ra thì sảnh tự điền mã phòng và vào (sau khi có tên). */
+export function inviteLink(code: string): string {
+  return `${location.origin}/?join=${code}`;
+}
+
+// Link mời (?join=MÃ): đọc một lần lúc tải trang rồi bỏ khỏi địa chỉ, để F5 hay quay về sảnh sau trận không vào lại.
+let pendingInvite: string | null = (() => {
+  try {
+    const url = new URL(location.href);
+    const code = parseRoomCode(url.searchParams.get("join"));
+    if (url.searchParams.has("join")) {
+      url.searchParams.delete("join");
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    return code;
+  } catch {
+    return null;
+  }
+})();
+
+/** Mã phòng trong link mời chưa dùng (lấy một lần). */
+export function takeInvite(): string | null {
+  const code = pendingInvite;
+  pendingInvite = null;
+  return code;
+}
+
+/** Xem mã mời chưa dùng mà không lấy đi. */
+export function peekInvite(): string | null {
+  return pendingInvite;
 }
 
 function rememberResume(room: IslandRoom) {

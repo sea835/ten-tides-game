@@ -1,13 +1,15 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Crosshair, DoorOpen, Flag, Plus, RotateCcw, Users } from "lucide-react";
 import { ROOM_CODE_LENGTH } from "@tentides/protocol";
-import { createBattleRoom, createRoom, describeJoinError, joinRoom, lastRoom, type IslandRoom } from "./net.ts";
+import { createBattleRoom, createRoom, describeJoinError, joinRoom, lastRoom, peekInvite, type IslandRoom } from "./net.ts";
 import { AccountPanel } from "./account/AccountPanel.tsx";
 import { useAccount } from "./account/account.ts";
 import { GachaScreen } from "./gacha/GachaScreen.tsx";
 import { StudioBackdrop } from "./studio/StudioBackdrop.tsx";
 import { lobbyLook } from "./studio/looks.ts";
 import { platform } from "./game/platform.ts";
+import { QuickPlay } from "./lobby/QuickPlay.tsx";
+import { useInvite } from "./lobby/useInvite.ts";
 
 const NAME_KEY = "tentides.name";
 
@@ -46,7 +48,7 @@ function saveName(name: string) {
 
 export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => void; notice: string | null }) {
   const [name, setName] = useState(loadName);
-  const [code, setCode] = useState(() => new URLSearchParams(location.search).get("room") ?? "");
+  const [code, setCode] = useState(() => peekInvite() ?? new URLSearchParams(location.search).get("room") ?? "");
   // Tải lại trang giữa ván: mời vào lại đúng phòng cũ, server nhận ra nhân vật nhờ token của tab này.
   const [previous] = useState(lastRoom);
   const [busy, setBusy] = useState(false);
@@ -76,6 +78,9 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
       setBusy(false);
     }
   }
+
+  // Link mời ?join=MÃ: tự vào phòng khi đã có tên (ô mã đã điền sẵn cho trường hợp chưa có tên).
+  const invite = useInvite({ ready: account.status !== "loading", name, onJoin: (c) => void run(() => joinRoom(c, name)) });
 
   function onJoin(e: FormEvent) {
     e.preventDefault();
@@ -113,6 +118,7 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
             <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="vd. Hải" autoFocus readOnly={signedIn} title={signedIn ? "Đã đăng nhập: dùng tên tài khoản" : undefined} />
           </label>
 
+          {invite && <p className="invite-banner">Bạn được mời vào phòng {invite}. Nhập tên để vào.</p>}
           {hwNotice && <p className="notice">{hwNotice}</p>}
           {notice && <p className="notice">{notice}</p>}
 
@@ -131,6 +137,8 @@ export function Lobby({ onJoined, notice }: { onJoined: (room: IslandRoom) => vo
               <Plus size={18} aria-hidden /> Tạo phòng Sinh tồn (lưu trữ)
             </button>
           )}
+
+          <QuickPlay busy={busy} run={run} name={name} />
 
           <div className="divider">
             <span>hoặc vào phòng của bạn bè</span>

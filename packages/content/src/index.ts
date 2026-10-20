@@ -27,3 +27,5 @@ export * from "./snap.ts";
 export * from "./streaks.ts";
 export * from "./difficulty.ts";
 export * from "./supply.ts";
+export * from "./economy.ts";
+export * from "./challenges.ts";

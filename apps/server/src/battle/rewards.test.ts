@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PlayerState } from "@tentides/protocol";
-import { MatchRewards, REWARD, matchCoins } from "./rewards.ts";
+import { MatchRewards, REWARD, lineStats, matchCoins } from "./rewards.ts";
+import { XpLedger } from "./xp.ts";
 
 describe("thưởng xu sau trận", () => {
   it("người thắng được thưởng thắng và đủ phần sống sót", () => {
@@ -49,5 +50,65 @@ describe("theo dõi hạng trong trận", () => {
     expect(by.u1!.coins).toBe(matchCoins(3, 1, 4));
     expect(by.u2!.placement).toBe(4);
     expect(by.u3!.placement).toBe(2);
+  });
+});
+
+describe("xu phòng một người, số liệu thử thách", () => {
+  const make = (ids: string[], bots: string[] = []) => {
+    const m = new Map<string, PlayerState>();
+    for (const id of ids) {
+      const p = new PlayerState();
+      p.alive = true;
+      m.set(id, p);
+    }
+    for (const id of bots) {
+      const p = new PlayerState();
+      p.alive = true;
+      p.bot = true;
+      m.set(id, p);
+    }
+    return m;
+  };
+
+  it("một người thật với máy chỉ nhận 60% xu trận; có bạn cùng chơi thì đủ", () => {
+    const solo = make(["u1"], ["b1", "b2", "b3"]);
+    const r = new MatchRewards();
+    r.begin(solo);
+    solo.get("u1")!.kills = 2;
+    const lines = r.settle(solo, "u1", "battle");
+    expect(lines[0]!.coins).toBe(Math.round(matchCoins(2, 1, 4) * 0.6));
+
+    const duo = make(["u1", "u2"], ["b1", "b2"]);
+    const r2 = new MatchRewards();
+    r2.begin(duo);
+    duo.get("u1")!.kills = 2;
+    duo.get("u2")!.alive = false;
+    r2.onDeath("u2", duo);
+    const by = Object.fromEntries(r2.settle(duo, "u1", "battle").map((l) => [l.playerId, l]));
+    expect(by.u1!.coins).toBe(matchCoins(2, 1, 4));
+  });
+
+  it("số liệu trận: trận đã chơi, hạ gục, thắng theo chế độ", () => {
+    expect(lineStats({ kills: 5, placement: 1 }, "naval")).toEqual({ matches: 1, kills: 5, wins: 1, winsNaval: 1 });
+    expect(lineStats({ kills: 0, placement: 2 }, "war")).toEqual({ matches: 1 });
+    expect(lineStats({ kills: 3, placement: 1 }, "battle")).toMatchObject({ wins: 1, winsSolo: 1 });
+  });
+
+  it("sổ XP đếm số liệu thử thách theo sự kiện, stat() cho việc không có XP, drainStats lấy rồi xoá", () => {
+    const ledger = new XpLedger();
+    ledger.active = true;
+    ledger.track("u9", new PlayerState(), 0);
+    ledger.award("u9", "capture", 2);
+    ledger.award("u9", "revive");
+    ledger.award("u9", "headshot");
+    ledger.award("u9", "kill");
+    expect(ledger.stat("u9", "repairs", 3)).toBe(true);
+    expect(ledger.stat("bot", "repairs")).toBe(false);
+    const got = ledger.drainStats();
+    expect(got.get("u9")).toEqual({ userId: 9, stats: { captures: 2, revives: 1, headshots: 1, repairs: 3 } });
+    expect(ledger.drainStats().size).toBe(0);
+    ledger.active = false;
+    expect(ledger.stat("u9", "revives")).toBe(false);
+    ledger.dispose();
   });
 });

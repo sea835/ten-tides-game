@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { SHARDS, SKINS } from "@tentides/content";
 
 // Migration SQL chạy lần lượt lúc khởi động, mỗi cái đúng một lần (ghi vào bảng schema_migrations).
 // Chỉ thêm migration mới vào cuối, không sửa migration đã chạy.
@@ -98,7 +99,52 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: "004_economy",
+    sql: `
+      -- Mảnh skin: quay trùng ra mảnh theo độ hiếm, đổi mảnh lấy skin chọn sẵn.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS shards integer NOT NULL DEFAULT 0 CHECK (shards >= 0);
+      ALTER TABLE gacha_rolls ADD COLUMN IF NOT EXISTS shards integer NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS skin_crafts (
+        id         bigserial PRIMARY KEY,
+        user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        skin_id    text NOT NULL,
+        shards     integer NOT NULL,
+        crafted_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS skin_crafts_user ON skin_crafts (user_id, crafted_at);
+
+      -- Bản trùng đã có từ trước (count > 1) đổi ra mảnh một lần, giữ nguyên count.
+      UPDATE users u SET shards = u.shards + d.total
+      FROM (
+        SELECT user_id, SUM(GREATEST(count - 1, 0) * (${shardCase()}))::integer AS total FROM user_skins GROUP BY user_id
+      ) d
+      WHERE d.user_id = u.id AND d.total > 0;
+
+      -- Giới hạn xu mỗi ngày từ trận đấu: ngày (giờ Việt Nam, "YYYY-MM-DD") và số xu trận đã nhận trong ngày đó.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS coin_day text NOT NULL DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS coins_today integer NOT NULL DEFAULT 0;
+
+      -- Thử thách ngày / tuần: bộ thử thách bốc cố định theo tài khoản và kỳ (không lưu), chỉ lưu tiến độ.
+      -- period: "d:2026-10-12" hay "w:2026-10-12" (thứ Hai đầu tuần). claimed_at: đã nhận thưởng (tự nhận khi xong).
+      CREATE TABLE IF NOT EXISTS challenge_progress (
+        user_id      bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        period       text NOT NULL,
+        challenge_id text NOT NULL,
+        progress     integer NOT NULL DEFAULT 0 CHECK (progress >= 0),
+        claimed_at   timestamptz,
+        updated_at   timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, period, challenge_id)
+      );
+    `,
+  },
 ];
+
+/** Biểu thức SQL: số mảnh một bản trùng của skin_id (theo danh mục skin lúc chạy migration 004). */
+function shardCase(): string {
+  const when = SKINS.map((s) => `WHEN '${s.id.replace(/'/g, "''")}' THEN ${SHARDS.dupe[s.rarity]}`).join(" ");
+  return `CASE skin_id ${when} ELSE 0 END`;
+}
 
 /** Khoá tư vấn để hai tiến trình server khởi động cùng lúc không chạy migration hai lần. */
 const LOCK_ID = 7_101_010;
