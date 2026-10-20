@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ROLES, TANK, mapForState, squadSlots, type SquadRole, type World } from "@tentides/content";
+import { POSSESS_LIMIT, ROLES, TANK, mapForState, squadSlots, type SquadRole, type World } from "@tentides/content";
 import { Messages } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { isTyping, look } from "../input.ts";
@@ -18,7 +18,8 @@ import { playPing } from "../sound/radio.ts";
 
 // Giao diện chế độ Đồng đội và xe tăng: bảng đội (máu, vai trò, ai đang lái tăng), ra lệnh cho máy (Y tiến công tới
 // chỗ đang nhìn — nhìn vào xe tăng trống thì máy lái tăng lên xe, G giữ chốt phòng thủ, H tập hợp bám sau lưng), gục
-// rồi thì bấm 1–5 nhập ngay vào máy theo vai (bảng chọn có vai, máu, khoảng cách), và bảng điều khiển khi lái xe tăng.
+// rồi thì bấm 1–5 nhập ngay vào máy theo vai (bảng chọn có vai, máu, khoảng cách; mỗi trận chỉ POSSESS_LIMIT lần), và
+// bảng điều khiển khi lái xe tăng.
 
 const ROLE_ICON: Record<string, string> = { leader: "★", rifle: "▲", sniper: "◎", support: "■", tanker: "⛟", antitank: "✹" };
 export const ORDER_LABEL: Record<string, string> = { follow: "Tập hợp", hold: "Giữ chốt", move: "Tấn công", board: "Lên xe tăng" };
@@ -71,6 +72,8 @@ export function SquadHud({ room }: { room: IslandRoom }) {
       team,
       alive: p?.alive ?? false,
       leader: team === me,
+      /** Còn bao nhiêu lượt nhập xác trong trận. */
+      souls: p?.gear.souls ?? 0,
       // Ô 1–5 (theo vai) của máy trong đội: vai, máu, còn sống, cách chỗ mình bao xa.
       slots: team
         ? squadSlots([...st.players.entries()].filter(([, q]) => q.bot && q.team === team).map(([id, q]) => ({ id, role: q.role }))).map((id) => {
@@ -140,6 +143,10 @@ export function SquadHud({ room }: { room: IslandRoom }) {
         return;
       }
       if (!p.alive && p.team) {
+        if (p.gear.souls <= 0 && (e.code === "KeyF" || /^Digit[1-5]$/.test(e.code))) {
+          setBattleHud({ toast: { at: performance.now(), text: "Đã hết lượt nhập xác trong trận này" } });
+          return;
+        }
         const alive = [...room.state.players.entries()].filter(([id, q]) => q.team === p.team && id !== me && q.alive && q.bot);
         const n = e.code.startsWith("Digit") ? Number(e.code.slice(5)) : NaN;
         // Phím 1–5: nhập ngay vào máy ở ô đó (ô theo vai, server tự tìm máy); ô của máy đã gục thì báo.
@@ -167,6 +174,11 @@ export function SquadHud({ room }: { room: IslandRoom }) {
         <div className="b-squad-title">
           Đội của bạn{s.leader && s.alive ? <em> · {ORDER_LABEL[order]}</em> : null}
         </div>
+        {s.leader && (
+          <div className={`b-squad-souls ${s.souls ? "" : "none"}`} title="Gục thì nhập vào một lính còn sống của đội; mỗi trận có hạn số lần.">
+            Nhập xác: còn {s.souls}/{POSSESS_LIMIT} lượt
+          </div>
+        )}
         {s.mates.map((m) => (
           <div key={m.id} className={`b-mate-row ${m.alive ? "" : "dead"} ${hud.spectating === m.id ? "watch" : ""}`}>
             <b>{ROLE_ICON[m.role] ?? "•"}</b>
@@ -190,9 +202,17 @@ export function SquadHud({ room }: { room: IslandRoom }) {
           </div>
         )}
       </div>
-      {!s.alive && aliveMates.length > 0 && (
+      {!s.alive && aliveMates.length > 0 && s.souls <= 0 && (
         <div className="b-possess">
-          <h3>Nhập xác đồng đội</h3>
+          <h3>Đã hết lượt nhập xác</h3>
+          <p className="muted">Mỗi trận chỉ nhập xác được {POSSESS_LIMIT} lần. Đội vẫn chiến đấu tiếp: bấm chuột để xem đồng đội.</p>
+        </div>
+      )}
+      {!s.alive && aliveMates.length > 0 && s.souls > 0 && (
+        <div className="b-possess">
+          <h3>
+            Nhập xác đồng đội <small>còn {s.souls}/{POSSESS_LIMIT} lượt</small>
+          </h3>
           <div>
             {s.slots.map((m, i) =>
               m ? (

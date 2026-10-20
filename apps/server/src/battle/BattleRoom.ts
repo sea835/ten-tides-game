@@ -1,5 +1,6 @@
 import { Room, matchMaker, type Client } from "@colyseus/core";
 import { ADRENALINE, AT_MINE, isSoldierClass, squadSlots, withDynamicSlots } from "@tentides/content";
+import { BR_KILL_REWARD, POSSESS_LIMIT, supplyLimited, type WeaponLoadout } from "@tentides/content";
 import { AaLockMessage, GadgetMessage, PickClassMessage, PingMessage, RadioMessage, SquadBoardMessage, StreakMessage, TowSteerMessage } from "@tentides/protocol";
 import { Comms } from "./comms.ts";
 import { Streaks } from "./streaks.ts";
@@ -103,7 +104,7 @@ import {
   type ShotMessage,
   VoiceMessages,
 } from "@tentides/protocol";
-import { applyProgress, applySkins, resolveIdentity, type Identity } from "../account.ts";
+import { applyProgress, applySkins, resolveIdentity, userIdOfPlayer, type Identity } from "../account.ts";
 import { isPlausibleMove, sanitizeGait } from "../movement.ts";
 import { randomRoomCode } from "../roomCode.ts";
 import { Airdrops } from "./airdrops.ts";
@@ -116,6 +117,8 @@ import { DEFAULT_BOTS, applyBattleSettings, clampBots } from "./settings.ts";
 import { War, type Side } from "./war.ts";
 import { Naval, parseSeat } from "./naval.ts";
 import { VoiceRelay } from "./voice.ts";
+import { applyClassLoadout, buyLoadoutParts, savedLoadouts } from "./gunsmith.ts";
+import { shopCheck } from "./shop.ts";
 import { addAmmo, ammoOf, attOf, copyKit, everything, isGunSlot, magOf, magSize, priceOf, receive, reloadStep, reloadTime, resetKit, setMag, weaponIn, type GunSlot } from "./kit.ts";
 
 // Phòng Battleground: ai cũng xuất phát ở một chỗ ngẫu nhiên trên đảo, bấm B mua súng, giáp, lựu đạn bằng tiền
@@ -160,6 +163,8 @@ interface AuthData {
   skins: Record<string, string>;
   /** Quân hàm, thẻ tên (người có tài khoản; khách là null). */
   progress?: Identity["progress"];
+  /** Bộ lắp ráp Gunsmith đã lưu (id súng → bộ phụ kiện), đã kiểm tra lại; khách thì rỗng. */
+  loadouts?: Record<string, WeaponLoadout>;
 }
 
 interface Thrown {
@@ -221,6 +226,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   /** Số liệu vinh danh MVP (hạ gục, trợ giúp, chiếm cứ điểm, hỗ trợ) và bảng tổng kết trận vừa xong (gửi lại người vào sau). */
   stats = new MatchStats();
   private summary: MatchSummaryMessage | null = null;
+  /** Bộ lắp ráp Gunsmith của từng người (nạp từ tài khoản lúc vào phòng, gunsmith.ts). */
+  private loadouts = new Map<string, Record<string, WeaponLoadout>>();
+  private lastSyncAt = new Map<string, number>();
   bots!: Bots;
   vehicles!: Vehicles;
   war!: War;
@@ -372,9 +380,18 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       this.cancelTimer(id);
     });
 
-    this.onMessage(Messages.battleBuy, BattleBuyMessage, (client, { item }) => {
+    this.onMessage(Messages.battleBuy, BattleBuyMessage, (client, { item, loadout }) => {
       const id = this.playerOf(client);
-      if (id) this.buy(id, item, client);
+      if (id) this.buy(id, item, client, loadout);
+    });
+
+    this.onMessage(Messages.gunsmithSync, (client) => {
+      // Vừa lưu bộ lắp ráp: đọc lại từ tài khoản (tối đa mỗi 2 giây một lần, người không tài khoản thì thôi).
+      const id = this.playerOf(client);
+      const now = Date.now();
+      if (!id || now - (this.lastSyncAt.get(id) ?? 0) < 2000) return;
+      this.lastSyncAt.set(id, now);
+      void savedLoadouts(userIdOfPlayer(id)).then((l) => this.state.players.has(id) && this.loadouts.set(id, l));
     });
 
     this.onMessage(Messages.battleThrow, BattleThrowMessage, (client, msg) => {
@@ -648,11 +665,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
   async onAuth(_client: Client, options: unknown): Promise<AuthData> {
     const auth = JoinOptions.parse(options);
     // Có phiên đăng nhập hợp lệ thì gắn với tài khoản (id u<id>, tên tài khoản, skin), không thì là khách như cũ.
-    const { playerId, name, skins, progress } = await resolveIdentity(auth);
+    const { playerId, name, skins, progress, userId } = await resolveIdentity(auth);
     if (this.kicked.has(playerId)) throw new Error("Chủ phòng đã mời bạn ra khỏi phòng này.");
     const humans = [...this.state.players.values()].filter((p) => !p.bot).length;
     if (!this.state.players.has(playerId) && humans >= MAX_PLAYERS) throw new Error("Phòng đã đủ người.");
-    return { name, playerId, skins, progress };
+    return { name, playerId, skins, progress, loadouts: await savedLoadouts(userId) };
   }
 
   onJoin(client: Client, _options: unknown, auth: AuthData) {
@@ -689,6 +706,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       else if (this.state.battleMode === "naval") this.naval.assign(playerId);
     }
     this.sessions.set(client.sessionId, playerId);
+    this.loadouts.set(playerId, auth.loadouts ?? {});
     this.lastMoveAt.set(playerId, Date.now());
     this.stats.track(playerId);
     if (this.state.phase === "ended" && this.summary) client.send(Messages.matchSummary, this.summary);
@@ -768,6 +786,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     client?.send(Messages.correct, { x: p.x, y: p.y, z: p.z } satisfies CorrectMessage);
   }
 
+  /** Chiến trường: lắp bộ Gunsmith đã lưu lên súng chính của lớp lính vừa phát (war.ts gọi lúc hồi sinh). */
+  gunsmithKit(p: PlayerState) {
+    if (!p.bot) applyClassLoadout(p.kit, this.loadouts.get(this.playerIdOf(p))?.[p.kit.primary1]);
+  }
+
   private playerIdOf(p: PlayerState): string {
     for (const [id, q] of this.state.players) if (q === p) return id;
     return "";
@@ -819,6 +842,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
       if (squad && !p.bot && isSoldierClass(cls)) this.gadgets.loadout(p, cls);
       else if (!war && !naval) this.gadgets.equip(p, "");
       p.gear.cls = cls;
+      p.gear.souls = squad && !p.bot ? POSSESS_LIMIT : 0;
     }
     // Vũ khí cố định (ổ đại liên, cối) đặt trước xe cộ để xe tránh chỗ; luôn có, không theo công tắc xe cơ giới.
     if (!naval) this.vehicles.emplacements.setup();
@@ -939,6 +963,9 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const p = s.players.get(id);
     const b = s.players.get(botId);
     if (!p || p.alive || p.bot || !p.team || !b || !b.bot || !b.alive || b.team !== p.team || !this.fighting() || this.state.battleMode === "war") return;
+    // Mỗi trận chỉ nhập xác được POSSESS_LIMIT lần (gear.souls, đặt lại lúc vào trận).
+    if (p.gear.souls <= 0) return this.clientOf(id)?.send(Messages.rejected, { reason: "Đã hết lượt nhập xác trong trận này." });
+    p.gear.souls -= 1;
     const money = p.kit.money;
     copyKit(b.kit, p.kit);
     p.kit.money = money;
@@ -1520,7 +1547,7 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     const credited = !!k && killer !== id && !(k.team && k.team === p.team);
     if (k && credited) {
       k.kills += 1;
-      k.kit.money += KILL_REWARD;
+      k.kit.money += supplyLimited(this.state.battleMode) ? BR_KILL_REWARD : KILL_REWARD;
       this.rewards.xp.award(killer, headshot ? "headshot" : "kill");
       this.streaks.earn(killer, headshot ? "headshot" : "kill");
     }
@@ -1559,10 +1586,18 @@ export class BattleRoom extends Room<{ state: IslandState }> {
 
   // -------------------------------------------------------------------------- đồ
 
-  private buy(id: string, item: string, client: Client) {
+  /**
+   * Mua một món. Sinh tồn / Đồng đội: giữa trận phải đứng gần trạm tiếp tế hay thùng thính (shop.ts). `loadout`: mua
+   * súng rồi mua thêm bộ phụ kiện đã lưu trong Gunsmith cho khẩu đó (gunsmith.ts; bộ do server giữ, không lấy từ client).
+   */
+  private buy(id: string, item: string, client: Client, loadout = false) {
     const p = this.state.players.get(id);
     if (!p || !p.alive) return;
     if (this.state.phase === "ended") return;
+    const where = shopCheck(this.state, this.map, p.x, p.z);
+    if (!where.ok) return this.reject(client, where.reason);
+    const saved = loadout ? this.loadouts.get(id)?.[item] : undefined;
+    if (loadout && (!saved || !WEAPON.get(item))) return this.reject(client, "Chưa lưu cấu hình cho khẩu này trong Kho Quân Nhu.");
     if (this.state.battleMode === "solo" && WEAPON.get(item)?.class === "launcher" && item !== "igla") return this.reject(client, "Chế độ sinh tồn không có xe tăng, không bán súng chống tăng.");
     const price = priceOf(item);
     if (price === null) return this.reject(client, "Món này không bán.");
@@ -1573,6 +1608,11 @@ export class BattleRoom extends Room<{ state: IslandState }> {
     p.kit.money -= price;
     // Mua súng được tặng kèm một hộp đạn.
     if (weapon) addAmmo(p.kit, weapon.ammo, weapon.mag * 2);
+    // Mua theo cấu hình Kho Quân Nhu: phụ kiện lắp lên đúng khẩu vừa mua (giveWeapon để khẩu đó ở ô đang cầm).
+    if (saved && isGunSlot(p.kit.active)) {
+      const { skipped } = buyLoadoutParts(p.kit, p.kit.active, saved, dropped);
+      if (skipped.length) this.reject(client, `Đã mua súng; bỏ qua ${skipped.length} món (không đủ tiền hay không bán).`);
+    }
     this.cancelTimer(id);
     this.dropAround(dropped, p.x, p.y, p.z);
   }

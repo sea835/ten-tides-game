@@ -150,6 +150,16 @@ export function attachPart(kit: KitState, att: AttachmentId, dropped: Dropped): 
   if (!fits.length) return false;
   const has = (slot: GunSlot) => attOf(kit, slot).split(",").some((id) => ATTACHMENTS[id as AttachmentId]?.slot === a.slot);
   const slot = fits.find((sl) => sl === kit.active && !has(sl)) ?? fits.find((sl) => !has(sl)) ?? fits.find((sl) => sl === kit.active) ?? fits[0]!;
+  attachPartTo(kit, slot, att, dropped);
+  return true;
+}
+
+/**
+ * Lắp phụ kiện lên đúng khẩu ở ô `slot` (bộ lắp ráp Gunsmith): món cũ cùng chỗ tháo ra rơi xuống. Không kiểm tra lắp
+ * vừa: bên gọi kiểm tra trước (attachmentFits).
+ */
+export function attachPartTo(kit: KitState, slot: GunSlot, att: AttachmentId, dropped: Dropped) {
+  const a = ATTACHMENTS[att];
   const list = attOf(kit, slot)
     .split(",")
     .filter((id) => {
@@ -164,7 +174,6 @@ export function attachPart(kit: KitState, att: AttachmentId, dropped: Dropped): 
   setAtt(kit, slot, list.join(","));
   resetFlip(kit, slot);
   fitMag(kit, slot);
-  return true;
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   Copy,
   Crosshair,
   Flag,
+  Gauge,
   Keyboard,
   Lock,
   LogOut,
@@ -20,7 +21,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { SHIP_CLASSES, WAR_MAP_LIST, shipClass } from "@tentides/content";
+import { BOT_DIFFICULTIES, DIFFICULTY_BRIEF, DIFFICULTY_LABEL, SHIP_CLASSES, WAR_MAP_LIST, isBotDifficulty, shipClass } from "@tentides/content";
 import { BATTLE_TIMES, MAX_BATTLE_BOTS, MIN_BATTLE_BOTS, Messages, WAR_MAX_PER_SIDE, WAR_TICKETS_MAX, WAR_TICKETS_MIN, type BattleSettingsMessage } from "@tentides/protocol";
 import { myId, type IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
@@ -30,10 +31,11 @@ import { StudioBackdrop } from "../../studio/StudioBackdrop.tsx";
 import { roomLook } from "../../studio/looks.ts";
 import { ClassPicker } from "./GadgetHud.tsx";
 import { SIDE_NAME } from "./WarHud.tsx";
+import { useGunsmithSync } from "./loadoutBuy.tsx";
 import "./command.css";
 
-// Sảnh Battleground kiểu "Trung tâm chỉ huy": chọn chế độ (ba thẻ), bảng cài đặt phòng (quân số, thời tiết, vé quân,
-// khí tài), danh sách người chơi / hai phe, ô Kho Quân Nhu. Chỉ chủ phòng chỉnh được; người khác thấy cùng bảng ở dạng
+// Sảnh Battleground kiểu "Trung tâm chỉ huy": chọn chế độ (ba thẻ), bảng cài đặt phòng (quân số, độ khó của máy, thời
+// tiết, vé quân, khí tài), danh sách người chơi / hai phe, ô Kho Quân Nhu. Chỉ chủ phòng chỉnh được; người khác thấy cùng bảng ở dạng
 // chỉ xem. Server kẹp lại mọi giá trị (apps/server/src/battle/settings.ts).
 
 type Mode = "war" | "squad" | "solo" | "naval";
@@ -63,15 +65,15 @@ const MODES: { id: Mode; title: string; tag: string; icon: ReactNode; facts: str
     tag: "Dẫn 5 lính AI",
     icon: <Users size={22} aria-hidden />,
     facts: ["Y/G/H ra lệnh", "Nhập xác", "Xe tăng đội"],
-    brief: "Mỗi người dẫn 5 lính AI (súng trường, bắn tỉa, súng máy, chống tăng, lái tăng). Y tới điểm, G giữ chỗ, H theo sau; gục thì nhập vào lính còn sống. Đội cuối cùng còn người thắng.",
+    brief: "Mỗi người dẫn 5 lính AI (súng trường, bắn tỉa, súng máy, chống tăng, lái tăng). Y tới điểm, G giữ chỗ, H theo sau; gục thì nhập vào lính còn sống (mỗi trận 2 lần). Vào trận rồi chỉ mua được ở trạm tiếp tế. Đội cuối cùng còn người thắng.",
   },
   {
     id: "solo",
     title: "Sinh Tồn Sa Trường",
     tag: "Battle royale solo",
     icon: <Crosshair size={22} aria-hidden />,
-    facts: ["Bo thu 7 vòng", "Thính rơi", "Mua súng (B)"],
-    brief: "Xuất phát ngẫu nhiên khắp đảo, bấm B mua vũ khí, nhặt đồ trong nhà và thùng thính. Vùng an toàn thu hẹp dần; người cuối cùng còn sống thắng.",
+    facts: ["Bo thu 7 vòng", "Thính rơi", "Trạm tiếp tế"],
+    brief: "Xuất phát ngẫu nhiên khắp đảo, lúc chuẩn bị bấm B mua vũ khí ở đâu cũng được; vào trận rồi chỉ mua được ở trạm tiếp tế (ô cam trên bản đồ) hay cạnh thùng thính đã chạm đất, còn lại nhặt đồ trong nhà. Vùng an toàn thu hẹp dần; người cuối cùng còn sống thắng.",
   },
 ];
 
@@ -233,6 +235,7 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
     warMap: st.settings.warMap,
     shipBlue: st.settings.shipBlue,
     shipRed: st.settings.shipRed,
+    difficulty: isBotDifficulty(st.settings.botDifficulty) ? st.settings.botDifficulty : "normal",
     players: [...st.players.entries()].filter(([, p]) => !p.bot).map(([id, p]) => ({ id, name: p.name, color: p.color, team: p.team, role: p.role })),
   }));
   // Nhân vật của mình trên bục 3D phía sau bảng: theo lớp lính, trang phục, skin đã lắp.
@@ -253,6 +256,8 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
   const look = useMemo(() => roomLook(mine, profile), [mine, profile]);
   const panel = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  // Lưu bộ lắp ráp trong Kho Quân Nhu thì báo server đọc lại (mua theo cấu hình, súng lớp lính chiến trường).
+  useGunsmithSync(room);
   if (s.phase !== "lobby") return null;
   const me = myId(room);
   const isHost = s.host === me;
@@ -389,6 +394,20 @@ export function CommandCenter({ room, onLeave }: { room: IslandRoom; onLeave: ()
                 onChange={(v) => send({ bots: war ? Math.round(v / 2) : v })}
               />
             )}
+            <div className="cc-field">
+              <span className="cc-field-head">
+                <Gauge size={16} aria-hidden />
+                <span>Độ khó của máy</span>
+              </span>
+              <div className="cc-sky cc-diff" role="radiogroup" aria-label="Độ khó của máy">
+                {BOT_DIFFICULTIES.map((d) => (
+                  <button key={d} role="radio" aria-checked={s.difficulty === d} className={s.difficulty === d ? "on" : ""} disabled={!isHost} onClick={() => send({ difficulty: d })}>
+                    <span>{DIFFICULTY_LABEL[d]}</span>
+                  </button>
+                ))}
+              </div>
+              <small className="cc-note">{DIFFICULTY_BRIEF[s.difficulty]}</small>
+            </div>
             {war && (
               <Slider
                 label="Vé quân mỗi phe"

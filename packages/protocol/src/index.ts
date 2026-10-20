@@ -121,6 +121,8 @@ export const GearState = schema(
     jugg: t.boolean().default(false),
     /** Kỹ Thuật mang tên lửa phòng không IGLA thay RPG-7 (lần hồi sinh tới). */
     aa: t.boolean().default(false),
+    /** Đồng đội: còn bao nhiêu lượt nhập xác máy cùng đội trong trận này (POSSESS_LIMIT). */
+    souls: t.uint8().default(0),
   },
   "GearState",
 );
@@ -713,6 +715,8 @@ export const RoomSettingsState = schema(
     /** Hải chiến: lớp tàu của mỗi phe (SHIP_CLASSES của content). */
     shipBlue: t.string().default("battleship"),
     shipRed: t.string().default("destroyer"),
+    /** Độ khó của máy (BOT_DIFFICULTIES): độ chính xác, phản ứng, lựu đạn... theo bảng DIFFICULTY của content. */
+    botDifficulty: t.string().default("normal"),
   },
   "RoomSettingsState",
 );
@@ -1017,7 +1021,11 @@ export const GadgetMessage = z.object({ use: z.enum(GADGET_IDS), o: vec3.optiona
 export type GadgetMessage = z.infer<typeof GadgetMessage>;
 /** Ở sảnh (Đồng đội, Chiến trường): chọn lớp lính cho trận tới. */
 export const PickClassMessage = z.object({ cls: z.enum(SOLDIER_CLASSES), aa: z.boolean().optional() });
-export const BattleBuyMessage = z.object({ item: z.string().max(40) });
+/**
+ * Mua một món. `loadout`: mua súng kèm bộ phụ kiện đã lưu trong Kho Quân Nhu (Gunsmith) cho khẩu đó — server tự đọc bộ
+ * đã lưu theo tài khoản, client không gửi danh sách phụ kiện.
+ */
+export const BattleBuyMessage = z.object({ item: z.string().max(40), loadout: z.boolean().optional() });
 export const BattleThrowMessage = z.object({ kind: z.enum(["frag", "smoke", "flash"]), o: vec3, v: vec3 });
 /** Đâm dao: người bị đâm (máy mình dò trước, server kiểm tra lại tầm với, hướng, tường). Không trúng ai thì để trống. */
 export const MeleeMessage = z.object({ target: z.string().max(64).optional(), yaw: z.number() });
@@ -1032,9 +1040,11 @@ export const WAR_MAX_PER_SIDE = 50;
 export const WAR_TICKETS_MIN = 150;
 export const WAR_TICKETS_MAX = 500;
 export const WAR_TICKETS_DEFAULT = 300;
+/** Độ khó của máy chủ phòng chọn được (trùng với BOT_DIFFICULTIES của content). */
+export const BOT_DIFFICULTIES = ["easy", "normal", "hard", "veteran"] as const;
 /**
  * Chủ phòng chỉnh (chỉ ở sảnh): số máy (chiến trường: mỗi phe), thời tiết và giờ trong ngày ("random" là để máy bốc
- * thăm), chế độ, vé quân, bật / tắt xe cơ giới. Khung ở đây chỉ chặn số vô lý; server tự kẹp về khoảng hợp lệ.
+ * thăm), chế độ, vé quân, bật / tắt xe cơ giới, độ khó của máy. Khung ở đây chỉ chặn số vô lý; server tự kẹp về khoảng hợp lệ.
  */
 export const BattleSettingsMessage = z
   .object({
@@ -1045,6 +1055,7 @@ export const BattleSettingsMessage = z
     tickets: z.int().min(0).max(5000),
     vehicles: z.boolean(),
     map: z.string().max(32),
+    difficulty: z.enum(BOT_DIFFICULTIES),
   })
   .partial();
 export type BattleSettingsMessage = z.infer<typeof BattleSettingsMessage>;
@@ -1317,6 +1328,8 @@ export const Messages = {
   reload: "reload",
   switchSlot: "switchSlot",
   battleBuy: "battleBuy",
+  /** Vừa lưu bộ lắp ráp trong Gunsmith: server đọc lại các bộ đã lưu từ tài khoản (không kèm dữ liệu). */
+  gunsmithSync: "gunsmithSync",
   battleThrow: "battleThrow",
   placeMine: "placeMine",
   melee: "melee",
