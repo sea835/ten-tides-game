@@ -47,9 +47,9 @@ describe("SpatialGrid", () => {
     const grid = new SpatialGrid<{ x: number; z: number }>(16);
     const items = Array.from({ length: 300 }, (_, k) => ({ x: Math.sin(k * 3.7) * 200, z: Math.cos(k * 9.1) * 200 }));
     items.forEach((i) => grid.upsert(i));
-    const viaQuery: object[] = [];
+    const viaQuery: { x: number; z: number }[] = [];
     grid.query(20, -30, 60, (i) => viaQuery.push(i));
-    const out: object[] = [];
+    const out: { x: number; z: number }[] = [];
     expect(grid.collect(20, -30, 60, out)).toBe(out);
     expect(new Set(out)).toEqual(new Set(viaQuery));
     grid.clear();
