@@ -3,10 +3,15 @@ import { Lobby } from "./Lobby.tsx";
 import { canResume, forgetLastRoom, resumeRoom, wasKicked, type IslandRoom } from "./net.ts";
 import { GunsmithHost } from "./gunsmith/GunsmithHost.tsx";
 import { installUiSounds } from "./game/sound/ui.ts";
+import { installA11y } from "./game/a11y.ts";
+import { ErrorBoundary, ErrorToast } from "./robust/ErrorBoundary.tsx";
+import { installErrorHooks } from "./robust/errorHooks.ts";
+import { LoadingScreen, markGameChunkReady } from "./robust/LoadingScreen.tsx";
+import { WebglOverlay } from "./robust/WebglGuard.tsx";
 
 // Phần chơi (three.js, vật lý Rapier, hậu kỳ, toàn bộ cảnh và HUD trận) tải riêng: sảnh chờ mở ngay không phải đợi
 // mấy MB mã 3D. Tải trước ngầm khi sảnh rảnh, nên lúc vào phòng gần như không phải chờ.
-const loadGame = () => import("./game/Game.tsx");
+const loadGame = () => import("./game/Game.tsx").then((m) => (markGameChunkReady(), m));
 const Game = lazy(() => loadGame().then((m) => ({ default: m.Game })));
 
 export function App() {
@@ -35,6 +40,9 @@ export function App() {
 
   // Tiếng giao diện (rê chuột, bấm nút, lắp trang bị) cho cả sảnh lẫn trong trận.
   useEffect(() => installUiSounds(), []);
+  // Cỡ HUD, màu phe cho người mù màu theo Cài đặt; bắt lỗi toàn cục (lỗi lặp thì hiện thông báo nhỏ).
+  useEffect(() => installA11y(), []);
+  useEffect(() => installErrorHooks(), []);
 
   useEffect(() => {
     const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
@@ -69,18 +77,17 @@ export function App() {
     };
   }, [room]);
 
+  let screen;
   if (resuming && !room) {
-    return (
+    screen = (
       <div className="reconnecting">
         <div className="spinner" aria-hidden />
         Đang vào lại trận…
       </div>
     );
-  }
-
-  if (!room) {
-    return (
-      <>
+  } else if (!room) {
+    screen = (
+      <ErrorBoundary scope="lobby">
         <Lobby
           notice={notice}
           onJoined={(r) => {
@@ -90,25 +97,33 @@ export function App() {
         />
         {/* Gunsmith mở bằng openGunsmith() từ sảnh hay bảng tài khoản. */}
         <GunsmithHost />
-      </>
+      </ErrorBoundary>
+    );
+  } else {
+    const leave = () => {
+      forgetLastRoom();
+      void room.leave();
+      setRoom(null);
+    };
+    screen = (
+      <ErrorBoundary scope="game" onBack={leave} resetKey={room}>
+        <Suspense fallback={<LoadingScreen room={room} />}>
+          <Game room={room} onLeave={leave} />
+          {dropped && (
+            <div className="reconnecting overlay" role="status">
+              <div className="spinner" aria-hidden />
+              Mất kết nối, đang nối lại…
+            </div>
+          )}
+        </Suspense>
+        <WebglOverlay onLeave={leave} />
+      </ErrorBoundary>
     );
   }
   return (
-    <Suspense fallback={<div className="game-loading">Đang tải chiến trường…</div>}>
-      <Game
-        room={room}
-        onLeave={() => {
-          forgetLastRoom();
-          void room.leave();
-          setRoom(null);
-        }}
-      />
-      {dropped && (
-        <div className="reconnecting overlay" role="status">
-          <div className="spinner" aria-hidden />
-          Mất kết nối, đang nối lại…
-        </div>
-      )}
-    </Suspense>
+    <>
+      {screen}
+      <ErrorToast />
+    </>
   );
 }

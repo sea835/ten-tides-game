@@ -1,0 +1,167 @@
+/* Màn phục hồi lỗi (ErrorBoundary), mất WebGL (WebglOverlay), thông báo lỗi lặp (ErrorToast), màn tải (LoadingScreen). */
+
+.crash {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--bg-0, #07131c);
+  color: var(--text, #f5efe3);
+}
+.crash.overlay {
+  background: rgba(4, 10, 15, 0.82);
+  backdrop-filter: blur(6px);
+}
+.crash-card {
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  text-align: center;
+  padding: 24px 22px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background:
+    linear-gradient(rgba(10, 14, 20, 0.92), rgba(10, 14, 20, 0.92)) padding-box,
+    var(--edge-crimson, var(--edge-cyan)) border-box;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+.crash-card h1 {
+  margin: 0;
+  font: 700 24px var(--font-display, system-ui, sans-serif);
+  letter-spacing: 0.03em;
+}
+.crash-card p {
+  margin: 0;
+  color: var(--muted, #a9b8be);
+  line-height: 1.55;
+}
+.crash-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.crash-card details {
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted, #a9b8be);
+}
+.crash-card pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+.crash-card .spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--line-strong, rgba(255, 236, 205, 0.2));
+  border-top-color: var(--accent, #f2b441);
+  animation: reconnect-spin 0.9s linear infinite;
+}
+
+.err-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 350;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, 94vw);
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 122, 102, 0.5);
+  background: rgba(10, 14, 20, 0.92);
+  color: var(--text, #f5efe3);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.err-toast button {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+
+/* Màn tải ván chơi. */
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(0, 242, 254, 0.08), transparent 60%),
+    var(--bg-0, #07131c);
+  color: var(--text, #f5efe3);
+}
+.loading-card {
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.loading-kicker {
+  font: 600 12px var(--font-display, system-ui, sans-serif);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold, #ffd700);
+}
+.loading h1 {
+  margin: 0;
+  font: 700 clamp(26px, 6vw, 38px) var(--font-display, system-ui, sans-serif);
+  letter-spacing: 0.04em;
+}
+.loading-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.loading-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan-2, #4facfe), var(--cyan, #00f2fe));
+  transition: width 0.4s ease-out;
+}
+.loading-stage {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted, #a9b8be);
+}
+.loading-tip {
+  min-height: 3.4em;
+  margin: 6px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--accent, #f2b441);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.loading-tip small {
+  display: block;
+  margin-bottom: 2px;
+  font: 600 11px var(--font-display, system-ui, sans-serif);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-hi, #ffd27a);
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar i,
+  .crash-card .spinner {
+    transition: none;
+    animation: none;
+  }
+}

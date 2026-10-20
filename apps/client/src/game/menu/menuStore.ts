@@ -40,7 +40,8 @@ export function useMenu(): MenuState {
 
 /** Mở bảng (thả chuột ra để bấm được nút). */
 export function openMenu(which: "settings" | "controls") {
-  setMenu({ [which]: true });
+  // Một bảng một lúc: mở bảng này thì đóng bảng kia.
+  setMenu({ settings: which === "settings", controls: which === "controls" });
   document.exitPointerLock?.();
 }
 

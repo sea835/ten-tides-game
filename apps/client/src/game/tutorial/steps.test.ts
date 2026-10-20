@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { controlDef, richParts } from "../controlsMap.ts";
-import { advance, applies, hasSeen, isDone, isFinished, isManual, loadSeen, markSeen, progressOf, scriptFor, skipStep, startRun, stepNumber, visibleCount, type SeenStore, type Signals, type TutorialCtx, type TutorialStep } from "./steps.ts";
+import { advance, applies, hasSeen, isDone, isFinished, isManual, loadSeen, markSeen, progressOf, scriptFor, skipStep, startRun, stepNumber, visibleCount, type SeenStore, type Signals, type TutorialCtx, type TutorialRun, type TutorialStep } from "./steps.ts";
 
 const ctx = (over: Partial<TutorialCtx> = {}): TutorialCtx => ({ mode: "war", role: "", cls: "", gadget: true, vehicles: true, ...over });
 const memory = (): SeenStore & { data: Record<string, string> } => {
@@ -88,14 +88,14 @@ describe("advance", () => {
   });
 
   it("bỏ bước không áp dụng (không có khí tài)", () => {
-    let run = { index: 1, start: { walk: 6, shots: 0 } };
+    let run: TutorialRun = { index: 1, start: { walk: 6, shots: 0 } };
     run = advance(script, run, { walk: 6, shots: 2 }, ctx({ gadget: false }));
     expect(run.index).toBe(3);
     expect(script[run.index]!.id).toBe("d");
   });
 
   it("bước đọc: dừng lại tới khi bấm Enter (skipStep), rồi hết kịch bản", () => {
-    let run = { index: 3, start: {} as Signals };
+    let run: TutorialRun = { index: 3, start: {} };
     run = advance(script, run, { anything: 1 }, ctx());
     expect(run.index).toBe(3);
     expect(isFinished(script, run)).toBe(false);

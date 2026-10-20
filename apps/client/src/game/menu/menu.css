@@ -114,6 +114,7 @@
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--text, #f5efe3);
   font: 600 11.5px/18px system-ui, sans-serif;
   text-align: center;
 }
@@ -165,7 +166,7 @@
   border: 1px solid transparent;
   border-radius: 14px;
   background:
-    linear-gradient(rgba(10, 14, 20, 0.94), rgba(10, 14, 20, 0.94)) padding-box,
+    linear-gradient(rgb(10, 14, 20), rgb(10, 14, 20)) padding-box,
     var(--edge-cyan) border-box;
   box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.55),
@@ -246,4 +247,27 @@
   gap: 6px;
   font-size: 13px;
   padding: 7px 12px;
+}
+
+/* Ô chọn, thanh trượt trong bảng không kế thừa kiểu ô nhập rộng 100% của trang. */
+.b-settings input[type="checkbox"] {
+  width: auto;
+  flex: none;
+  padding: 0;
+  margin: 0;
+}
+.b-settings input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.b-settings select {
+  width: auto;
+  max-width: 100%;
+  grid-column: 2 / 4;
+}
+.b-settings .b-set-check {
+  line-height: 1.4;
 }
