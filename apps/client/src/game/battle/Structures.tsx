@@ -20,8 +20,7 @@ import { Wreckage, wreck } from "./Wreckage.tsx";
 import type { IslandRoom } from "../../net.ts";
 
 type Collider = ReturnType<ReturnType<typeof useRapier>["world"]["createCollider"]>;
-import { materialReference, normalWorldGeometry, positionWorld, select, texture, vec4 } from "three/tsl";
-import type { V3 } from "../gpu/slots.ts";
+import { normalWorldGeometry, positionWorld, select, texture, vec3, vec4 } from "three/tsl";
 import { detailed, type DetailKind } from "../textures.ts";
 
 // Công trình của bản đồ Battleground: hàng nghìn khối hộp gom theo chất liệu và theo ô đất TILE mét, mỗi nhóm một
@@ -154,9 +153,10 @@ function worldMapped(m: MeshStandardMaterial, scale: number) {
   // Vị trí thế giới (đã tính ma trận instance) và pháp tuyến gốc của khối: quay theo khối, không bị co giãn làm lệch.
   const n = normalWorldGeometry.normalize().abs();
   const uv = select(n.x.greaterThan(n.z).and(n.x.greaterThan(n.y)), positionWorld.zy, select(n.z.greaterThan(n.y), positionWorld.xy, positionWorld.xz));
-  // Màu gốc không nhân ảnh theo UV của khối (materialColor làm việc đó): ảnh lấy theo toạ độ thế giới ở đây.
-  const base = materialReference("color", "color") as unknown as V3;
-  m.colorNode = vec4(base.mul(texture(map, uv.mul(scale)).rgb), 1);
+  // Ảnh lấy theo toạ độ thế giới (không qua UV của khối như materialColor). Màu gốc của chất liệu là hằng số, không
+  // tham chiếu vật liệu lúc vẽ vì lượt vẽ bóng đổi sang vật liệu khác, không có thuộc tính màu.
+  const tint = vec3(m.color.r, m.color.g, m.color.b);
+  m.colorNode = vec4(tint.mul(texture(map, uv.mul(scale)).rgb), 1);
 }
 
 function makeMaterial(mat: BoxMat): MeshStandardMaterial {
