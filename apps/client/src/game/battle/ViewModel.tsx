@@ -103,7 +103,7 @@ function drawViewLayer(renderer: WebGPURenderer, scene: Scene, draw: () => void)
 }
 
 /** Vị trí đỉnh khi vẽ đè: ép độ sâu sát mặt phẳng gần nhất để súng không bị tường che (chuẩn độ sâu của từng nền khác nhau). */
-const drawOnTopClip = Fn((builder) => {
+export const drawOnTopClip = Fn((builder) => {
   const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(positionLocal, 1));
   const z = (builder.renderer as { coordinateSystem: number }).coordinateSystem === WebGPUCoordinateSystem ? clip.z.mul(0.05) : clip.z.mul(0.05).sub(clip.w.mul(0.95));
   return vec4(clip.x, clip.y, z, clip.w);

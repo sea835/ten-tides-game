@@ -1,7 +1,8 @@
-import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, Vector2, type Texture, type WebGLProgramParametersWithUniforms } from "three";
-import { injectGlint } from "./viewGlint.ts";
+import { CanvasTexture, Color, DoubleSide, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
+import { abs, clamp, dot, materialColor, materialEmissive, materialRoughness, max, mix, normalGeometry, normalize, positionGeometry, pow, smoothstep, step, texture, vec3, vec4 } from "three/tsl";
+import { slots, type F, type V3, type V4 } from "./gpu/slots.ts";
+import { applyDrawOnTop, applyGlint, applyViewWet } from "./viewGlint.ts";
 import { SKIN, type SkinDef, type SkinFinish, type SkinPattern } from "@tentides/content";
-import { VIEW_WET_GLSL, VIEW_WET_PARS_GLSL, wetUniforms } from "./atmosphere.ts";
 
 // Vật liệu skin súng: thay vật liệu của từng bộ phận súng (khoá GunModel: metal, poly, wood...) bằng vật liệu theo skin.
 // Vân (rằn ri, vằn hổ, tổ ong, điểm ảnh, sợi carbon, thép damascus) sinh tại chỗ bằng canvas, không cần file ảnh.
@@ -534,114 +535,53 @@ function lookOf(skin: SkinDef): SkinLook {
   }
 }
 
-const VERTEX_HEAD = /* glsl */ `
-varying vec3 vSkinPos;
-varying vec3 vSkinNormal;
-`;
-
-const VERTEX_BODY = /* glsl */ `
-  #ifdef USE_INSTANCING
-    vSkinPos = ( instanceMatrix * vec4( position, 1.0 ) ).xyz;
-    vSkinNormal = mat3( instanceMatrix ) * objectNormal;
-  #else
-    vSkinPos = position;
-    vSkinNormal = objectNormal;
-  #endif
-`;
-
-const FRAGMENT_HEAD = /* glsl */ `
-varying vec3 vSkinPos;
-varying vec3 vSkinNormal;
-uniform sampler2D uSkinMap;
-uniform float uSkinScale;
-uniform float uSkinRoughVar;
-uniform vec3 uSkinFrom;
-uniform vec3 uSkinTo;
-uniform vec2 uSkinRange;
-uniform vec3 uSkinNeonA;
-uniform vec3 uSkinNeonB;
-vec4 skinTriplanar( sampler2D tex, vec3 p, vec3 n ) {
-  vec3 w = pow( abs( normalize( n ) ), vec3( 4.0 ) );
-  w /= ( w.x + w.y + w.z + 1e-5 );
-  return texture2D( tex, p.zy ) * w.x + texture2D( tex, p.xz + 0.37 ) * w.y + texture2D( tex, p.xy + 0.71 ) * w.z;
+/** Lấy mẫu vân theo ba mặt phẳng, trộn theo pháp tuyến (mỗi mặt lệch một đoạn để ba mặt không trùng vân). */
+function skinTriplanar(tex: Texture, p: V3, n: V3): V4 {
+  const w0 = pow(abs(normalize(n)), vec3(4));
+  const w = w0.div(w0.x.add(w0.y).add(w0.z).add(1e-5));
+  return texture(tex, p.zy).mul(w.x).add(texture(tex, p.xz.add(0.37)).mul(w.y)).add(texture(tex, p.xy.add(0.71)).mul(w.z)) as unknown as V4;
 }
-`;
 
-const FRAGMENT_COLOR = /* glsl */ `
-  vec4 skinTex = vec4( 1.0 );
-  #if defined( SKIN_MAP ) || defined( SKIN_NEON )
-    skinTex = skinTriplanar( uSkinMap, vSkinPos * uSkinScale, vSkinNormal );
-  #endif
-  #ifdef SKIN_MAP
-    diffuseColor.rgb *= skinTex.rgb;
-  #endif
-  #ifdef SKIN_GRADIENT
-    // Chuyển màu dọc thân súng (báng → nòng), pha chút theo chiều cao cho đỡ phẳng.
-    float skinT = smoothstep( uSkinRange.x, uSkinRange.y, vSkinPos.z + vSkinPos.y * 0.35 );
-    diffuseColor.rgb *= mix( uSkinFrom, uSkinTo, skinT );
-  #endif
-`;
-
-const FRAGMENT_ROUGH = /* glsl */ `
-  #ifdef SKIN_MAP
-    roughnessFactor = clamp( roughnessFactor * ( 1.0 + ( 0.5 - dot( skinTex.rgb, vec3( 0.333 ) ) ) * uSkinRoughVar * 2.0 ), 0.03, 1.0 );
-  #endif
-`;
-
-const FRAGMENT_EMISSIVE = /* glsl */ `
-  #ifdef SKIN_NEON_ACCENT
-    // Hai màu: emissive chỉ là cường độ (trắng), tô theo kênh đỏ (màu chính) hay xanh lá (màu phụ) của mặt nạ.
-    totalEmissiveRadiance *= mix( uSkinNeonA, uSkinNeonB, step( skinTex.r + 0.001, skinTex.g ) ) * ( 0.08 + max( skinTex.r, skinTex.g ) * 1.4 );
-  #elif defined( SKIN_NEON )
-    // Đường mạch sáng rực, phần nền le lói.
-    totalEmissiveRadiance *= 0.08 + skinTex.r * 1.4;
-  #endif
-`;
-
-/** Nén độ sâu về sát camera cho súng trước mặt (giống drawOnTop trong GunModel), gộp chung vào bản vá skin. */
-const DRAW_ON_TOP_GLSL = "gl_Position.z = gl_Position.z * 0.05 - 0.95 * gl_Position.w;";
+const rgbOf = (c: Color) => vec3(c.r, c.g, c.b);
 
 function patch(m: MeshStandardMaterial, look: SkinLook, onTop: boolean) {
-  const uniforms = {
-    uSkinMap: { value: look.map ?? look.neon?.mask ?? null },
-    uSkinScale: { value: look.neon?.scale ?? look.scale ?? 1 },
-    uSkinRoughVar: { value: look.roughVar ?? 0 },
-    uSkinFrom: { value: new Color(look.gradient?.from ?? "#ffffff") },
-    uSkinTo: { value: new Color(look.gradient?.to ?? "#ffffff") },
-    // Súng: gốc ở tay cầm, nòng theo +z; báng chừng -0,45 m, đầu nòng chừng +0,75 m.
-    uSkinRange: { value: new Vector2(-0.45, 0.75) },
-    uSkinNeonA: { value: new Color(look.neon?.color ?? "#ffffff") },
-    uSkinNeonB: { value: new Color(look.neon?.accent ?? "#ffffff") },
-  };
-  const defines: Record<string, string> = {};
-  if (look.map) defines.SKIN_MAP = "";
-  if (look.gradient) defines.SKIN_GRADIENT = "";
-  if (look.neon?.mask) defines.SKIN_NEON = "";
-  if (look.neon?.mask && look.neon.accent) defines.SKIN_NEON_ACCENT = "";
-  m.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
-    Object.assign(shader.uniforms, uniforms);
-    shader.defines = { ...shader.defines, ...defines };
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
-      .replace("#include <begin_vertex>", `#include <begin_vertex>\n${VERTEX_BODY}`);
-    if (onTop) {
-      shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n  ${DRAW_ON_TOP_GLSL}`);
-      // Súng trước mặt ướt mưa, nước (atmosphere.ts).
-      shader.uniforms.uViewWet = wetUniforms.uViewWet;
-      shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", `#include <common>\n${VIEW_WET_PARS_GLSL}`)
-        .replace("#include <metalnessmap_fragment>", `#include <metalnessmap_fragment>\n${VIEW_WET_GLSL}`);
+  const s = slots(m);
+  // Toạ độ, pháp tuyến trong hệ của vật: vân dính theo súng khi súng xoay.
+  const pos = positionGeometry;
+  const mask = look.map ?? look.neon?.mask ?? null;
+  const skinTex: V4 | null = mask ? skinTriplanar(mask, pos.mul(look.neon?.scale ?? look.scale ?? 1), normalGeometry) : null;
+  if (look.map || look.gradient) {
+    const base = vec4(materialColor as unknown as V4);
+    let rgb: V3 = base.rgb;
+    if (look.map && skinTex) rgb = rgb.mul(skinTex.rgb);
+    if (look.gradient) {
+      // Chuyển màu dọc thân súng (báng → nòng), pha chút theo chiều cao cho đỡ phẳng. Súng: gốc ở tay cầm, nòng theo
+      // +z; báng chừng -0,45 m, đầu nòng chừng +0,75 m.
+      const t = smoothstep(-0.45, 0.75, pos.z.add(pos.y.mul(0.35)));
+      rgb = rgb.mul(mix(rgbOf(new Color(look.gradient.from)), rgbOf(new Color(look.gradient.to)), t));
     }
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${FRAGMENT_HEAD}`)
-      .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_COLOR}`)
-      .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${FRAGMENT_ROUGH}`)
-      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${FRAGMENT_EMISSIVE}`);
-    // Súng trước mặt: vệt sáng quét khi ngắm nghía (khoe skin).
-    if (onTop) injectGlint(shader);
-  };
-  const key = `tenskin:${Object.keys(defines).sort().join(",")}${onTop ? ":top" : ""}`;
-  m.customProgramCacheKey = () => key;
+    s.colorNode = vec4(rgb, base.a);
+  }
+  if (look.map && skinTex) {
+    const rough = materialRoughness as F;
+    s.roughnessNode = clamp(rough.mul(dot(skinTex.rgb, vec3(0.333)).negate().add(0.5).mul((look.roughVar ?? 0) * 2).add(1)), 0.03, 1);
+  }
+  if (look.neon?.mask && skinTex) {
+    const emissive = materialEmissive as V3;
+    if (look.neon.accent) {
+      // Hai màu: emissive chỉ là cường độ (trắng), tô theo kênh đỏ (màu chính) hay xanh lá (màu phụ) của mặt nạ.
+      const pick = mix(rgbOf(new Color(look.neon.color)), rgbOf(new Color(look.neon.accent)), step(skinTex.r.add(0.001), skinTex.g));
+      s.emissiveNode = emissive.mul(pick).mul(max(skinTex.r, skinTex.g).mul(1.4).add(0.08));
+    } else {
+      // Đường mạch sáng rực, phần nền le lói.
+      s.emissiveNode = emissive.mul(skinTex.r.mul(1.4).add(0.08));
+    }
+  }
+  if (onTop) {
+    // Súng trước mặt: nén độ sâu, ướt mưa, nước (atmosphere.ts), vệt sáng quét khi ngắm nghía (khoe skin).
+    applyDrawOnTop(m);
+    applyGlint(applyViewWet(m));
+  }
 }
 
 // ---------------------------------------------------------------------------- vật liệu
@@ -703,7 +643,7 @@ export function skinMaterial(baseKey: string, skinId: string, opacity = 1): Mesh
 
 /**
  * Như skinMaterial nhưng cho súng trước mặt (góc thứ nhất): đã gộp sẵn phần nén độ sâu (drawOnTop của GunModel).
- * Đừng gọi drawOnTop() lên vật liệu này: hàm đó ghi đè onBeforeCompile và làm mất vân skin.
+ * Đừng gọi drawOnTop() lên vật liệu này: đã có sẵn, gọi lại sẽ bọc ướt, vệt sáng hai lần.
  */
 export function skinViewMaterial(baseKey: string, skinId: string): MeshStandardMaterial | null {
   return get(baseKey, skinId, 1, true);
