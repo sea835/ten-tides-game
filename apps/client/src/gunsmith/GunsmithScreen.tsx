@@ -1,8 +1,9 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { Box3, PMREMGenerator, Vector3, type Group } from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { Box3, Vector3, type Group } from "three";
+import { makeRenderer } from "../game/gpu/renderer.ts";
+import { Environment } from "../studio/stageParts.tsx";
 import { Check, RotateCcw, Save, X } from "lucide-react";
 import {
   EMPTY_LOADOUT,
@@ -61,22 +62,6 @@ function Centered({ deps, children }: { deps: string; children: ReactNode }) {
   );
 }
 
-/** Ánh sáng phòng chụp (môi trường phản chiếu cho kim loại, vàng, chrome), không cần file HDR. */
-function StudioEnvironment() {
-  const { gl, scene } = useThree();
-  useEffect(() => {
-    const pmrem = new PMREMGenerator(gl);
-    const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environment = env;
-    return () => {
-      scene.environment = null;
-      env.dispose();
-      pmrem.dispose();
-    };
-  }, [gl, scene]);
-  return null;
-}
-
 /** Nhịp sáng skin neon. */
 function NeonPulse() {
   useFrame(({ clock }) => pulseNeon(clock.elapsedTime));
@@ -85,13 +70,14 @@ function NeonPulse() {
 
 function GunStage({ weaponId, loadout, skin }: { weaponId: string; loadout: WeaponLoadout; skin: string }) {
   const atts = loadoutAtts(loadout);
+  const [glFactory] = useState(() => makeRenderer({ antialias: true, alpha: true }));
   return (
-    <Canvas frameloop="never" dpr={[1, 1.5]} camera={{ position: [1.15, 0.35, 0.9], fov: 35, near: 0.02, far: 20 }} gl={{ antialias: true, alpha: true }}>
+    <Canvas frameloop="never" dpr={[1, 1.5]} camera={{ position: [1.15, 0.35, 0.9], fov: 35, near: 0.02, far: 20 }} gl={glFactory}>
       <StageLoop fps={60} />
       <hemisphereLight args={["#dfefff", "#2a2016", 0.55]} />
       <directionalLight position={[2, 3, 2]} intensity={1.6} />
       <directionalLight position={[-2, 1, -1.5]} intensity={0.6} color="#9fc6ff" />
-      <StudioEnvironment />
+      <Environment intensity={1} />
       <NeonPulse />
       <Suspense fallback={null}>
         <Centered deps={`${weaponId}|${atts}|${loadout.sight}`}>

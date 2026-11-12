@@ -1,7 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, Color, DoubleSide, PMREMGenerator, ShaderMaterial } from "three";
+import { AdditiveBlending, CanvasTexture, Color, DoubleSide, InstancedBufferAttribute, InstancedBufferGeometry, PlaneGeometry } from "three";
+import { NodeMaterial, PMREMGenerator, type WebGPURenderer } from "three/webgpu";
+import { attribute, cameraProjectionMatrix, dot, float, fract, length, modelViewMatrix, positionGeometry, pow, sin, smoothstep, uniform, uv, vec2, vec4, viewportSize } from "three/tsl";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import type { F, V3 } from "../game/gpu/slots.ts";
 
 // Mảnh dựng cảnh dùng chung cho sân khấu sảnh chờ (StudioStage) và bục vinh danh cuối trận (PodiumStage): ánh sáng
 // môi trường cho kim loại, bụi lơ lửng trong luồng sáng, cột sáng giả thể tích, vệt tối dưới chân.
@@ -22,8 +25,10 @@ export function blobTexture(): CanvasTexture {
 
 /** Ánh sáng môi trường phòng chụp cho kim loại (bục, súng, skin vàng/chrome), không cần file HDR. */
 export function Environment({ intensity }: { intensity: number }) {
-  const { gl, scene } = useThree();
+  const { gl: glRaw, scene } = useThree();
+  const gl = glRaw as unknown as WebGPURenderer;
   useEffect(() => {
+    // PMREMGenerator của three/webgpu (node); renderer đã `init()` xong ở makeRenderer nên fromScene dùng được ngay.
     const pmrem = new PMREMGenerator(gl);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environment = env;
@@ -42,34 +47,44 @@ export function Environment({ intensity }: { intensity: number }) {
 const DUST = 140;
 
 export function Dust({ color }: { color: string }) {
-  const { geometry, material } = useMemo(() => {
+  const { geometry, material, time } = useMemo(() => {
+    // WebGPU không có điểm to hơn 1 điểm ảnh: mỗi hạt bụi là một ô vuông hướng về camera (billboard), dựng từ một
+    // thuộc tính instance `seed` (vị trí gốc), kích thước tính theo điểm ảnh như gl_PointSize cũ.
+    const base = new PlaneGeometry(1, 1);
+    const geometry = new InstancedBufferGeometry();
+    geometry.index = base.index;
+    geometry.setAttribute("position", base.getAttribute("position"));
+    geometry.setAttribute("uv", base.getAttribute("uv"));
     const pos = new Float32Array(DUST * 3);
     for (let i = 0; i < DUST; i++) {
       pos[i * 3] = (Math.random() - 0.5) * 4;
       pos[i * 3 + 1] = Math.random() * 3;
       pos[i * 3 + 2] = (Math.random() - 0.5) * 3;
     }
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(pos, 3));
-    const material = new ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      uniforms: { time: { value: 0 }, color: { value: new Color(color) } },
-      vertexShader: `uniform float time; varying float vA;
-        void main(){
-          vec3 p = position;
-          p.y = mod(p.y + time * 0.06, 3.0);
-          p.x += sin(time * 0.3 + position.z * 3.0) * 0.15;
-          vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          vA = 0.35 + 0.65 * fract(sin(dot(position.xz, vec2(12.9898, 78.233))) * 43758.5453);
-          gl_PointSize = 26.0 / -mv.z;
-          gl_Position = projectionMatrix * mv;
-        }`,
-      fragmentShader: `uniform vec3 color; varying float vA;
-        void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(color, smoothstep(0.5, 0.0, d) * 0.5 * vA); }`,
-    });
-    return { geometry, material };
+    geometry.setAttribute("seed", new InstancedBufferAttribute(pos, 3));
+    geometry.instanceCount = DUST;
+    base.dispose();
+
+    const time = uniform(0);
+    const seed = attribute("seed", "vec3") as V3;
+    const wobble = sin(time.mul(0.3).add(seed.z.mul(3))).mul(0.15);
+    const y = time.mul(0.06).add(seed.y).mod(3);
+    const mv = modelViewMatrix.mul(vec4(seed.x.add(wobble), y, seed.z, 1));
+    const vA = fract(sin(dot(seed.xz, vec2(12.9898, 78.233))).mul(43758.5453)).mul(0.65).add(0.35) as F;
+    // Đường kính 26 / độ sâu điểm ảnh (như gl_PointSize cũ) đổi sang kích thước theo hệ camera:
+    // px * độ sâu * 2 / (proj[1][1] * chiều cao khung) = 52 / (proj[1][1] * chiều cao khung), không phụ thuộc độ sâu.
+    const worldSize = float(52).div(cameraProjectionMatrix.mul(vec4(0, 1, 0, 0)).y.mul(viewportSize.y));
+    const corner = positionGeometry.xy.mul(worldSize);
+    const clip = cameraProjectionMatrix.mul(vec4(mv.xy.add(corner), mv.z, 1));
+    const d = length(uv().sub(0.5));
+    const material = new NodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.blending = AdditiveBlending;
+    material.fog = false;
+    material.vertexNode = clip;
+    material.fragmentNode = vec4(uniform(new Color(color)), smoothstep(0.5, 0, d).mul(0.5).mul(vA));
+    return { geometry, material, time };
   }, [color]);
   useEffect(
     () => () => {
@@ -79,26 +94,23 @@ export function Dust({ color }: { color: string }) {
     [geometry, material],
   );
   useFrame(({ clock }) => {
-    material.uniforms.time!.value = clock.elapsedTime;
+    time.value = clock.elapsedTime;
   });
-  return <points geometry={geometry} material={material} frustumCulled={false} />;
+  return <mesh geometry={geometry} material={material} frustumCulled={false} />;
 }
 
 /** Cột sáng mờ chiếu từ trên xuống bục (giả luồng sáng thể tích bằng một nón cộng màu). */
 export function LightCone({ color, opacity, bottom, x = 0, top = 4 }: { color: string; opacity: number; bottom: number; x?: number; top?: number }) {
-  const material = useMemo(
-    () =>
-      new ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: DoubleSide,
-        blending: AdditiveBlending,
-        uniforms: { color: { value: new Color(color) }, opacity: { value: opacity } },
-        vertexShader: "varying float vY; void main(){ vY = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-        fragmentShader: "uniform vec3 color; uniform float opacity; varying float vY; void main(){ gl_FragColor = vec4(color, opacity * pow(1.0 - vY, 1.6)); }",
-      }),
-    [color, opacity],
-  );
+  const material = useMemo(() => {
+    const m = new NodeMaterial();
+    m.transparent = true;
+    m.depthWrite = false;
+    m.side = DoubleSide;
+    m.blending = AdditiveBlending;
+    m.fog = false;
+    m.fragmentNode = vec4(uniform(new Color(color)), pow(float(1).sub(uv().y), 1.6).mul(opacity));
+    return m;
+  }, [color, opacity]);
   useEffect(() => () => material.dispose(), [material]);
   return (
     <mesh position={[x, top / 2 + 0.1, 0]} material={material}>

@@ -10,8 +10,12 @@ export function hasWebGL(): boolean {
   return platform().webgl2;
 }
 
+/** Chỉ khi dev: `?decor3d` ép bật cảnh 3D trang trí (trình duyệt không màn hình vẽ bằng CPU vẫn chụp kiểm chứng được). */
+const FORCE_DECOR = import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).has("decor3d");
+
 /** Cảnh 3D trang trí được bật với mức đồ hoạ này không (vẽ bằng CPU thì thôi: chỉ riêng nền sảnh đã đủ giật). */
 export function decor3d(quality = getGraphics().quality): boolean {
+  if (FORCE_DECOR) return true;
   return quality !== "low" && hasWebGL() && platform().tier !== "software";
 }
 

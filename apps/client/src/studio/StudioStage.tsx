@@ -1,6 +1,10 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { AdditiveBlending, BackSide, CanvasTexture, Color, SRGBColorSpace, ShaderMaterial, type Group, type PerspectiveCamera } from "three";
+import { AdditiveBlending, BackSide, CanvasTexture, Color, SRGBColorSpace, type Group, type PerspectiveCamera } from "three";
+import { NodeMaterial } from "three/webgpu";
+import { Fn, mix, normalize, positionLocal, positionWorld, pow, select, smoothstep, uniform, vec4 } from "three/tsl";
+import { makeRenderer } from "../game/gpu/renderer.ts";
+import type { F, V3 } from "../game/gpu/slots.ts";
 import { Character, type Motion } from "../game/Character.tsx";
 import { pulseNeon } from "../game/skinMaterials.ts";
 import { getGraphics, targetDpr } from "../game/graphics.ts";
@@ -107,30 +111,39 @@ function radarTexture(seed: number, tint: string): CanvasTexture {
   return tex;
 }
 
-/** Bầu trời hoàng hôn: dải màu dọc trên quả cầu lớn (một shader nhỏ, không cần ảnh). */
-function sunsetSky(): ShaderMaterial {
-  return new ShaderMaterial({
-    side: BackSide,
-    depthWrite: false,
-    uniforms: {
-      top: { value: new Color("#141a3a") },
-      mid: { value: new Color("#7a3f5c") },
-      low: { value: new Color("#ff9a4a") },
-    },
-    vertexShader: "varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-    fragmentShader:
-      "uniform vec3 top; uniform vec3 mid; uniform vec3 low; varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0.12 ? mix(mid, top, smoothstep(0.12, 0.6, h)) : mix(low, mid, smoothstep(-0.02, 0.12, h)); gl_FragColor = vec4(c, 1.0); }",
-  });
+/**
+ * Màu của bản WebGL cũ: ShaderMaterial ghi thẳng số tuyến tính của `Color` ra màn hình, không đổi sang sRGB (nên tối
+ * hơn mã hex). Pipeline WebGPU đổi sRGB cho cả khung hình, nên giải mã ngược một lần để ra đúng màu cũ.
+ */
+const legacy = (hex: string) => uniform(new Color(hex).convertSRGBToLinear());
+
+/** Bầu trời hoàng hôn: dải màu dọc trên quả cầu lớn (một vật liệu node nhỏ, không cần ảnh). */
+function sunsetSky(): NodeMaterial {
+  const top = legacy("#141a3a");
+  const mid = legacy("#7a3f5c");
+  const low = legacy("#ff9a4a");
+  const m = new NodeMaterial();
+  m.side = BackSide;
+  m.depthWrite = false;
+  m.fog = false;
+  m.fragmentNode = Fn(() => {
+    const h = normalize(positionLocal).y as F;
+    const upper = mix(mid, top, smoothstep(0.12, 0.6, h)) as V3;
+    const lower = mix(low, mid, smoothstep(-0.02, 0.12, h)) as V3;
+    return vec4(select(h.greaterThan(0.12), upper, lower), 1);
+  })();
+  return m;
 }
 
 /** Mặt biển chiều: gần thì xanh thẫm, xa dần ánh màu trời hoàng hôn (giả phản chiếu, không tốn). */
-function sunsetSea(): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { near: { value: new Color("#0b1d2e") }, far: { value: new Color("#b85a4a") } },
-    vertexShader: "varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
-    fragmentShader:
-      "uniform vec3 near; uniform vec3 far; varying vec3 vW; void main(){ float t = smoothstep(-8.0, -60.0, vW.z); gl_FragColor = vec4(mix(near, far, pow(t, 1.6)), 1.0); }",
-  });
+function sunsetSea(): NodeMaterial {
+  const near = legacy("#0b1d2e");
+  const far = legacy("#b85a4a");
+  const m = new NodeMaterial();
+  m.fog = false;
+  const t = smoothstep(-8, -60, positionWorld.z) as F;
+  m.fragmentNode = vec4(mix(near, far, pow(t, 1.6)), 1);
+  return m;
 }
 
 /** Vệt nắng lấp lánh trên mặt biển: những gạch sáng ngắn nằm ngang, dày dần về phía mặt trời, mờ hai mép. */
@@ -355,12 +368,13 @@ function Hero({ look, spin }: { look: StudioLook; spin: StudioSpin }) {
 
 export default function StudioStage({ look, set, spin }: { look: StudioLook; set: StudioSet; spin: StudioSpin }) {
   const paused = useDecorPaused();
+  const [glFactory] = useState(() => makeRenderer({ antialias: true, alpha: false, powerPreference: "low-power" }));
   // Đang kéo xoay hay nhân vật còn quay theo quán tính: vẽ mượt 60 khung; đứng yên làm nền thì 30 là đủ.
   const boost = useCallback(() => spin.dragging || Math.abs(spin.vel) > 0.05 || performance.now() - spin.touched < 600, [spin]);
   return (
     // Nền sảnh không cần nét như trong trận: vẽ tối đa 1,25 điểm ảnh mỗi điểm CSS (màn Retina 2x vẽ ít hơn 2,5 lần).
     // Canvas đục (alpha: false): trình duyệt khỏi phải trộn trong suốt với trang web phía dưới mỗi khung.
-    <Canvas frameloop="never" dpr={Math.min(1.25, targetDpr(getGraphics()))} camera={{ fov: FOV, near: 0.1, far: 200, position: [0, CAM_Y, DIST] }} gl={{ antialias: true, alpha: false, powerPreference: "low-power" }}>
+    <Canvas frameloop="never" dpr={Math.min(1.25, targetDpr(getGraphics()))} camera={{ fov: FOV, near: 0.1, far: 200, position: [0, CAM_Y, DIST] }} gl={glFactory}>
       <StageLoop fps={30} boost={boost} paused={paused} />
       <Environment intensity={set === "command" ? 0.35 : 0.45} />
       <CameraRig spin={spin} />
