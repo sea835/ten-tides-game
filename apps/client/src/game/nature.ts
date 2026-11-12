@@ -55,13 +55,6 @@ function instanceColumns(mesh: InstancedMesh) {
   }
   const b = buf;
   const cols = [0, 4, 8, 12].map((o) => instancedBufferAttribute(b, "vec4", 16, o)) as unknown as [V4, V4, V4, V4];
-  // Ma trận instance đổi (cây mọc thêm, dời) thì đẩy lên GPU lại.
-  cols[0].onObjectUpdate(() => {
-    if (b.version !== im.version) {
-      b.version = im.version;
-      b.needsUpdate = true;
-    }
-  });
   return cols;
 }
 
@@ -77,11 +70,13 @@ function instanceColumns(mesh: InstancedMesh) {
 export function swayMaterial(params: ConstructorParameters<typeof MeshStandardMaterial>[0], amount: number, from = 0, upNormals = false, trample = false) {
   const m = new MeshStandardMaterial(params);
   if (upNormals) setSlot(m, "normalNode", normalViewGeometry);
+  // Chụp ô hiện có TRƯỚC khi gán (Fn chạy muộn lúc dựng shader, lúc đó ô đã là chính node này).
+  const prior = slots(m).positionNode as V3 | undefined;
   const sway = Fn((builder: NodeBuilder) => {
     const mesh = builder.object as InstancedMesh | null;
     const instanced = !!mesh?.isInstancedMesh && !!mesh.instanceMatrix;
     const cols = instanced ? instanceColumns(mesh!) : null;
-    const base = (slots(m).positionNode ?? positionLocal) as V3;
+    const base = prior ?? (positionLocal as V3);
     const phase: F = cols ? cols[3].x.mul(0.37).add(cols[3].z.mul(0.23)) : float(0);
     const k = positionGeometry.y.sub(from).max(0);
     // Gió bão lắc mạnh hơn nhưng có chừng mực, và độ lệch không vượt quá một góc nghiêng hợp lý: tán cây
