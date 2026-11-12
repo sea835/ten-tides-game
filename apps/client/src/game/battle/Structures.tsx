@@ -20,6 +20,8 @@ import { Wreckage, wreck } from "./Wreckage.tsx";
 import type { IslandRoom } from "../../net.ts";
 
 type Collider = ReturnType<ReturnType<typeof useRapier>["world"]["createCollider"]>;
+import { materialReference, normalWorldGeometry, positionWorld, select, texture, vec4 } from "three/tsl";
+import type { V3 } from "../gpu/slots.ts";
 import { detailed, type DetailKind } from "../textures.ts";
 
 // Công trình của bản đồ Battleground: hàng nghìn khối hộp gom theo chất liệu và theo ô đất TILE mét, mỗi nhóm một
@@ -147,35 +149,14 @@ function wireTexture() {
  * `scale`: số lần lặp ảnh trên một mét.
  */
 function worldMapped(m: MeshStandardMaterial, scale: number) {
-  m.customProgramCacheKey = () => `worldmap:${scale}`;
-  m.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vWmPos;\nvarying vec3 vWmNormal;")
-      .replace(
-        "#include <worldpos_vertex>",
-        `#include <worldpos_vertex>
-        {
-          mat4 wm = modelMatrix;
-          #ifdef USE_INSTANCING
-            wm = modelMatrix * instanceMatrix;
-          #endif
-          vWmPos = (wm * vec4(position, 1.0)).xyz;
-          // Pháp tuyến gốc của khối (trước khi co giãn) quay theo khối: chọn mặt chiếu đúng.
-          vWmNormal = normalize(mat3(wm) * normal / vec3(length(wm[0].xyz), length(wm[1].xyz), length(wm[2].xyz)) );
-        }`,
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vWmPos;\nvarying vec3 vWmNormal;")
-      .replace(
-        "#include <map_fragment>",
-        `{
-          vec3 n = abs(normalize(vWmNormal));
-          vec2 uv = n.x > n.z && n.x > n.y ? vWmPos.zy : (n.z > n.y ? vWmPos.xy : vWmPos.xz);
-          vec4 texel = texture2D(map, uv * ${scale.toFixed(3)});
-          diffuseColor *= texel;
-        }`,
-      );
-  };
+  const map = m.map;
+  if (!map) return;
+  // Vị trí thế giới (đã tính ma trận instance) và pháp tuyến gốc của khối: quay theo khối, không bị co giãn làm lệch.
+  const n = normalWorldGeometry.normalize().abs();
+  const uv = select(n.x.greaterThan(n.z).and(n.x.greaterThan(n.y)), positionWorld.zy, select(n.z.greaterThan(n.y), positionWorld.xy, positionWorld.xz));
+  // Màu gốc không nhân ảnh theo UV của khối (materialColor làm việc đó): ảnh lấy theo toạ độ thế giới ở đây.
+  const base = materialReference("color", "color") as unknown as V3;
+  m.colorNode = vec4(base.mul(texture(map, uv.mul(scale)).rgb), 1);
 }
 
 function makeMaterial(mat: BoxMat): MeshStandardMaterial {
