@@ -7,6 +7,7 @@ import { smaa } from "three/addons/tsl/display/SMAANode.js";
 import type { V3, V4 } from "./gpu/slots.ts";
 import { createGodRays } from "./GodRays.tsx";
 import type { ViewLayer } from "./battle/ViewModel.tsx";
+import { barrelFxScene } from "./battle/BarrelFx.tsx";
 import type { PrepTarget } from "./shaderPrep.ts";
 
 // Chuỗi hậu kỳ của cảnh, dựng bằng RenderPipeline của three (node TSL, chạy cả WebGPU lẫn WebGL 2):
@@ -52,6 +53,8 @@ export function createPostFx(renderer: WebGPURenderer, scene: Scene, camera: Cam
   const scenePass = pass(scene, camera);
   const sceneColor = scenePass.getTextureNode();
   const sceneDepth = scenePass.getTextureNode("depth");
+  // Khí nóng đầu nòng (BarrelFx) khúc xạ ảnh của lượt vẽ cảnh.
+  barrelFxScene.texture = scenePass.getTexture("output");
 
   let color = sceneColor as unknown as V4;
   const aoPass = full ? ao(sceneDepth, null as never, camera) : null;
@@ -97,6 +100,7 @@ export function createPostFx(renderer: WebGPURenderer, scene: Scene, camera: Cam
       glow.dispose();
       aoPass?.dispose();
       scenePass.dispose();
+      barrelFxScene.texture = null;
       view?.dispose();
     },
   };

@@ -1,124 +1,122 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, type Ref } from "react";
 import {
   DynamicDrawUsage,
-  FramebufferTexture,
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
   Mesh,
   PlaneGeometry,
   Quaternion,
-  ShaderMaterial,
+  Texture,
   Vector2,
   Vector3,
-  Vector4,
+  WebGPUCoordinateSystem,
   type Camera,
   type PerspectiveCamera,
-  type WebGLRenderer,
 } from "three";
-import { DRAW_ON_TOP_GLSL } from "../GunModel.tsx";
+import { NodeMaterial, type WebGPURenderer } from "three/webgpu";
+import { Discard, Fn, attribute, cameraProjectionMatrix, float, length, mix, modelViewMatrix, positionLocal, screenSize, screenUV, select, smoothstep, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
 import { getGraphics } from "../graphics.ts";
 import { localPosition } from "../shared.ts";
 import { eject, muzzle } from "./runtime.ts";
 import { heatShot, newHeat, shimmerLevel, smokeRate } from "./barrelHeat.ts";
+import { noise2 } from "./gpuParticles.ts";
+import type { F, V2, V4 } from "../gpu/slots.ts";
 
 // Nòng súng nóng (súng trước mặt): xả quá 10 viên thì một quầng khí nóng làm méo hình bốc lên từ đầu nòng trong
 // 2–3 giây; sau mỗi loạt, vài làn khói mỏng uốn lượn bay ra từ đầu nòng và cửa thoát vỏ, trôi theo quán tính người
 // chơi (khói sinh ra trong thế giới, mang theo một phần vận tốc của mình rồi chậm lại, nên đi tới thì khói lùi về sau).
 //
-// Khí nóng không cần thêm lượt vẽ cả màn hình: ngay trước khi vẽ lớp súng (ViewPass), chép một ô vuông nhỏ của khung
-// hình đã xong quanh đầu nòng vào texture (copyFramebufferToTexture, vài trăm điểm ảnh), rồi tấm khí nóng lấy mẫu ô đó
-// với toạ độ xô lệch theo nhiễu chạy dọc lên — trông như không khí khúc xạ. Súng vẽ trước, ghi độ sâu, nên phần súng
-// nằm trước tấm khí nóng vẫn che nó. Đồ hoạ thấp: tắt khí nóng, ít khói.
+// Khí nóng không cần thêm lượt vẽ cả màn hình: lớp súng (ViewPass) vẽ riêng ra một ảnh trong suốt đè lên cảnh đã hậu
+// kỳ; tấm khí nóng lấy mẫu ẢNH CỦA LƯỢT VẼ CẢNH (`barrelFxScene.texture`, do postFx.ts đặt) tại toạ độ màn hình xô
+// lệch theo nhiễu chạy dọc lên — trông như không khí khúc xạ. Súng vẽ trước, ghi độ sâu, nên phần súng nằm trước tấm
+// khí nóng vẫn che nó. Khác bản WebGL cũ: ảnh cảnh này chưa tone map, chấm màu (lớp súng ghép sau, tone map riêng),
+// nên chỗ bị méo hơi khác màu xung quanh một chút; nên độ đục của tấm khí nóng để nhẹ. Không có hậu kỳ (đồ hoạ thấp)
+// hay không lấy được ảnh cảnh thì chỉ còn làn hơi mờ gợn sóng. Đồ hoạ thấp: tắt khí nóng, ít khói.
 
 /** Số làn khói tối đa theo mức đồ hoạ. */
 const SMOKE_CAP = { high: 28, medium: 18, low: 8 } as const;
 const SMOKE_MAX = 28;
 const SMOKE_LIFE = 2.2;
 
-const VIEW_VERTEX = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    ${DRAW_ON_TOP_GLSL}
-  }
-`;
+/**
+ * Ảnh của lượt vẽ cảnh (trước hậu kỳ) cho khí nóng lấy mẫu: postFx.ts đặt khi dựng chuỗi hậu kỳ và gỡ khi huỷ. Đã bị
+ * rỗng thì khí nóng lùi về làn hơi mờ.
+ */
+export const barrelFxScene: { texture: Texture | null } = { texture: null };
 
-const NOISE = /* glsl */ `
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-  }
-`;
+/**
+ * Nén độ sâu về sát mặt kính camera cho mọi thứ của súng trước mặt (như `drawOnTop` của GunModel, `drawOnTopClip` của
+ * ViewModel): trong clip space, chuẩn độ sâu khác nhau giữa nền WebGPU (0..1) và WebGL 2 (-1..1).
+ */
+const drawOnTopClip = Fn((builder) => {
+  const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(positionLocal, 1));
+  const z = (builder.renderer as { coordinateSystem: number }).coordinateSystem === WebGPUCoordinateSystem ? clip.z.mul(0.05) : clip.z.mul(0.05).sub(clip.w.mul(0.95));
+  return vec4(clip.x, clip.y, z, clip.w);
+});
 
-const shimmerFragment = /* glsl */ `
-  uniform sampler2D uScene;
-  uniform vec4 uRect;
-  uniform float uTime;
-  uniform float uLevel;
-  uniform float uRefract;
-  uniform float uPx;
-  varying vec2 vUv;
-  ${NOISE}
-  void main() {
-    // Quầng hẹp dần lên trên, đậm ở gần đầu nòng, tan ở ngọn.
-    float w = mix(0.55, 1.0, vUv.y);
-    float edge = 1.0 - smoothstep(0.15 * w, 0.5 * w, abs(vUv.x - 0.5));
-    float fade = smoothstep(0.0, 0.1, vUv.y) * (1.0 - smoothstep(0.45, 1.0, vUv.y));
-    float mask = edge * fade * uLevel;
-    if (mask < 0.004) discard;
-    vec2 q = vec2(vUv.x * 5.0, vUv.y * 4.0 - uTime * 2.6);
-    vec2 n = vec2(noise(q), noise(q + vec2(7.3, 2.1))) - 0.5;
-    n += 0.5 * (vec2(noise(q * 2.3 + 4.0), noise(q * 2.1 + 9.0)) - 0.5);
-    if (uRefract > 0.5) {
-      vec2 suv = (gl_FragCoord.xy + n * uPx * mask - uRect.xy) / uRect.zw;
-      float inside = step(0.0, suv.x) * step(suv.x, 1.0) * step(0.0, suv.y) * step(suv.y, 1.0);
-      vec3 c = texture2D(uScene, clamp(suv, 0.002, 0.998)).rgb;
-      gl_FragColor = vec4(c, clamp(mask * 2.5, 0.0, 1.0) * inside);
-    } else {
-      // Không chép được khung hình: chỉ là làn hơi mờ gợn sóng.
-      gl_FragColor = vec4(vec3(0.9), mask * (0.05 + 0.08 * n.x));
-    }
-  }
-`;
+const placeholder = new Texture();
 
-const smokeVertex = /* glsl */ `
-  attribute vec2 aSmoke;
-  varying vec2 vUv;
-  varying vec2 vSmoke;
-  void main() {
-    vUv = uv;
-    vSmoke = aSmoke;
-    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-    ${DRAW_ON_TOP_GLSL}
-  }
-`;
-const smokeFragment = /* glsl */ `
-  uniform float uTime;
-  varying vec2 vUv;
-  varying vec2 vSmoke;
-  ${NOISE}
-  void main() {
-    // vSmoke.x: độ đậm (0–1), vSmoke.y: hạt giống. Làn khói mềm, rách theo nhiễu, cuộn chậm.
-    vec2 p = vUv - 0.5;
-    float r = length(p * vec2(1.6, 1.0)) * 2.0;
-    float n = noise(vUv * 3.0 + vec2(vSmoke.y * 17.0, vSmoke.y * 5.0 - uTime * 0.6));
-    n = n * 0.65 + 0.35 * noise(vUv * 7.0 + vSmoke.y * 31.0 + uTime * 0.3);
-    float a = (1.0 - smoothstep(0.25, 1.0, r + (n - 0.5) * 0.6)) * vSmoke.x;
-    if (a < 0.003) discard;
-    gl_FragColor = vec4(vec3(0.6, 0.61, 0.63) * (0.85 + 0.3 * n), a * 0.5);
-  }
-`;
+function shimmerUniforms() {
+  return {
+    uScene: texture(placeholder),
+    uTime: uniform(0),
+    uLevel: uniform(0),
+    uRefract: uniform(0),
+    uPx: uniform(6),
+  };
+}
+type ShimmerUniforms = ReturnType<typeof shimmerUniforms>;
 
-/** Ô chép khung hình và cờ cho phép chép (ngữ cảnh có kênh alpha thì mới chép vào texture RGBA được). */
-interface Grab {
-  tex: FramebufferTexture | null;
-  size: number;
-  ok: boolean | null;
+/** Tấm khí nóng: quầng hẹp dần lên trên, đậm gần đầu nòng, tan ở ngọn; lấy mẫu ảnh cảnh xô lệch theo nhiễu. */
+function shimmerMaterial(u: ShimmerUniforms) {
+  const m = new NodeMaterial();
+  m.vertexNode = drawOnTopClip();
+  m.fragmentNode = Fn(() => {
+    const vUv = uv();
+    const w = mix(float(0.55), float(1), vUv.y);
+    const edge = float(1).sub(smoothstep(w.mul(0.15), w.mul(0.5), vUv.x.sub(0.5).abs()));
+    const fade = smoothstep(0, 0.1, vUv.y).mul(float(1).sub(smoothstep(0.45, 1.0, vUv.y)));
+    const mask = edge.mul(fade).mul(u.uLevel);
+    Discard(mask.lessThan(0.004));
+    const q = vec2(vUv.x.mul(5), vUv.y.mul(4).sub(u.uTime.mul(2.6)));
+    const n0 = vec2(noise2(q), noise2(q.add(vec2(7.3, 2.1)))).sub(0.5);
+    const n = n0.add(vec2(noise2(q.mul(2.3).add(4)), noise2(q.mul(2.1).add(9))).sub(0.5).mul(0.5));
+    // Độ lệch theo điểm ảnh (toạ độ màn hình tính từ trên xuống, nhiễu tính từ dưới lên: đảo trục y).
+    const suv = screenUV.add(vec2(n.x, n.y.negate()).mul(u.uPx).mul(mask).div(screenSize));
+    const c = u.uScene.sample(suv).rgb;
+    const refracted = vec4(c, mask.mul(1.6).clamp(0, 1));
+    // Không lấy được ảnh cảnh: chỉ là làn hơi mờ gợn sóng.
+    const haze = vec4(vec3(0.9), mask.mul(float(0.05).add(n.x.mul(0.08))));
+    return select(u.uRefract.greaterThan(0.5), refracted, haze);
+  })();
+  m.transparent = true;
+  m.depthWrite = false;
+  m.toneMapped = false;
+  m.fog = false;
+  return m;
+}
+
+/** Làn khói mỏng quanh nòng: mềm, rách theo nhiễu, cuộn chậm (aSmoke.x: độ đậm 0–1, aSmoke.y: hạt giống). */
+function smokeMaterial(uTime: F) {
+  const m = new NodeMaterial();
+  m.vertexNode = drawOnTopClip();
+  m.fragmentNode = Fn(() => {
+    const vSmoke = attribute("aSmoke", "vec2") as V2;
+    const vUv = uv();
+    const p = vUv.sub(0.5);
+    const r = length(p.mul(vec2(1.6, 1.0))).mul(2);
+    const n0 = noise2(vUv.mul(3).add(vec2(vSmoke.y.mul(17), vSmoke.y.mul(5).sub(uTime.mul(0.6)))));
+    const n = n0.mul(0.65).add(noise2(vUv.mul(7).add(vSmoke.y.mul(31)).add(uTime.mul(0.3))).mul(0.35));
+    const a = float(1).sub(smoothstep(0.25, 1.0, r.add(n.sub(0.5).mul(0.6)))).mul(vSmoke.x);
+    Discard(a.lessThan(0.003));
+    return vec4(vec3(0.6, 0.61, 0.63).mul(float(0.85).add(n.mul(0.3))), a.mul(0.5));
+  })();
+  m.transparent = true;
+  m.depthWrite = false;
+  m.toneMapped = false;
+  m.fog = false;
+  return m;
 }
 
 /** Bộ điều khiển hiệu ứng nòng, ViewModel gọi cuối mỗi khung hình (sau khi đã đặt đầu nòng, cửa thoát vỏ). */
@@ -129,9 +127,9 @@ export interface BarrelFxApi {
   update(dt: number, nowS: number, camera: Camera, visible: boolean): void;
 }
 
-/** Móc ViewPass gọi ngay trước khi vẽ lớp súng: chép nền quanh đầu nòng cho khí nóng. */
+/** Móc ViewPass gọi ngay trước khi vẽ lớp súng: chọn nền (ảnh cảnh) cho khí nóng khúc xạ. */
 export const barrelFxHook: {
-  beforeView: ((gl: WebGLRenderer, camera: PerspectiveCamera) => void) | null;
+  beforeView: ((gl: WebGPURenderer, camera: PerspectiveCamera) => void) | null;
 } = { beforeView: null };
 
 const _m = new Matrix4();
@@ -140,8 +138,8 @@ const _s = new Vector3();
 const _q = new Quaternion();
 const _up = new Vector3();
 const _c = new Vector3();
-const _grabAt = new Vector2();
 const _lastPos = new Vector3();
+const _size = new Vector2();
 const _vel = new Vector3();
 
 interface Wisp {
@@ -161,31 +159,12 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
   const shimmerRef = useRef<Mesh>(null);
   const smokeRef = useRef<InstancedMesh>(null);
   const res = useMemo(() => {
-    const shimmerMat = new ShaderMaterial({
-      vertexShader: VIEW_VERTEX,
-      fragmentShader: shimmerFragment,
-      uniforms: {
-        uScene: { value: null },
-        uRect: { value: new Vector4(0, 0, 1, 1) },
-        uTime: { value: 0 },
-        uLevel: { value: 0 },
-        uRefract: { value: 0 },
-        uPx: { value: 6 },
-      },
-      transparent: true,
-      depthWrite: false,
-      toneMapped: false,
-    });
+    const u = shimmerUniforms();
+    const shimmerMat = shimmerMaterial(u);
     // Tấm khí nóng: gốc ở đáy (đầu nòng), dựng lên trên.
     const shimmerGeo = new PlaneGeometry(0.1, 0.26).translate(0, 0.13, 0);
-    const smokeMat = new ShaderMaterial({
-      vertexShader: smokeVertex,
-      fragmentShader: smokeFragment,
-      uniforms: { uTime: { value: 0 } },
-      transparent: true,
-      depthWrite: false,
-      toneMapped: false,
-    });
+    const uSmokeTime = uniform(0);
+    const smokeMat = smokeMaterial(uSmokeTime);
     const smokeGeo = new PlaneGeometry(1, 1);
     const smokeAttr = new InstancedBufferAttribute(new Float32Array(SMOKE_MAX * 2), 2);
     smokeAttr.setUsage(DynamicDrawUsage);
@@ -205,6 +184,8 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
         size: 0,
       });
     return {
+      u,
+      uSmokeTime,
       shimmerMat,
       shimmerGeo,
       smokeMat,
@@ -212,7 +193,6 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
       smokeAttr,
       wisps,
       heat: newHeat(),
-      grab: { tex: null, size: 0, ok: null } as Grab,
       emit: 0,
       next: 0,
       level: 0,
@@ -226,7 +206,6 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
       res.shimmerGeo.dispose();
       res.smokeMat.dispose();
       res.smokeGeo.dispose();
-      res.grab.tex?.dispose();
       barrelFxHook.beforeView = null;
     },
     [res],
@@ -238,49 +217,22 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
     smokeRef.current?.layers.set(layer);
   }, [layer]);
 
-  // Chép nền quanh đầu nòng ngay trước lượt vẽ súng (chỉ khi khí nóng đang bốc).
+  // Ngay trước lượt vẽ súng (chỉ khi khí nóng đang bốc): chọn ảnh cảnh làm nền khúc xạ.
   useEffect(() => {
-    barrelFxHook.beforeView = (gl, camera) => {
+    barrelFxHook.beforeView = (gl) => {
       const sm = shimmerRef.current;
-      const u = res.shimmerMat.uniforms;
+      const u = res.u;
       if (!sm || !sm.visible) return;
-      const grab = res.grab;
-      if (grab.ok === null) grab.ok = !!gl.getContext().getContextAttributes()?.alpha;
-      if (!grab.ok) {
-        u.uRefract!.value = 0;
+      const scene = barrelFxScene.texture;
+      if (!scene) {
+        u.uRefract.value = 0;
         return;
       }
-      gl.getDrawingBufferSize(_grabAt);
-      const bw = _grabAt.x;
-      const bh = _grabAt.y;
-      const size = bh > 1300 ? 512 : 256;
-      if (!grab.tex || grab.size !== size) {
-        grab.tex?.dispose();
-        grab.tex = new FramebufferTexture(size, size);
-        grab.size = size;
-      }
-      // Tâm ô chép: giữa tấm khí nóng (trên đầu nòng một đoạn), chiếu ra điểm ảnh.
-      _c.set(0, 0.11, 0).applyMatrix4(sm.matrixWorld).project(camera);
-      if (_c.z > 1 || _c.z < -1) {
-        u.uRefract!.value = 0;
-        return;
-      }
-      const cx = (_c.x * 0.5 + 0.5) * bw;
-      const cy = (_c.y * 0.5 + 0.5) * bh;
-      const x = Math.round(Math.min(Math.max(cx - size / 2, 0), Math.max(0, bw - size)));
-      const y = Math.round(Math.min(Math.max(cy - size / 2, 0), Math.max(0, bh - size)));
-      if (bw < size || bh < size) {
-        u.uRefract!.value = 0;
-        return;
-      }
-      _grabAt.set(x, y);
-      gl.copyFramebufferToTexture(grab.tex, _grabAt);
-      // Gốc và cỡ ô chép (điểm ảnh của bộ đệm vẽ).
-      (u.uRect!.value as Vector4).set(x, y, size, size);
-      u.uScene!.value = grab.tex;
-      u.uRefract!.value = 1;
+      u.uScene.value = scene;
+      u.uRefract.value = 1;
       // Độ xô lệch theo điểm ảnh: màn hình to thì lệch nhiều hơn cho cùng một cảm giác.
-      u.uPx!.value = 11 * (bh / 900);
+      gl.getDrawingBufferSize(_size);
+      u.uPx.value = 11 * (_size.y / 900);
     };
     return () => {
       barrelFxHook.beforeView = null;
@@ -311,10 +263,10 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
         const want = visible && muzzle.valid && quality !== "low" ? shimmerLevel(res.heat, nowS) : 0;
         res.level += (want - res.level) * Math.min(1, dt * 6);
         sm.visible = res.level > 0.01;
-        const u = res.shimmerMat.uniforms;
+        const u = res.u;
         if (sm.visible) {
-          u.uTime!.value = nowS;
-          u.uLevel!.value = res.level;
+          u.uTime.value = nowS;
+          u.uLevel.value = res.level;
           // Đứng thẳng theo phương thẳng đứng của thế giới, mặt quay về camera.
           _p.set(muzzle.x, muzzle.y + 0.012, muzzle.z);
           _up.set(0, 1, 0);
@@ -324,7 +276,7 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
           sm.position.copy(_p);
           sm.rotation.set(0, Math.atan2(_c.x, _c.z), 0);
           sm.updateMatrixWorld();
-        } else u.uRefract!.value = 0;
+        } else u.uRefract.value = 0;
 
         // ---------------------------------------------------------------- khói
         const cap = SMOKE_CAP[quality];
@@ -391,7 +343,7 @@ export function BarrelFx({ api, layer }: { api: Ref<BarrelFxApi>; layer: number 
         if (live > 0) {
           smoke.instanceMatrix.needsUpdate = true;
           attr.needsUpdate = true;
-          res.smokeMat.uniforms.uTime!.value = nowS;
+          res.uSmokeTime.value = nowS;
         }
       },
     }),
