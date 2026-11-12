@@ -210,9 +210,10 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
   const post = profile.post !== "none";
   // Độ phân giải lúc tạo canvas; sau đó FrameDriver tự chỉnh.
   const [initialDpr] = useState(() => targetDpr(getGraphics()));
-  // Thông số ngữ cảnh WebGL (chỉ đặt được lúc tạo canvas):
+  // Thông số canvas / ngữ cảnh đồ hoạ (chỉ đặt được lúc tạo canvas):
   // - Có hậu kỳ thì cảnh vẽ vào ảnh trung gian và đã có SMAA khử răng cưa: bộ đệm MSAA của canvas chỉ tốn thêm băng
-  //   thông (nặng nhất trên Windows, nơi ANGLE phải gộp mẫu MSAA mỗi khung). Chỉ bật MSAA khi không có hậu kỳ.
+  //   thông (nặng nhất trên Windows, nơi ANGLE phải gộp mẫu MSAA mỗi khung; ảnh của `pass` hậu kỳ cũng không dùng MSAA). Chỉ
+  //   bật MSAA khi không có hậu kỳ.
   // - Canvas đục: trình duyệt khỏi phải trộn trong suốt với trang web mỗi khung.
   // - Xin card rời trên laptop hai card (Windows, Mac đời Intel).
   const [glFactory] = useState(() => makeRenderer({ antialias: profileOf(getGraphics().quality).post === "none", alpha: false, stencil: false, powerPreference: "high-performance" }));
