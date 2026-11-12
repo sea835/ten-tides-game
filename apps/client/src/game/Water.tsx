@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
   BufferAttribute,
@@ -8,35 +8,53 @@ import {
   DataTexture,
   DoubleSide,
   FrontSide,
-  HalfFloatType,
   LinearFilter,
   LinearMipmapLinearFilter,
-  Matrix4,
-  PerspectiveCamera,
-  Plane,
   RedFormat,
   RepeatWrapping,
   RGBAFormat,
-  ShaderMaterial,
-  UniformsLib,
-  UniformsUtils,
   UnsignedByteType,
-  Vector3,
-  Vector4,
-  WebGLRenderTarget,
-  type Camera,
   type Mesh,
-  type Scene,
-  type WebGLRenderer,
 } from "three";
-import { uniform } from "three/tsl";
+import { MeshBasicNodeMaterial } from "three/webgpu";
+import {
+  cameraPosition,
+  clamp,
+  cross,
+  dot,
+  float,
+  frontFacing,
+  length,
+  max,
+  min,
+  mix,
+  modelWorldMatrix,
+  normalize,
+  pow,
+  positionGeometry,
+  positionWorld,
+  reflect,
+  select,
+  sin,
+  cos,
+  smoothstep,
+  step,
+  texture,
+  uniform,
+  vec2,
+  vec3,
+  vec4,
+  fract,
+  exp,
+} from "three/tsl";
 import { MAP_HALF_SIZE, WATER_LEVEL, type World } from "@tentides/content";
 import { useProfile } from "./graphics.ts";
-import { reflectionHidden } from "./reflection.ts";
+import { createReflection } from "./reflection.ts";
 import { sky, weatherFx } from "./shared.ts";
 import { skyUniforms } from "./Sky.tsx";
 import { fbm } from "./textures.ts";
-import { CLOUD_PARS_GLSL, cloudTexture, cloudUniforms } from "./atmosphere.ts";
+import { cloudShade, cloudTexture } from "./atmosphere.ts";
+import type { F, V2, V3 } from "./gpu/slots.ts";
 
 // Mặt biển kiểu stylized: ba tầng sóng Gerstner mềm (đỉnh tròn, cuộn nhịp nhàng) cộng hai lớp gợn nhỏ từ bản đồ
 // pháp tuyến, phản chiếu bầu trời theo góc nhìn (Fresnel), nắng lấp lánh, màu nước chuyển ba nấc theo độ sâu (ngọc lam
@@ -47,6 +65,7 @@ import { CLOUD_PARS_GLSL, cloudTexture, cloudUniforms } from "./atmosphere.ts";
 // Đồ hoạ Cao: thêm ảnh phản chiếu thật (người, xe, cây ven bờ, lửa đầu nòng, cầu lửa) vẽ lại từ camera soi gương qua
 // mặt nước ở nửa độ phân giải, chỉ hiện rõ ở góc nhìn xiên (Fresnel), gợn sóng làm ảnh lăn tăn; bầu trời phản chiếu
 // vẫn tính trong shader (vòm trời, thảm cỏ không vẽ lại cho nhẹ).
+
 
 /** Độ sâu tối đa lưu trong bản đồ độ sâu (mét). */
 const DEPTH_RANGE = 12;
@@ -168,211 +187,6 @@ function radialGrid(size: number, segments: number, power: number): BufferGeomet
   return g;
 }
 
-const COMMON = /* glsl */ `
-  uniform float uTime;
-  uniform float uWaveScale;
-  uniform sampler2D uDepth;
-  uniform float uHalf;
-  uniform float uTide;
-  uniform float uDepthBias;
-
-  float seaDepth(vec2 p) {
-    vec2 uv = (p + uHalf) / (2.0 * uHalf);
-    float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-    // Bản đồ nướng so với mốc + uDepthBias; mặt nước thật đang ở mốc + uTide.
-    return mix(${DEPTH_RANGE.toFixed(1)}, texture2D(uDepth, uv).r * ${DEPTH_RANGE.toFixed(1)}, inside) - uDepthBias + uTide;
-  }
-
-  // Một con sóng Gerstner: w = (hướng x, hướng z, độ dốc, bước sóng). Cộng dồn tiếp tuyến để ra pháp tuyến.
-  vec3 gerstner(vec4 w, vec2 p, float amp, inout vec3 tangent, inout vec3 binormal) {
-    float k = 6.28318 / w.w;
-    float c = sqrt(9.8 / k);
-    vec2 d = normalize(w.xy);
-    float f = k * (dot(d, p) - c * uTime);
-    float s = w.z * amp;
-    float a = s / k;
-    float sf = sin(f);
-    float cf = cos(f);
-    tangent += vec3(-d.x * d.x * s * sf, d.x * s * cf, -d.x * d.y * s * sf);
-    binormal += vec3(-d.x * d.y * s * sf, d.y * s * cf, -d.y * d.y * s * sf);
-    return vec3(d.x * a * cf, a * sf, d.y * a * cf);
-  }
-
-  uniform float uWaveFade;
-
-  // Sóng bước sóng len mờ dần khi ô lưới ở khoảng cách dist quá thưa so với nó (khỏi răng cưa thành vân vòng).
-  float waveFade(float len, float dist) {
-    return 1.0 - smoothstep(len * 3.0 * uWaveFade, len * 7.0 * uWaveFade, dist);
-  }
-
-  vec3 waves(vec2 p, float amp, float dist, out vec3 normal) {
-    vec3 tangent = vec3(1.0, 0.0, 0.0);
-    vec3 binormal = vec3(0.0, 0.0, 1.0);
-    vec3 o = vec3(0.0);
-    // Năm tầng sóng toả nhiều hướng (sóng lừng chính, sóng chéo ngược, sóng con lăn tăn theo đủ hướng) nên mặt biển
-    // gợn đan chéo, sống động chứ không trôi một chiều; mỗi tầng tắt dần khi ô lưới ở đó quá thưa so với bước sóng.
-    o += gerstner(vec4(1.0, 0.3, 0.08, 44.0), p, amp * waveFade(44.0, dist), tangent, binormal);
-    o += gerstner(vec4(-0.65, 1.0, 0.065, 27.0), p, amp * waveFade(27.0, dist), tangent, binormal);
-    o += gerstner(vec4(0.85, -0.7, 0.06, 17.0), p, amp * waveFade(17.0, dist), tangent, binormal);
-    o += gerstner(vec4(0.15, 1.0, 0.055, 11.0), p, amp * waveFade(11.0, dist), tangent, binormal);
-    o += gerstner(vec4(-1.0, -0.25, 0.05, 7.5), p, amp * waveFade(7.5, dist), tangent, binormal);
-    normal = normalize(cross(binormal, tangent));
-    return o;
-  }
-`;
-
-const vertexShader = /* glsl */ `
-  #include <fog_pars_vertex>
-  ${COMMON}
-  varying vec3 vWorld;
-  varying vec3 vNormalW;
-  varying float vHeight;
-  varying float vDepth;
-  void main() {
-    vec4 world = modelMatrix * vec4(position, 1.0);
-    float depth = seaDepth(world.xz);
-    // Sát bờ sóng dẹt lại (không trườn lên bãi cát rồi nhấp nháy xuyên qua địa hình).
-    float amp = uWaveScale * smoothstep(0.15, 5.0, depth);
-    vec3 n;
-    vec3 o = waves(world.xz, amp, length(world.xz - cameraPosition.xz), n);
-    world.xyz += o;
-    vWorld = world.xyz;
-    vNormalW = n;
-    vHeight = o.y / max(uWaveScale, 0.3);
-    vDepth = depth;
-    vec4 mvPosition = viewMatrix * world;
-    gl_Position = projectionMatrix * mvPosition;
-    #include <fog_vertex>
-  }
-`;
-
-const fragmentShader = /* glsl */ `
-  #include <fog_pars_fragment>
-  ${COMMON}
-  uniform float uDay;
-  uniform vec3 uDeep;
-  uniform vec3 uMid;
-  uniform vec3 uShallow;
-  uniform vec3 uScatter;
-  uniform vec3 uTop;
-  uniform vec3 uHorizon;
-  uniform vec3 uSunDir;
-  uniform vec3 uSunColor;
-  uniform float uCloud;
-  uniform sampler2D uRipple;
-  uniform sampler2D uReflectMap;
-  uniform mat4 uReflectMatrix;
-  uniform float uReflect;
-  ${CLOUD_PARS_GLSL}
-  varying vec3 vWorld;
-  varying vec3 vNormalW;
-  varying float vHeight;
-  varying float vDepth;
-
-  vec3 skyColor(vec3 r) {
-    float h = clamp(r.y, 0.0, 1.0);
-    vec3 col = mix(uHorizon, uTop, pow(h, 0.5));
-    float s = max(dot(r, uSunDir), 0.0);
-    col += uSunColor * (pow(s, 12.0) * 0.5 + pow(s, 4.0) * 0.12) * uDay;
-    return col;
-  }
-
-  void main() {
-    vec2 p = vWorld.xz;
-    float depth = vDepth;
-    float dist = length(cameraPosition - vWorld);
-    vec3 view = normalize(cameraPosition - vWorld);
-
-    // Gợn nhỏ: hai lớp trôi lệch hướng, mờ dần ở xa để khỏi lấm tấm.
-    float detail = 1.0 - smoothstep(30.0, 160.0, dist);
-    vec3 r1 = texture2D(uRipple, p * 0.045 + vec2(uTime * 0.018, uTime * 0.011)).xyz * 2.0 - 1.0;
-    vec3 r2 = texture2D(uRipple, p * 0.11 + vec2(-uTime * 0.021, uTime * 0.027)).xyz * 2.0 - 1.0;
-    // Lớp gợn thứ ba xoay chéo, trôi ngược chiều: gợn đan nhau, không lộ một hướng trôi.
-    vec2 q = mat2(0.6, -0.8, 0.8, 0.6) * p;
-    vec3 r3 = texture2D(uRipple, q * 0.073 + vec2(uTime * 0.013, -uTime * 0.024)).xyz * 2.0 - 1.0;
-    vec2 ripple = (r1.xy * 0.42 + r2.xy * 0.3 + r3.xy * 0.33) * (0.35 + 0.65 * detail) * (0.7 + 0.5 * uWaveScale);
-    vec3 n = normalize(vec3(vNormalW.x + ripple.x * 0.55, vNormalW.y, vNormalW.z + ripple.y * 0.55));
-
-    // Màu nước ba nấc theo độ sâu: ngọc lam trong vắt ven bờ → xanh ngọc → xanh thẫm ngoài khơi (ánh sáng bị hấp
-    // thụ dần). Ngoài rìa bản đồ (độ sâu kịch trần) càng xa đảo càng thẫm.
-    float absorb = 1.0 - exp(-depth * 0.32);
-    vec3 body = mix(uShallow, uMid, smoothstep(0.0, 3.5, depth));
-    body = mix(body, uDeep, smoothstep(2.5, 11.0, depth));
-    float offshore = smoothstep(uHalf * 0.9, uHalf * 1.35, max(abs(p.x), abs(p.y)));
-    body = mix(body, uDeep * 0.75, offshore * 0.6);
-
-    // Đỉnh sóng mỏng, ngược nắng thì ánh sáng xuyên qua thành xanh trong (tán xạ dưới bề mặt).
-    float crest = clamp(vHeight * 1.6 + 0.35, 0.0, 1.0);
-    float backlit = pow(max(dot(view, -vec3(uSunDir.x, 0.0, uSunDir.z)), 0.0), 3.0);
-    body += uScatter * crest * (0.25 + 0.9 * backlit) * uDay * (0.4 + 0.6 * absorb);
-
-    // Phản chiếu bầu trời (Fresnel Schlick, nước F0 = 0.02).
-    float cosT = clamp(dot(n, view), 0.0, 1.0);
-    float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-    vec3 refl = skyColor(reflect(-view, n));
-    // Mây dày thì mặt nước bớt bóng loáng.
-    refl = mix(refl, uHorizon, uCloud * 0.4);
-    if (uReflect > 0.0) {
-      // Ảnh phản chiếu thật (nửa độ phân giải), gợn sóng làm lệch toạ độ; chỗ trống (trời) giữ bầu trời ở trên.
-      vec4 rc = uReflectMatrix * vec4(vWorld.x, ${WATER_LEVEL.toFixed(2)}, vWorld.z, 1.0);
-      vec2 ruv = rc.xy / rc.w + n.xz * (0.035 + 0.02 * uWaveScale) * (0.4 + 0.6 * detail);
-      vec4 rt = texture2D(uReflectMap, clamp(ruv, vec2(0.002), vec2(0.998)));
-      float redge = smoothstep(0.0, 0.04, ruv.x) * smoothstep(1.0, 0.96, ruv.x) * smoothstep(0.0, 0.04, ruv.y) * smoothstep(1.0, 0.96, ruv.y);
-      refl = mix(refl, rt.rgb, clamp(rt.a, 0.0, 1.0) * redge * uReflect);
-    }
-    vec3 col = mix(body, refl, clamp(fres * 1.1, 0.0, 1.0));
-
-    // Nắng lấp lánh: một vệt to mềm và vô số chấm sáng nhỏ trên gợn.
-    vec3 h = normalize(uSunDir + view);
-    float nh = max(dot(n, h), 0.0);
-    float glint = pow(nh, 900.0) * 6.0 + pow(nh, 120.0) * 0.5;
-    // Bóng mây trôi qua thì mặt nước tắt lấp lánh, sẫm đi một chút.
-    float sunShade = tenCloudShade(p);
-    col *= 0.8 + 0.2 * sunShade;
-    col += uSunColor * glint * uDay * (1.0 - uCloud * 0.8) * sunShade;
-
-    // Bọt vỗ bờ (so độ sâu nước với địa hình): một viền bọt dày sát mép nước, cộng hai lớp vệt sóng lùa vào bờ
-    // theo nhịp (lệch pha nhau), nhiễu bọt làm vỡ vụn thành mảng. Vách đá dốc (độ sâu tăng nhanh) thì dải bọt hẹp.
-    float foamTex = texture2D(uRipple, p * 0.16 + vec2(uTime * 0.01, 0.0)).a;
-    float foamTex2 = texture2D(uRipple, p * 0.37 - vec2(0.0, uTime * 0.015)).a;
-    float foamNoise = foamTex * 0.6 + foamTex2 * 0.4;
-    float wash = fract(uTime * 0.12 - depth * 0.45 + foamTex * 0.3);
-    float wash2 = fract(uTime * 0.12 + 0.5 - depth * 0.6 + foamTex2 * 0.3);
-    float band = smoothstep(0.0, 0.06, wash) * (1.0 - smoothstep(0.06, 0.35, wash));
-    float band2 = smoothstep(0.0, 0.05, wash2) * (1.0 - smoothstep(0.05, 0.22, wash2)) * 0.7;
-    float shore = 1.0 - smoothstep(0.0, 1.8, depth);
-    float edge = smoothstep(0.22, 0.0, depth + (foamTex - 0.5) * 0.2);
-    float foam = edge * 1.1 + shore * (band + band2 * (1.0 - smoothstep(0.4, 1.2, depth)));
-    // Đầu sóng bạc trắng khi gió to.
-    foam += smoothstep(0.55, 0.9, crest) * smoothstep(0.9, 1.6, uWaveScale) * 0.9;
-    foam *= smoothstep(0.42, 0.7, foamNoise + foam * 0.15);
-    // Bọt kiểu hoạt hình: mép mảng bọt sắc gọn thay vì loang mờ.
-    foam = smoothstep(0.25, 0.45, foam) * 0.95 + foam * 0.05;
-    vec3 foamCol = vec3(0.94, 0.97, 0.99) * (0.3 + 0.7 * uDay);
-    col = mix(col, foamCol, clamp(foam, 0.0, 1.0) * 0.92);
-
-    // Nước nông trong suốt, thấy cát đáy; sâu dần thì đục hẳn (không lộ lờ mờ từng ô đáy biển thành mảng vuông).
-    float alpha = mix(0.18, 1.0, smoothstep(0.0, 6.0, depth));
-    alpha = max(alpha, fres);
-    alpha = max(alpha, clamp(foam, 0.0, 1.0));
-
-    if (!gl_FrontFacing) {
-      // Nhìn từ dưới nước lên: gần đỉnh đầu thấy trời qua cửa sổ Snell, ra xa phản xạ toàn phần tối lại.
-      float up = clamp(-view.y, 0.0, 1.0);
-      float window = smoothstep(0.55, 0.8, up);
-      vec3 under = mix(uDeep * 0.7, uShallow * 1.2, up);
-      col = mix(under, skyColor(vec3(0.0, 1.0, 0.0)) * 1.1, window) * (0.45 + 0.6 * uDay);
-      col += uSunColor * pow(max(dot(-view, uSunDir), 0.0), 40.0) * uDay;
-      gl_FragColor = vec4(col, 0.92);
-    } else {
-      gl_FragColor = vec4(col, alpha);
-    }
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-    #include <fog_fragment>
-  }
-`;
-
 const DEEP_DAY = new Color("#0b3a66");
 const MID_DAY = new Color("#167f95");
 const SHALLOW_DAY = new Color("#48d0c0");
@@ -387,141 +201,214 @@ const SHALLOW_NIGHT = new Color("#0a2a33");
  */
 const SIZE = 760;
 
-// ---------------------------------------------------------------------------- ảnh phản chiếu (đồ hoạ Cao)
+// ---------------------------------------------------------------------------- shader nước (TSL)
 
-/** Ảnh phản chiếu chỉ vẽ tới chừng này mét (xa hơn đã chìm vào sương, gợn sóng làm nhoè hết). */
-const REFLECT_FAR = 150;
-const NORMAL = new Vector3(0, 1, 0);
-const BIAS = new Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+/** Mỗi sóng Gerstner: hướng x, hướng z, độ dốc, bước sóng (mét). */
+const WAVES = [
+  [1.0, 0.3, 0.08, 44.0],
+  [-0.65, 1.0, 0.065, 27.0],
+  [0.85, -0.7, 0.06, 17.0],
+  [0.15, 1.0, 0.055, 11.0],
+  [-1.0, -0.25, 0.05, 7.5],
+] as const;
 
-/**
- * Camera soi gương qua mặt phẳng nước (y = WATER_LEVEL), mặt phẳng gần xiên theo mặt nước (oblique clipping, như
- * Reflector của three.js) nên phần dưới nước không lọt vào ảnh mà không phải đổi shader của vật nào.
- */
-class PlanarReflection {
-  readonly target: WebGLRenderTarget;
-  readonly matrix = new Matrix4();
-  private readonly camera = new PerspectiveCamera();
-  private readonly plane = new Plane();
-  private readonly clip = new Vector4();
-  private readonly q = new Vector4();
-  private readonly rot = new Matrix4();
-  private readonly mirror = new Vector3();
-  private readonly look = new Vector3();
-  private readonly hidden: boolean[] = [];
-
-  constructor() {
-    this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthBuffer: true });
-    this.target.texture.generateMipmaps = false;
-    this.target.texture.minFilter = LinearFilter;
-    this.target.texture.magFilter = LinearFilter;
-  }
-
-  /** Vẽ ảnh phản chiếu cho camera chính; trả về false nếu camera không ở trên mặt nước (khỏi vẽ). */
-  render(gl: WebGLRenderer, scene: Scene, main: Camera, scale: number, waterMesh: Mesh | null): boolean {
-    const cam = main as PerspectiveCamera;
-    if (cam.position.y < WATER_LEVEL + 0.15) return false;
-    const w = Math.max(16, Math.round(gl.domElement.width * scale));
-    const h = Math.max(16, Math.round(gl.domElement.height * scale));
-    if (this.target.width !== w || this.target.height !== h) this.target.setSize(w, h);
-
-    // Vị trí, hướng nhìn, hướng lên của camera soi gương (đối xứng qua mặt nước).
-    const m = this.camera;
-    this.mirror.copy(cam.position);
-    this.mirror.y = 2 * WATER_LEVEL - this.mirror.y;
-    this.rot.extractRotation(cam.matrixWorld);
-    this.look.set(0, 0, -1).applyMatrix4(this.rot).add(cam.position);
-    this.look.y = 2 * WATER_LEVEL - this.look.y;
-    m.position.copy(this.mirror);
-    m.up.set(0, 1, 0).applyMatrix4(this.rot).reflect(NORMAL);
-    m.lookAt(this.look);
-    m.fov = cam.fov;
-    m.aspect = cam.aspect;
-    m.near = cam.near;
-    m.far = Math.min(cam.far, REFLECT_FAR);
-    m.updateMatrixWorld();
-    m.updateProjectionMatrix();
-    this.matrix.copy(BIAS).multiply(m.projectionMatrix).multiply(m.matrixWorldInverse);
-
-    // Mặt phẳng gần xiên theo mặt nước (Eric Lengyel), hạ thấp chút để chân người lội nước không bị cắt cụt.
-    this.plane.setFromNormalAndCoplanarPoint(NORMAL, this.look.set(0, WATER_LEVEL - 0.05, 0)).applyMatrix4(m.matrixWorldInverse);
-    this.clip.set(this.plane.normal.x, this.plane.normal.y, this.plane.normal.z, this.plane.constant);
-    const p = m.projectionMatrix.elements;
-    this.q.set((Math.sign(this.clip.x) + p[8]!) / p[0]!, (Math.sign(this.clip.y) + p[9]!) / p[5]!, -1, (1 + p[10]!) / p[14]!);
-    this.clip.multiplyScalar(2 / this.clip.dot(this.q));
-    p[2] = this.clip.x;
-    p[6] = this.clip.y;
-    p[10] = this.clip.z + 1;
-    p[14] = this.clip.w;
-
-    // Ẩn mặt nước, vòm trời, thảm cỏ; không vẽ lại bản đồ bóng (đèn đứng yên, bóng của khung hình chính vẫn đúng).
-    if (waterMesh) waterMesh.visible = false;
-    let i = 0;
-    for (const o of reflectionHidden) {
-      this.hidden[i++] = o.visible;
-      o.visible = false;
-    }
-    const background = scene.background;
-    scene.background = null;
-    const shadowAuto = gl.shadowMap.autoUpdate;
-    const shadowDue = gl.shadowMap.needsUpdate;
-    gl.shadowMap.autoUpdate = false;
-    gl.shadowMap.needsUpdate = false;
-    const prevTarget = gl.getRenderTarget();
-    const clearAlpha = gl.getClearAlpha();
-    gl.setClearAlpha(0);
-    gl.setRenderTarget(this.target);
-    gl.clear();
-    gl.render(scene, m);
-    gl.setRenderTarget(prevTarget);
-    gl.setClearAlpha(clearAlpha);
-    gl.shadowMap.autoUpdate = shadowAuto;
-    gl.shadowMap.needsUpdate = shadowDue;
-    scene.background = background;
-    i = 0;
-    for (const o of reflectionHidden) o.visible = this.hidden[i++]!;
-    if (waterMesh) waterMesh.visible = true;
-    return true;
-  }
-
-  dispose() {
-    this.target.dispose();
-  }
+/** Uniform riêng của một tấm nước (màu theo giờ, độ sâu, phủ mây...). Đồng hồ, độ cao sóng, thủy triều: `waterUniforms`. */
+function makeUniforms(half: number) {
+  return {
+    uDay: uniform(1),
+    uDeep: uniform(new Color()),
+    uMid: uniform(new Color()),
+    uShallow: uniform(new Color()),
+    uScatter: uniform(new Color()),
+    uCloud: uniform(0),
+    uHalf: uniform(half),
+    uWaveFade: uniform(0),
+    uDepthBias: uniform(0),
+    uReflect: uniform(0),
+  };
 }
 
+/** Ép nút màu (uniform Color) thành vec3 cho phép tính. */
+const asV3 = (n: unknown): V3 => vec3(n as V3);
+
+const placeholder = () => {
+  const t = new DataTexture(new Uint8Array([255]), 1, 1, RedFormat, UnsignedByteType);
+  t.needsUpdate = true;
+  return t;
+};
+
 /**
- * Vẽ ảnh phản chiếu sau khi mọi thứ đã cập nhật vị trí (camera, người, xe) và trước lượt vẽ chính của hậu kỳ (ưu tiên
- * 1): khỏi trễ một khung hình. Chỉ dựng khi có hậu kỳ (đồ hoạ Cao) vì useFrame có ưu tiên thì R3F thôi tự vẽ.
+ * Vật liệu nước: vertex dựng sóng Gerstner (năm tầng toả nhiều hướng, mỗi tầng tắt dần khi ô lưới ở đó quá thưa so
+ * với bước sóng), fragment tính màu cuối (màu theo độ sâu, Fresnel, nắng lấp lánh, bọt, mặt dưới khi lặn). Sương mù
+ * áp tự động qua `fogNode` của cảnh (installAtmosphere) vì vật liệu để `fog = true`.
+ * `reflection`: ảnh phản chiếu thật (đồ hoạ Cao) hoặc null.
  */
-function ReflectionPass({ material, mesh, scale }: { material: ShaderMaterial; mesh: RefObject<Mesh | null>; scale: number }) {
-  const gl = useThree((s) => s.gl);
-  const scene = useThree((s) => s.scene);
-  // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần).
-  const reflection = useRef<PlanarReflection | null>(null);
-  useEffect(() => {
-    const r = new PlanarReflection();
-    reflection.current = r;
-    return () => {
-      reflection.current = null;
-      r.dispose();
-      material.uniforms.uReflect!.value = 0;
-      material.uniforms.uReflectMap!.value = null;
-    };
-  }, [material]);
-  useFrame(({ camera }) => {
-    const u = material.uniforms;
-    const r = reflection.current;
-    camera.updateMatrixWorld();
-    // Chỉ khi ở trên mặt nước, không quá cao (trên cao nhìn xuống gần như chỉ thấy màu nước), mặt nước đang hiện.
-    const ok = !!r && !!mesh.current?.visible && camera.position.y < WATER_LEVEL + 70 && r.render(gl, scene, camera, scale, mesh.current);
-    u.uReflect!.value = ok ? 1 : 0;
-    if (ok) {
-      u.uReflectMap!.value = r.target.texture;
-      (u.uReflectMatrix!.value as Matrix4).copy(r.matrix);
+function makeWaterMaterial(half: number, reflection: ReturnType<typeof createReflection> | null) {
+  const u = makeUniforms(half);
+  const { uTime, uWaveScale, uTide } = waterUniforms;
+  const { uDay, uCloud, uHalf, uWaveFade, uDepthBias, uReflect } = u;
+  const depthMap = texture(placeholder());
+  const rippleMap = texture(waterNormals());
+  cloudTexture();
+
+  const deep = asV3(u.uDeep);
+  const mid = asV3(u.uMid);
+  const shallow = asV3(u.uShallow);
+  const scatter = asV3(u.uScatter);
+  const top = asV3(skyUniforms.uTop);
+  const horizon = asV3(skyUniforms.uHorizon);
+  const sunDir = skyUniforms.uSunDir as unknown as V3;
+  const sunColor = asV3(skyUniforms.uSunColor);
+
+  // Độ sâu nước tại điểm thế giới p (mét), từ bản đồ nướng sẵn; ngoài bản đồ coi như sâu tối đa.
+  const seaDepth = (p: V2): F => {
+    const uv = p.add(uHalf).div(uHalf.mul(2));
+    const inside = step(0, uv.x).mul(step(uv.x, 1)).mul(step(0, uv.y)).mul(step(uv.y, 1));
+    // Bản đồ nướng so với mốc + uDepthBias; mặt nước thật đang ở mốc + uTide.
+    const baked = depthMap.sample(uv).level(float(0)).r.mul(DEPTH_RANGE);
+    return mix(float(DEPTH_RANGE), baked, inside).sub(uDepthBias).add(uTide);
+  };
+
+  // Cộng dồn các sóng: trả về độ lệch đỉnh và pháp tuyến (Gerstner: tiếp tuyến cộng dồn rồi lấy tích có hướng).
+  const waves = (p: V2, amp: F, dist: F) => {
+    let tangent: V3 = vec3(1, 0, 0);
+    let binormal: V3 = vec3(0, 0, 1);
+    let offset: V3 = vec3(0, 0, 0);
+    for (const [wx, wz, steep, len] of WAVES) {
+      const l = Math.hypot(wx, wz);
+      const dx = wx / l;
+      const dz = wz / l;
+      const k = 6.28318 / len;
+      const c = Math.sqrt(9.8 / k);
+      const f = p.x.mul(k * dx).add(p.y.mul(k * dz)).sub(uTime.mul(k * c));
+      const fade = float(1).sub(smoothstep(uWaveFade.mul(len * 3), uWaveFade.mul(len * 7), dist));
+      const s = amp.mul(fade).mul(steep);
+      const a = s.div(k);
+      const sf = sin(f);
+      const cf = cos(f);
+      tangent = tangent.add(vec3(s.mul(sf).mul(-dx * dx), s.mul(cf).mul(dx), s.mul(sf).mul(-dx * dz)));
+      binormal = binormal.add(vec3(s.mul(sf).mul(-dx * dz), s.mul(cf).mul(dz), s.mul(sf).mul(-dz * dz)));
+      offset = offset.add(vec3(a.mul(cf).mul(dx), a.mul(sf), a.mul(cf).mul(dz)));
     }
-  }, 0.5);
-  return null;
+    return { offset, normal: normalize(cross(binormal, tangent)) as V3 };
+  };
+
+  // ---- đỉnh
+  const world = modelWorldMatrix.mul(vec4(positionGeometry, 1)).xyz;
+  const depthV = seaDepth(world.xz);
+  // Sát bờ sóng dẹt lại (không trườn lên bãi cát rồi nhấp nháy xuyên qua địa hình).
+  const ampV = uWaveScale.mul(smoothstep(0.15, 5.0, depthV));
+  const wv = waves(world.xz, ampV, length(world.xz.sub(cameraPosition.xz)));
+  const vNormal = wv.normal.toVarying("vWaterNormal");
+  const vHeight = wv.offset.y.div(max(uWaveScale, 0.3)).toVarying("vWaterHeight");
+  const vDepth = depthV.toVarying("vWaterDepth");
+
+  // ---- điểm ảnh
+  const pw = positionWorld as unknown as V3;
+  const p = pw.xz;
+  const toCam = cameraPosition.sub(pw);
+  const dist = length(toCam);
+  const view = normalize(toCam);
+  const depth = vDepth;
+  const day = uDay;
+
+  // Màu bầu trời theo hướng nhìn r (khớp Sky.tsx: dải chân trời → thiên đỉnh cộng quầng mặt trời).
+  const skyColor = (r: V3): V3 => {
+    const h = clamp(r.y, 0, 1);
+    const s = max(dot(r, sunDir), 0);
+    const base = mix(horizon, top, pow(h, 0.5));
+    return base.add(sunColor.mul(pow(s, 12).mul(0.5).add(pow(s, 4).mul(0.12))).mul(day)) as V3;
+  };
+
+  // Gợn nhỏ: ba lớp trôi lệch hướng, mờ dần ở xa để khỏi lấm tấm.
+  const detail = float(1).sub(smoothstep(30, 160, dist));
+  const ripple = (uv: V2) => rippleMap.sample(uv).xyz.mul(2).sub(1);
+  const r1 = ripple(p.mul(0.045).add(vec2(uTime.mul(0.018), uTime.mul(0.011))));
+  const r2 = ripple(p.mul(0.11).add(vec2(uTime.mul(-0.021), uTime.mul(0.027))));
+  // Lớp thứ ba xoay chéo, trôi ngược chiều: gợn đan nhau, không lộ một hướng trôi.
+  const q = vec2(p.x.mul(0.6).add(p.y.mul(0.8)), p.x.mul(-0.8).add(p.y.mul(0.6)));
+  const r3 = ripple(q.mul(0.073).add(vec2(uTime.mul(0.013), uTime.mul(-0.024))));
+  const rip = r1.xy.mul(0.42).add(r2.xy.mul(0.3)).add(r3.xy.mul(0.33)).mul(detail.mul(0.65).add(0.35)).mul(uWaveScale.mul(0.5).add(0.7));
+  const n = normalize(vec3(vNormal.x.add(rip.x.mul(0.55)), vNormal.y, vNormal.z.add(rip.y.mul(0.55)))) as V3;
+
+  // Màu nước ba nấc theo độ sâu: ngọc lam trong vắt ven bờ → xanh ngọc → xanh thẫm ngoài khơi. Ngoài rìa bản đồ
+  // (độ sâu kịch trần) càng xa đảo càng thẫm.
+  const absorb = float(1).sub(exp(depth.mul(-0.32)));
+  let body: V3 = mix(shallow, mid, smoothstep(0, 3.5, depth)) as V3;
+  body = mix(body, deep, smoothstep(2.5, 11, depth)) as V3;
+  const offshore = smoothstep(uHalf.mul(0.9), uHalf.mul(1.35), max(p.x.abs(), p.y.abs()));
+  body = mix(body, deep.mul(0.75), offshore.mul(0.6)) as V3;
+
+  // Đỉnh sóng mỏng, ngược nắng thì ánh sáng xuyên qua thành xanh trong (tán xạ dưới bề mặt).
+  const crest = clamp(vHeight.mul(1.6).add(0.35), 0, 1);
+  const backlit = pow(max(dot(view, vec3(sunDir.x, 0, sunDir.z).negate()), 0), 3);
+  body = body.add(scatter.mul(crest).mul(backlit.mul(0.9).add(0.25)).mul(day).mul(absorb.mul(0.6).add(0.4))) as V3;
+
+  // Phản chiếu bầu trời (Fresnel Schlick, nước F0 = 0.02).
+  const cosT = clamp(dot(n, view), 0, 1);
+  const fres = pow(float(1).sub(cosT), 5).mul(0.98).add(0.02);
+  let refl: V3 = skyColor(reflect(view.negate(), n) as V3);
+  // Mây dày thì mặt nước bớt bóng loáng.
+  refl = mix(refl, horizon, uCloud.mul(0.4)) as V3;
+  if (reflection) {
+    // Ảnh phản chiếu thật (nửa độ phân giải), gợn sóng làm lệch toạ độ; chỗ trống (trời) giữ bầu trời ở trên.
+    const rn = reflection.node;
+    const ruv = (rn.uvNode as unknown as V2).add(vec2(n.x.negate(), n.z).mul(uWaveScale.mul(0.02).add(0.035).mul(detail.mul(0.6).add(0.4))));
+    const redge = smoothstep(0, 0.04, ruv.x).mul(smoothstep(1, 0.96, ruv.x)).mul(smoothstep(0, 0.04, ruv.y)).mul(smoothstep(1, 0.96, ruv.y));
+    rn.uvNode = clamp(ruv, 0.002, 0.998) as never;
+    const rt = rn as unknown as { rgb: V3; a: F };
+    refl = mix(refl, rt.rgb, clamp(rt.a, 0, 1).mul(redge).mul(uReflect)) as V3;
+  }
+  let col: V3 = mix(body, refl, clamp(fres.mul(1.1), 0, 1)) as V3;
+
+  // Nắng lấp lánh: một vệt to mềm và vô số chấm sáng nhỏ trên gợn.
+  const h = normalize(sunDir.add(view));
+  const nh = max(dot(n, h), 0);
+  const glint = pow(nh, 900).mul(6).add(pow(nh, 120).mul(0.5));
+  // Bóng mây trôi qua thì mặt nước tắt lấp lánh, sẫm đi một chút.
+  const sunShade = cloudShade(p) as F;
+  col = col.mul(sunShade.mul(0.2).add(0.8)) as V3;
+  col = col.add(sunColor.mul(glint).mul(day).mul(float(1).sub(uCloud.mul(0.8))).mul(sunShade)) as V3;
+
+  // Bọt vỗ bờ (so độ sâu nước với địa hình): một viền bọt dày sát mép nước, cộng hai lớp vệt sóng lùa vào bờ theo
+  // nhịp (lệch pha nhau), nhiễu bọt làm vỡ vụn thành mảng. Vách đá dốc (độ sâu tăng nhanh) thì dải bọt hẹp.
+  const foamTex = rippleMap.sample(p.mul(0.16).add(vec2(uTime.mul(0.01), 0))).a;
+  const foamTex2 = rippleMap.sample(p.mul(0.37).sub(vec2(0, uTime.mul(0.015)))).a;
+  const foamNoise = foamTex.mul(0.6).add(foamTex2.mul(0.4));
+  const wash = fract(uTime.mul(0.12).sub(depth.mul(0.45)).add(foamTex.mul(0.3)));
+  const wash2 = fract(uTime.mul(0.12).add(0.5).sub(depth.mul(0.6)).add(foamTex2.mul(0.3)));
+  const band = smoothstep(0, 0.06, wash).mul(float(1).sub(smoothstep(0.06, 0.35, wash)));
+  const band2 = smoothstep(0, 0.05, wash2).mul(float(1).sub(smoothstep(0.05, 0.22, wash2))).mul(0.7);
+  const shore = float(1).sub(smoothstep(0, 1.8, depth));
+  const edge = smoothstep(0.22, 0, depth.add(foamTex.sub(0.5).mul(0.2)));
+  let foam: F = edge.mul(1.1).add(shore.mul(band.add(band2.mul(float(1).sub(smoothstep(0.4, 1.2, depth)))))) as F;
+  // Đầu sóng bạc trắng khi gió to.
+  foam = foam.add(smoothstep(0.55, 0.9, crest).mul(smoothstep(0.9, 1.6, uWaveScale)).mul(0.9)) as F;
+  foam = foam.mul(smoothstep(0.42, 0.7, foamNoise.add(foam.mul(0.15)))) as F;
+  // Bọt kiểu hoạt hình: mép mảng bọt sắc gọn thay vì loang mờ.
+  foam = smoothstep(0.25, 0.45, foam).mul(0.95).add(foam.mul(0.05)) as F;
+  const foamCol = vec3(0.94, 0.97, 0.99).mul(day.mul(0.7).add(0.3));
+  const foamK = clamp(foam, 0, 1);
+  col = mix(col, foamCol, foamK.mul(0.92)) as V3;
+
+  // Nước nông trong suốt, thấy cát đáy; sâu dần thì đục hẳn (không lộ lờ mờ từng ô đáy biển thành mảng vuông).
+  const alpha = max(max(mix(float(0.18), float(1), smoothstep(0, 6, depth)), fres), foamK);
+
+  // Nhìn từ dưới nước lên: gần đỉnh đầu thấy trời qua cửa sổ Snell, ra xa phản xạ toàn phần tối lại.
+  const up = clamp(view.y.negate(), 0, 1);
+  const window = smoothstep(0.55, 0.8, up);
+  const under = mix(deep.mul(0.7), shallow.mul(1.2), up);
+  const underCol = mix(under, skyColor(vec3(0, 1, 0)).mul(1.1), window)
+    .mul(day.mul(0.6).add(0.45))
+    .add(sunColor.mul(pow(max(dot(view.negate(), sunDir), 0), 40)).mul(day)) as V3;
+
+  const m = new MeshBasicNodeMaterial({ transparent: true });
+  m.positionNode = positionGeometry.add(wv.offset);
+  m.colorNode = vec4(select(frontFacing, col, underCol), select(frontFacing, alpha, float(0.92)));
+  return { material: m, u, depthMap };
 }
+
+// ---------------------------------------------------------------------------- thành phần
 
 /** `tidal`: mặt biển dâng hạ theo thủy triều (đảo sinh tồn); Battleground để mặc định (mặt biển đứng yên ở mốc). */
 export function Water({ world, tidal = false }: { world: World; tidal?: boolean }) {
@@ -539,71 +426,35 @@ export function Water({ world, tidal = false }: { world: World; tidal?: boolean 
   const geometry = useMemo(() => radialGrid(size, big ? Math.round(segments * 1.6) : segments, big ? 2.6 : 2.2), [segments, size, big]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const mesh = useRef<Mesh>(null);
-  const material = useMemo(() => {
-    const m = new ShaderMaterial({
-      uniforms: UniformsUtils.merge([
-        UniformsLib.fog,
-        {
-          uDay: { value: 1 },
-          uDeep: { value: new Color() },
-          uMid: { value: new Color() },
-          uShallow: { value: new Color() },
-          uScatter: { value: new Color() },
-          uTop: { value: new Color() },
-          uHorizon: { value: new Color() },
-          uSunDir: { value: skyUniforms.uSunDir.value.clone() },
-          uSunColor: { value: new Color() },
-          uCloud: { value: 0 },
-          uDepth: { value: null },
-          uRipple: { value: null },
-          uHalf: { value: world.half ?? MAP_HALF_SIZE },
-          uWaveFade: { value: 0 },
-          uDepthBias: { value: 0 },
-          uReflectMap: { value: null },
-          uReflectMatrix: { value: new Matrix4() },
-          uReflect: { value: 0 },
-        },
-      ]),
-      vertexShader,
-      fragmentShader,
-      transparent: true,
-      fog: true,
-    });
-    // Đồng hồ sóng dùng chung (merge sao chép giá trị nên gắn lại sau).
-    m.uniforms.uTime = waterUniforms.uTime;
-    m.uniforms.uWaveScale = waterUniforms.uWaveScale;
-    m.uniforms.uTide = waterUniforms.uTide;
-    m.uniforms.uRipple!.value = waterNormals();
-    cloudTexture();
-    Object.assign(m.uniforms, cloudUniforms);
-    return m;
-  }, []);
+  // Phản chiếu thật (đồ hoạ Cao): dựng lại cả vật liệu khi bật/tắt vì nó đổi cấu trúc shader.
+  const reflection = useMemo(() => (reflectScale > 0 ? createReflection(reflectScale) : null), [reflectScale]);
+  useEffect(() => () => reflection?.dispose(), [reflection]);
+  const built = useMemo(() => makeWaterMaterial(world.half ?? MAP_HALF_SIZE, reflection), [reflection]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { material, u } = built;
+  useEffect(() => () => material.dispose(), [material]);
   // Bản đồ rộng hẹp khác nhau (chiến trường rộng hơn đảo): tấm độ sâu phủ đúng cả bản đồ.
   useEffect(() => {
-    material.uniforms.uHalf!.value = world.half ?? MAP_HALF_SIZE;
+    u.uHalf.value = world.half ?? MAP_HALF_SIZE;
     // Lưới biển hải chiến thưa hơn (trải rộng): sóng ngắn tắt gần hơn.
-    material.uniforms.uWaveFade!.value = big ? 1 : 1.8;
-  }, [material, world, big]);
-  material.uniforms.uDepth!.value = depthMap;
-  material.uniforms.uDepthBias!.value = headroom;
+    u.uWaveFade.value = big ? 1 : 1.8;
+  }, [u, world, big]);
+  built.depthMap.value = depthMap;
+  u.uDepthBias.value = headroom;
+  const scene = useThree((s) => s.scene);
+  void scene;
 
   useFrame(({ clock, camera }) => {
-    const u = material.uniforms;
     waterUniforms.uTime.value = clock.elapsedTime;
     // Gió to, bão thì sóng lớn hơn.
     const target = 1 + weatherFx.rain * 0.3 + weatherFx.storm * 1.1;
     waterUniforms.uWaveScale.value += (target - waterUniforms.uWaveScale.value) * 0.01;
     const day = 1 - sky.night;
-    u.uDay!.value = day;
-    (u.uDeep!.value as Color).copy(DEEP_NIGHT).lerp(DEEP_DAY, day);
-    (u.uMid!.value as Color).copy(MID_NIGHT).lerp(MID_DAY, day);
-    (u.uShallow!.value as Color).copy(SHALLOW_NIGHT).lerp(SHALLOW_DAY, day);
-    (u.uScatter!.value as Color).copy(SCATTER_DAY).multiplyScalar(day);
-    (u.uTop!.value as Color).copy(skyUniforms.uTop.value);
-    (u.uHorizon!.value as Color).copy(skyUniforms.uHorizon.value);
-    (u.uSunDir!.value as typeof skyUniforms.uSunDir.value).copy(skyUniforms.uSunDir.value);
-    (u.uSunColor!.value as Color).copy(skyUniforms.uSunColor.value);
-    u.uCloud!.value = Math.max(0, weatherFx.cloud - 0.3) / 0.7;
+    u.uDay.value = day;
+    (u.uDeep.value as Color).copy(DEEP_NIGHT).lerp(DEEP_DAY, day);
+    (u.uMid.value as Color).copy(MID_NIGHT).lerp(MID_DAY, day);
+    (u.uShallow.value as Color).copy(SHALLOW_NIGHT).lerp(SHALLOW_DAY, day);
+    (u.uScatter.value as Color).copy(SCATTER_DAY).multiplyScalar(day);
+    u.uCloud.value = Math.max(0, weatherFx.cloud - 0.3) / 0.7;
     // Lưới đi theo camera, bám theo bước 2 m để đỉnh không trượt qua lại khi đi.
     const sea = WATER_LEVEL + waterUniforms.uTide.value;
     if (mesh.current) mesh.current.position.set(Math.round(camera.position.x / 2) * 2, sea, Math.round(camera.position.z / 2) * 2);
@@ -612,12 +463,17 @@ export function Water({ world, tidal = false }: { world: World; tidal?: boolean 
     const above = camera.position.y - sea;
     const amp = 1.2 * waterUniforms.uWaveScale.value;
     material.side = above > amp ? FrontSide : above < -amp ? BackSide : DoubleSide;
+    // Phản chiếu chỉ khi ở trên mặt nước, không quá cao (trên cao nhìn xuống gần như chỉ thấy màu nước), mặt nước hiện.
+    if (reflection) {
+      const on = !!mesh.current?.visible && camera.position.y > sea + 0.15 && camera.position.y < sea + 70;
+      reflection.state.active = on;
+      u.uReflect.value = on ? 1 : 0;
+    }
   });
 
   return (
-    <>
-      <mesh ref={mesh} geometry={geometry} material={material} position-y={WATER_LEVEL} frustumCulled={false} />
-      {reflectScale > 0 && <ReflectionPass material={material} mesh={mesh} scale={reflectScale} />}
-    </>
+    <mesh ref={mesh} geometry={geometry} material={material} position-y={WATER_LEVEL} frustumCulled={false}>
+      {reflection && <primitive object={reflection.target} />}
+    </mesh>
   );
 }
