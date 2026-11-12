@@ -10,6 +10,8 @@ import {
   Vector3,
   type Texture,
 } from "three";
+import { cameraViewMatrix, color, diffuseColor, normalView, positionViewDirection, transformDirection } from "three/tsl";
+import { wrapSlot, type V3 } from "./gpu/slots.ts";
 import { mulberry32, swayMaterial } from "./nature.ts";
 import { skyUniforms } from "./Sky.tsx";
 
@@ -193,29 +195,14 @@ export function broadLeafTexture(): Texture {
  */
 export function leafMaterial(map: Texture, sway: number, from = 0, translucency = 0.55): MeshStandardMaterial {
   const m = swayMaterial({ map, alphaTest: 0.45, side: DoubleSide, roughness: 0.72, metalness: 0 }, sway, from, false);
-  const base = m.onBeforeCompile;
-  const baseKey = m.customProgramCacheKey();
-  m.customProgramCacheKey = () => `${baseKey}|leaf:${translucency}`;
-  m.onBeforeCompile = (shader, renderer) => {
-    base.call(m, shader, renderer);
-    shader.uniforms.uLeafSunDir = skyUniforms.uSunDir;
-    shader.uniforms.uLeafSunColor = skyUniforms.uSunColor;
-    shader.uniforms.uLeafNight = skyUniforms.uNight;
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uLeafSunDir;\nuniform vec3 uLeafSunColor;\nuniform float uLeafNight;")
-      .replace(
-        "#include <lights_fragment_end>",
-        /* glsl */ `#include <lights_fragment_end>
-        {
-          // Nhìn về phía mặt trời qua tán lá: ánh nắng xuyên phiến lá thành xanh vàng trong.
-          vec3 tenView = normalize( vViewPosition );
-          vec3 tenSunView = normalize( ( viewMatrix * vec4( uLeafSunDir, 0.0 ) ).xyz );
-          float tenBack = pow( max( dot( tenView, tenSunView ), 0.0 ), 3.0 );
-          float tenWrap = 0.5 + 0.5 * dot( normal, tenSunView );
-          reflectedLight.directDiffuse += diffuseColor.rgb * uLeafSunColor * ( tenBack * ${translucency.toFixed(2)} + ( 1.0 - tenWrap ) * 0.12 ) * ( 1.0 - uLeafNight );
-        }`,
-      );
-  };
+  const { uSunDir, uSunColor, uNight } = skyUniforms;
+  // Nhìn về phía mặt trời qua tán lá: ánh nắng xuyên phiến lá thành xanh vàng trong. Cộng như phát sáng: không
+  // nhân với bóng đổ, đúng như bản cũ cộng thẳng vào ánh sáng khuếch tán trực tiếp.
+  const sunView = transformDirection(uSunDir, cameraViewMatrix);
+  const back = positionViewDirection.dot(sunView).max(0).pow(3);
+  const wrap = normalView.dot(sunView).mul(0.5).add(0.5);
+  const glow = back.mul(translucency).add(wrap.oneMinus().mul(0.12)).mul(uNight.oneMinus());
+  wrapSlot(m, "emissiveNode", color(0, 0, 0), (cur) => (cur as V3).add(diffuseColor.rgb.mul(uSunColor).mul(glow)));
   // Không phủ vân chi tiết lên lá đã có ảnh.
   m.userData.detail = "none";
   return m;

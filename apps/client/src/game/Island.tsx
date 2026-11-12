@@ -33,6 +33,9 @@ import { Landmarks } from "./Landmarks.tsx";
 import { SurvivalWorld } from "./SurvivalWorld.tsx";
 import { tide } from "./tide.ts";
 import { detailed } from "./textures.ts";
+import { Fn, cameraViewMatrix, color, cos, diffuseColor, float, length, materialColor, materialRoughness, mix, normalView, positionWorld, sin, smoothstep, step, transformDirection, vec2, vec3, vec4 } from "three/tsl";
+import { wrapSlot, type F, type V2, type V3, type V4 } from "./gpu/slots.ts";
+import { skyUniforms } from "./Sky.tsx";
 import { GrassField } from "./Grass.tsx";
 import { Flame } from "./Flame.tsx";
 import { useProfile } from "./graphics.ts";
@@ -264,62 +267,40 @@ function buildTerrain(world: World, grids: readonly TerrainGrid[]): TerrainChunk
  * Mặt đất gần nước: cát ướt sẫm màu và bóng hơn ở mép nước (mép ướt dâng hạ theo sóng), đáy biển có vân sáng
  * lung linh do nắng khúc xạ qua mặt sóng (caustics), càng sâu càng mờ và ngả xanh.
  */
+/** Vân sáng khúc xạ (caustics): 4 vòng lặp trải ra lúc dựng shader. */
+const caustic = Fn(([p, t]: [V2, F]) => {
+  const inten = 0.005;
+  let i = p.toVar();
+  let c: F = float(1);
+  for (let n = 0; n < 4; n++) {
+    const tt = t.mul(1 - 3.5 / (n + 1));
+    i = p.add(vec2(cos(tt.sub(i.x)).add(sin(tt.add(i.y))), sin(tt.sub(i.y)).add(cos(tt.add(i.x))))).toVar();
+    c = c.add(float(1).div(length(vec2(p.x.div(sin(i.x.add(tt)).div(inten)), p.y.div(cos(i.y.add(tt)).div(inten))))));
+  }
+  const k = float(1.17).sub(c.div(4).pow(1.4));
+  return k.abs().pow(8).clamp(0, 2);
+});
+
 function seabedLight(m: MeshStandardMaterial) {
-  m.customProgramCacheKey = () => "seabed";
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = waterUniforms.uTime;
-    shader.uniforms.uTide = waterUniforms.uTide;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vSeabed;")
-      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvSeabed = (modelMatrix * vec4(transformed, 1.0)).xyz;");
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        "#include <common>",
-        /* glsl */ `#include <common>
-        uniform float uTime;
-        uniform float uTide;
-        varying vec3 vSeabed;
-        float tenCaustic(vec2 p, float t) {
-          vec2 i = p;
-          float c = 1.0;
-          float inten = 0.005;
-          for (int n = 0; n < 4; n++) {
-            float tt = t * (1.0 - (3.5 / float(n + 1)));
-            i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
-            c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / inten), p.y / (cos(i.y + tt) / inten)));
-          }
-          c /= 4.0;
-          c = 1.17 - pow(c, 1.4);
-          return clamp(pow(abs(c), 8.0), 0.0, 2.0);
-        }`,
-      )
-      .replace(
-        "#include <color_fragment>",
-        /* glsl */ `#include <color_fragment>
-        float tenWater = ${WATER_LEVEL.toFixed(2)} + uTide;
-        float tenAbove = vSeabed.y - tenWater;
-        float tenWetLine = 0.45 + 0.25 * sin(uTime * 0.75 + (vSeabed.x + vSeabed.z) * 0.05);
-        float tenWet = 1.0 - smoothstep(0.0, tenWetLine, tenAbove);
-        diffuseColor.rgb *= 1.0 - 0.32 * tenWet;
-        float tenDepth = max(0.0, -tenAbove);
-        // Càng sâu càng mất màu đỏ, ngả xanh lục lam.
-        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.85, 0.95), smoothstep(0.0, 6.0, tenDepth));`,
-      )
-      .replace(
-        "#include <roughnessmap_fragment>",
-        "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.3, tenWet * step(0.0, tenAbove));",
-      )
-      .replace(
-        "#include <lights_fragment_end>",
-        /* glsl */ `#include <lights_fragment_end>
-        if (tenAbove < 0.0) {
-          float tenFade = smoothstep(0.0, 0.6, tenDepth) * (1.0 - smoothstep(4.0, 14.0, tenDepth));
-          float tenC = tenCaustic(mod(vSeabed.xz * 0.4 + vec2(0.0, uTime * 0.03), 6.28318) - 250.0, uTime * 0.5);
-          // Vân sáng theo nắng trực tiếp đang chiếu xuống (đêm, trong bóng râm thì tắt).
-          reflectedLight.directDiffuse += reflectedLight.directDiffuse * tenC * 2.2 * tenFade;
-        }`,
-      );
-  };
+  const { uTime, uTide } = waterUniforms;
+  const above = positionWorld.y.sub(uTide.add(WATER_LEVEL));
+  const wetLine = sin(uTime.mul(0.75).add(positionWorld.x.add(positionWorld.z).mul(0.05))).mul(0.25).add(0.45);
+  const wet = smoothstep(0, wetLine, above).oneMinus().toVar("tenSeabedWet");
+  const depth = above.negate().max(0);
+  wrapSlot(m, "colorNode", materialColor, (cur) => {
+    const c = vec4(cur as V4);
+    const wetted = c.rgb.mul(wet.mul(0.32).oneMinus());
+    // Càng sâu càng mất màu đỏ, ngả xanh lục lam.
+    return vec4(mix(wetted, wetted.mul(vec3(0.55, 0.85, 0.95)), smoothstep(0, 6, depth)), c.a);
+  });
+  wrapSlot(m, "roughnessNode", materialRoughness, (cur) => mix(cur as F, float(0.3), wet.mul(step(0, above))));
+  // Vân sáng theo nắng trực tiếp đang chiếu xuống (đêm thì tắt). Cộng như phát sáng để vẫn nhận sương mù; bản cũ
+  // nhân đúng phần ánh sáng trực tiếp thật (có bóng đổ), ở đây ước theo cường độ mặt trời của DayCycle.
+  const fade = smoothstep(0, 0.6, depth).mul(smoothstep(4, 14, depth).oneMinus());
+  const sunView = transformDirection(skyUniforms.uSunDir, cameraViewMatrix);
+  const sunLit = normalView.dot(sunView).max(0).mul(skyUniforms.uSunDir.y.max(0).pow(0.6).mul(2.1).add(0.6)).mul(skyUniforms.uNight.oneMinus()).mul(1 / Math.PI);
+  const c = caustic(positionWorld.xz.mul(0.4).add(vec2(0, uTime.mul(0.03))).mod(6.28318).sub(250), uTime.mul(0.5));
+  wrapSlot(m, "emissiveNode", color(0, 0, 0), (cur) => (cur as V3).add(diffuseColor.rgb.mul(sunLit).mul(c).mul(2.2).mul(fade).mul(step(above, 0))));
 }
 
 /** Trại, điểm sự kiện, chỗ đào: không mọc cỏ dày (người qua lại giẫm hết). */
