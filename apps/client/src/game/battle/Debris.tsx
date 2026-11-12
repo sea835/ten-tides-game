@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { IcosahedronGeometry, InstancedBufferGeometry, MeshStandardMaterial } from "three";
+import { Fn, attribute, exp, float, max, positionLocal, select, vec3 } from "three/tsl";
+import { slots, type V3 } from "../gpu/slots.ts";
 import type { World } from "@tentides/content";
 import { useQuality } from "../graphics.ts";
 import { windStrength } from "../nature.ts";
@@ -82,65 +84,63 @@ export function spawnDebris(x: number, y: number, z: number, big: boolean) {
   }
 }
 
-/** Vị trí, góc lộn của cục đất tính trong vertex shader (thay khối biến đổi chuẩn của MeshStandardMaterial). */
-const DEBRIS_VERTEX_HEAD = /* glsl */ `
-  attribute vec4 aStart;
-  attribute vec4 aVel;
-  attribute vec4 aLand;
-  attribute vec4 aShape;
-  uniform float uTime;
-  float vDead;
-  mat3 tenRot(vec3 e) {
-    float cx = cos(e.x), sx = sin(e.x), cy = cos(e.y), sy = sin(e.y), cz = cos(e.z), sz = sin(e.z);
-    mat3 rx = mat3(1.0, 0.0, 0.0, 0.0, cx, sx, 0.0, -sx, cx);
-    mat3 ry = mat3(cy, 0.0, -sy, 0.0, 1.0, 0.0, sy, 0.0, cy);
-    mat3 rz = mat3(cz, sz, 0.0, -sz, cz, 0.0, 0.0, 0.0, 1.0);
-    return rz * ry * rx;
-  }
-`;
-const DEBRIS_TRANSFORM = /* glsl */ `
-  float age = uTime - aStart.w;
-  float life = aVel.w;
-  vDead = (life <= 0.0 || age < 0.0 || age >= life) ? 1.0 : 0.0;
-  float tHit = aLand.x;
-  float ground = aLand.y;
-  float bounce = aLand.z;
-  float spinRate = aLand.w;
-  vec3 p;
-  float spun;
-  if (age < tHit) {
-    p = aStart.xyz + aVel.xyz * age;
-    p.y -= 4.9 * age * age;
-    spun = spinRate * age;
-  } else {
-    vec2 land = aStart.xz + aVel.xz * tHit;
-    float tb = 2.0 * bounce / 9.8;
-    float s = age - tHit;
-    vec2 q;
-    float y;
-    if (s < tb) {
-      // Nảy một cái: bay lại theo trọng lực, chậm đi một nửa theo phương ngang.
-      q = land + aVel.xz * 0.55 * s;
-      y = ground + bounce * s - 4.9 * s * s;
-    } else {
-      // Trượt chậm dần trên mặt đất (lực cản e^(-6 t)).
-      float u = s - tb;
-      q = land + aVel.xz * 0.55 * tb + aVel.xz * 0.3 * (1.0 - exp(-6.0 * u)) / 6.0;
-      y = ground;
-    }
-    p = vec3(q.x, y, q.y);
-    spun = spinRate * (tHit + 0.5 * min(s, 1.0));
-  }
+/** Xoay vec3 theo ba góc Euler: Rz * Ry * Rx (cùng thứ tự với shader cũ). */
+function rotate(v: V3, e: V3): V3 {
+  const cx = e.x.cos();
+  const sx = e.x.sin();
+  const cy = e.y.cos();
+  const sy = e.y.sin();
+  const cz = e.z.cos();
+  const sz = e.z.sin();
+  const a = vec3(v.x, cx.mul(v.y).sub(sx.mul(v.z)), sx.mul(v.y).add(cx.mul(v.z)));
+  const b = vec3(cy.mul(a.x).add(sy.mul(a.z)), a.y, sy.negate().mul(a.x).add(cy.mul(a.z)));
+  return vec3(cz.mul(b.x).sub(sz.mul(b.y)), sz.mul(b.x).add(cz.mul(b.y)), b.z);
+}
+
+/**
+ * Vị trí đỉnh của cục đất, tính trên GPU (gán vào `positionNode` của vật liệu chuẩn): bay theo trọng lực, chạm đất nảy
+ * một cái, trượt chậm dần, lún; xoay lộn theo góc. Pháp tuyến: vật liệu để `flatShading` nên pháp tuyến tự suy ra từ
+ * mặt đã dịch, không cần xoay riêng.
+ */
+const debrisPosition = Fn(() => {
+  const aStart = attribute("aStart", "vec4");
+  const aVel = attribute("aVel", "vec4");
+  const aLand = attribute("aLand", "vec4");
+  const aShape = attribute("aShape", "vec4");
+  const age = particleClock.sub(aStart.w);
+  const life = aVel.w;
+  const dead = life.lessThanEqual(0).or(age.lessThan(0)).or(age.greaterThanEqual(life));
+  const tHit = aLand.x;
+  const ground = aLand.y;
+  const bounce = aLand.z;
+  const spinRate = aLand.w;
+  // Trước khi chạm đất: đạn đạo.
+  const flyP = aStart.xyz.add(aVel.xyz.mul(age)).sub(vec3(0, age.mul(age).mul(4.9), 0));
+  // Sau khi chạm đất: nảy một cái (bay lại theo trọng lực, chậm đi một nửa theo phương ngang), rồi trượt chậm dần
+  // trên mặt đất (lực cản e^(-6 t)).
+  const land = aStart.xz.add(aVel.xz.mul(tHit));
+  const tb = bounce.mul(2).div(9.8);
+  const s = age.sub(tHit);
+  const u = s.sub(tb);
+  const bounceXZ = land.add(aVel.xz.mul(0.55).mul(s));
+  const bounceY = ground.add(bounce.mul(s)).sub(s.mul(s).mul(4.9));
+  const slideXZ = land.add(aVel.xz.mul(0.55).mul(tb)).add(aVel.xz.mul(0.3).mul(float(1).sub(exp(u.mul(-6)))).div(6));
+  const inBounce = s.lessThan(tb);
+  const groundP = vec3(select(inBounce, bounceXZ.x, slideXZ.x), select(inBounce, bounceY, ground), select(inBounce, bounceXZ.y, slideXZ.y));
+  const flying = age.lessThan(tHit);
+  const p = select(flying, flyP, groundP).toVar();
+  const spun = select(flying, spinRate.mul(age), spinRate.mul(tHit.add(s.min(1).mul(0.5))));
   // Cuối đời lún dần xuống đất.
-  float sink = max(0.0, age - (life - 0.8)) / 0.8;
-  float size = aShape.x;
-  float shade = aShape.y;
-  p.y -= sink * size;
-  mat3 R = tenRot(vec3(aShape.z + spun, aShape.w, aShape.z * 0.7 + spun * 0.7));
-  vec3 S = vec3(size * (1.1 + shade * 0.4), size * (0.7 + shade * 0.3), size);
+  const sink = max(float(0), age.sub(life.sub(0.8))).div(0.8);
+  const size = aShape.x;
+  const shade = aShape.y;
+  p.y.subAssign(sink.mul(size));
+  const euler = vec3(aShape.z.add(spun), aShape.w, aShape.z.mul(0.7).add(spun.mul(0.7)));
+  const scale = vec3(size.mul(shade.mul(0.4).add(1.1)), size.mul(shade.mul(0.3).add(0.7)), size);
   // Chưa sinh, đã tắt, ô trống: co về 0 (không vẽ điểm ảnh nào).
-  if (vDead > 0.5) S = vec3(0.0);
-`;
+  const S = select(dead, vec3(0), scale);
+  return rotate(positionLocal.mul(S), euler).add(p);
+});
 
 export function Debris({ world: w }: { world: World }) {
   const q = useQuality();
@@ -155,14 +155,7 @@ export function Debris({ world: w }: { world: World }) {
     // Cục đất cố ý để cạnh sắc (không làm mịn, không phủ vân).
     m.userData.detail = "none";
     m.userData.faceted = true;
-    m.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = particleClock;
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", `#include <common>\n${DEBRIS_VERTEX_HEAD}`)
-        .replace("#include <beginnormal_vertex>", `${DEBRIS_TRANSFORM}\nvec3 objectNormal = R * normal;\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3( tangent.xyz );\n#endif`)
-        .replace("#include <begin_vertex>", "vec3 transformed = R * (position * S) + p;");
-    };
-    m.customProgramCacheKey = () => "gpu-debris";
+    slots(m).positionNode = debrisPosition();
     return m;
   }, []);
   useEffect(() => () => material.dispose(), [material]);
