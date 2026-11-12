@@ -1,21 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import {
-  BackSide,
-  Color,
-  CubeCamera,
-  HalfFloatType,
-  Mesh,
-  PMREMGenerator,
-  Scene,
-  ShaderMaterial,
-  SphereGeometry,
-  Vector3,
-  WebGLCubeRenderTarget,
-  type Texture,
-  type WebGLRenderTarget,
-} from "three";
-import { uniform } from "three/tsl";
+import { BackSide, Color, CubeCamera, HalfFloatType, Mesh, Scene, SphereGeometry, Vector3, type Texture } from "three";
+import { CubeRenderTarget, NodeMaterial, PMREMGenerator, type RenderTarget, type WebGPURenderer } from "three/webgpu";
+import { Fn, cameraProjectionMatrix, dot, float, floor, fract, length, max, mix, modelViewMatrix, normalize, positionLocal, sin, smoothstep, step, uniform, vec2, vec3, vec4 } from "three/tsl";
+import type { F, V2, V3 } from "./gpu/slots.ts";
 import { reflectionHidden } from "./reflection.ts";
 import { localEnv, weatherFx } from "./shared.ts";
 
@@ -38,128 +26,120 @@ export const skyUniforms = {
   uDrift: uniform(0),
 };
 
-const vertexShader = /* glsl */ `
-  varying vec3 vDir;
-  void main() {
-    vDir = position;
-    vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    gl_Position = p.xyww; // luôn nằm ở mặt phẳng xa nhất
+// Nhiễu giá trị (value noise) và hash: cùng công thức bản GLSL cũ để mây, sao giữ nguyên hình.
+const hash3 = Fn(([p0]: [V3]) => {
+  const p = fract(p0.mul(0.3183099).add(0.1)).mul(17).toVar();
+  return fract(p.x.mul(p.y).mul(p.z).mul(p.x.add(p.y).add(p.z)));
+});
+const hash2 = Fn(([p]: [V2]) => {
+  const p3 = fract(vec3(p.x, p.y, p.x).mul(0.1031)).toVar();
+  p3.addAssign(dot(p3, p3.yzx.add(33.33)));
+  return fract(p3.x.add(p3.y).mul(p3.z));
+});
+const noise = Fn(([p]: [V2]) => {
+  const i = floor(p);
+  const f = fract(p);
+  const u = f.mul(f).mul(float(3).sub(f.mul(2)));
+  const a = hash2(i);
+  const b = hash2(i.add(vec2(1, 0)));
+  const c = hash2(i.add(vec2(0, 1)));
+  const d = hash2(i.add(vec2(1, 1)));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+});
+// Quay 2D (ma trận mat2(0.8, -0.6, 0.6, 0.8) của bản cũ, nhân cột).
+const rot = (p: V2): V2 => vec2(p.x.mul(0.8).add(p.y.mul(0.6)), p.x.mul(-0.6).add(p.y.mul(0.8)));
+const nextOctave = (p: V2): V2 => rot(p).mul(2.03).add(11.7);
+/** Ba lớp nhiễu đầu (dáng mây lớn); trả thêm p và a đã đi tiếp để cộng thêm lớp mịn. */
+function fbm3(p0: V2): { s: F; p: V2; a: number } {
+  let p = p0;
+  let a = 0.5;
+  let s: F = float(0);
+  for (let i = 0; i < 3; i++) {
+    s = s.add(noise(p).mul(a));
+    p = nextOctave(p);
+    a *= 0.5;
   }
-`;
+  return { s, p, a };
+}
 
-const fragmentShader = /* glsl */ `
-  uniform vec3 uTop;
-  uniform vec3 uHorizon;
-  uniform vec3 uSunColor;
-  uniform vec3 uSunDir;
-  uniform vec3 uMoonDir;
-  uniform float uNight;
-  uniform float uTime;
-  uniform float uCloud;
-  uniform float uStorm;
-  uniform float uFlash;
-  uniform float uDrift;
-  varying vec3 vDir;
+/** Màu bầu trời theo hướng nhìn `d` (đã chuẩn hoá), cùng công thức bản GLSL cũ. */
+const skyColor = Fn(([d]: [V3]) => {
+  const { uTop, uHorizon, uSunColor, uSunDir, uMoonDir, uNight, uTime, uCloud, uStorm, uFlash, uDrift } = skyUniforms;
+  const h = d.y.toVar();
+  const day = float(1).sub(uNight);
 
-  float hash(vec3 p) {
-    p = fract(p * 0.3183099 + 0.1);
-    p *= 17.0;
-    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-  }
-  float hash2(vec2 p) {
-    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-  }
-  float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), u.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), u.x), u.y);
-  }
-  // Ba lớp nhiễu đầu (dáng mây lớn); p và a đi tiếp để cộng thêm lớp mịn.
-  const mat2 ROT = mat2(0.8, -0.6, 0.6, 0.8);
-  float fbm3(inout vec2 p, inout float a) {
-    float s = 0.0;
-    for (int i = 0; i < 3; i++) {
-      s += noise(p) * a;
-      p = ROT * p * 2.03 + 11.7;
-      a *= 0.5;
-    }
-    return s;
-  }
+  // Bầu trời: đỉnh đậm, chân trời sáng và mỏng như lớp không khí dày.
+  const horizonGlow = float(1).sub(h.clamp(0, 1)).pow(5).toVar();
+  const col = mix(uTop, uHorizon, horizonGlow).toVar();
+  col.assign(mix(col, uTop, h.sub(0.35).clamp(0, 1).mul(0.4)));
+  // Dưới chân trời: hơi nước mù mịt trên mặt biển xa.
+  col.assign(mix(col, uHorizon.mul(0.82), h.mul(-4).clamp(0, 1)));
 
-  void main() {
-    vec3 d = normalize(vDir);
-    float h = d.y;
-    float day = 1.0 - uNight;
+  // Mặt trời: đĩa sáng, quầng tán xạ (Mie) quanh đĩa và vùng trời ửng màu nắng.
+  const s = max(dot(d, uSunDir), 0).toVar();
+  const disk = smoothstep(0.99955, 0.9998, s);
+  const sun = uSunColor.mul(s.pow(8).mul(0.35).add(s.pow(64).mul(0.6)).add(s.pow(2).mul(0.08).mul(horizonGlow))).mul(day);
+  col.addAssign(sun.mul(float(1).sub(uCloud.mul(0.5))));
 
-    // Bầu trời: đỉnh đậm, chân trời sáng và mỏng như lớp không khí dày.
-    float horizonGlow = pow(1.0 - clamp(h, 0.0, 1.0), 5.0);
-    vec3 col = mix(uTop, uHorizon, horizonGlow);
-    col = mix(col, uTop, clamp(h - 0.35, 0.0, 1.0) * 0.4);
-    // Dưới chân trời: hơi nước mù mịt trên mặt biển xa.
-    col = mix(col, uHorizon * 0.82, clamp(-h * 4.0, 0.0, 1.0));
+  // Mặt trăng và sao (sao chỉ hiện trên đường chân trời, đêm).
+  const m = max(dot(d, uMoonDir), 0);
+  const moon = vec3(0.85, 0.9, 1.0)
+    .mul(smoothstep(0.9993, 0.9996, m).mul(2.5).add(m.pow(80).mul(0.25)).add(m.pow(8).mul(0.05)))
+    .mul(uNight);
+  const cell = d.mul(160);
+  const id = floor(cell);
+  const nStar = hash3(id);
+  const point = smoothstep(0.32, 0.0, length(fract(cell).sub(0.5)));
+  const twinkle = sin(uTime.mul(2.5).add(nStar.mul(60))).mul(0.35).add(0.65);
+  const stars = vec3(step(0.994, nStar).mul(point).mul(twinkle).mul(uNight).mul(smoothstep(0.02, 0.3, h)));
 
-    // Mặt trời: đĩa sáng, quầng tán xạ (Mie) quanh đĩa và vùng trời ửng màu nắng.
-    float s = max(dot(d, uSunDir), 0.0);
-    float disk = smoothstep(0.99955, 0.9998, s);
-    vec3 sun = uSunColor * (pow(s, 8.0) * 0.35 + pow(s, 64.0) * 0.6 + pow(s, 2.0) * 0.08 * horizonGlow) * day;
-    col += sun * (1.0 - uCloud * 0.5);
+  // Mây: nhiễu nhiều lớp chiếu lên một tầng mây phẳng trên cao; bên hướng nắng sáng, lõi dày tối lại,
+  // mép mỏng viền bạc khi nắng chiếu xuyên qua. Dưới chân trời (h <= 0) mật độ về 0 nhờ smoothstep theo h.
+  const hc = max(h, 0);
+  const uv = d.xz.div(hc.add(0.12)).mul(1.3).add(vec2(uDrift, uDrift.mul(0.35))).toVar();
+  // Dáng mây 5 lớp nhiễu; sáng tối theo nắng chỉ cần dáng lớn (3 lớp đầu, dùng lại) so với điểm lệch về phía mặt trời.
+  const low = fbm3(uv);
+  const nLow = low.s.toVar();
+  const qa = low.p;
+  const n = nLow.add(noise(qa).mul(low.a)).add(noise(nextOctave(qa)).mul(low.a * 0.5)).toVar();
+  const cover = mix(0.66, 0.28, uCloud);
+  const density = smoothstep(cover, cover.add(0.28).sub(uCloud.mul(0.1)), n).toVar();
+  const qs = uv.add(normalize(uSunDir.xz.add(1e-4)).mul(0.18));
+  const nSun = fbm3(qs).s;
+  const lit = nLow.sub(nSun).mul(4).add(0.55).clamp(0, 1);
+  const shadowCol = mix(vec3(0.52, 0.58, 0.66), vec3(0.3, 0.33, 0.37), uStorm);
+  const litCol = mix(vec3(1), uSunColor, 0.35).mul(float(1).sub(uStorm.mul(0.45)));
+  const cloudCol = mix(shadowCol, litCol, lit.mul(float(1).sub(density.mul(0.35)))).toVar();
+  // Mây nhận màu trời (hoàng hôn ửng cam, đêm xám xanh).
+  cloudCol.mulAssign(mix(vec3(1), uHorizon.mul(1.2).add(0.2), 0.35));
+  cloudCol.addAssign(uSunColor.mul(s.pow(6)).mul(float(1).sub(density)).mul(1.2).mul(day));
+  cloudCol.mulAssign(float(0.08).add(day.mul(0.92)));
+  cloudCol.assign(mix(cloudCol, vec3(1), uFlash.mul(0.8)));
+  density.mulAssign(smoothstep(0, 0.18, h).mul(0.97));
 
-    // Mặt trăng và sao.
-    float m = max(dot(d, uMoonDir), 0.0);
-    vec3 moon = vec3(0.85, 0.9, 1.0) * (smoothstep(0.9993, 0.9996, m) * 2.5 + pow(m, 80.0) * 0.25 + pow(m, 8.0) * 0.05) * uNight;
-    vec3 stars = vec3(0.0);
-    if (uNight > 0.01 && h > 0.0) {
-      vec3 cell = d * 160.0;
-      vec3 id = floor(cell);
-      float n = hash(id);
-      float point = smoothstep(0.32, 0.0, length(fract(cell) - 0.5));
-      float twinkle = 0.65 + 0.35 * sin(uTime * 2.5 + n * 60.0);
-      stars = vec3(step(0.994, n) * point * twinkle * uNight * smoothstep(0.02, 0.3, h));
-    }
+  col.addAssign(disk.mul(uSunColor).mul(8).mul(day).add(moon).add(stars).mul(float(1).sub(density)));
+  return vec4(mix(col, cloudCol, density), 1);
+});
 
-    // Mây: nhiễu nhiều lớp chiếu lên một tầng mây phẳng trên cao; bên hướng nắng sáng, lõi dày tối lại,
-    // mép mỏng viền bạc khi nắng chiếu xuyên qua.
-    float density = 0.0;
-    vec3 cloudCol = vec3(0.0);
-    if (h > 0.0) {
-      vec2 uv = d.xz / (h + 0.12) * 1.3 + vec2(uDrift, uDrift * 0.35);
-      // Dáng mây 5 lớp nhiễu; sáng tối theo nắng chỉ cần dáng lớn (3 lớp đầu, dùng lại) so với điểm lệch về phía mặt trời.
-      vec2 q = uv;
-      float a = 0.5;
-      float nLow = fbm3(q, a);
-      float n = nLow + noise(q) * a;
-      q = ROT * q * 2.03 + 11.7;
-      n += noise(q) * a * 0.5;
-      float cover = mix(0.66, 0.28, uCloud);
-      density = smoothstep(cover, cover + 0.28 - 0.1 * uCloud, n);
-      vec2 qs = uv + normalize(uSunDir.xz + 1e-4) * 0.18;
-      float aSun = 0.5;
-      float nSun = fbm3(qs, aSun);
-      float lit = clamp(0.55 + (nLow - nSun) * 4.0, 0.0, 1.0);
-      vec3 shadowCol = mix(vec3(0.52, 0.58, 0.66), vec3(0.3, 0.33, 0.37), uStorm);
-      vec3 litCol = mix(vec3(1.0), uSunColor, 0.35) * (1.0 - 0.45 * uStorm);
-      cloudCol = mix(shadowCol, litCol, lit * (1.0 - 0.35 * density));
-      // Mây nhận màu trời (hoàng hôn ửng cam, đêm xám xanh).
-      cloudCol *= mix(vec3(1.0), uHorizon * 1.2 + 0.2, 0.35);
-      cloudCol += uSunColor * pow(s, 6.0) * (1.0 - density) * 1.2 * day;
-      cloudCol *= 0.08 + 0.92 * day;
-      cloudCol = mix(cloudCol, vec3(1.0), uFlash * 0.8);
-      density *= smoothstep(0.0, 0.18, h) * 0.97;
-    }
-    col += (disk * uSunColor * 8.0 * day + moon + stars) * (1.0 - density);
-    col = mix(col, cloudCol, density);
-
-    gl_FragColor = vec4(col, 1.0);
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-  }
-`;
+/**
+ * Chiếu đỉnh về đúng mặt phẳng xa nhất (bản cũ dùng gl_Position.xyww): z = w thì độ sâu = 1. Nếu renderer dùng
+ * depth đảo (reversed) thì mặt xa là 0. Vật liệu không ghi depth, không sương, nên chỗ núi/cây che thì phép thử
+ * độ sâu bỏ điểm ảnh trời.
+ */
+const skyClip = Fn((builder: { renderer: { reversedDepthBuffer?: boolean } }) => {
+  const p = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(positionLocal, 1)).toVar();
+  const z = builder.renderer.reversedDepthBuffer ? float(0) : p.w;
+  return vec4(p.x, p.y, z, p.w);
+});
 
 function skyMaterial() {
-  return new ShaderMaterial({ uniforms: skyUniforms, vertexShader, fragmentShader, side: BackSide, depthWrite: false, fog: false });
+  const m = new NodeMaterial();
+  m.vertexNode = skyClip();
+  m.fragmentNode = skyColor(normalize(positionLocal));
+  m.side = BackSide;
+  m.depthWrite = false;
+  m.fog = false;
+  return m;
 }
 
 /** Vòm trời bao quanh camera: dải màu theo giờ, mặt trời, mây trôi, mặt trăng, sao. */
@@ -208,25 +188,25 @@ const ENV_INTERVAL = 4;
  * mặt bóng (lá ướt, đá, kim loại) phản chiếu trời.
  */
 export function SkyEnvironment({ intensity = 1 }: { intensity?: number }) {
-  const gl = useThree((s) => s.gl);
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer;
   const scene = useThree((s) => s.scene);
   // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần; tạo bằng useMemo thì lần dọn đầu huỷ mất).
   const rigRef = useRef<{
     envScene: Scene;
-    target: WebGLCubeRenderTarget;
+    target: CubeRenderTarget;
     camera: CubeCamera;
     pmrem: PMREMGenerator;
-    current: WebGLRenderTarget | null;
+    current: RenderTarget | null;
     next: number;
   } | null>(null);
   useEffect(() => {
     const envScene = new Scene();
     const dome = new Mesh(new SphereGeometry(100, 32, 16), skyMaterial());
     envScene.add(dome);
-    const target = new WebGLCubeRenderTarget(64, { type: HalfFloatType });
-    const camera = new CubeCamera(1, 1000, target);
+    const target = new CubeRenderTarget(64, { type: HalfFloatType });
+    const camera = new CubeCamera(1, 1000, target as never);
     const pmrem = new PMREMGenerator(gl);
-    const rig = { envScene, target, camera, pmrem, current: null as WebGLRenderTarget | null, next: 0 };
+    const rig = { envScene, target, camera, pmrem, current: null as RenderTarget | null, next: 0 };
     rigRef.current = rig;
     return () => {
       rigRef.current = null;
@@ -235,7 +215,7 @@ export function SkyEnvironment({ intensity = 1 }: { intensity?: number }) {
       pmrem.dispose();
       target.dispose();
       dome.geometry.dispose();
-      (dome.material as ShaderMaterial).dispose();
+      (dome.material as NodeMaterial).dispose();
     };
   }, [gl, scene]);
 
@@ -243,11 +223,10 @@ export function SkyEnvironment({ intensity = 1 }: { intensity?: number }) {
     scene.environmentIntensity = intensity * (1 - 0.85 * localEnv.indoor);
     const rig = rigRef.current;
     if (!rig || clock.elapsedTime < rig.next) return;
-    // TODO(webgpu): bản chụp trời bằng PMREM của WebGL chưa chạy trên WebGPURenderer (làm kẹt đích vẽ): tạm bỏ qua.
-    if (!(gl as { isWebGLRenderer?: boolean }).isWebGLRenderer) return;
     rig.next = clock.elapsedTime + ENV_INTERVAL;
-    // Bầu trời đêm vẫn có sao chớp; không cần tone map khi chụp vào render target.
-    rig.camera.update(gl, rig.envScene);
+    // Bầu trời đêm vẫn có sao chớp; vẽ vào render target nên không bị tone map. CubeCamera.update tự lưu và trả
+    // lại đích vẽ đang dùng, nên không làm kẹt render target của cảnh chính.
+    rig.camera.update(gl as never, rig.envScene);
     // Dùng lại render target cũ: không cấp phát mới mỗi lần chụp.
     rig.current = rig.pmrem.fromCubemap(rig.target.texture, rig.current);
     scene.environment = rig.current.texture as Texture;
