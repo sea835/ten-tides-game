@@ -1,11 +1,9 @@
 import { Suspense, useEffect, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
-import { Bloom, BrightnessContrast, EffectComposer, HueSaturation, SMAA, ToneMapping, Vignette } from "@react-three/postprocessing";
-import { N8AOPostPass } from "n8ao";
-import { ToneMappingMode } from "postprocessing";
 import { ANCHORS } from "@tentides/content";
 import type { DirectionalLight, HemisphereLight, PointLight, Scene } from "three";
+import type { WebGPURenderer } from "three/webgpu";
 import type { IslandRoom } from "../net.ts";
 import { Anchors } from "./Anchors.tsx";
 import { Controls } from "./Controls.tsx";
@@ -28,7 +26,8 @@ import { cloudUniforms, installAtmosphere, shadeLightWithClouds, wetUniforms } f
 import { makeRenderer } from "./gpu/renderer.ts";
 import { weatherUniforms } from "./textures.ts";
 import { trampleUniforms } from "./trample.ts";
-import { useGodRays } from "./GodRays.tsx";
+import { createPostFx, type PostFx } from "./postFx.ts";
+import { setPrepTargets } from "./shaderPrep.ts";
 import { RainGlass } from "./RainGlass.tsx";
 import { profileOf, cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
 import { platform } from "./platform.ts";
@@ -47,7 +46,7 @@ import { BattleIsland } from "./battle/BattleWorld.tsx";
 import { BattleEffects } from "./battle/Effects.tsx";
 import { BattleHud, SettingsButton } from "./battle/BattleHud.tsx";
 import { Shooter } from "./battle/Shooter.tsx";
-import { ViewModel, ViewPass } from "./battle/ViewModel.tsx";
+import { ViewModel, ViewPass, createViewLayer, viewCamera } from "./battle/ViewModel.tsx";
 import { Killcam } from "./battle/Killcam.tsx";
 import { SpectatorCamera } from "./battle/Spectator.tsx";
 import { Vehicles } from "./battle/Vehicles.tsx";
@@ -97,70 +96,56 @@ function PlayerLight() {
 }
 
 /**
- * Hậu kỳ: bóng tối ở khe, góc, chân cây (ambient occlusion, chỉ ở mức Cao); lửa, dung nham, nắng loá toả quầng;
- * tia nắng xuyên qua cây, nhà khi nắng chiếu thấp (GodRays.tsx); tone map kiểu phim (AgX, màu tự nhiên, không cháy
- * sáng); chỉnh màu nhẹ; góc màn hình tối nhẹ.
+ * Vẽ cả khung hình. R3F chỉ tự vẽ khi không ai đăng ký useFrame ưu tiên dương; ta đăng ký (ưu tiên 1) nên tự vẽ ở đây,
+ * trước lượt vẽ súng trước mặt của mức đồ hoạ thấp (ViewPass, ưu tiên 2).
+ * - Có hậu kỳ (Trung bình, Cao): chuỗi node của postFx.ts (AO chỉ ở Cao, tia nắng, bloom, tone map AgX, chấm màu, góc
+ *   tối, súng trước mặt, khử răng cưa); bật tắt AO thì dựng lại cả chuỗi.
+ * - Không hậu kỳ (Thấp): vẽ thẳng cảnh ra màn hình (canvas bật MSAA, tone map do renderer làm).
  */
-function PostFx({ ao: withAo }: { ao: boolean }) {
+function RenderDriver({ post, battle }: { post: Profile["post"]; battle: boolean }) {
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer;
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
-  const size = useThree((s) => s.size);
-  // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần).
-  const [ao, setAo] = useState<N8AOPostPass | null>(null);
-  // Mức Cao lấy nhiều mẫu hơn cho tia mịn; Trung bình ít mẫu (tia hơi lấm tấm nhưng nhẹ).
-  const rays = useGodRays(withAo ? 32 : 20);
+  // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần). Khung nào chưa có chuỗi thì vẽ thẳng.
+  const [fx, setFx] = useState<PostFx | null>(null);
   useEffect(() => {
-    if (!withAo) return;
-    const pass = new N8AOPostPass(scene, camera, size.width, size.height);
-    pass.configuration.aoRadius = 1.6;
-    pass.configuration.distanceFalloff = 1;
-    pass.configuration.intensity = 2.2;
-    pass.configuration.halfRes = true;
-    pass.configuration.gammaCorrection = false;
-    pass.setQualityMode("Medium");
-    setAo(pass);
+    const f = post === "none" ? null : createPostFx(gl, scene, camera, post === "full", battle ? createViewLayer(scene, camera) : null);
+    // Dịch sẵn shader đúng đích vẽ thật (ảnh của pass khi có hậu kỳ, màn hình khi không), cả lớp súng trước mặt.
+    setPrepTargets(f ? f.targets : battle ? [{ target: null }, { target: null, camera: viewCamera }] : [{ target: null }]);
+    setFx(f);
     return () => {
-      pass.dispose();
-      setAo(null);
+      setFx(null);
+      f?.dispose();
     };
-    // Kích thước đổi thì EffectComposer tự gọi setSize.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, camera, withAo]);
-  if (withAo && !ao) return null;
-  return (
-    // Bật tắt AO thì dựng lại cả chuỗi hậu kỳ.
-    <EffectComposer key={withAo ? "full" : "lite"} multisampling={0}>
-      {withAo && ao && <primitive object={ao} />}
-      <primitive object={rays} />
-      <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.7} radius={0.75} />
-      <ToneMapping mode={ToneMappingMode.AGX} />
-      <HueSaturation saturation={0.22} />
-      <BrightnessContrast contrast={0.14} />
-      <Vignette offset={0.3} darkness={0.5} />
-      <SMAA />
-    </EffectComposer>
-  );
+  }, [gl, scene, camera, post, battle]);
+  useFrame(() => {
+    if (fx) fx.render();
+    else gl.render(scene, camera);
+  }, 1);
+  return null;
 }
 
 /**
  * Bóng đổ vẽ lại theo nhịp của mức chất lượng thay vì mọi khung hình (mặt trời gần như đứng yên; tâm vùng bóng
- * khớp lưới điểm ảnh nên bản đồ bóng cũ vẫn đúng chỗ, chỉ vật đang chuyển động là bóng trễ vài chục ms).
+ * khớp lưới điểm ảnh nên bản đồ bóng cũ vẫn đúng chỗ, chỉ vật đang chuyển động là bóng trễ vài chục ms). `hz` = 0 thì
+ * đèn tự vẽ lại mọi khung. Đèn mặt trời tạo lại khi đổi mức đồ hoạ nên áp lại cho đèn mới.
  */
-function ShadowScheduler({ hz }: { hz: number }) {
-  const gl = useThree((s) => s.gl);
+function ShadowScheduler({ sun, hz }: { sun: RefObject<DirectionalLight | null>; hz: number }) {
   const due = useRef(0);
-  useEffect(() => {
-    gl.shadowMap.autoUpdate = hz === 0;
-    gl.shadowMap.needsUpdate = true;
-    return () => {
-      gl.shadowMap.autoUpdate = true;
-    };
-  }, [gl, hz]);
+  const bound = useRef<DirectionalLight | null>(null);
   useFrame(({ clock }) => {
+    const light = sun.current;
+    if (!light) return;
+    if (bound.current !== light) {
+      bound.current = light;
+      light.shadow.autoUpdate = hz === 0;
+      light.shadow.needsUpdate = true;
+    }
+    light.shadow.autoUpdate = hz === 0;
     if (hz === 0 || clock.elapsedTime < due.current) return;
     // Trễ nhịp (tab bị ẩn) thì bắt lại từ bây giờ, không dồn nhiều lần vẽ liền nhau.
     due.current = Math.max(due.current + 1 / hz, clock.elapsedTime);
-    gl.shadowMap.needsUpdate = true;
+    light.shadow.needsUpdate = true;
   });
   return null;
 }
@@ -171,7 +156,7 @@ function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null
   useEffect(() => {
     if (sun.current) shadeLightWithClouds(sun.current);
   }, [sun, quality]);
-  // Cùng một nhóm, mặt trời đứng trước đèn giữ bóng tĩnh: shader dựa vào thứ tự này (xem staticShadow.ts).
+  // Cùng một nhóm với StaticSun: nó gắn bản đồ bóng tĩnh vào bóng của mặt trời (xem staticShadow.ts).
   return (
     <group key={quality}>
       <directionalLight
@@ -194,11 +179,11 @@ function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null
 }
 
 export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
-  // Trình duyệt không có WebGL 2 (bản quá cũ, card bị chặn): báo rõ thay vì màn hình trắng.
-  if (!platform().webgl2) {
+  // Trình duyệt không có cả WebGPU lẫn WebGL 2 (bản quá cũ, card bị chặn): báo rõ thay vì màn hình trắng.
+  if (!platform().webgl2 && !platform().webgpu) {
     return (
       <div className="game-loading">
-        Trình duyệt này không chạy được đồ hoạ 3D (cần WebGL 2). Hãy cập nhật Chrome, Edge, Firefox hoặc Safari và bật tăng tốc phần cứng.
+        Trình duyệt này không chạy được đồ hoạ 3D (cần WebGPU hoặc WebGL 2). Hãy cập nhật Chrome, Edge, Firefox hoặc Safari và bật tăng tốc phần cứng.
         <button onClick={onLeave}>Về sảnh</button>
       </div>
     );
@@ -210,7 +195,8 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
  * Bản phát hành bỏ bước đọc nhật ký lỗi của từng shader sau khi dịch (three mặc định bật): mỗi lần đọc là một lệnh
  * đồng bộ phải chờ trình điều khiển, trên Windows/ANGLE đắt hơn hẳn. Bản dev vẫn bật để thấy lỗi shader.
  */
-function onCreated({ scene }: { scene: Scene }) {
+function onCreated({ scene, gl }: { scene: Scene; gl: unknown }) {
+  (gl as WebGPURenderer).debug.checkShaderErrors = import.meta.env.DEV;
   // Sương mù bám độ cao cho mọi vật liệu (node sương của cảnh).
   installAtmosphere(scene);
 }
@@ -260,7 +246,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
     <div className="game" ref={wrapper}>
       <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} gl={glFactory} camera={{ fov: 60, near: 0.1, far: 500 }} onCreated={onCreated}>
         <FrameDriver />
-        <ShadowScheduler hz={profile.shadowHz} />
+        <ShadowScheduler sun={sun} hz={profile.shadowHz} />
         <color attach="background" args={[HORIZON]} />
         <fog attach="fog" args={[HORIZON, 70, 230]} />
         <hemisphereLight ref={hemi} args={["#e0f4ff", "#c2a36b", 1.1]} />
@@ -301,9 +287,8 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           <DayCycle room={room} sun={sun} hemi={hemi} ibl={profile.ibl} />
           <Atmosphere room={room} />
           <DebugHook room={room} />
-          
-          {/* TODO(webgpu): chuỗi hậu kỳ chưa chuyển sang WebGPU nên tạm coi như không có hậu kỳ. */}
-          {battle && <ViewPass post={false} />}
+          <RenderDriver post={profile.post} battle={battle} />
+          {battle && <ViewPass post={post} />}
         </Suspense>
       </Canvas>
       <RainGlass />
