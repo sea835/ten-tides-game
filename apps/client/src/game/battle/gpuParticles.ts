@@ -1,6 +1,6 @@
 import { DynamicDrawUsage, InstancedBufferAttribute, InstancedBufferGeometry, PlaneGeometry, Vector2, Vector4, type InstancedMesh } from "three";
 import type { Node, NodeBuilder } from "three/webgpu";
-import { Fn, attribute, buffer, cameraWorldMatrix, dot, exp, float, floor, fract, instanceIndex, length, max, min, mix, positionGeometry, select, sin, uniform, varyingProperty, vec2, vec3, vec4 } from "three/tsl";
+import { Fn, attribute, buffer, cameraWorldMatrix, dot, exp, float, floor, fract, instanceIndex, length, max, min, mix, positionGeometry, select, sin, uniform, vec2, vec3, vec4 } from "three/tsl";
 import type { F, V2, V3 } from "../gpu/slots.ts";
 
 // Hạt hiệu ứng tính trên GPU (khói, bụi, tia lửa). Trước đây CPU giữ một mảng hạt, mỗi khung hình cộng vận tốc, lực
@@ -200,19 +200,11 @@ export function setSmokeClears(list: readonly [number, number, number, number][]
   }
 }
 
-/** Màu và độ đục của hạt khói (tính ở đỉnh trong `puffPosition`, fragment đọc lại). */
-export const puffTint = varyingProperty("vec4", "vPuffTint");
-
-/**
- * Nút vị trí cho mỗi đỉnh của hạt khói (gán vào `positionNode`, hệ thế giới vì lưới hạt nằm ở gốc, không xoay). Tính vị
- * trí hiện tại bằng công thức đóng; hạt chưa sinh hay đã tắt thì cả bốn đỉnh dồn về một điểm (tam giác suy biến, không
- * vẽ điểm ảnh nào). Cũng ghi `puffTint`.
- */
-export const puffPosition = Fn(() => {
+/** Trạng thái hiện tại của một hạt khói (công thức đóng): vị trí, độ đục, cỡ, còn sống không. Gọi trong `Fn`. */
+function puffState() {
   const aStart = attribute("aStart", "vec4");
   const aVel = attribute("aVel", "vec4");
   const aSize = attribute("aSize", "vec4");
-  const aTint = attribute("aTint", "vec4");
   const age = particleClock.sub(aStart.w);
   const life = aVel.w;
   const alive = life.greaterThan(0).and(age.greaterThanEqual(0)).and(age.lessThan(life));
@@ -247,10 +239,24 @@ export const puffPosition = Fn(() => {
   }
   const f = age.div(life);
   alpha.mulAssign(select(dense, min(float(1), age.mul(1.5)).mul(float(1).sub(max(float(0), f.sub(0.8)).div(0.2))), float(1).sub(f)));
-  puffTint.assign(vec4(aTint.rgb, alpha));
   const size = aSize.x.add(aSize.y.mul(age)).mul(select(alive, float(1), float(0)));
+  return { p, alpha, size };
+}
+
+/**
+ * Nút vị trí cho mỗi đỉnh của hạt khói (gán vào `positionNode`, hệ thế giới vì lưới hạt nằm ở gốc, không xoay). Hạt
+ * chưa sinh hay đã tắt thì cả bốn đỉnh dồn về một điểm (tam giác suy biến, không vẽ điểm ảnh nào).
+ */
+export const puffPosition = Fn(() => {
+  const { p, size } = puffState();
   return p.add(billboardOffset(size));
 });
+
+/** Màu và độ đục của hạt khói: tính ở đỉnh rồi nội suy (varying) cho fragment. */
+export const puffTint = Fn(() => {
+  const aTint = attribute("aTint", "vec4");
+  return vec4(aTint.rgb, puffState().alpha);
+})().toVarying("vPuffTint");
 
 /** Độ lệch thế giới của một đỉnh tấm vuông xoay mặt về camera (`size` là cạnh tấm, `positionGeometry` là ±0,5). */
 export function billboardOffset(size: F): V3 {

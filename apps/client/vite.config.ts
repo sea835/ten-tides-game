@@ -13,8 +13,8 @@ export default defineConfig({
     assetsInlineLimit: 4096,
     rollupOptions: {
       output: {
-        // Tách thư viện nặng ra khỏi mã game, để sảnh chờ chỉ tải React, three và mã sảnh; vật lý (Rapier), hậu kỳ
-        // (postprocessing, N8AO) chỉ tải cùng màn chơi (Game nạp lười trong App.tsx). Vite 8 dùng rolldown: nhóm có
+        // Tách thư viện nặng ra khỏi mã game, để sảnh chờ chỉ tải React, three và mã sảnh; vật lý (Rapier)
+        // chỉ tải cùng màn chơi (Game nạp lười trong App.tsx). Vite 8 dùng rolldown: nhóm có
         // `priority` cao bắt module trước. Trước đây dùng `manualChunks` dạng hàm: rolldown kéo luôn các module mà
         // nhóm phụ thuộc vào (three bị nhét vào chunk "post", React cũng vậy), nên sảnh chờ vẫn tải cả 3,5 MB.
         codeSplitting: {
@@ -24,7 +24,6 @@ export default defineConfig({
             { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]|vite[\\/]preload-helper/, priority: 50 },
             { name: "three", test: /node_modules[\\/](three|@react-three[\\/]fiber|its-fine|zustand|suspend-react)[\\/]/, priority: 40 },
             { name: "rapier", test: /node_modules[\\/](@dimforge[\\/]rapier3d[^\\/]*|@react-three[\\/]rapier)[\\/]/, priority: 30 },
-            { name: "post", test: /node_modules[\\/](postprocessing|n8ao|maath|@react-three[\\/]postprocessing)[\\/]/, priority: 20 },
             { name: "vendor", test: /node_modules[\\/]/, priority: 10 },
           ],
         },

@@ -114,7 +114,7 @@ function shellMaterial(u: ShellUniforms) {
     const alpha = float(1).sub(exp(tau.negate())).mul(u.uDensity);
     Discard(alpha.lessThan(0.004));
     const k = select(tau.greaterThan(1e-4), lit.div(tau), float(0.5));
-    return vec4(mix(u.uShadow, u.uLit, k), alpha);
+    return vec4(mix(u.uShadow.xyz, u.uLit.xyz, k), alpha);
   })();
   m.transparent = true;
   m.depthWrite = false;

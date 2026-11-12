@@ -1,6 +1,6 @@
 import { AgXToneMapping, NoToneMapping, SRGBColorSpace, type Camera, type Scene } from "three";
 import { RenderPipeline, type WebGPURenderer } from "three/webgpu";
-import { clamp, distance, mix, pass, renderOutput, toneMapping, uv, vec2, vec3, vec4 } from "three/tsl";
+import { clamp, distance, mix, pass, renderOutput, sRGBTransferEOTF, sRGBTransferOETF, toneMapping, uv, vec2, vec3, vec4 } from "three/tsl";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { smaa } from "three/addons/tsl/display/SMAANode.js";
@@ -37,7 +37,10 @@ const VIGNETTE_DARKNESS = 0.5;
 function grade(rgb: V3): V3 {
   const avg = rgb.x.add(rgb.y).add(rgb.z).div(3);
   const saturated = mix(vec3(avg, avg, avg), rgb, SATURATION) as V3;
-  const contrasted = saturated.sub(0.5).div(1 - CONTRAST).add(0.5) as V3;
+  // BrightnessContrast của postprocessing làm việc trên màu ĐÃ mã hoá sRGB (inputColorSpace = sRGB), các hiệu ứng còn lại
+  // trên màu tuyến tính. Giãn tương phản thẳng trên số tuyến tính thì vùng tối bị ép về âm, cảnh chiều tối ngả đỏ sẫm.
+  const encoded = sRGBTransferOETF(saturated.max(0)) as V3;
+  const contrasted = sRGBTransferEOTF(encoded.sub(0.5).div(1 - CONTRAST).add(0.5).max(0)) as V3;
   // smoothstep(0.8, offset * 0.799, d * (darkness + offset)): cạnh ngược nên tự viết (smoothstep của GPU chỉ định nghĩa khi cạnh dưới < cạnh trên).
   const x = distance(uv(), vec2(0.5, 0.5)).mul(VIGNETTE_DARKNESS + VIGNETTE_OFFSET);
   const t = clamp(x.sub(0.8).div(VIGNETTE_OFFSET * 0.799 - 0.8), 0, 1);

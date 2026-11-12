@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
   BufferAttribute,
-  Camera,
+  OrthographicCamera,
   Color,
   DoubleSide,
   HalfFloatType,
@@ -97,7 +97,9 @@ function bakeGround(gl: WebGPURenderer, geometries: BufferGeometry[], half: numb
       scene.add(m);
       return m;
     });
-    const camera = new Camera();
+    // WebGPURenderer gọi updateProjectionMatrix trên camera: `Camera` trần làm bước nướng ném lỗi. Vật liệu nướng tự đặt
+    // vị trí clip (vertexNode) nên ma trận của camera này không ảnh hưởng hình.
+    const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const prev = gl.getRenderTarget();
     const clear = gl.getClearColor(new Color());
     const clearAlpha = gl.getClearAlpha();

@@ -132,8 +132,6 @@ export function viewMaterial(key: string): MeshStandardMaterial {
   return m;
 }
 
-/** @deprecated GLSL của bản WebGL, chỉ còn để BarrelFx (chưa chuyển) nạp được. */
-export const DRAW_ON_TOP_GLSL = "gl_Position.z = gl_Position.z * 0.05 - 0.95 * gl_Position.w;";
 /** Nén độ sâu của vật liệu về sát camera (dùng cho mọi thứ của súng trước mặt: súng, tay). */
 export function drawOnTop<M extends MeshStandardMaterial>(m: M): M {
   delete m.userData.tenDetail;

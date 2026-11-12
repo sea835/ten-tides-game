@@ -16,9 +16,6 @@ import { fbm } from "./textures.ts";
 /** Sương dày nhất ở mặt nước, cứ lên cao chừng này mét thì loãng đi e lần. */
 const FOG_FALLOFF = 0.085;
 
-/** Việc cũ của bản WebGL (vá mẩu shader sương của three). Giờ sương là node của cảnh: xem `installAtmosphere`. */
-export function installHeightFog() {}
-
 /**
  * Hệ số sương (0 trong, 1 chìm hẳn vào màu sương) tại điểm đang tô, theo `scene.fog` (DayCycle chỉnh near, far, màu
  * mỗi khung hình). Vật liệu tự viết ánh sáng (mặt nước, hạt khói) có thể dùng lại.
@@ -120,36 +117,6 @@ export function shadeLightWithClouds(light: DirectionalLight) {
   (light as { colorNode?: Node }).colorNode = color.mul(cloudShade(positionWorld.xz));
 }
 
-/** @deprecated GLSL của bản WebGL, chỉ còn để các file chưa chuyển sang TSL nạp được. Dùng `cloudShade`. */
-export const CLOUD_PARS_GLSL = /* glsl */ `
-uniform sampler2D uCloudMap;
-uniform vec2 uCloudOffset;
-uniform float uCloudCover;
-uniform float uCloudShadow;
-float tenCloudShade( vec2 xz ) {
-  if ( uCloudShadow <= 0.0 ) return 1.0;
-  vec2 cuv = xz * ${(1 / CLOUD_TILE).toFixed(6)} + uCloudOffset;
-  float cn = texture2D( uCloudMap, cuv ).r * 0.68 + texture2D( uCloudMap, cuv * 2.37 + vec2( 0.31, 0.17 ) ).r * 0.32;
-  return 1.0 - uCloudShadow * smoothstep( uCloudCover, uCloudCover + 0.16, cn );
-}
-`;
-
-let litChunk: string | null = null;
-let litFrom: string | null = null;
-/**
- * Mẩu `lights_fragment_begin` của three.js có thêm bóng mây trên đèn hướng (mặt trời, mặt trăng). `xz` là biểu thức
- * GLSL ra toạ độ thế giới của điểm đang tô. Dựng lại nếu mẩu gốc đã bị vá sau đó (bóng tĩnh cài lúc vào trận).
- */
-export function cloudLightsChunk(xz: string): string {
-  if (litFrom !== ShaderChunk.lights_fragment_begin) litChunk = null;
-  litFrom = ShaderChunk.lights_fragment_begin;
-  litChunk ??= ShaderChunk.lights_fragment_begin.replace(
-    "getDirectionalLightInfo( directionalLight, directLight );",
-    "getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= tenCloud;",
-  );
-  return `float tenCloud = tenCloudShade( ${xz} );\n${litChunk}`;
-}
-
 // ---------------------------------------------------------------------------- súng, găng tay ướt
 
 /**
@@ -157,11 +124,3 @@ export function cloudLightsChunk(xz: string): string {
  * phút). Atmosphere.tsx ghi; vật liệu súng trước mặt (drawOnTop của GunModel, skin trong skinMaterials) đọc.
  */
 export const wetUniforms = { uViewWet: uniform(0) };
-
-/** Chèn sau `metalnessmap_fragment`: bề mặt ướt bóng loáng (độ nhám tụt về ~0.06), ánh kim nhẹ, màu sẫm đi. */
-export const VIEW_WET_PARS_GLSL = "uniform float uViewWet;";
-export const VIEW_WET_GLSL = /* glsl */ `
-  roughnessFactor = mix( roughnessFactor, 0.06, uViewWet * 0.85 );
-  metalnessFactor = min( 1.0, metalnessFactor + 0.08 * uViewWet );
-  diffuseColor.rgb *= 1.0 - 0.14 * uViewWet;
-`;
