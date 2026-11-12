@@ -91,17 +91,23 @@ function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[], half: numbe
     const prev = gl.getRenderTarget();
     const clear = gl.getClearColor(new Color());
     const clearAlpha = gl.getClearAlpha();
-    gl.setRenderTarget(color);
-    gl.setClearColor(0x000000, 0);
-    gl.clear();
-    gl.render(scene, camera);
-    meshes.forEach((m) => (m.material = heightMat));
-    gl.setRenderTarget(height);
-    gl.setClearColor(0x000000, 1);
-    gl.clear();
-    gl.render(scene, camera);
-    gl.setRenderTarget(prev);
-    gl.setClearColor(clear, clearAlpha);
+    // TODO(webgpu): tạm bọc try/finally trong lúc chuyển sang WebGPU, để lỗi vẽ ở đây không làm kẹt đích vẽ của cả cảnh.
+    try {
+      gl.setRenderTarget(color);
+      gl.setClearColor(0x000000, 0);
+      gl.clear();
+      gl.render(scene, camera);
+      meshes.forEach((m) => (m.material = heightMat));
+      gl.setRenderTarget(height);
+      gl.setClearColor(0x000000, 1);
+      gl.clear();
+      gl.render(scene, camera);
+    } catch {
+      // Bản WebGL cũ của bước nướng này chưa chạy được trên WebGPURenderer.
+    } finally {
+      gl.setRenderTarget(prev);
+      gl.setClearColor(clear, clearAlpha);
+    }
   };
   return {
     color,

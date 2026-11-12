@@ -29,6 +29,7 @@ import {
   type Scene,
   type WebGLRenderer,
 } from "three";
+import { uniform } from "three/tsl";
 import { MAP_HALF_SIZE, WATER_LEVEL, type World } from "@tentides/content";
 import { useProfile } from "./graphics.ts";
 import { reflectionHidden } from "./reflection.ts";
@@ -54,10 +55,10 @@ const NORMAL_TEXELS = 256;
 
 /** Đồng hồ và độ cao sóng dùng chung (đáy biển vẽ vân sáng theo cùng đồng hồ). */
 export const waterUniforms = {
-  uTime: { value: 0 },
-  uWaveScale: { value: 1 },
+  uTime: uniform(0),
+  uWaveScale: uniform(1),
   /** Thủy triều (chế độ sinh tồn): mặt biển cao hơn mốc WATER_LEVEL chừng này mét. Battleground luôn 0. */
-  uTide: { value: 0 },
+  uTide: uniform(0),
 };
 
 /**

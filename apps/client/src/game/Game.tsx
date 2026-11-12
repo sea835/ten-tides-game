@@ -5,7 +5,7 @@ import { Bloom, BrightnessContrast, EffectComposer, HueSaturation, SMAA, ToneMap
 import { N8AOPostPass } from "n8ao";
 import { ToneMappingMode } from "postprocessing";
 import { ANCHORS } from "@tentides/content";
-import type { DirectionalLight, HemisphereLight, PointLight } from "three";
+import type { DirectionalLight, HemisphereLight, PointLight, Scene } from "three";
 import type { IslandRoom } from "../net.ts";
 import { Anchors } from "./Anchors.tsx";
 import { Controls } from "./Controls.tsx";
@@ -24,12 +24,13 @@ import { DayCycle } from "./DayCycle.tsx";
 import { StaticSun } from "./StaticShadows.tsx";
 import { installStaticShadows } from "./staticShadow.ts";
 import { Atmosphere } from "./Atmosphere.tsx";
-import { cloudUniforms, installHeightFog, wetUniforms } from "./atmosphere.ts";
+import { cloudUniforms, installAtmosphere, shadeLightWithClouds, wetUniforms } from "./atmosphere.ts";
+import { makeRenderer } from "./gpu/renderer.ts";
 import { weatherUniforms } from "./textures.ts";
 import { trampleUniforms } from "./trample.ts";
 import { useGodRays } from "./GodRays.tsx";
 import { RainGlass } from "./RainGlass.tsx";
-import { PROFILES, cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
+import { profileOf, cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
 import { platform } from "./platform.ts";
 import { FrameDriver, PerfOverlay } from "./FrameDriver.tsx";
 import { Hud } from "./hud/Hud.tsx";
@@ -60,8 +61,6 @@ import { NavalControl } from "./naval/NavalControl.tsx";
 
 const HORIZON = "#c4e4f3";
 
-// Sương mù bám độ cao cho mọi vật liệu: phải cài trước khi dựng shader đầu tiên.
-installHeightFog();
 installStaticShadows();
 
 /** Móc debug khi dev: xem room, vị trí, hướng nhìn và camera trong console trình duyệt. */
@@ -168,6 +167,10 @@ function ShadowScheduler({ hz }: { hz: number }) {
 
 function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null>; profile: Profile; quality: string }) {
   const e = profile.shadowExtent;
+  // Bóng mây che nắng: gắn một lần vào đèn (đổi mức đồ hoạ thì đèn tạo lại).
+  useEffect(() => {
+    if (sun.current) shadeLightWithClouds(sun.current);
+  }, [sun, quality]);
   // Cùng một nhóm, mặt trời đứng trước đèn giữ bóng tĩnh: shader dựa vào thứ tự này (xem staticShadow.ts).
   return (
     <group key={quality}>
@@ -207,8 +210,9 @@ export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void 
  * Bản phát hành bỏ bước đọc nhật ký lỗi của từng shader sau khi dịch (three mặc định bật): mỗi lần đọc là một lệnh
  * đồng bộ phải chờ trình điều khiển, trên Windows/ANGLE đắt hơn hẳn. Bản dev vẫn bật để thấy lỗi shader.
  */
-function onCreated({ gl }: { gl: { debug: { checkShaderErrors: boolean } } }) {
-  gl.debug.checkShaderErrors = import.meta.env.DEV;
+function onCreated({ scene }: { scene: Scene }) {
+  // Sương mù bám độ cao cho mọi vật liệu (node sương của cảnh).
+  installAtmosphere(scene);
 }
 
 function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
@@ -225,7 +229,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
   //   thông (nặng nhất trên Windows, nơi ANGLE phải gộp mẫu MSAA mỗi khung). Chỉ bật MSAA khi không có hậu kỳ.
   // - Canvas đục: trình duyệt khỏi phải trộn trong suốt với trang web mỗi khung.
   // - Xin card rời trên laptop hai card (Windows, Mac đời Intel).
-  const [glOptions] = useState(() => ({ antialias: PROFILES[getGraphics().quality].post === "none", alpha: false, stencil: false, powerPreference: "high-performance" as const }));
+  const [glFactory] = useState(() => makeRenderer({ antialias: profileOf(getGraphics().quality).post === "none", alpha: false, stencil: false, powerPreference: "high-performance" }));
   const mapKey = useMapKey(room);
   const world = useWorld(room);
   // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
@@ -254,7 +258,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
 
   return (
     <div className="game" ref={wrapper}>
-      <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} gl={glOptions} camera={{ fov: 60, near: 0.1, far: 500 }} onCreated={onCreated}>
+      <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} gl={glFactory} camera={{ fov: 60, near: 0.1, far: 500 }} onCreated={onCreated}>
         <FrameDriver />
         <ShadowScheduler hz={profile.shadowHz} />
         <color attach="background" args={[HORIZON]} />
@@ -297,8 +301,9 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           <DayCycle room={room} sun={sun} hemi={hemi} ibl={profile.ibl} />
           <Atmosphere room={room} />
           <DebugHook room={room} />
-          {post && <PostFx ao={profile.post === "full"} />}
-          {battle && <ViewPass post={post} />}
+          
+          {/* TODO(webgpu): chuỗi hậu kỳ chưa chuyển sang WebGPU nên tạm coi như không có hậu kỳ. */}
+          {battle && <ViewPass post={false} />}
         </Suspense>
       </Canvas>
       <RainGlass />

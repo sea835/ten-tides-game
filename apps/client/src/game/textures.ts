@@ -11,15 +11,37 @@ import {
   type BufferGeometry,
   type Material,
   type Object3D,
-  type WebGLProgramParametersWithUniforms,
-  type WebGLRenderer,
 } from "three";
+import type { Node, NodeBuilder } from "three/webgpu";
+import {
+  Fn,
+  attribute,
+  faceDirection,
+  float,
+  instanceColor,
+  materialColor,
+  materialNormal,
+  materialRoughness,
+  mix,
+  normalGeometry,
+  normalWorldGeometry,
+  positionGeometry,
+  positionView,
+  positionWorld,
+  smoothstep,
+  texture,
+  uniform,
+  vec2,
+  vec3,
+  vec4,
+  vertexColor,
+} from "three/tsl";
+import { setSlot, slots, type F, type V2, type V3, type V4 } from "./gpu/slots.ts";
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { CLOUD_PARS_GLSL, cloudLightsChunk, cloudTexture, cloudUniforms } from "./atmosphere.ts";
 
 // Chất liệu cho mọi thứ trong cảnh: tám tấm vân (gỗ, đá, lá, vải, cát, cỏ, vách đá, đất) sinh tại chỗ bằng nhiễu
-// lặp liền mép, không tải file nào. Mỗi vật liệu được vá shader để phủ vân theo toạ độ (chiếu ba mặt, khỏi cần UV),
-// làm màu loang lổ và bề mặt gồ ghề theo vân (bump). Ở xa thì vân mờ dần để khỏi nhiễu hạt.
+// lặp liền mép, không tải file nào. Mỗi vật liệu được gắn node TSL để phủ vân theo toạ độ (chiếu ba mặt, khỏi cần
+// UV), làm màu loang lổ và bề mặt gồ ghề theo vân (bump). Ở xa thì vân mờ dần để khỏi nhiễu hạt.
 
 const SIZE = 256;
 
@@ -246,240 +268,173 @@ export interface DetailOptions {
   bump?: number;
 }
 
-const VERTEX_HEAD = /* glsl */ `
-varying vec3 vDetailPos;
-varying vec3 vDetailNormal;
-varying float vTenUp;
-varying vec2 vTenCloudXZ;
-#ifdef TEN_SPLAT
-  attribute vec4 splat;
-  varying vec4 vSplat;
-#endif
-`;
+// ---------------------------------------------------------------------------- node TSL
 
-/** Pháp tuyến theo thế giới hướng lên bao nhiêu (cho tuyết đọng), dùng cả khi vân tính theo vật. */
-const VERTEX_UP = /* glsl */ `
-  {
-    vec3 tenN = objectNormal;
-    #ifdef USE_INSTANCING
-      tenN = mat3( instanceMatrix ) * tenN;
-    #endif
-    vTenUp = normalize( mat3( modelMatrix ) * tenN ).y;
-    // Toạ độ thế giới cho bóng mây (kể cả vật vân theo vật).
-    vec4 tenCw = vec4( transformed, 1.0 );
-    #ifdef USE_INSTANCING
-      tenCw = instanceMatrix * tenCw;
-    #endif
-    vTenCloudXZ = ( modelMatrix * tenCw ).xz;
-  }`;
+/**
+ * Mức tuyết phủ và độ ướt của cả cảnh (Weather cập nhật theo thời tiết), dùng chung cho mọi vật liệu đã phủ vân.
+ * `uWet` làm sẫm màu và bóng mặt (độ nhám thấp).
+ */
+export const weatherUniforms = { uSnow: uniform(0), uWet: uniform(0) };
 
-function vertexBody(world: boolean) {
-  return /* glsl */ `${VERTEX_UP}
-  {
-    vec4 dp = vec4( transformed, 1.0 );
-    vec3 dn = objectNormal;
-    ${
-      world
-        ? `#ifdef USE_INSTANCING
-      dp = instanceMatrix * dp;
-      dn = mat3( instanceMatrix ) * dn;
-    #endif
-    dp = modelMatrix * dp;
-    dn = mat3( modelMatrix ) * dn;`
-        : ""
+const SNOW_COLOR = vec3(0.9, 0.93, 0.97);
+
+/**
+ * Tích các màu mà three nhân vào màu nền SAU `colorNode` (màu đỉnh, màu instance). Trộn về một màu cố định (tuyết,
+ * đất lộ) thì chia màu đích cho tích này trước, để sau khi three nhân vào vẫn ra đúng màu đích.
+ */
+const tintAfter = Fn((builder: NodeBuilder) => {
+  let k: V3 = vec3(1);
+  const material = builder.material as Material | null;
+  const object = builder.object as (Object3D & { instanceColor?: unknown }) | null;
+  if (material?.vertexColors && builder.geometry?.hasAttribute("color")) k = k.mul(vertexColor().rgb);
+  if (object?.instanceColor) k = k.mul(instanceColor);
+  return k.max(0.02);
+});
+
+/** Pháp tuyến bị đẩy lệch theo độ dốc của một trường độ cao `h` (bump không cần UV). `dHdxy` đã nhân cường độ. */
+const perturb = Fn(([n, dHdxy]: [V3, V2]) => {
+  const sx = positionView.dFdx();
+  const sy = positionView.dFdy();
+  const r1 = sy.cross(n);
+  const r2 = n.cross(sx);
+  const det = sx.dot(r1).mul(faceDirection);
+  const grad = det.sign().mul(dHdxy.x.mul(r1).add(dHdxy.y.mul(r2)));
+  return det.abs().mul(n).sub(grad).normalize();
+});
+
+interface Base {
+  color: Node | undefined;
+  roughness: Node | undefined;
+  normal: Node | undefined;
+}
+
+interface Patch {
+  options: DetailOptions;
+  /** Các ô node có sẵn trước khi phủ vân (bản vá khác gắn trước, vd. viền sáng nhân vật): vân bọc lên trên. */
+  base: Base;
+  uniforms: { maskA: V4; maskB: V4; scale: F; strength: F; bump: F };
+}
+
+/** Gắn các node vân, ướt, tuyết vào vật liệu theo `detailSettings.enabled` (bản đủ hay bản nhẹ). */
+function assignNodes(material: MeshStandardMaterial, patch: Patch) {
+  const { options, base, uniforms } = patch;
+  const world = (options.space ?? "world") === "world";
+  const full = detailSettings.enabled;
+  const { uSnow, uWet } = weatherUniforms;
+  // Pháp tuyến hình học theo thế giới hướng lên bao nhiêu (tuyết đọng, nước đọng).
+  const up = normalWorldGeometry.y;
+  // Ô màu có thể là vec3 hay vec4: three tự đệm alpha = 1 khi đổi sang vec4.
+  const baseColor = vec4((base.color ?? materialColor) as unknown as V4);
+  const baseRough = (base.roughness ?? materialRoughness) as F;
+  let rgb: V3 = baseColor.rgb;
+  const k = tintAfter();
+  const s = slots(material);
+
+  let h: F | null = null;
+  let dist: F | null = null;
+  if (full) {
+    const tex = detailTextures();
+    const pos = world ? positionWorld : positionGeometry;
+    const nrm = world ? normalWorldGeometry : normalGeometry;
+    const w0 = nrm.normalize().abs().pow(vec3(4));
+    const w = w0.div(w0.x.add(w0.y).add(w0.z).add(1e-5));
+    const p = pos.mul(uniforms.scale);
+    // Lệch mip bậc rưỡi: vân mềm hơn, đạo hàm (cho bump) đỡ lấm tấm.
+    const tri = (t: DataTexture) =>
+      texture(t, p.zy, null, float(1.5)).mul(w.x).add(texture(t, p.xz, null, float(1.5)).mul(w.y)).add(texture(t, p.xy, null, float(1.5)).mul(w.z));
+    const ta = tri(tex.a);
+    const tb = tri(tex.b);
+    const splat: V4 | null = options.splat ? attribute("splat", "vec4") : null;
+    const maskB = splat ?? uniforms.maskB;
+    const one = vec4(1);
+    const mass = uniforms.maskA.dot(one).add(maskB.dot(one));
+    h = ta.dot(uniforms.maskA).add(tb.dot(maskB)).div(mass.max(1e-3)).toVar("tenH");
+    // Ở xa thì vân nhạt dần (tránh nhiễu hạt), bump tắt sớm hơn.
+    dist = positionView.length();
+    const fade = smoothstep(25, 110, dist).oneMinus();
+    rgb = rgb.mul(h.sub(0.5).mul(2).mul(uniforms.strength).mul(fade.mul(0.65).add(0.35)).add(1));
+    if (splat) {
+      // Mảng lớn đậm nhạt trên địa hình để khỏi thấy vân lặp.
+      const macro = texture(tex.b, positionWorld.xz.mul(0.011)).a;
+      const macro2 = texture(tex.a, positionWorld.xz.mul(0.0045)).y;
+      rgb = rgb.mul(macro.mul(0.32).add(0.84));
+      // Mảng cỏ khô ngả vàng, mảng đất lộ ra giữa bãi cỏ.
+      rgb = mix(rgb, rgb.mul(vec3(1.15, 1.02, 0.72)), smoothstep(0.45, 0.72, macro2).mul(splat.y).mul(0.7));
+      rgb = mix(rgb, vec3(0.2, 0.15, 0.1).div(k), smoothstep(0.66, 0.8, macro).mul(splat.y).mul(0.35));
+      // Hạt mịn ở gần: sỏi cát, rễ cỏ.
+      const fine = texture(tex.b, positionWorld.xz.mul(uniforms.scale).mul(4.3));
+      rgb = rgb.mul(fine.dot(splat).div(splat.dot(one).max(1e-3)).sub(0.5).mul(0.3).mul(fade).add(1));
     }
-    vDetailPos = dp.xyz;
-    vDetailNormal = dn;
-    #ifdef TEN_SPLAT
-      vSplat = splat;
-    #endif
-  }`;
-}
+  }
 
-const FRAGMENT_HEAD = /* glsl */ `
-uniform float uSnow;
-uniform float uWet;
-uniform sampler2D uDetailA;
-uniform sampler2D uDetailB;
-uniform vec4 uMaskA;
-uniform vec4 uMaskB;
-uniform float uDetailScale;
-uniform float uDetailStrength;
-uniform float uDetailBump;
-varying vec3 vDetailPos;
-varying vec3 vDetailNormal;
-varying float vTenUp;
-varying vec2 vTenCloudXZ;
-#ifdef TEN_SPLAT
-  varying vec4 vSplat;
-#endif
-vec3 tenPerturb( vec3 surfPos, vec3 surfNorm, vec2 dHdxy, float faceDir ) {
-  vec3 sx = dFdx( surfPos );
-  vec3 sy = dFdy( surfPos );
-  vec3 r1 = cross( sy, surfNorm );
-  vec3 r2 = cross( surfNorm, sx );
-  float det = dot( sx, r1 ) * faceDir;
-  vec3 grad = sign( det ) * ( dHdxy.x * r1 + dHdxy.y * r2 );
-  return normalize( abs( det ) * surfNorm - grad );
-}
-`;
-
-const FRAGMENT_COLOR = /* glsl */ `
-  vec3 tenW = pow( abs( normalize( vDetailNormal ) ), vec3( 4.0 ) );
-  tenW /= ( tenW.x + tenW.y + tenW.z + 1e-5 );
-  vec3 tenP = vDetailPos * uDetailScale;
-  // Lệch mip bậc rưỡi: vân mềm hơn, đạo hàm (cho bump) đỡ lấm tấm.
-  vec4 tenA = texture2D( uDetailA, tenP.zy, 1.5 ) * tenW.x + texture2D( uDetailA, tenP.xz, 1.5 ) * tenW.y + texture2D( uDetailA, tenP.xy, 1.5 ) * tenW.z;
-  vec4 tenB = texture2D( uDetailB, tenP.zy, 1.5 ) * tenW.x + texture2D( uDetailB, tenP.xz, 1.5 ) * tenW.y + texture2D( uDetailB, tenP.xy, 1.5 ) * tenW.z;
-  #ifdef TEN_SPLAT
-    vec4 tenMaskB = vSplat;
-  #else
-    vec4 tenMaskB = uMaskB;
-  #endif
-  float tenMass = dot( uMaskA, vec4( 1.0 ) ) + dot( tenMaskB, vec4( 1.0 ) );
-  float tenH = ( dot( tenA, uMaskA ) + dot( tenB, tenMaskB ) ) / max( tenMass, 1e-3 );
-  // Ở xa thì vân nhạt dần (tránh nhiễu hạt), bump tắt sớm hơn.
-  float tenDist = length( vViewPosition );
-  float tenFade = 1.0 - smoothstep( 25.0, 110.0, tenDist );
-  diffuseColor.rgb *= 1.0 + ( tenH - 0.5 ) * 2.0 * uDetailStrength * ( 0.35 + 0.65 * tenFade );
-  #ifdef TEN_SPLAT
-    // Mảng lớn đậm nhạt trên địa hình để khỏi thấy vân lặp.
-    float tenMacro = texture2D( uDetailB, vDetailPos.xz * 0.011 ).a;
-    float tenMacro2 = texture2D( uDetailA, vDetailPos.xz * 0.0045 ).y;
-    diffuseColor.rgb *= 0.84 + 0.32 * tenMacro;
-    // Mảng cỏ khô ngả vàng, mảng đất lộ ra giữa bãi cỏ.
-    diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * vec3( 1.15, 1.02, 0.72 ), smoothstep( 0.45, 0.72, tenMacro2 ) * vSplat.y * 0.7 );
-    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.2, 0.15, 0.1 ), smoothstep( 0.66, 0.8, tenMacro ) * vSplat.y * 0.35 );
-    // Hạt mịn ở gần: sỏi cát, rễ cỏ.
-    vec4 tenFine = texture2D( uDetailB, vDetailPos.xz * uDetailScale * 4.3 );
-    diffuseColor.rgb *= 1.0 + ( dot( tenFine, vSplat ) / max( dot( vSplat, vec4( 1.0 ) ), 1e-3 ) - 0.5 ) * 0.3 * tenFade;
-  #endif
   // Thời tiết: mưa thì mặt đất, tường sẫm lại (ướt); tuyết phủ trắng các mặt hướng lên (đất, mái tôn, bậu cửa, nắp
   // xe tăng, lá cây), dày mỏng loang lổ theo vân, mặt dốc đứng thì không đọng. Vật vân theo vật (người lính: mũ,
-  // vai, ba lô) đọng mỏng hơn vì cử động suốt.
-  #ifdef TEN_WORLD
-    diffuseColor.rgb *= 1.0 - 0.22 * uWet;
-    float tenSnow = uSnow * smoothstep( 0.45, 0.8, vTenUp ) * smoothstep( 0.25, 0.6, tenH + 0.25 * uSnow );
-    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( tenSnow, 0.0, 0.92 ) );
-  #else
-    diffuseColor.rgb *= 1.0 - 0.14 * uWet;
-    float tenSnow = uSnow * smoothstep( 0.55, 0.9, vTenUp ) * smoothstep( 0.35, 0.65, tenH + 0.2 * uSnow ) * 0.75;
-    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( tenSnow, 0.0, 0.8 ) );
-  #endif
-`;
-
-/**
- * Bản nhẹ khi tắt vân (đồ hoạ thấp): không đọc ảnh vân, chỉ còn ướt và tuyết đọng trên mặt hướng lên, để bão tuyết
- * vẫn phủ trắng mái nhà, nắp xe tăng ở mọi mức đồ hoạ.
- */
-const LITE_FRAGMENT_HEAD = /* glsl */ `
-uniform float uSnow;
-uniform float uWet;
-varying float vTenUp;
-varying vec2 vTenCloudXZ;
-`;
-const LITE_FRAGMENT_COLOR = /* glsl */ `
-  #ifdef TEN_WORLD
-    diffuseColor.rgb *= 1.0 - 0.22 * uWet;
-    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( uSnow * smoothstep( 0.5, 0.85, vTenUp ), 0.0, 0.88 ) );
-  #else
-    diffuseColor.rgb *= 1.0 - 0.14 * uWet;
-    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.9, 0.93, 0.97 ), clamp( uSnow * smoothstep( 0.6, 0.92, vTenUp ) * 0.6, 0.0, 0.7 ) );
-  #endif
-`;
-
-/**
- * Mưa: mặt đất, mái, bậu cửa hướng lên bóng loáng như phủ nước (độ nhám tụt về ~0.06, chỗ trũng theo vân đọng thành
- * vũng bóng nhất), tường đứng ướt ít hơn; người, đồ vật (vân theo vật) chỉ bớt nhám một chút. `tenH` có ở bản đủ.
- */
-function wetRoughGlsl(full: boolean) {
-  return /* glsl */ `
-  #ifdef TEN_WORLD
-  {
-    float tenGloss = uWet * ( 0.4 + 0.6 * smoothstep( 0.35, 0.85, vTenUp ) );
-    ${full ? "tenGloss *= 0.6 + 0.4 * smoothstep( 0.62, 0.4, tenH ) * smoothstep( 0.5, 0.9, vTenUp );" : "tenGloss *= 0.8;"}
-    roughnessFactor = mix( roughnessFactor, 0.06, clamp( tenGloss, 0.0, 0.92 ) );
+  // vai, ba lô) đọng mỏng hơn vì cử động suốt. Bản nhẹ (tắt vân) không có vân nên tuyết phủ đều.
+  const snowTarget = SNOW_COLOR.div(k);
+  if (world) {
+    rgb = rgb.mul(uWet.mul(0.22).oneMinus());
+    const snow = h ? uSnow.mul(smoothstep(0.45, 0.8, up)).mul(smoothstep(0.25, 0.6, h.add(uSnow.mul(0.25)))).clamp(0, 0.92) : uSnow.mul(smoothstep(0.5, 0.85, up)).clamp(0, 0.88);
+    rgb = mix(rgb, snowTarget, snow);
+  } else {
+    rgb = rgb.mul(uWet.mul(0.14).oneMinus());
+    const snow = h ? uSnow.mul(smoothstep(0.55, 0.9, up)).mul(smoothstep(0.35, 0.65, h.add(uSnow.mul(0.2)))).mul(0.75).clamp(0, 0.8) : uSnow.mul(smoothstep(0.6, 0.92, up)).mul(0.6).clamp(0, 0.7);
+    rgb = mix(rgb, snowTarget, snow);
   }
-  #else
-    roughnessFactor = mix( roughnessFactor, 0.32, uWet * 0.45 );
-  #endif
-`;
+  s.colorNode = vec4(rgb, baseColor.a);
+
+  // Mưa: mặt đất, mái, bậu cửa hướng lên bóng loáng như phủ nước (độ nhám tụt về ~0.06, chỗ trũng theo vân đọng thành
+  // vũng bóng nhất), tường đứng ướt ít hơn; người, đồ vật (vân theo vật) chỉ bớt nhám một chút.
+  if (world) {
+    let gloss: F = uWet.mul(smoothstep(0.35, 0.85, up).mul(0.6).add(0.4));
+    gloss = h ? gloss.mul(smoothstep(0.4, 0.62, h).oneMinus().mul(smoothstep(0.5, 0.9, up)).mul(0.4).add(0.6)) : gloss.mul(0.8);
+    s.roughnessNode = mix(baseRough, float(0.06), gloss.clamp(0, 0.92));
+  } else {
+    s.roughnessNode = mix(baseRough, float(0.32), uWet.mul(0.45));
+  }
+
+  if (h && dist) {
+    const bumpFade = smoothstep(12, 55, dist).oneMinus();
+    const n = (base.normal ?? materialNormal) as V3;
+    s.normalNode = perturb(n, vec2(h.dFdx(), h.dFdy()).mul(uniforms.bump).mul(bumpFade));
+  } else setSlot(material, "normalNode", base.normal ?? null);
 }
 
-const FRAGMENT_NORMAL = /* glsl */ `
-  {
-    float tenBumpFade = 1.0 - smoothstep( 12.0, 55.0, tenDist );
-    if ( tenBumpFade > 0.0 && uDetailBump > 0.0 ) normal = tenPerturb( -vViewPosition, normal, vec2( dFdx( tenH ), dFdy( tenH ) ) * uDetailBump * tenBumpFade, faceDirection );
-  }
-`;
-
-/**
- * Mức tuyết phủ và độ ướt của cả cảnh (Weather cập nhật theo thời tiết), dùng chung cho mọi vật liệu đã vá vân.
- * `uWet` làm sẫm màu và bóng mặt (độ nhám thấp) — xem wetRoughGlsl.
- */
-export const weatherUniforms = { uSnow: { value: 0 }, uWet: { value: 0 } };
-
-/** Bật tắt vân cho cả cảnh (đồ hoạ thấp thì tắt cho nhẹ máy). Đổi thì các vật liệu đã vá tự dựng lại shader. */
+/** Bật tắt vân cho cả cảnh (đồ hoạ thấp thì tắt cho nhẹ máy). Đổi thì các vật liệu đã phủ vân dựng lại shader. */
 export const detailSettings = { enabled: true };
-const patched = new Set<MeshStandardMaterial>();
+const patched = new Map<MeshStandardMaterial, Patch>();
 
 export function setDetailEnabled(on: boolean) {
   if (detailSettings.enabled === on) return;
   detailSettings.enabled = on;
-  for (const m of patched) m.needsUpdate = true;
+  for (const [m, patch] of patched) {
+    assignNodes(m, patch);
+    m.needsUpdate = true;
+  }
 }
 
-type Compile = (shader: WebGLProgramParametersWithUniforms, renderer: WebGLRenderer) => void;
-
-/** Vá một vật liệu để phủ vân. Gọi lại trên vật liệu đã vá thì không làm gì. Giữ nguyên bản vá sẵn có (gió lay...). */
+/**
+ * Phủ vân cho một vật liệu: gắn node màu, độ nhám, pháp tuyến (xem gpu/slots.ts). Gọi lại trên vật liệu đã phủ thì
+ * không làm gì. Node có sẵn trên vật liệu (bản vá khác gắn TRƯỚC khi phủ vân) được giữ và bọc lên; bản vá muốn gắn
+ * SAU thì cứ bọc tiếp lên ô hiện có (`wrapSlot`).
+ */
 export function applyDetail(material: MeshStandardMaterial, options: DetailOptions): MeshStandardMaterial {
-  // Đánh dấu bằng tập hợp chứ không chỉ userData: React vẽ lại có thể thay cả userData (prop JSX) làm mất dấu,
-  // vá lần hai thì shader khai báo trùng, lỗi biên dịch và vật tàng hình.
+  // Đánh dấu bằng tập hợp chứ không chỉ userData: React vẽ lại có thể thay cả userData (prop JSX) làm mất dấu.
   if (patched.has(material) || material.userData.tenDetail) return material;
   const def = KINDS[options.kind];
-  const world = (options.space ?? "world") === "world";
-  const tex = detailTextures();
-  const uniforms = {
-    uDetailA: { value: tex.a },
-    uDetailB: { value: tex.b },
-    uMaskA: { value: new Vector4(...def.a) },
-    uMaskB: { value: new Vector4(...def.b) },
-    uDetailScale: { value: options.scale ?? def.scale },
-    uDetailStrength: { value: options.strength ?? def.strength },
-    uDetailBump: { value: options.bump ?? def.bump },
+  const s = slots(material);
+  const patch: Patch = {
+    options,
+    base: { color: s.colorNode, roughness: s.roughnessNode, normal: s.normalNode },
+    uniforms: {
+      maskA: uniform(new Vector4(...def.a)),
+      maskB: uniform(new Vector4(...def.b)),
+      scale: uniform(options.scale ?? def.scale),
+      strength: uniform(options.strength ?? def.strength),
+      bump: uniform(options.bump ?? def.bump),
+    },
   };
-  const prev: Compile | undefined = material.onBeforeCompile === MeshStandardMaterial.prototype.onBeforeCompile ? undefined : material.onBeforeCompile;
-  const prevKey = material.customProgramCacheKey === MeshStandardMaterial.prototype.customProgramCacheKey ? "" : material.customProgramCacheKey();
-  material.onBeforeCompile = (shader, renderer) => {
-    prev?.call(material, shader, renderer);
-    if (world) shader.defines = { ...shader.defines, TEN_WORLD: "" };
-    cloudTexture();
-    if (!detailSettings.enabled) {
-      Object.assign(shader.uniforms, weatherUniforms, cloudUniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying float vTenUp;\nvarying vec2 vTenCloudXZ;")
-        .replace("#include <fog_vertex>", `#include <fog_vertex>\n${VERTEX_UP}`);
-      shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", `#include <common>\n${LITE_FRAGMENT_HEAD}\n${CLOUD_PARS_GLSL}`)
-        .replace("#include <color_fragment>", `#include <color_fragment>\n${LITE_FRAGMENT_COLOR}`)
-        .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${wetRoughGlsl(false)}`)
-        .replace("#include <lights_fragment_begin>", cloudLightsChunk("vTenCloudXZ"));
-      return;
-    }
-    Object.assign(shader.uniforms, uniforms, weatherUniforms, cloudUniforms);
-    if (options.splat) shader.defines = { ...shader.defines, TEN_SPLAT: "" };
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
-      .replace("#include <fog_vertex>", `#include <fog_vertex>\n${vertexBody(world)}`);
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${FRAGMENT_HEAD}\n${CLOUD_PARS_GLSL}`)
-      .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_COLOR}`)
-      .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${wetRoughGlsl(true)}`)
-      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${FRAGMENT_NORMAL}`)
-      .replace("#include <lights_fragment_begin>", cloudLightsChunk("vTenCloudXZ"));
-  };
-  material.customProgramCacheKey = () => (detailSettings.enabled ? `${prevKey}|detail:${world ? "w" : "o"}:${options.splat ? "s" : ""}` : `${prevKey}|lite:${world ? "w" : "o"}`);
-  patched.add(material);
+  assignNodes(material, patch);
+  patched.set(material, patch);
   material.addEventListener("dispose", () => patched.delete(material));
   material.userData.tenDetail = options.kind;
   material.needsUpdate = true;

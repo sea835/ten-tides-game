@@ -15,6 +15,7 @@ import {
   type Texture,
   type WebGLRenderTarget,
 } from "three";
+import { uniform } from "three/tsl";
 import { reflectionHidden } from "./reflection.ts";
 import { localEnv, weatherFx } from "./shared.ts";
 
@@ -23,18 +24,18 @@ import { localEnv, weatherFx } from "./shared.ts";
  * để đường chân trời liền một màu.
  */
 export const skyUniforms = {
-  uTop: { value: new Color("#4f9fd8") },
-  uHorizon: { value: new Color("#cde9f5") },
-  uSunColor: { value: new Color("#fff1d0") },
-  uSunDir: { value: new Vector3(0, 1, 0) },
-  uMoonDir: { value: new Vector3(0, 1, 0) },
-  uNight: { value: 0 },
-  uTime: { value: 0 },
+  uTop: uniform(new Color("#4f9fd8")),
+  uHorizon: uniform(new Color("#cde9f5")),
+  uSunColor: uniform(new Color("#fff1d0")),
+  uSunDir: uniform(new Vector3(0, 1, 0)),
+  uMoonDir: uniform(new Vector3(0, 1, 0)),
+  uNight: uniform(0),
+  uTime: uniform(0),
   /** Độ phủ mây (0 trời quang, 1 kín mây), độ sẫm mây bão, chớp loé, và quãng mây đã trôi. */
-  uCloud: { value: 0.15 },
-  uStorm: { value: 0 },
-  uFlash: { value: 0 },
-  uDrift: { value: 0 },
+  uCloud: uniform(0.15),
+  uStorm: uniform(0),
+  uFlash: uniform(0),
+  uDrift: uniform(0),
 };
 
 const vertexShader = /* glsl */ `
@@ -242,6 +243,8 @@ export function SkyEnvironment({ intensity = 1 }: { intensity?: number }) {
     scene.environmentIntensity = intensity * (1 - 0.85 * localEnv.indoor);
     const rig = rigRef.current;
     if (!rig || clock.elapsedTime < rig.next) return;
+    // TODO(webgpu): bản chụp trời bằng PMREM của WebGL chưa chạy trên WebGPURenderer (làm kẹt đích vẽ): tạm bỏ qua.
+    if (!(gl as { isWebGLRenderer?: boolean }).isWebGLRenderer) return;
     rig.next = clock.elapsedTime + ENV_INTERVAL;
     // Bầu trời đêm vẫn có sao chớp; không cần tone map khi chụp vào render target.
     rig.camera.update(gl, rig.envScene);

@@ -7,15 +7,18 @@ import { detailMesh, detailScene } from "./textures.ts";
 // trăm ms. Ở đây: vá vân trước (để shader dịch sẵn đúng là bản sẽ dùng), rồi dịch bằng compileAsync (trình duyệt
 // dịch song song qua KHR_parallel_shader_compile, không chặn khung hình).
 
-type WithProps = { properties: { get(o: object): { currentProgram?: unknown } } };
+/** Vật liệu đã gửi đi dịch (WebGPURenderer không cho hỏi vật liệu đã có shader chưa). */
+const compiled = new WeakSet<Material>();
 
 function materialsOf(o: Object3D): Material[] {
   const m = (o as { material?: Material | Material[] }).material;
   return !m ? [] : Array.isArray(m) ? m : [m];
 }
 
-function needsProgram(gl: WebGLRenderer, m: Material): boolean {
-  return (gl as unknown as WithProps).properties.get(m).currentProgram === undefined;
+function needsProgram(_gl: WebGLRenderer, m: Material): boolean {
+  if (compiled.has(m)) return false;
+  compiled.add(m);
+  return true;
 }
 
 /** Vá vân rồi dịch sẵn shader của mọi vật liệu trong cảnh (kể cả vật đang ẩn, ngoài tầm nhìn). */

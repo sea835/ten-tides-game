@@ -152,13 +152,37 @@ export function useQuality(): Quality {
   return useSyncExternalStore(subscribe, () => current.quality);
 }
 
+/**
+ * Chỉ khi dev: đè từng thông số của mức đồ hoạ bằng tham số `?gfx={...}` trên địa chỉ (JSON của một phần Profile),
+ * vd. `?gfx={"detail":true,"grass":8000}` trên nền mức Thấp. Để soi riêng một tính năng trên máy yếu (hay trình duyệt
+ * không màn hình vẽ bằng CPU) mà không phải bật cả mức Cao.
+ */
+function devOverrides(): Partial<Profile> {
+  if (!import.meta.env.DEV) return {};
+  try {
+    const raw = new URLSearchParams(location.search).get("gfx");
+    return raw ? (JSON.parse(raw) as Partial<Profile>) : {};
+  } catch {
+    return {};
+  }
+}
+const OVERRIDES = devOverrides();
+const merged = new Map<Quality, Profile>();
+
+/** Thông số dựng hình của một mức chất lượng (đã tính phần đè khi dev). */
+export function profileOf(quality: Quality): Profile {
+  let p = merged.get(quality);
+  if (!p) merged.set(quality, (p = { ...PROFILES[quality], ...OVERRIDES }));
+  return p;
+}
+
 export function useProfile(): Profile {
-  return PROFILES[useQuality()];
+  return profileOf(useQuality());
 }
 
 /** Tỉ lệ điểm ảnh tối đa đang dùng (theo cài đặt hoặc theo mức chất lượng), không vượt quá màn hình thật. */
 export function targetDpr(g: GraphicsSettings): number {
-  const cap = g.maxDpr > 0 ? g.maxDpr : PROFILES[g.quality].dpr;
+  const cap = g.maxDpr > 0 ? g.maxDpr : profileOf(g.quality).dpr;
   return Math.max(0.5, Math.min(window.devicePixelRatio || 1, cap));
 }
 

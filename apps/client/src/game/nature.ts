@@ -1,3 +1,4 @@
+import { uniform } from "three/tsl";
 import { useFrame } from "@react-three/fiber";
 import { IcosahedronGeometry, MeshStandardMaterial, type BufferGeometry } from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -36,9 +37,9 @@ export function grain(x: number, z: number): number {
 // Gió: vật liệu có đỉnh lay theo thời gian (tán dừa, bụi cỏ), dùng chung một đồng hồ.
 // ---------------------------------------------------------------------------
 
-export const wind = { value: 0 };
+export const wind = uniform(0);
 /** Gió mạnh hay nhẹ: bão thì cây cỏ lắc mạnh gấp mấy lần (Weather ghi). */
-export const windStrength = { value: 1 };
+export const windStrength = uniform(1);
 
 /**
  * MeshStandardMaterial lay theo gió: đỉnh càng cao (theo y cục bộ) càng lắc nhiều.
