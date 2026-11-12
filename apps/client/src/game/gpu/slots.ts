@@ -32,7 +32,7 @@ export interface NodeSlots {
   metalnessNode?: Node;
   emissiveNode?: Node;
   opacityNode?: Node;
-  /** Vị trí đỉnh trong hệ của vật (trước instance, model matrix). Mặc định `positionLocal`. */
+  /** Vị trí đỉnh trong hệ của vật (three áp ma trận instance TRƯỚC ô này: độ lệch tính trong hệ hình học phải tự đổi qua ma trận instance, xem swayMaterial ở nature.ts). Mặc định `positionLocal`. */
   positionNode?: Node;
   /** false thì bỏ điểm ảnh (discard). */
   maskNode?: Node;
