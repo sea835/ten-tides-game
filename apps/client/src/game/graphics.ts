@@ -203,6 +203,8 @@ export const perfStats = {
   worstMs: 0,
   /** Thời gian chạy logic và gửi lệnh vẽ của một khung hình trên CPU (ms). */
   cpuMs: 0,
+  /** Trong đó, phần dựng và gửi lệnh vẽ (ma trận cảnh, lưới gộp, renderer): làm mượt theo thời gian (ms). */
+  drawMs: 0,
   calls: 0,
   triangles: 0,
   geometries: 0,

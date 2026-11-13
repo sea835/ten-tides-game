@@ -31,7 +31,7 @@ import { trampleUniforms } from "./trample.ts";
 import { createPostFx, type PostFx } from "./postFx.ts";
 import { setPrepTargets } from "./shaderPrep.ts";
 import { RainGlass } from "./RainGlass.tsx";
-import { profileOf, cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
+import { profileOf, cycleQuality, getGraphics, perfStats, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
 import { platform } from "./platform.ts";
 import { FrameDriver, PerfOverlay } from "./FrameDriver.tsx";
 import { Hud } from "./hud/Hud.tsx";
@@ -129,10 +129,13 @@ function RenderDriver({ post, battle }: { post: Profile["post"]; battle: boolean
     };
   }, [scene]);
   useFrame(() => {
+    const t0 = performance.now();
     updateWorld(scene);
     parts.current?.sync();
     if (fx) fx.render();
     else gl.render(scene, camera);
+    // Bảng F3: tách riêng phần CPU dành cho việc vẽ (còn lại là logic trận, vật lý, React).
+    perfStats.drawMs += (performance.now() - t0 - perfStats.drawMs) * 0.05;
   }, 1);
   return null;
 }
