@@ -109,7 +109,7 @@ export function scanScene(gl: WebGPURenderer, scene: Scene, camera: Camera) {
     if ((o as { isMesh?: boolean }).isMesh) detailMesh(o as Mesh);
     if (busy || many) return;
     if (!(o as { isMesh?: boolean }).isMesh && !(o as { isPoints?: boolean }).isPoints && !(o as { isLine?: boolean }).isLine) return;
-    const instanced = !!(o as { isInstancedMesh?: boolean }).isInstancedMesh;
+    const instanced = !!(o as { isInstancedMesh?: boolean }).isInstancedMesh || !!(o as { isBatchedMesh?: boolean }).isBatchedMesh;
     if (materialsOf(o).some((m) => needsProgram(m, instanced))) {
       fresh.push(o);
       if (fresh.length > 24) many = true;
