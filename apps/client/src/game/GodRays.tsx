@@ -37,7 +37,7 @@ export function createGodRays(samples: number): GodRays {
 
   const apply = (input: V4, color: TextureNode, depth: TextureNode): V4 =>
     Fn(() => {
-      const out = vec4(input).toVar();
+      const out = input.toVar();
       If(uStrength.greaterThan(0), () => {
         const coord = uv();
         // Bước về phía mặt trời (tối đa 85% quãng đường), lệch đầu tia ngẫu nhiên theo điểm ảnh để khỏi thấy vân bậc.

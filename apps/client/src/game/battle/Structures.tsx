@@ -10,6 +10,7 @@ import {
   MeshStandardMaterial,
   Quaternion,
   RepeatWrapping,
+  NoColorSpace,
   SRGBColorSpace,
   Vector3,
   type InstancedMesh,
@@ -120,11 +121,16 @@ function signTexture() {
   );
 }
 
-/** Dây thép gai: mấy sợi ngang có gai, nền trong suốt. */
+/**
+ * Mặt nạ của dây thép gai: mấy sợi ngang có gai, trắng là dây, đen là khoảng trống (dùng làm `alphaMap`, đọc kênh xanh).
+ * Màu dây là hằng số của vật liệu, KHÔNG nằm trong ảnh: ảnh nền trong suốt có RGB đen nên lọc mipmap trộn đen vào dây,
+ * dây xa ra những dải đen dày (cưa răng) thay vì màu kim loại.
+ */
 function wireTexture() {
-  return canvasTexture(128, 64, (g) => {
-    g.clearRect(0, 0, 128, 64);
-    g.strokeStyle = "#9a9a9a";
+  const t = canvasTexture(128, 64, (g) => {
+    g.fillStyle = "#000";
+    g.fillRect(0, 0, 128, 64);
+    g.strokeStyle = "#fff";
     g.lineWidth = 2;
     for (const y of [8, 24, 40, 56]) {
       g.beginPath();
@@ -141,6 +147,8 @@ function wireTexture() {
       }
     }
   });
+  t.colorSpace = NoColorSpace;
+  return t;
 }
 
 /**
@@ -174,7 +182,7 @@ function makeMaterial(mat: BoxMat): MeshStandardMaterial {
   if (mat === "road") m.map = roadTexture();
   if (mat === "sign") m.map = signTexture();
   if (mat === "fence") {
-    m.map = wireTexture();
+    m.alphaMap = wireTexture();
     m.alphaTest = 0.4;
     m.side = DoubleSide;
   }
