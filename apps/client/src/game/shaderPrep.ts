@@ -24,12 +24,14 @@ let prepTargets: PrepTarget[] = [{ target: null }];
 export function setPrepTargets(targets: PrepTarget[]) {
   prepTargets = targets.length ? targets : [{ target: null }];
   compiled = new WeakSet();
+  compiledInstanced = new WeakSet();
 }
 
 /** Dịch `o` cho mọi đích vẽ. Trạng thái đích chỉ được đọc ở đoạn chạy đồng bộ đầu compileAsync nên đặt rồi trả lại ngay. */
 function compile(gl: WebGPURenderer, o: Object3D, camera: Camera, scene?: Scene): Promise<unknown> {
   const prev = gl.getRenderTarget();
   const jobs: Promise<unknown>[] = [];
+  const restore = reveal(o);
   try {
     for (const t of prepTargets) {
       gl.setRenderTarget(t.target);
@@ -37,22 +39,53 @@ function compile(gl: WebGPURenderer, o: Object3D, camera: Camera, scene?: Scene)
       jobs.push((scene ? gl.compileAsync(o, cam, scene) : gl.compileAsync(o, cam)).catch(() => {}));
     }
   } finally {
+    restore();
     gl.setRenderTarget(prev);
   }
   return Promise.all(jobs);
 }
 
+/**
+ * compileAsync của WebGPURenderer chỉ dịch vật ĐANG HIỆN và NẰM TRONG KHUNG NHÌN (nó dựng danh sách vẽ như một khung
+ * hình thật; `compile` của WebGLRenderer cũ thì duyệt hết). Để nguyên thì mọi thứ sau lưng người chơi, đang ẩn (hiệu
+ * ứng nổ, xe chưa tới, đồ chưa rơi) đều bị dịch đúng lúc xuất hiện lần đầu, chặn cả khung hình: quay người lại là
+ * khựng. Nên trong đoạn chạy đồng bộ của compileAsync ta cho hiện hết và tắt cắt theo khung nhìn, xong trả lại ngay
+ * (chưa có khung hình nào được vẽ ở giữa). Đèn giữ nguyên: bật đèn đang tắt sẽ đổi bộ đèn, shader dịch ra thành bản khác.
+ */
+function reveal(root: Object3D): () => void {
+  const hidden: Object3D[] = [];
+  const culled: Object3D[] = [];
+  root.traverse((o) => {
+    if ((o as { isLight?: boolean }).isLight) return;
+    if (!o.visible) {
+      hidden.push(o);
+      o.visible = true;
+    }
+    if (o.frustumCulled && (o as { isMesh?: boolean }).isMesh) {
+      culled.push(o);
+      o.frustumCulled = false;
+    }
+  });
+  return () => {
+    for (const o of hidden) o.visible = false;
+    for (const o of culled) o.frustumCulled = true;
+  };
+}
+
 /** Vật liệu đã gửi đi dịch (WebGPURenderer không cho hỏi vật liệu đã có shader chưa). */
 let compiled = new WeakSet<Material>();
+/** Cùng vật liệu nhưng vẽ instanced là một shader khác (bảng gộp của gpu/parts.tsx dùng lại vật liệu của Mesh thường). */
+let compiledInstanced = new WeakSet<Material>();
 
 function materialsOf(o: Object3D): Material[] {
   const m = (o as { material?: Material | Material[] }).material;
   return !m ? [] : Array.isArray(m) ? m : [m];
 }
 
-function needsProgram(m: Material): boolean {
-  if (compiled.has(m)) return false;
-  compiled.add(m);
+function needsProgram(m: Material, instanced: boolean): boolean {
+  const set = instanced ? compiledInstanced : compiled;
+  if (set.has(m)) return false;
+  set.add(m);
   return true;
 }
 
@@ -76,7 +109,8 @@ export function scanScene(gl: WebGPURenderer, scene: Scene, camera: Camera) {
     if ((o as { isMesh?: boolean }).isMesh) detailMesh(o as Mesh);
     if (busy || many) return;
     if (!(o as { isMesh?: boolean }).isMesh && !(o as { isPoints?: boolean }).isPoints && !(o as { isLine?: boolean }).isLine) return;
-    if (materialsOf(o).some(needsProgram)) {
+    const instanced = !!(o as { isInstancedMesh?: boolean }).isInstancedMesh;
+    if (materialsOf(o).some((m) => needsProgram(m, instanced))) {
       fresh.push(o);
       if (fresh.length > 24) many = true;
     }
