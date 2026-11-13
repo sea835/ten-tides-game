@@ -6,19 +6,27 @@ import {
   CylinderGeometry,
   DoubleSide,
   MeshStandardMaterial,
+  PerspectiveCamera,
   PlaneGeometry,
   Quaternion,
   RingGeometry,
   CircleGeometry,
-  ShaderMaterial,
   Vector3,
+  WebGPUCoordinateSystem,
+  type Camera,
   type Group,
-  type PerspectiveCamera,
+  type Light,
+  type LightShadow,
+  type RenderTarget,
+  type Scene,
 } from "three";
+import { NodeMaterial, type WebGPURenderer } from "three/webgpu";
+import { Fn, abs, atan, cameraProjectionMatrix, cos, length, mix, modelViewMatrix, pass, positionLocal, smoothstep, toneMapping, uniform, uv, vec3, vec4 } from "three/tsl";
+import type { V3, V4 } from "../gpu/slots.ts";
 import { SIGHTS, WEAPON, gadgetIn, type SightId } from "@tentides/content";
 import { myId, type IslandRoom } from "../../net.ts";
 import { camoTexture } from "../camo.ts";
-import { DRAW_ON_TOP_GLSL, GunModel, KnifeModel, MagModel, ThrowableModel, actionTravel, aimLineHeight, drawOnTop, ejectPort, hasMag, magCenter, muzzleOffset, opticHeight, railMount, supportOffset, viewMaterial } from "../GunModel.tsx";
+import { GunModel, KnifeModel, MagModel, ThrowableModel, actionTravel, aimLineHeight, drawOnTop, ejectPort, hasMag, magCenter, muzzleOffset, opticHeight, railMount, supportOffset, viewMaterial } from "../GunModel.tsx";
 import { isTyping, view } from "../input.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { gun } from "./Shooter.tsx";
@@ -42,55 +50,130 @@ const HIP = new Vector3(0.24, -0.25, -0.5);
 /** Lớp vẽ riêng của súng trước mặt. */
 export const VIEW_LAYER = 5;
 
+/** Camera riêng của súng trước mặt: cùng vị trí, hướng với camera chính nhưng giữ góc nhìn gốc, chỉ thấy lớp VIEW_LAYER. */
+export const viewCamera = new PerspectiveCamera();
+viewCamera.layers.set(VIEW_LAYER);
+viewCamera.matrixWorldAutoUpdate = false;
+
 /**
- * Vẽ súng trước mặt sau cùng, trên nền cảnh đã xử lý hậu kỳ, với bộ đệm độ sâu xoá sạch: không bao giờ xuyên tường,
- * và hiệu ứng che bóng (AO) không làm súng đen sì chớp tắt (AO đọc độ sâu, súng sát ống kính làm nó tính sai).
- * Đồ hoạ thấp (không hậu kỳ) thì lượt này vẽ luôn cảnh chính, vì R3F thôi tự vẽ khi có useFrame ưu tiên.
+ * Súng trước mặt vẽ với góc nhìn gốc: ngắm thì cảnh phóng to còn súng giữ nguyên cỡ (như mắt thật), trước đây
+ * súng bị phóng to theo, khối súng sát mắt che mất giữa màn hình.
+ */
+function syncViewCamera(main: Camera) {
+  const cam = main as PerspectiveCamera;
+  cam.updateMatrixWorld();
+  viewCamera.matrixWorld.copy(cam.matrixWorld);
+  viewCamera.matrixWorldInverse.copy(cam.matrixWorld).invert();
+  cam.matrixWorld.decompose(viewCamera.position, viewCamera.quaternion, viewCamera.scale);
+  viewCamera.fov = getSettings().fov;
+  viewCamera.aspect = cam.aspect;
+  viewCamera.near = cam.near;
+  viewCamera.far = cam.far;
+  viewCamera.updateProjectionMatrix();
+}
+
+/** Các đèn có bản đồ bóng (làm mới mỗi giây trong ViewPass): lượt vẽ súng không được vẽ lại bóng. */
+type ShadowLight = Light & { shadow: LightShadow };
+const viewLights: ShadowLight[] = [];
+
+/**
+ * Chạy `draw` (lượt vẽ lớp súng) với nền trong suốt và bóng đổ đứng yên: cảnh chính đã vẽ bóng xong khung này, lượt
+ * thứ hai chỉ đọc bản đồ bóng sẵn có.
+ */
+function drawViewLayer(renderer: WebGPURenderer, scene: Scene, draw: () => void) {
+  const sceneNodes = scene as unknown as { backgroundNode: unknown };
+  const background = scene.background;
+  const backgroundNode = sceneNodes.backgroundNode;
+  const alpha = renderer.getClearAlpha();
+  const auto = viewLights.map((l) => l.shadow.autoUpdate);
+  scene.background = null;
+  sceneNodes.backgroundNode = null;
+  renderer.setClearAlpha(0);
+  for (const l of viewLights) l.shadow.autoUpdate = false;
+  // Khí nóng đầu nòng: chép nền quanh đầu nòng trước khi vẽ súng (BarrelFx).
+  barrelFxHook.beforeView?.(renderer as never, viewCamera as never);
+  try {
+    draw();
+  } finally {
+    scene.background = background;
+    sceneNodes.backgroundNode = backgroundNode;
+    renderer.setClearAlpha(alpha);
+    viewLights.forEach((l, i) => (l.shadow.autoUpdate = auto[i]!));
+  }
+}
+
+/** Vị trí đỉnh khi vẽ đè: ép độ sâu sát mặt phẳng gần nhất để súng không bị tường che (chuẩn độ sâu của từng nền khác nhau). */
+export const drawOnTopClip = Fn((builder) => {
+  const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(positionLocal, 1));
+  const z = (builder.renderer as { coordinateSystem: number }).coordinateSystem === WebGPUCoordinateSystem ? clip.z.mul(0.05) : clip.z.mul(0.05).sub(clip.w.mul(0.95));
+  return vec4(clip.x, clip.y, z, clip.w);
+});
+
+export interface ViewLayer {
+  /** Ảnh đích và camera của lượt vẽ súng (để dịch sẵn shader đúng đích). */
+  target: RenderTarget;
+  camera: Camera;
+  /** Ghép súng lên ảnh cảnh đã xử lý xong (tuyến tính, sau tone map và chấm màu): súng tone map riêng, không dính hậu kỳ. */
+  composite: (scene: V3) => V3;
+  dispose: () => void;
+}
+
+/**
+ * Lớp súng trước mặt cho chuỗi hậu kỳ: một `pass` riêng (camera riêng, bộ đệm độ sâu riêng, nền trong suốt) đè lên cảnh
+ * đã hậu kỳ, tone map AgX riêng. Chỉ vẽ khi đang nhìn bằng mắt; lúc khác không tốn lượt vẽ nào.
+ */
+export function createViewLayer(scene: Scene, camera: Camera): ViewLayer {
+  const viewPass = pass(scene, viewCamera);
+  const enabled = uniform(0);
+  const draw = viewPass.updateBefore.bind(viewPass);
+  viewPass.updateBefore = (frame) => {
+    const on = stance.firstPerson;
+    enabled.value = on ? 1 : 0;
+    if (!on) return;
+    syncViewCamera(camera);
+    drawViewLayer(frame.renderer as unknown as WebGPURenderer, scene, () => draw(frame));
+  };
+  return {
+    target: viewPass.renderTarget,
+    camera: viewCamera,
+    composite: (base) => {
+      const v = viewPass.getTextureNode() as unknown as V4;
+      const gun = toneMapping(AgXToneMapping, 1, v.rgb) as V3;
+      return base.mul(v.a.mul(enabled).oneMinus()).add(gun.mul(enabled)) as V3;
+    },
+    dispose: () => viewPass.dispose(),
+  };
+}
+
+/**
+ * Lượt vẽ súng trước mặt khi KHÔNG có hậu kỳ (đồ hoạ thấp): vẽ lớp súng thẳng lên khung hình cảnh chính vừa xong (đã
+ * tone map), xoá độ sâu để súng không bao giờ xuyên tường. Có hậu kỳ thì lớp súng nằm trong chuỗi (createViewLayer).
+ * Cũng làm mới danh sách đèn cho lớp súng: đèn phải cùng lớp thì mới chiếu lên súng.
  */
 export function ViewPass({ post }: { post: boolean }) {
   const lightsAt = useRef(0);
   useFrame(({ gl, scene, camera }) => {
-    if (!post) gl.render(scene, camera);
     const now = performance.now();
     if (now - lightsAt.current > 1000) {
       lightsAt.current = now;
-      // Đèn phải cùng lớp thì mới chiếu lên súng.
+      viewLights.length = 0;
       scene.traverse((o) => {
-        if ((o as { isLight?: boolean }).isLight) o.layers.enable(VIEW_LAYER);
+        if ((o as { isLight?: boolean }).isLight) {
+          o.layers.enable(VIEW_LAYER);
+          if ((o as ShadowLight).shadow) viewLights.push(o as ShadowLight);
+        }
       });
     }
-    if (!stance.firstPerson) return;
-    const autoClear = gl.autoClear;
-    const toneMapping = gl.toneMapping;
-    const shadows = gl.shadowMap.autoUpdate;
-    const background = scene.background;
-    gl.autoClear = false;
-    gl.shadowMap.autoUpdate = false;
-    if (post) gl.toneMapping = AgXToneMapping;
-    scene.background = null;
-    // Súng trước mặt vẽ với góc nhìn gốc: ngắm thì cảnh phóng to còn súng giữ nguyên cỡ (như mắt thật), trước đây
-    // súng bị phóng to theo, khối súng sát mắt che mất giữa màn hình.
-    const cam = camera as PerspectiveCamera;
-    const zoomedFov = cam.fov;
-    const baseFov = getSettings().fov;
-    if (Math.abs(zoomedFov - baseFov) > 0.01) {
-      cam.fov = baseFov;
-      cam.updateProjectionMatrix();
-    }
-    // Khí nóng đầu nòng: chép nền quanh đầu nòng trước khi vẽ súng (BarrelFx).
-    barrelFxHook.beforeView?.(gl, cam);
-    camera.layers.set(VIEW_LAYER);
-    gl.clearDepth();
-    gl.render(scene, camera);
-    camera.layers.set(0);
-    if (cam.fov !== zoomedFov) {
-      cam.fov = zoomedFov;
-      cam.updateProjectionMatrix();
-    }
-    scene.background = background;
-    gl.toneMapping = toneMapping;
-    gl.shadowMap.autoUpdate = shadows;
-    gl.autoClear = autoClear;
+    if (post || !stance.firstPerson) return;
+    const renderer = gl as unknown as WebGPURenderer;
+    const autoClear = renderer.autoClear;
+    syncViewCamera(camera);
+    renderer.autoClear = false;
+    drawViewLayer(renderer, scene, () => {
+      renderer.clearDepth();
+      renderer.render(scene, viewCamera);
+    });
+    renderer.autoClear = autoClear;
   }, 2);
   return null;
 }
@@ -556,49 +639,48 @@ export function ViewModel({ room }: { room: IslandRoom }) {
 
 // ---------------------------------------------------------------------------- lửa đầu nòng
 
-const flashVertex = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    ${DRAW_ON_TOP_GLSL}
-  }
-`;
 /** Sao lửa nhìn thẳng từ phía sau súng: lõi trắng, 5 cánh vàng cam. */
-const starFragment = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vec2 p = vUv - 0.5;
-    float r = length(p) * 2.0;
-    // atan(0, 0) không xác định (NaN trên vài GPU → mảng đen nhấp nháy qua bloom): lệch một chút.
-    float a = atan(p.y, p.x + 1e-5);
-    float petals = 0.45 + 0.55 * pow(abs(cos(a * 2.5)), 3.0);
-    float glow = 1.0 - smoothstep(0.0, petals, r);
-    float core = 1.0 - smoothstep(0.0, 0.35, r);
-    vec3 c = mix(vec3(1.0, 0.45, 0.1), vec3(1.0, 0.85, 0.55), glow) + core * 2.0;
-    gl_FragColor = vec4(c * 5.0 * glow, glow);
-  }
-`;
+const starFragment = Fn(() => {
+  const p = uv().sub(0.5);
+  const r = length(p).mul(2);
+  // atan(0, 0) không xác định (NaN trên vài GPU → mảng đen nhấp nháy qua bloom): lệch một chút.
+  const a = atan(p.y, p.x.add(1e-5));
+  const petals = abs(cos(a.mul(2.5))).pow(3).mul(0.55).add(0.45);
+  const glow = smoothstep(0, petals, r).oneMinus();
+  const core = smoothstep(0, 0.35, r).oneMinus();
+  const c = mix(vec3(1, 0.45, 0.1), vec3(1, 0.85, 0.55), glow).add(core.mul(2));
+  return vec4(c.mul(5).mul(glow), glow);
+});
 /** Lưỡi lửa dọc nòng (nhìn ngang): đậm ở gốc, nhọn và tắt dần về phía trước. */
-const tongueFragment = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    float along = vUv.y;
-    float width = (1.0 - along) * 0.5;
-    float d = abs(vUv.x - 0.5);
-    float a = (1.0 - smoothstep(width * 0.3, width, d)) * (1.0 - along * 0.85);
-    vec3 c = mix(vec3(1.0, 0.8, 0.45), vec3(1.0, 0.35, 0.05), along);
-    gl_FragColor = vec4(c * 4.0 * a, a);
-  }
-`;
+const tongueFragment = Fn(() => {
+  const along = uv().y;
+  const width = along.oneMinus().mul(0.5);
+  const d = abs(uv().x.sub(0.5));
+  const a = smoothstep(width.mul(0.3), width, d).oneMinus().mul(along.mul(0.85).oneMinus());
+  const c = mix(vec3(1, 0.8, 0.45), vec3(1, 0.35, 0.05), along);
+  return vec4(c.mul(4).mul(a), a);
+});
+
+/** Vật liệu vẽ đè cho lửa đầu nòng và tâm kính: tự tính màu, không sương, không ánh sáng. */
+function overlayMaterial(fragment: V4, additive: boolean): NodeMaterial {
+  const m = new NodeMaterial();
+  m.vertexNode = drawOnTopClip();
+  m.fragmentNode = fragment;
+  m.transparent = true;
+  m.depthWrite = false;
+  m.side = DoubleSide;
+  m.fog = false;
+  m.lights = false;
+  if (additive) m.blending = AdditiveBlending;
+  return m;
+}
 
 function MuzzleFlash() {
   const res = useMemo(() => {
-    const mk = (fragmentShader: string) =>
-      new ShaderMaterial({ vertexShader: flashVertex, fragmentShader, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, toneMapped: false });
+    const mk = (fragment: V4) => overlayMaterial(fragment, true);
     // Lưỡi lửa: tấm dài theo +z (hướng nòng), gốc ở đầu nòng.
     const tongue = new PlaneGeometry(0.07, 0.2).translate(0, 0.1, 0).rotateX(Math.PI / 2);
-    return { star: mk(starFragment), tongue: mk(tongueFragment), starGeo: new PlaneGeometry(0.16, 0.16), tongueGeo: tongue };
+    return { star: mk(starFragment() as V4), tongue: mk(tongueFragment() as V4), starGeo: new PlaneGeometry(0.16, 0.16), tongueGeo: tongue };
   }, []);
   useEffect(
     () => () => {
@@ -624,16 +706,7 @@ function MuzzleFlash() {
 function Reticle({ weapon, sight }: { weapon: string; sight: string }) {
   const def = SIGHTS[sight as SightId];
   const res = useMemo(() => {
-    const m = new ShaderMaterial({
-      vertexShader: flashVertex,
-      fragmentShader: /* glsl */ `
-        varying vec2 vUv;
-        void main() { gl_FragColor = vec4(3.0, 0.15, 0.1, 1.0); }`,
-      transparent: true,
-      depthWrite: false,
-      side: DoubleSide,
-      toneMapped: false,
-    });
+    const m = overlayMaterial(vec4(3, 0.15, 0.1, 1) as V4, false);
     return { m, dot: new CircleGeometry(0.0009, 12), ring: new RingGeometry(0.0055, 0.0064, 32) };
   }, []);
   useEffect(

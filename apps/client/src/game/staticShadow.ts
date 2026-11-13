@@ -1,15 +1,19 @@
-import { Mesh, ShaderChunk, Vector3, type DirectionalLight, type Object3D, type WebGLRenderer } from "three";
+import { DirectionalLight, Mesh, Vector3, type Object3D } from "three";
+import type { Node } from "three/webgpu";
+import { shadow } from "three/tsl";
 import { localPosition } from "./shared.ts";
 
 // Bóng tĩnh vẽ sẵn. Mặt đất, cây, nhà, đá chiếm phần lớn lệnh vẽ của bản đồ bóng mà gần như không bao giờ động đậy,
-// vậy mà trước đây cứ mỗi lần vẽ bóng (20–60 lần mỗi giây) CPU lại phải ra lệnh vẽ lại hết. Giờ có hai bản đồ bóng
-// cùng hướng mặt trời:
+// vậy mà nếu cứ mỗi lần vẽ bóng (20–60 lần mỗi giây) CPU lại phải ra lệnh vẽ lại hết thì rất phí. Giờ có hai bản đồ
+// bóng cùng hướng mặt trời:
 // - bản đồ tĩnh: chỉ vật thuộc nhánh "tĩnh" (StaticShadowRoot), phủ rộng hơn, chỉ vẽ lại khi người chơi đi xa khỏi
 //   tâm, mặt trời xoay đáng kể, hoặc thưa thưa vài giây một lần (nhà sập, cây đổ, vật mới hiện);
 // - bản đồ động: như cũ nhưng bỏ qua vật tĩnh, chỉ còn người, xe, trực thăng, đồ rơi...
-// Đèn thứ hai chỉ để giữ bản đồ tĩnh (cường độ 0, không chiếu sáng); mẩu shader `lights_fragment_begin` được vá để
-// ánh nắng nhân với cả hai bóng (vẽ ánh sáng đúng một lần). GPU lấy mẫu bóng thêm một lần mỗi điểm ảnh, đổi lại CPU
-// bớt hàng trăm lệnh vẽ mỗi lần vẽ bóng.
+// Đèn thứ hai (`keep`) chỉ để giữ bản đồ tĩnh: nó KHÔNG nằm trong cảnh nên không phải nguồn sáng nào cả, chỉ là chủ
+// của một bản đồ bóng. WebGPURenderer cho đèn đổ bóng đặt node bóng riêng (`light.shadow.shadowNode`): ở mặt trời,
+// bóng = bóng động × bóng tĩnh (`bindStaticShadow`); màu đèn (kể cả bóng mây gắn ở `colorNode`) nhân với bóng đó nên
+// ánh sáng vẫn tính đúng một lần. GPU lấy mẫu bóng thêm một lần mỗi điểm ảnh, đổi lại CPU bớt hàng trăm lệnh vẽ mỗi
+// lần vẽ bóng.
 
 /** Đang vẽ bản đồ bóng nào (đặt ngay trước khi three.js duyệt cảnh cho từng đèn). */
 let phase: "idle" | "dynamic" | "static" = "idle";
@@ -19,8 +23,8 @@ type Caster = Mesh & { _tenCast?: boolean; _tenStatic?: boolean };
 let installed = false;
 
 /**
- * Vá shader và `castShadow` của Mesh (gọi một lần trước khi dựng shader đầu tiên). Cảnh nào chỉ có một đèn đổ bóng
- * (sảnh chờ, xưởng súng...) thì shader y như cũ.
+ * Vá `castShadow` của Mesh (gọi một lần trước khi vẽ bóng lần đầu). Cảnh nào chỉ có một đèn đổ bóng (sảnh chờ, xưởng
+ * súng...) thì không ai gọi `bindStaticShadow`, `phase` luôn là "idle" và mọi thứ y như cũ.
  */
 export function installStaticShadows() {
   if (installed) return;
@@ -39,47 +43,33 @@ export function installStaticShadows() {
       this._tenCast = v;
     },
   });
-  const loop = ShaderChunk.lights_fragment_begin;
-  const start = loop.indexOf("#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )");
-  const end = loop.indexOf("#endif", loop.indexOf("#pragma unroll_loop_end", start)) + "#endif".length;
-  if (start < 0 || end < start) return;
-  ShaderChunk.lights_fragment_begin = loop.slice(0, start) + DIR_LIGHTS + loop.slice(end);
 }
 
-/** Vòng đèn hướng của three.js; có đúng hai đèn đổ bóng thì đèn thứ hai là bóng tĩnh, nhân vào đèn thứ nhất. */
-const DIR_LIGHTS = /* glsl */ `#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )
+/**
+ * Gắn bản đồ bóng tĩnh vào mặt trời: bóng nhận được = bóng động của `sun` × bóng tĩnh của `keep`. Gọi một lần ngay
+ * sau khi tạo cặp đèn, trước lần dựng shader đầu tiên của vật nhận bóng. `keep` chưa có trong cảnh nên ta tự giữ ma
+ * trận và độ rộng bản đồ cho nó (xem `updateStaticShadow`). Trả về hàm gỡ.
+ */
+export function bindStaticShadow(sun: DirectionalLight, keep: DirectionalLight): () => void {
+  keep.castShadow = true;
+  keep.shadow.autoUpdate = false;
+  hook(sun, "dynamic");
+  hook(keep, "static");
+  const slot = sun.shadow as unknown as { shadowNode?: unknown };
+  slot.shadowNode = (shadow(sun) as unknown as Node<"float">).mul(shadow(keep) as unknown as Node<"float">);
+  active = { sun, keep };
+  return () => {
+    delete slot.shadowNode;
+    if (active?.keep === keep) active = null;
+  };
+}
 
-	DirectionalLight directionalLight;
-	#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
-	DirectionalLightShadow directionalLightShadow;
-	#endif
-	#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS == 2
-	float tenStaticShadow = receiveShadow ? getShadow( directionalShadowMap[ 1 ], directionalLightShadows[ 1 ].shadowMapSize, directionalLightShadows[ 1 ].shadowIntensity, directionalLightShadows[ 1 ].shadowBias, directionalLightShadows[ 1 ].shadowRadius, vDirectionalShadowCoord[ 1 ] ) : 1.0;
-	#endif
+let active: { sun: DirectionalLight; keep: DirectionalLight } | null = null;
 
-	#pragma unroll_loop_start
-	for ( int i = 0; i < NUM_DIR_LIGHTS; i ++ ) {
-
-		#if !( defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS == 2 && UNROLLED_LOOP_INDEX == 1 )
-		directionalLight = directionalLights[ i ];
-
-		getDirectionalLightInfo( directionalLight, directLight );
-
-		#if defined( USE_SHADOWMAP ) && ( UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS )
-		directionalLightShadow = directionalLightShadows[ i ];
-		directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;
-		#endif
-		#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS == 2 && UNROLLED_LOOP_INDEX == 0
-		directLight.color *= tenStaticShadow;
-		#endif
-
-		RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
-		#endif
-
-	}
-	#pragma unroll_loop_end
-
-#endif`;
+/** Cặp đèn bóng hiện tại (cho dịch sẵn shader: đèn giữ bóng tĩnh không nằm trong cảnh nên không tìm thấy bằng duyệt cảnh). */
+export function staticShadowLights() {
+  return active;
+}
 
 // ------------------------------------------------------------------------------------------------- nhánh tĩnh
 
@@ -162,7 +152,7 @@ function hook(light: DirectionalLight, p: "dynamic" | "static") {
  * Gọi mỗi khung trước khi vẽ. `sun`: đèn mặt trời (bóng động, đã nhắm theo người chơi); `keep`: đèn giữ bóng tĩnh;
  * `slack`: người chơi đi xa khỏi tâm bản đồ tĩnh quá chừng này mét (theo mặt phẳng nhìn từ mặt trời) thì vẽ lại.
  */
-export function updateStaticShadow(gl: WebGLRenderer, sun: DirectionalLight, keep: DirectionalLight, slack: number, now: number) {
+export function updateStaticShadow(sun: DirectionalLight, keep: DirectionalLight, slack: number, now: number) {
   phase = "idle";
   hook(sun, "dynamic");
   hook(keep, "static");
@@ -190,9 +180,12 @@ export function updateStaticShadow(gl: WebGLRenderer, sun: DirectionalLight, kee
   lastCenter.copy(center);
   keep.position.copy(center).addScaledVector(dir, 80);
   keep.target.position.copy(center);
+  // Đèn giữ bóng nằm ngoài cảnh nên không ai cập nhật ma trận thế giới giùm.
+  keep.updateMatrixWorld();
   keep.target.updateMatrixWorld();
   // Vật mới gắn vào nhánh tĩnh được đánh dấu ngay khung này: vào bản đồ tĩnh, rời bản đồ động cùng lúc.
   for (const r of roots) tag(r);
   keep.shadow.needsUpdate = true;
-  gl.shadowMap.needsUpdate = true;
+  // Vật vừa đổi nhóm (tĩnh ↔ động) thì bản đồ động cũng phải vẽ lại ngay, kẻo vật còn bóng ở cả hai chỗ.
+  sun.shadow.needsUpdate = true;
 }

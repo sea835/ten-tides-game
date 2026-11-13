@@ -1,11 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { createRoot, useThree, type ReconcilerRoot } from "@react-three/fiber";
-import { ACESFilmicToneMapping, Box3, Group, OrthographicCamera, PMREMGenerator, SRGBColorSpace, Vector3, type Scene, type WebGLRenderer } from "three";
+import { ACESFilmicToneMapping, Box3, Group, OrthographicCamera, SRGBColorSpace, Vector3, type Scene } from "three";
+import { PMREMGenerator, type WebGPURenderer } from "three/webgpu";
+import { makeRenderer, type RendererOptions } from "../gpu/renderer.ts";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { GunModel, LootModel } from "../GunModel.tsx";
 
 // Ảnh nhỏ cho từng món trong cửa hàng và lời nhắc nhặt đồ: chụp thẳng từ mô hình 3D (GunModel.tsx) bằng MỘT
-// trình vẽ phụ chạy ngầm (một ngữ cảnh WebGL riêng, dựng khi cần, bỏ khi hết việc). Mỗi ảnh chụp một lần, lưu
+// trình vẽ phụ chạy ngầm (một WebGPURenderer riêng, tự lùi về WebGL 2, dựng khi cần, bỏ khi hết việc). Mỗi ảnh chụp một lần, lưu
 // thành data URL PNG nền trong trong bảng dùng chung cho mọi thành phần.
 // Súng và ống ngắm nhìn ngang từ bên phải (nòng chĩa sang phải màn hình), đồ khác nhìn chéo 3/4 từ trên xuống.
 
@@ -14,7 +16,7 @@ const H = 96;
 const DPR = 2;
 /** Số ảnh chụp mỗi khung hình (chụp dồn nhiều quá thì giao diện khựng). */
 const PER_FRAME = 3;
-/** Hết việc bao lâu thì bỏ ngữ cảnh WebGL phụ (ms). */
+/** Hết việc bao lâu thì bỏ trình vẽ phụ (ms). */
 const IDLE_DISPOSE = 8000;
 
 const icons = new Map<string, string>();
@@ -49,13 +51,15 @@ function ensureRoot(): Promise<void> {
   root = createRoot(canvas);
   ready = root
     .configure({
-      gl: { alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: "low-power" },
+      // Giữ buffer vẽ (preserveDrawingBuffer) cho nền WebGL 2; nền WebGPU đọc canvas ngay trong cùng tác vụ với lệnh vẽ.
+      gl: makeRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: "low-power" } as RendererOptions),
       size: { width: W, height: H, top: 0, left: 0 },
       dpr: DPR,
       frameloop: "never",
       shadows: false,
       // Cùng cách ánh xạ tông màu và không gian màu với cảnh chính (mặc định của R3F).
-      onCreated: ({ gl, scene }) => {
+      onCreated: ({ gl: glRaw, scene }) => {
+        const gl = glRaw as unknown as WebGPURenderer;
         gl.toneMapping = ACESFilmicToneMapping;
         gl.outputColorSpace = SRGBColorSpace;
         gl.setClearColor(0x000000, 0);
@@ -161,38 +165,55 @@ function frame(cam: OrthographicCamera, box: Box3, dir: Vector3) {
   cam.updateProjectionMatrix();
 }
 
-function snap(gl: WebGLRenderer, scene: Scene, cam: OrthographicCamera, obj: Group, dir: Vector3): string {
+async function snap(gl: WebGPURenderer, scene: Scene, cam: OrthographicCamera, obj: Group, dir: Vector3): Promise<string> {
   obj.updateWorldMatrix(true, true);
   _box.setFromObject(obj);
   if (_box.isEmpty()) return "";
   frame(cam, _box, dir);
+  // WebGPU dựng pipeline bất đồng bộ: chưa xong mà vẽ thì vật bị bỏ qua (ảnh trống). Biên dịch trước, rồi vẽ và đọc
+  // canvas ngay trong cùng một tác vụ (canvas WebGPU hết hạn sau tác vụ vẽ).
+  await gl.compileAsync(scene, cam);
   gl.render(scene, cam);
-  return gl.domElement.toDataURL("image/png");
+  return (gl.domElement as HTMLCanvasElement).toDataURL("image/png");
 }
 
 /** Dựng cùng lúc vài món (ẩn hết), rồi lần lượt hiện từng món, chụp, cất ảnh. */
 function Stage({ ids, done }: { ids: string[]; done: () => void }) {
-  const gl = useThree((s) => s.gl);
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer;
   const scene = useThree((s) => s.scene);
   const cam = useRef<OrthographicCamera>(null!);
   const groups = useRef<(Group | null)[]>([]);
-  useLayoutEffect(() => {
-    const list = groups.current;
-    try {
-      for (const g of list) if (g) g.visible = false;
-      ids.forEach((id, i) => {
-        const g = list[i];
-        if (!g) return;
-        g.visible = true;
-        _dir.copy(isGun(id) || id.startsWith("sight:") ? SIDE : THREE_Q);
-        const url = snap(gl, scene, cam.current, g, _dir);
-        g.visible = false;
-        icons.set(id, url);
-      });
-    } finally {
-      // Lỗi giữa chừng vẫn phải báo xong, không thì hàng đợi kẹt mãi.
-      done();
-    }
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const list = groups.current;
+      try {
+        for (const g of list) if (g) g.visible = false;
+        for (let i = 0; i < ids.length && alive; i++) {
+          const id = ids[i]!;
+          const g = list[i];
+          if (!g) continue;
+          g.visible = true;
+          _dir.copy(isGun(id) || id.startsWith("sight:") ? SIDE : THREE_Q);
+          let url = "";
+          try {
+            url = await snap(gl, scene, cam.current, g, _dir);
+          } finally {
+            // Lượt chạy cũ (StrictMode chạy effect hai lần) không được tắt vật mà lượt mới đang chụp.
+            if (alive) g.visible = false;
+          }
+          icons.set(id, url);
+        }
+      } catch (err) {
+        console.warn("[ItemIcons] không chụp được ảnh", err);
+      } finally {
+        // Lỗi giữa chừng vẫn phải báo xong, không thì hàng đợi kẹt mãi (lượt cũ đã bị thay thì để lượt mới báo).
+        if (alive) done();
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [ids, done, gl, scene]);
   return (
     <>

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { advance, useStore, useThree } from "@react-three/fiber";
+import type { WebGPURenderer } from "three/webgpu";
 import { getGraphics, perfStats, renderHints, targetDpr, useGraphics, useStatsOpen } from "./graphics.ts";
 import { paceInterval } from "./pacing.ts";
+import { rendererInfo } from "./gpu/renderer.ts";
 
 // Vòng lặp vẽ tự quản (Canvas đặt frameloop="never"): vẽ tối đa `fpsCap` khung hình mỗi giây thay vì theo tần số
 // màn hình (màn 120 Hz thì GPU làm gấp đôi mà mắt khó thấy khác, máy nóng, quạt rú). Nhịp vẽ là một số nguyên lần chu
@@ -47,8 +49,10 @@ export function FrameDriver() {
   useEffect(() => setScale(1), [g.quality, g.maxDpr, g.adaptive]);
 
   useEffect(() => {
-    // Tự đếm lệnh vẽ của cả khung hình (hậu kỳ vẽ nhiều lượt, để tự reset thì chỉ còn số của lượt cuối).
-    gl.info.autoReset = false;
+    // Tự đếm lệnh vẽ của cả khung hình (hậu kỳ và bóng đổ vẽ nhiều lượt, để tự reset thì chỉ còn số của lượt cuối).
+    // WebGPURenderer: `render.calls` đếm số lần gọi render() (không phải lệnh vẽ), lệnh vẽ thật nằm ở `drawCalls`.
+    const info = (gl as unknown as WebGPURenderer).info;
+    info.autoReset = false;
     let focused = document.hasFocus();
     const onFocus = () => (focused = true);
     const onBlur = () => (focused = false);
@@ -99,7 +103,7 @@ export function FrameDriver() {
         windowStart = t;
         prevFrame = t;
       }
-      gl.info.reset();
+      info.reset();
       const c0 = performance.now();
       advance((t - base) / 1000, true, store.getState());
       cpu += performance.now() - c0;
@@ -114,11 +118,13 @@ export function FrameDriver() {
       perfStats.frameMs = span / frames;
       perfStats.worstMs = worst;
       perfStats.cpuMs = cpu / frames;
-      perfStats.calls = gl.info.render.calls;
-      perfStats.triangles = gl.info.render.triangles;
-      perfStats.geometries = gl.info.memory.geometries;
-      perfStats.textures = gl.info.memory.textures;
-      perfStats.programs = gl.info.programs?.length ?? 0;
+      // Mỗi khung có nhiều lượt (bóng động, bóng tĩnh, cảnh, súng trước mặt, các bước hậu kỳ): `info` cộng dồn cả khung
+      // vì đã tắt tự reset và ta reset đầu mỗi khung; ở đây đọc số của khung vừa xong.
+      perfStats.calls = info.render.drawCalls;
+      perfStats.triangles = info.render.triangles;
+      perfStats.geometries = info.memory.geometries;
+      perfStats.textures = info.memory.textures;
+      perfStats.programs = info.memory.programs;
 
       if (settings.adaptive && focused && !renderHints.idle && !renderHints.covered && document.visibilityState === "visible") {
         const goal = cap > 0 ? 1000 / paceInterval(cap, period) : 60;
@@ -151,7 +157,7 @@ export function FrameDriver() {
       cancelAnimationFrame(raf);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("blur", onBlur);
-      gl.info.autoReset = true;
+      info.autoReset = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gl, store]);
@@ -186,6 +192,7 @@ export function PerfOverlay() {
       <div>
         {s.geometries} hình · {s.textures} ảnh · {s.programs} shader
       </div>
+      <div>nền {rendererInfo.backend === "webgpu" ? "WebGPU" : rendererInfo.backend === "webgl2" ? "WebGL 2 (dự phòng)" : "?"}</div>
     </div>
   );
 }

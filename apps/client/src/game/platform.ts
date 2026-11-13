@@ -1,6 +1,7 @@
 // Nhận diện máy chơi: hệ điều hành, trình duyệt, card đồ hoạ. Dùng để chọn mức đồ hoạ mặc định hợp máy và để báo
 // khi trình duyệt đang vẽ 3D bằng CPU (tắt tăng tốc phần cứng, card bị chặn): nguyên nhân hay gặp nhất khiến game
-// giật ngay từ sảnh trên Windows. Chỉ dò một lần, bằng một ngữ cảnh WebGL tạm rồi trả lại ngay cho trình duyệt.
+// giật ngay từ sảnh trên Windows. Chỉ dò một lần, bằng một ngữ cảnh WebGL tạm rồi trả lại ngay cho trình duyệt (WebGPU
+// chỉ dò xem có `navigator.gpu` không, không xin adapter ở đây).
 
 export type Os = "win" | "mac" | "linux" | "android" | "ios" | "other";
 export type Browser = "chrome" | "edge" | "firefox" | "safari" | "other";
@@ -11,8 +12,13 @@ export type GpuTier = "software" | "weak" | "ok" | "unknown";
 export interface PlatformInfo {
   os: Os;
   browser: Browser;
-  /** Có WebGL 2 không (three.js bản này bắt buộc WebGL 2). */
+  /** Có WebGL 2 không (nền dự phòng của WebGPURenderer khi trình duyệt không có WebGPU). */
   webgl2: boolean;
+  /**
+   * Trình duyệt có `navigator.gpu` không (WebGPU). Chỉ là điều kiện cần: máy vẫn có thể không xin được adapter (card
+   * quá cũ, bị chặn), khi đó renderer tự lùi về WebGL 2; nền đang chạy thật nằm ở `rendererInfo.backend`.
+   */
+  webgpu: boolean;
   /** Tên card đồ hoạ trình duyệt cho biết (có thể rỗng hay bị làm mờ, vd. Safari chỉ báo "Apple GPU"). */
   gpu: string;
   tier: GpuTier;
@@ -73,6 +79,6 @@ let info: PlatformInfo | null = null;
 
 /** Thông tin máy (dò lần đầu gọi, sau đó dùng lại). */
 export function platform(): PlatformInfo {
-  if (!info) info = { os: detectOs(), browser: detectBrowser(), ...probeGpu() };
+  if (!info) info = { os: detectOs(), browser: detectBrowser(), webgpu: typeof navigator !== "undefined" && "gpu" in navigator, ...probeGpu() };
   return info;
 }

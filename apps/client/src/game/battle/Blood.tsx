@@ -8,12 +8,12 @@ import {
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
-  ShaderMaterial,
-  UniformsLib,
-  UniformsUtils,
   Vector3,
   type InstancedMesh,
 } from "three";
+import { NodeMaterial } from "three/webgpu";
+import { Discard, Fn, attribute, texture, uv, vec4 } from "three/tsl";
+import { instancedBillboard } from "./gpuParticles.ts";
 import { WATER_LEVEL, type World } from "@tentides/content";
 import type { HurtMessage } from "@tentides/protocol";
 import { Messages } from "@tentides/protocol";
@@ -88,36 +88,21 @@ function mistTexture(): CanvasTexture {
   return new CanvasTexture(c);
 }
 
-/** Sương quay mặt về camera; màu, độ đậm từng cụm theo thuộc tính riêng. */
-const mistVertex = /* glsl */ `
-  attribute vec4 aTint;
-  varying vec2 vUv;
-  varying vec4 vTint;
-  #include <fog_pars_vertex>
-  void main() {
-    vUv = uv;
-    vTint = aTint;
-    vec3 center = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    float size = length(instanceMatrix[0].xyz);
-    vec4 mv = viewMatrix * modelMatrix * vec4(center, 1.0);
-    mv.xy += position.xy * size;
-    gl_Position = projectionMatrix * mv;
-    vec4 mvPosition = mv;
-    #include <fog_vertex>
-  }
-`;
-const mistFragment = /* glsl */ `
-  uniform sampler2D uMap;
-  varying vec2 vUv;
-  varying vec4 vTint;
-  #include <fog_pars_fragment>
-  void main() {
-    float a = texture2D(uMap, vUv).a * vTint.a;
-    if (a < 0.01) discard;
-    gl_FragColor = vec4(vTint.rgb, a);
-    #include <fog_fragment>
-  }
-`;
+/** Vật liệu sương máu: tấm xoay mặt về camera; màu, độ đậm từng cụm theo thuộc tính riêng (aTint). Sương theo cảnh. */
+function mistMaterial(map: CanvasTexture) {
+  const m = new NodeMaterial();
+  m.positionNode = instancedBillboard();
+  const mapNode = texture(map);
+  m.fragmentNode = Fn(() => {
+    const tint = attribute("aTint", "vec4");
+    const a = mapNode.sample(uv()).a.mul(tint.a);
+    Discard(a.lessThan(0.01));
+    return vec4(tint.rgb, a);
+  })();
+  m.transparent = true;
+  m.depthWrite = false;
+  return m;
+}
 
 const Z = new Vector3(0, 0, 1);
 const _v = new Vector3();
@@ -168,25 +153,17 @@ export function Blood({ room, world }: { room: IslandRoom; world: World }) {
   const res = useMemo(() => {
     const mistGeo = new PlaneGeometry(1, 1);
     mistGeo.setAttribute("aTint", tint);
-    const mistMat = new ShaderMaterial({
-      uniforms: UniformsUtils.merge([UniformsLib.fog, { uMap: { value: null } }]),
-      vertexShader: mistVertex,
-      fragmentShader: mistFragment,
-      transparent: true,
-      depthWrite: false,
-      fog: true,
-    });
+    const map = mistTexture();
+    const mistMat = mistMaterial(map);
     const dropGeo = new IcosahedronGeometry(1, 0);
     // Máu ướt: đỏ sẫm, hơi bóng.
     const dropMat = new MeshStandardMaterial({ color: new Color(0.32, 0.01, 0.01), roughness: 0.25, metalness: 0 });
     dropMat.userData.detail = "none";
-    return { mistGeo, mistMat, dropGeo, dropMat };
+    return { map, mistGeo, mistMat, dropGeo, dropMat };
   }, [tint]);
   useEffect(() => {
-    const map = mistTexture();
-    res.mistMat.uniforms.uMap!.value = map;
     return () => {
-      map.dispose();
+      res.map.dispose();
       res.mistGeo.dispose();
       res.mistMat.dispose();
       res.dropGeo.dispose();

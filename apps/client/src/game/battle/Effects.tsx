@@ -6,13 +6,11 @@ import {
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
-  Color,
   CylinderGeometry,
   DoubleSide,
   InstancedBufferAttribute,
   Object3D,
   PlaneGeometry,
-  ShaderMaterial,
   Vector3,
   type InstancedMesh,
   type LineLoop,
@@ -40,7 +38,10 @@ import { physicsProbe } from "./surface.ts";
 import { windStrength } from "../nature.ts";
 import { forEachSmoke, SmokeShells } from "./SmokeShell.tsx";
 import { Debris, spawnDebris } from "./Debris.tsx";
-import { MAX_EMBERS, blastPush, emberRing, emberVertex, embers, particleClock, puffRing, puffUniforms, puffVertex, puffs, setSmokeClears } from "./gpuParticles.ts";
+import { MAX_EMBERS, blastPush, emberPosition, emberRing, embers, instancedBillboard, noise2, particleClock, puffPosition, puffRing, puffTint, puffUniforms, puffs, setSmokeClears, sstep } from "./gpuParticles.ts";
+import { NodeMaterial } from "three/webgpu";
+import { Discard, Fn, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, float, length, mix, modelWorldMatrix, positionLocal, positionWorld, smoothstep, sin, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
+import type { F, V2 } from "../gpu/slots.ts";
 
 // Khói, tia lửa dùng chung (các nơi khác thêm hạt qua đây như trước).
 export { MAX_EMBERS, embers, puffs, type Ember, type Puff } from "./gpuParticles.ts";
@@ -59,40 +60,42 @@ const WIND_Z = 0.51;
 
 // ---------------------------------------------------------------------------- vùng an toàn
 
-const zoneVertex = /* glsl */ `
-  varying vec3 vWorld;
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    vec4 w = modelMatrix * vec4(position, 1.0);
-    vWorld = w.xyz;
-    gl_Position = projectionMatrix * viewMatrix * w;
-    // Tường vùng an toàn phải thấy từ xa dù camera chỉ nhìn tới tầm sương mù (camera.far theo sương, DayCycle):
-    // phần xa hơn mặt phẳng xa thì ép về sát mặt phẳng xa thay vì bị cắt mất.
-    gl_Position.z = min(gl_Position.z, gl_Position.w * 0.99999);
-  }
-`;
-const zoneFragment = /* glsl */ `
-  uniform float uTime;
-  varying vec3 vWorld;
-  varying vec2 vUv;
-  void main() {
-    float stripes = 0.5 + 0.5 * sin((vWorld.y * 0.9 + uTime * 2.0) + atan(vWorld.z, vWorld.x) * 40.0);
-    float fadeTop = 1.0 - smoothstep(0.35, 1.0, vUv.y);
-    float dist = length(cameraPosition.xz - vWorld.xz);
-    float near = 0.35 + 0.65 * smoothstep(120.0, 8.0, dist);
-    vec3 col = mix(vec3(0.15, 0.45, 1.0), vec3(0.55, 0.8, 1.0), stripes);
-    gl_FragColor = vec4(col * 1.6, (0.16 + 0.14 * stripes) * fadeTop * near);
-  }
-`;
+/**
+ * Vật liệu tường vùng an toàn (màn xanh cao vút, vân chạy). Tường phải thấy từ xa dù camera chỉ nhìn tới tầm sương mù
+ * (camera.far theo sương, DayCycle): phần xa hơn mặt phẳng xa thì ép về sát mặt phẳng xa thay vì bị cắt mất.
+ */
+function zoneMaterial(uTime: F) {
+  const m = new NodeMaterial();
+  m.vertexNode = Fn(() => {
+    const world = modelWorldMatrix.mul(vec4(positionLocal, 1));
+    const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(world);
+    return vec4(clip.x, clip.y, clip.z.min(clip.w.mul(0.99999)), clip.w);
+  })();
+  m.fragmentNode = Fn(() => {
+    const vUv = uv();
+    const stripes = float(0.5).add(float(0.5).mul(sin(positionWorld.y.mul(0.9).add(uTime.mul(2)).add(atan(positionWorld.z, positionWorld.x).mul(40)))));
+    const fadeTop = float(1).sub(smoothstep(0.35, 1.0, vUv.y));
+    const dist = length(cameraPosition.xz.sub(positionWorld.xz));
+    const near = float(0.35).add(sstep(120, 8, dist).mul(0.65));
+    const col = mix(vec3(0.15, 0.45, 1.0), vec3(0.55, 0.8, 1.0), stripes);
+    return vec4(col.mul(1.6), float(0.16).add(stripes.mul(0.14)).mul(fadeTop).mul(near));
+  })();
+  m.transparent = true;
+  m.depthWrite = false;
+  m.side = DoubleSide;
+  m.toneMapped = false;
+  m.fog = false;
+  return m;
+}
 
 function ZoneWall({ room }: { room: IslandRoom }) {
   const wall = useRef<Mesh>(null);
-  const material = useMemo(
-    () => new ShaderMaterial({ uniforms: { uTime: { value: 0 } }, vertexShader: zoneVertex, fragmentShader: zoneFragment, transparent: true, depthWrite: false, side: DoubleSide, toneMapped: false }),
-    [],
-  );
+  const { material, uTime } = useMemo(() => {
+    const uTime = uniform(0);
+    return { material: zoneMaterial(uTime), uTime };
+  }, []);
   const geometry = useMemo(() => new CylinderGeometry(1, 1, 1, 128, 1, true).translate(0, 0.5, 0), []);
+  useEffect(() => () => material.dispose(), [material]);
   useFrame(({ clock }) => {
     const z = room.state.zone;
     const m = wall.current;
@@ -103,7 +106,7 @@ function ZoneWall({ room }: { room: IslandRoom }) {
     m.visible = on;
     m.position.set(z.x, -20, z.z);
     m.scale.set(z.r, 160, z.r);
-    material.uniforms.uTime!.value = clock.elapsedTime;
+    uTime.value = clock.elapsedTime;
   });
   return <mesh ref={wall} geometry={geometry} material={material} frustumCulled={false} renderOrder={4} />;
 }
@@ -165,38 +168,31 @@ function puff(): CanvasTexture {
   return puffTexture;
 }
 
-const puffFragment = /* glsl */ `
-  uniform sampler2D uMap;
-  varying vec2 vUv;
-  varying vec4 vTint;
-  #include <fog_pars_fragment>
-  void main() {
+/** Vật liệu khói, bụi chung: tấm xoay mặt về camera, vị trí tính theo công thức đóng (puffPosition), sương theo cảnh. */
+function puffMaterial() {
+  const m = new NodeMaterial();
+  m.positionNode = puffPosition();
+  const map = texture(puff());
+  m.fragmentNode = Fn(() => {
+    const vUv = uv();
     // Mờ dần về mép tấm (ảnh khói chạm mép thì thấy góc vuông khi đè lên khối khói đặc).
-    float a = texture2D(uMap, vUv).a * vTint.a * (1.0 - smoothstep(0.32, 0.5, length(vUv - 0.5)));
-    if (a < 0.01) discard;
-    gl_FragColor = vec4(vTint.rgb, a);
-    #include <fog_fragment>
-  }
-`;
+    const a = map.sample(vUv).a.mul(puffTint.a).mul(float(1).sub(smoothstep(0.32, 0.5, length(vUv.sub(0.5)))));
+    Discard(a.lessThan(0.01));
+    return vec4(puffTint.rgb, a);
+  })();
+  m.transparent = true;
+  m.depthWrite = false;
+  return m;
+}
 
 /**
  * Khói, bụi chung của trận: hạt tính trên GPU (gpuParticles.ts). Mỗi khung chỉ chạy đồng hồ hạt, đặt gió, tải lên các
  * ô vừa ghi; trước đây CPU tích phân và ghép ma trận cho tới 900 hạt mỗi khung.
  */
 function Puffs() {
-  const material = useMemo(
-    () =>
-      new ShaderMaterial({
-        uniforms: { ...puffUniforms, uMap: { value: puff() }, fogColor: { value: new Color() }, fogNear: { value: 1 }, fogFar: { value: 1000 } },
-        vertexShader: puffVertex,
-        fragmentShader: puffFragment,
-        transparent: true,
-        depthWrite: false,
-        fog: true,
-      }),
-    [],
-  );
+  const material = useMemo(() => puffMaterial(), []);
   useEffect(() => () => puffRing.clear(), []);
+  useEffect(() => () => material.dispose(), [material]);
   useFrame((_, rawDt) => {
     // Đồng hồ hạt (dùng chung cho tia lửa): chạy chậm lại khi hitstop như trước.
     particleClock.value += Math.min(rawDt, 0.05) * hitStopScale();
@@ -266,6 +262,110 @@ function rnd(seed: number, i: number): number {
   return x - Math.floor(x);
 }
 
+/** Nhiễu phân đoạn 4 tầng (cuộn lửa). */
+function fbm2(p0: V2): F {
+  let p = p0;
+  let a = 0.5;
+  let v: F = float(0);
+  for (let k = 0; k < 4; k++) {
+    v = v.add(noise2(p).mul(a));
+    p = p.mul(2.03);
+    a *= 0.5;
+  }
+  return v;
+}
+
+/** Vật liệu cộng sáng không ánh sáng, không tone map (hậu kỳ lo), không sương: nền chung của lửa, vệt đạn, tia lửa. */
+function additiveMaterial(side?: typeof DoubleSide) {
+  const m = new NodeMaterial();
+  m.transparent = true;
+  m.depthWrite = false;
+  m.blending = AdditiveBlending;
+  if (side) m.side = side;
+  m.toneMapped = false;
+  m.fog = false;
+  return m;
+}
+
+/** Cầu lửa: tấm xoay mặt về camera, vân lửa sinh bằng nhiễu (lõi trắng vàng, rìa cam đỏ rồi tối thành khói). */
+function fireMaterial() {
+  const m = additiveMaterial();
+  m.positionNode = instancedBillboard();
+  m.fragmentNode = Fn(() => {
+    const vK = attribute("aK", "float");
+    const vSeed = attribute("aSeed", "float");
+    const p = uv().sub(0.5);
+    const d = length(p).mul(2);
+    // Vân lửa cuộn: nhiễu trôi lên theo tuổi, mép quả cầu lởm chởm.
+    const turb = fbm2(p.mul(3.5).add(vec2(vSeed.mul(7), vK.mul(-2.5).add(vSeed))));
+    const edge = float(0.62).add(turb.mul(0.38));
+    const body = float(1).sub(smoothstep(edge.mul(0.55), edge, d));
+    Discard(body.lessThanEqual(0.001));
+    const heat = vK.mul(1.25).oneMinus().mul(float(1.15).sub(d.mul(0.7))).add(turb.sub(0.5).mul(0.5)).clamp(0, 1);
+    const c0 = mix(vec3(0.12, 0.05, 0.02), vec3(1.0, 0.32, 0.04), smoothstep(0.05, 0.4, heat));
+    const c1 = mix(c0, vec3(1.0, 0.78, 0.3), smoothstep(0.45, 0.75, heat));
+    const col = mix(c1, vec3(1.0, 0.98, 0.85), smoothstep(0.8, 1.0, heat));
+    const glow = float(1.5).add(heat.mul(heat).mul(5));
+    const alpha = body.mul(float(1).sub(smoothstep(0.55, 1.0, vK)));
+    return vec4(col.mul(glow).mul(alpha), alpha);
+  })();
+  return m;
+}
+
+/** Sóng xung kích: vòng sáng loang trên mặt đất. */
+function ringMaterial() {
+  const m = additiveMaterial(DoubleSide);
+  m.fragmentNode = Fn(() => {
+    const vK = attribute("aK", "float");
+    const r = length(uv().sub(0.5)).mul(2);
+    const band = smoothstep(0.7, 0.93, r).mul(float(1).sub(smoothstep(0.93, 1.0, r)));
+    const a = band.mul(float(1).sub(vK)).mul(0.55);
+    return vec4(vec3(1.0, 0.85, 0.65).mul(a).mul(1.6), a);
+  })();
+  return m;
+}
+
+/** Tia lửa tính trên GPU (gpuParticles.ts): bay theo trọng lực, chậm dần, nhỏ dần. */
+function sparkMaterial() {
+  const m = additiveMaterial();
+  m.positionNode = emberPosition();
+  m.fragmentNode = Fn(() => {
+    const d = length(uv().sub(0.5)).mul(2);
+    const a = float(1).sub(smoothstep(0, 1, d));
+    return vec4(vec3(1.0, 0.6, 0.2).mul(5).mul(a), a);
+  })();
+  return m;
+}
+
+/** Vệt đạn: dải sáng mảnh, đậm giữa dải và tắt dần về đuôi. */
+function tracerMaterial() {
+  const m = additiveMaterial(DoubleSide);
+  m.fragmentNode = Fn(() => {
+    const vUv = uv();
+    const across = float(1).sub(vUv.x.sub(0.5).abs().mul(2));
+    const along = smoothstep(0, 0.5, vUv.y);
+    const k = across.mul(along);
+    return vec4(vec3(1.0, 0.85, 0.5).mul(6).mul(k), k);
+  })();
+  return m;
+}
+
+/** Chớp đầu nòng: ngôi sao ba cánh chói. */
+function flashMaterial() {
+  const m = additiveMaterial();
+  m.positionNode = instancedBillboard();
+  m.fragmentNode = Fn(() => {
+    const p = uv().sub(0.5);
+    const r = length(p).mul(2);
+    // atan(0, 0) không xác định (ra NaN trên vài GPU, NaN qua bloom thành mảng đen nhấp nháy): lệch một chút.
+    const a = atan(p.y, p.x.add(1e-5));
+    const star = float(0.55).add(float(0.45).mul(a.mul(3).cos().abs().pow(6)));
+    const core = float(1).sub(smoothstep(0, star, r));
+    return vec4(vec3(1.0, 0.8, 0.45).mul(8).mul(core), core);
+  })();
+  return m;
+}
+
 /**
  * Vụ nổ: chớp trắng lúc đầu, cụm cầu lửa cuồn cuộn (vân lửa sinh bằng nhiễu, lõi trắng vàng, rìa cam đỏ rồi tối
  * thành khói), vòng sóng xung kích lan trên mặt đất, tia lửa văng theo đường cong, đèn chớp soi sáng xung quanh.
@@ -276,114 +376,16 @@ function Blasts() {
   const fire = useRef<InstancedMesh>(null);
   const ring = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
-  const fireMat = useMemo(
-    () =>
-      new ShaderMaterial({
-        vertexShader: /* glsl */ `
-          varying vec2 vUv;
-          varying float vK;
-          varying float vSeed;
-          attribute float aK;
-          attribute float aSeed;
-          void main() {
-            vUv = uv;
-            vK = aK;
-            vSeed = aSeed;
-            vec3 center = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-            float size = length(instanceMatrix[0].xyz);
-            vec4 mv = viewMatrix * vec4(center, 1.0);
-            mv.xy += position.xy * size;
-            gl_Position = projectionMatrix * mv;
-          }`,
-        fragmentShader: /* glsl */ `
-          varying vec2 vUv;
-          varying float vK;
-          varying float vSeed;
-          float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-          float n(vec2 p) {
-            vec2 i = floor(p);
-            vec2 f = fract(p);
-            f = f * f * (3.0 - 2.0 * f);
-            return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
-          }
-          float fbm(vec2 p) {
-            float v = 0.0;
-            float a = 0.5;
-            for (int k = 0; k < 4; k++) { v += a * n(p); p *= 2.03; a *= 0.5; }
-            return v;
-          }
-          void main() {
-            vec2 p = vUv - 0.5;
-            float d = length(p) * 2.0;
-            // Vân lửa cuộn: nhiễu trôi lên theo tuổi, mép quả cầu lởm chởm.
-            float turb = fbm(p * 3.5 + vec2(vSeed * 7.0, -vK * 2.5 + vSeed));
-            float edge = 0.62 + 0.38 * turb;
-            float body = 1.0 - smoothstep(edge * 0.55, edge, d);
-            if (body <= 0.001) discard;
-            float heat = clamp((1.0 - vK * 1.25) * (1.15 - d * 0.7) + (turb - 0.5) * 0.5, 0.0, 1.0);
-            vec3 col = mix(vec3(0.12, 0.05, 0.02), vec3(1.0, 0.32, 0.04), smoothstep(0.05, 0.4, heat));
-            col = mix(col, vec3(1.0, 0.78, 0.3), smoothstep(0.45, 0.75, heat));
-            col = mix(col, vec3(1.0, 0.98, 0.85), smoothstep(0.8, 1.0, heat));
-            float glow = 1.5 + 5.0 * heat * heat;
-            float alpha = body * (1.0 - smoothstep(0.55, 1.0, vK));
-            gl_FragColor = vec4(col * glow * alpha, alpha);
-          }`,
-        transparent: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        toneMapped: false,
-      }),
-    [],
-  );
-  const ringMat = useMemo(
-    () =>
-      new ShaderMaterial({
-        uniforms: {},
-        vertexShader: /* glsl */ `
-          varying vec2 vUv;
-          varying float vK;
-          attribute float aK;
-          void main() {
-            vUv = uv;
-            vK = aK;
-            gl_Position = projectionMatrix * viewMatrix * instanceMatrix * vec4(position, 1.0);
-          }`,
-        fragmentShader: /* glsl */ `
-          varying vec2 vUv;
-          varying float vK;
-          void main() {
-            float r = length(vUv - 0.5) * 2.0;
-            float band = smoothstep(0.7, 0.93, r) * (1.0 - smoothstep(0.93, 1.0, r));
-            float a = band * (1.0 - vK) * 0.55;
-            gl_FragColor = vec4(vec3(1.0, 0.85, 0.65) * a * 1.6, a);
-          }`,
-        transparent: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        side: DoubleSide,
-        toneMapped: false,
-      }),
-    [],
-  );
-  const sparkMat = useMemo(
-    () =>
-      new ShaderMaterial({
-        // Tia lửa tính trên GPU (gpuParticles.ts): bay theo trọng lực, chậm dần, nhỏ dần.
-        uniforms: { uTime: particleClock },
-        vertexShader: emberVertex,
-        fragmentShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            float d = length(vUv - 0.5) * 2.0;
-            float a = 1.0 - smoothstep(0.0, 1.0, d);
-            gl_FragColor = vec4(vec3(1.0, 0.6, 0.2) * 5.0 * a, a);
-          }`,
-        transparent: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        toneMapped: false,
-      }),
-    [],
+  const fireMat = useMemo(() => fireMaterial(), []);
+  const ringMat = useMemo(() => ringMaterial(), []);
+  const sparkMat = useMemo(() => sparkMaterial(), []);
+  useEffect(
+    () => () => {
+      fireMat.dispose();
+      ringMat.dispose();
+      sparkMat.dispose();
+    },
+    [fireMat, ringMat, sparkMat],
   );
   const kAttr = useMemo(() => new InstancedBufferAttribute(new Float32Array(MAX_FIRE), 1), []);
   const seedAttr = useMemo(() => new InstancedBufferAttribute(new Float32Array(MAX_FIRE), 1), []);
@@ -656,60 +658,14 @@ function Tracers() {
   const mesh = useRef<InstancedMesh>(null);
   const flashes = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
-  const material = useMemo(
-    () =>
-      new ShaderMaterial({
-        vertexShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * viewMatrix * instanceMatrix * vec4(position, 1.0);
-          }`,
-        fragmentShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            float across = 1.0 - abs(vUv.x - 0.5) * 2.0;
-            float along = smoothstep(0.0, 0.5, vUv.y);
-            gl_FragColor = vec4(vec3(1.0, 0.85, 0.5) * 6.0 * across * along, across * along);
-          }`,
-        transparent: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        side: DoubleSide,
-        toneMapped: false,
-      }),
-    [],
-  );
-  const flashMat = useMemo(
-    () =>
-      new ShaderMaterial({
-        vertexShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            vec3 center = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-            float size = length(instanceMatrix[0].xyz);
-            vec4 mv = viewMatrix * vec4(center, 1.0);
-            mv.xy += position.xy * size;
-            gl_Position = projectionMatrix * mv;
-          }`,
-        fragmentShader: /* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            vec2 p = vUv - 0.5;
-            float r = length(p) * 2.0;
-            // atan(0, 0) không xác định (ra NaN trên vài GPU, NaN qua bloom thành mảng đen nhấp nháy): lệch một chút.
-            float a = atan(p.y, p.x + 1e-5);
-            float star = 0.55 + 0.45 * pow(abs(cos(a * 3.0)), 6.0);
-            float core = 1.0 - smoothstep(0.0, star, r);
-            gl_FragColor = vec4(vec3(1.0, 0.8, 0.45) * 8.0 * core, core);
-          }`,
-        transparent: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        toneMapped: false,
-      }),
-    [],
+  const material = useMemo(() => tracerMaterial(), []);
+  const flashMat = useMemo(() => flashMaterial(), []);
+  useEffect(
+    () => () => {
+      material.dispose();
+      flashMat.dispose();
+    },
+    [material, flashMat],
   );
   const geometry = useMemo(() => new PlaneGeometry(1, 1).translate(0, 0.5, 0), []);
   const flashGeo = useMemo(() => new PlaneGeometry(1, 1), []);

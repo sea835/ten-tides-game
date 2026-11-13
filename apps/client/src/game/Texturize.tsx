@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import type { WebGPURenderer } from "three/webgpu";
 import { useProfile } from "./graphics.ts";
 import { installDetailHook, setDetailEnabled } from "./textures.ts";
 import { scanScene } from "./shaderPrep.ts";
@@ -11,7 +12,7 @@ import { scanScene } from "./shaderPrep.ts";
  */
 export function Texturize() {
   const next = useRef(0);
-  const gl = useThree((s) => s.gl);
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer;
   const scene = useThree((s) => s.scene);
   const detail = useProfile().detail;
   // Đồ hoạ thấp thì tắt vân cho nhẹ máy (vật liệu vẫn vá sẵn, bật lại là có ngay).

@@ -1,27 +1,65 @@
-import type { Camera, DirectionalLight, Material, Mesh, Object3D, Scene, WebGLRenderer } from "three";
+import type { Camera, DirectionalLight, Material, Mesh, Object3D, RenderTarget, Scene } from "three";
+import type { WebGPURenderer } from "three/webgpu";
 import { detailMesh, detailScene } from "./textures.ts";
+import { staticShadowLights } from "./staticShadow.ts";
 
-// Dịch sẵn shader để khỏi khựng hình giữa trận. three.js dịch shader của một vật liệu ngay lần đầu vẽ nó, và lần
-// dịch đó chặn cả khung hình. Trên Windows, Chrome/Edge/Firefox vẽ WebGL qua ANGLE → Direct3D 11: mỗi shader phải dịch
-// GLSL → HLSL rồi qua trình biên dịch Direct3D, chậm hơn macOS (Metal) nhiều lần, mỗi lần có thể vài chục đến vài
-// trăm ms. Ở đây: vá vân trước (để shader dịch sẵn đúng là bản sẽ dùng), rồi dịch bằng compileAsync (trình duyệt
-// dịch song song qua KHR_parallel_shader_compile, không chặn khung hình).
+// Dịch sẵn shader để khỏi khựng hình giữa trận. WebGPURenderer dựng node và tạo pipeline của một vật liệu ngay lần
+// đầu vẽ nó, và lần đó chặn cả khung hình (WebGPU: createRenderPipeline; nền WebGL 2: dịch GLSL, trên Windows qua
+// ANGLE → Direct3D 11 còn chậm hơn nhiều). Ở đây: vá vân trước (để shader dịch sẵn đúng là bản sẽ dùng), rồi dịch
+// bằng compileAsync (tạo pipeline bất đồng bộ, không chặn khung hình).
+//
+// Pipeline phụ thuộc đích vẽ (định dạng, số mẫu MSAA của ảnh đích): có hậu kỳ thì cảnh vẽ vào ảnh của `pass`, không thì
+// vẽ ra màn hình; dịch sai đích thì lúc vẽ thật vẫn phải dịch lại. Nên nơi dựng chuỗi vẽ (Game.tsx) khai báo các đích
+// thật qua `setPrepTargets`.
 
-type WithProps = { properties: { get(o: object): { currentProgram?: unknown } } };
+/** Một đích vẽ cần dịch sẵn: `target` null là màn hình; `camera` riêng nếu lượt đó dùng camera khác (lớp súng trước mặt). */
+export interface PrepTarget {
+  target: RenderTarget | null;
+  camera?: Camera;
+}
+
+let prepTargets: PrepTarget[] = [{ target: null }];
+
+/** Khai báo các đích vẽ thật của khung hình (đổi chuỗi hậu kỳ thì gọi lại; vật liệu sẽ được dịch lại cho đích mới). */
+export function setPrepTargets(targets: PrepTarget[]) {
+  prepTargets = targets.length ? targets : [{ target: null }];
+  compiled = new WeakSet();
+}
+
+/** Dịch `o` cho mọi đích vẽ. Trạng thái đích chỉ được đọc ở đoạn chạy đồng bộ đầu compileAsync nên đặt rồi trả lại ngay. */
+function compile(gl: WebGPURenderer, o: Object3D, camera: Camera, scene?: Scene): Promise<unknown> {
+  const prev = gl.getRenderTarget();
+  const jobs: Promise<unknown>[] = [];
+  try {
+    for (const t of prepTargets) {
+      gl.setRenderTarget(t.target);
+      const cam = t.camera ?? camera;
+      jobs.push((scene ? gl.compileAsync(o, cam, scene) : gl.compileAsync(o, cam)).catch(() => {}));
+    }
+  } finally {
+    gl.setRenderTarget(prev);
+  }
+  return Promise.all(jobs);
+}
+
+/** Vật liệu đã gửi đi dịch (WebGPURenderer không cho hỏi vật liệu đã có shader chưa). */
+let compiled = new WeakSet<Material>();
 
 function materialsOf(o: Object3D): Material[] {
   const m = (o as { material?: Material | Material[] }).material;
   return !m ? [] : Array.isArray(m) ? m : [m];
 }
 
-function needsProgram(gl: WebGLRenderer, m: Material): boolean {
-  return (gl as unknown as WithProps).properties.get(m).currentProgram === undefined;
+function needsProgram(m: Material): boolean {
+  if (compiled.has(m)) return false;
+  compiled.add(m);
+  return true;
 }
 
 /** Vá vân rồi dịch sẵn shader của mọi vật liệu trong cảnh (kể cả vật đang ẩn, ngoài tầm nhìn). */
-export function prepareScene(gl: WebGLRenderer, scene: Scene, camera: Camera): Promise<unknown> {
+export function prepareScene(gl: WebGPURenderer, scene: Scene, camera: Camera): Promise<unknown> {
   detailScene(scene);
-  return gl.compileAsync(scene, camera).catch(() => {});
+  return compile(gl, scene, camera);
 }
 
 let busy = false;
@@ -31,14 +69,14 @@ let busy = false;
  * từng được vẽ (đồ rơi mới, người mới vào, xe mới...). Ít vật thì dịch từng vật (gom ánh sáng từ cả cảnh), nhiều thì
  * dịch lại cả cảnh một lượt. Trước đây là hai lượt duyệt riêng (vài nghìn vật mỗi lượt).
  */
-export function scanScene(gl: WebGLRenderer, scene: Scene, camera: Camera) {
+export function scanScene(gl: WebGPURenderer, scene: Scene, camera: Camera) {
   const fresh: Object3D[] = [];
   let many = false;
   scene.traverse((o) => {
     if ((o as { isMesh?: boolean }).isMesh) detailMesh(o as Mesh);
     if (busy || many) return;
     if (!(o as { isMesh?: boolean }).isMesh && !(o as { isPoints?: boolean }).isPoints && !(o as { isLine?: boolean }).isLine) return;
-    if (materialsOf(o).some((m) => needsProgram(gl, m))) {
+    if (materialsOf(o).some(needsProgram)) {
       fresh.push(o);
       if (fresh.length > 24) many = true;
     }
@@ -48,34 +86,43 @@ export function scanScene(gl: WebGLRenderer, scene: Scene, camera: Camera) {
   const done = () => {
     busy = false;
   };
-  if (many) void gl.compileAsync(scene, camera).catch(() => {}).finally(done);
-  else void Promise.all(fresh.map((o) => gl.compileAsync(o, camera, scene).catch(() => {}))).finally(done);
+  if (many) void compile(gl, scene, camera).finally(done);
+  else void Promise.all(fresh.map((o) => compile(gl, o, camera, scene))).finally(done);
 }
 
 /**
  * Bóng đổ dùng shader riêng (vẽ độ sâu từ phía mặt trời), compileAsync không dịch sẵn được. Mở vùng bóng ra phủ cả bản
  * đồ trong đúng một khung hình để mọi vật đổ bóng đều được vẽ vào bản đồ bóng một lần (shader của chúng dịch luôn lúc
  * đó), rồi trả về hàm khôi phục vùng bóng cũ (gọi ở khung sau). Gọi lúc cảnh còn bị menu che: khựng một lần ở đó thay
- * vì khựng lắt nhắt giữa trận.
+ * vì khựng lắt nhắt giữa trận. Cả đèn giữ bóng tĩnh (nằm ngoài cảnh) cũng được mở: vật tĩnh chỉ vẽ ở bản đồ của nó.
  */
-export function expandShadows(gl: WebGLRenderer, scene: Scene, reach = 800): (() => void) | null {
-  let sun: DirectionalLight | null = null;
+export function expandShadows(_gl: WebGPURenderer, scene: Scene, reach = 800): (() => void) | null {
+  const lights: DirectionalLight[] = [];
   scene.traverse((o) => {
-    if (!sun && (o as DirectionalLight).isDirectionalLight && o.castShadow) sun = o as DirectionalLight;
+    if ((o as DirectionalLight).isDirectionalLight && (o as DirectionalLight).castShadow) lights.push(o as DirectionalLight);
   });
-  if (!sun) return null;
-  const light: DirectionalLight = sun;
-  const cam = light.shadow.camera;
-  const saved = { left: cam.left, right: cam.right, top: cam.top, bottom: cam.bottom, near: cam.near, far: cam.far };
-  cam.left = cam.bottom = -reach;
-  cam.right = cam.top = reach;
-  cam.near = -reach;
-  cam.far = reach;
-  cam.updateProjectionMatrix();
-  gl.shadowMap.needsUpdate = true;
-  return () => {
-    Object.assign(cam, saved);
+  const keep = staticShadowLights()?.keep;
+  if (keep && !lights.includes(keep)) lights.push(keep);
+  if (!lights.length) return null;
+  const saved = lights.map((l) => {
+    const cam = l.shadow.camera;
+    return { cam, left: cam.left, right: cam.right, top: cam.top, bottom: cam.bottom, near: cam.near, far: cam.far };
+  });
+  for (const l of lights) {
+    const cam = l.shadow.camera;
+    cam.left = cam.bottom = -reach;
+    cam.right = cam.top = reach;
+    cam.near = -reach;
+    cam.far = reach;
     cam.updateProjectionMatrix();
-    gl.shadowMap.needsUpdate = true;
+    l.shadow.needsUpdate = true;
+  }
+  return () => {
+    for (const [i, l] of lights.entries()) {
+      const { cam, ...box } = saved[i]!;
+      Object.assign(cam, box);
+      cam.updateProjectionMatrix();
+      l.shadow.needsUpdate = true;
+    }
   };
 }

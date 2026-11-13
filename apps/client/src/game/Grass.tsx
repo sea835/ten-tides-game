@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
   BufferAttribute,
-  Camera,
+  OrthographicCamera,
   Color,
   DoubleSide,
   HalfFloatType,
@@ -12,18 +12,38 @@ import {
   Mesh,
   MeshStandardMaterial,
   Scene,
-  ShaderMaterial,
   Sphere,
   Vector3,
-  WebGLRenderTarget,
   type BufferGeometry,
-  type WebGLRenderer,
 } from "three";
+import { NodeMaterial, RenderTarget, type Texture, type WebGPURenderer } from "three/webgpu";
+import {
+  attribute,
+  cos,
+  faceDirection,
+  float,
+  fract,
+  length,
+  mix,
+  positionGeometry,
+  select,
+  sin,
+  smoothstep,
+  step,
+  texture,
+  transformNormalToView,
+  uniform,
+  uniformArray,
+  vec2,
+  vec3,
+  vec4,
+} from "three/tsl";
 import { MAP_HALF_SIZE } from "@tentides/content";
-import { CLOUD_PARS_GLSL, cloudLightsChunk, cloudTexture, cloudUniforms } from "./atmosphere.ts";
+import { cloudTexture } from "./atmosphere.ts";
+import { setSlot, type F, type V2, type V3, type V4 } from "./gpu/slots.ts";
 import { mulberry32, wind, windStrength } from "./nature.ts";
 import { reflectionHidden } from "./reflection.ts";
-import { TRAMPLE_GLSL, trampleUniforms } from "./trample.ts";
+import { tenTrample } from "./trample.ts";
 
 // Thảm cỏ dày quanh camera: hàng trăm nghìn lá cỏ vẽ bằng một lệnh (instancing). Mỗi lá cố định một chỗ trên
 // thế giới trong một ô vuông lặp lại theo camera: đi tới thì lá phía sau vòng lên phía trước, nên cỏ luôn phủ quanh
@@ -38,47 +58,37 @@ const CLEARINGS = 32;
  * Chụp địa hình từ trên xuống: ảnh màu (RGB màu đất, A mật độ cỏ) và ảnh độ cao. `run` vẽ vào hai ảnh, gọi trong
  * vòng lặp khung hình (vẽ ngay lúc React dựng cây thì renderer chưa sẵn sàng, ảnh ra trống).
  */
-function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[], half: number) {
-  const vertex = /* glsl */ `
-    attribute vec4 splat;
-    varying vec3 vColor;
-    varying float vGrass;
-    varying float vHeight;
-    void main() {
-      vColor = color;
-      // Cỏ mọc ở chỗ trọng số cỏ cao, trên mặt nước một đoạn.
-      vGrass = splat.y / max(splat.x + splat.y + splat.z + splat.w, 1e-3) * smoothstep(0.5, 1.0, position.y);
-      vHeight = position.y;
-      gl_Position = vec4(position.x / ${half.toFixed(1)}, position.z / ${half.toFixed(1)}, 0.5, 1.0);
-    }
-  `;
-  const colorMat = new ShaderMaterial({
-    vertexShader: vertex,
-    fragmentShader: "varying vec3 vColor; varying float vGrass; varying float vHeight; void main() { gl_FragColor = vec4(vColor, vGrass); }",
-    vertexColors: true,
+function bakeGround(gl: WebGPURenderer, geometries: BufferGeometry[], half: number) {
+  // Mỗi đỉnh tự đặt vị trí trên màn hình theo (x, z) của thế giới (nhìn từ trên xuống).
+  const vertexNode = vec4(positionGeometry.x.div(half), positionGeometry.z.div(half), 0.5, 1);
+  // Cỏ mọc ở chỗ trọng số cỏ cao, trên mặt nước một đoạn.
+  const splat = attribute("splat", "vec4") as V4;
+  const grass: F = splat.y.div(splat.x.add(splat.y).add(splat.z).add(splat.w).max(1e-3)).mul(smoothstep(0.5, 1, positionGeometry.y)).toVarying("tenBakeGrass");
+  const vertexColor = (attribute("color", "vec3") as V3).toVarying("tenBakeColor");
+  const height: F = positionGeometry.y.toVarying("tenBakeHeight");
+  const make = (fragmentNode: V4) => {
+    const m = new NodeMaterial();
+    m.vertexNode = vertexNode;
+    m.fragmentNode = fragmentNode;
     // Nhìn từ trên xuống theo trục z đảo chiều nên mặt tam giác bị lật: vẽ cả hai mặt.
-    side: DoubleSide,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const heightMat = new ShaderMaterial({
-    vertexShader: vertex,
-    fragmentShader: "varying vec3 vColor; varying float vGrass; varying float vHeight; void main() { gl_FragColor = vec4(vHeight, 0.0, 0.0, 1.0); }",
-    vertexColors: true,
-    // Nhìn từ trên xuống theo trục z đảo chiều nên mặt tam giác bị lật: vẽ cả hai mặt.
-    side: DoubleSide,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const make = (half: boolean) => {
-    const rt = new WebGLRenderTarget(BAKE_SIZE, BAKE_SIZE, { type: half ? HalfFloatType : undefined, depthBuffer: false });
+    m.side = DoubleSide;
+    m.depthTest = false;
+    m.depthWrite = false;
+    m.fog = false;
+    m.lights = false;
+    return m;
+  };
+  const colorMat = make(vec4(vertexColor, grass));
+  const heightMat = make(vec4(height, 0, 0, 1));
+  const makeTarget = (half: boolean) => {
+    const rt = new RenderTarget(BAKE_SIZE, BAKE_SIZE, { type: half ? HalfFloatType : undefined, depthBuffer: false });
     rt.texture.minFilter = LinearFilter;
     rt.texture.magFilter = LinearFilter;
     rt.texture.generateMipmaps = false;
     return rt;
   };
-  const color = make(false);
-  const height = make(true);
+  const color = makeTarget(false);
+  const heightTarget = makeTarget(true);
   const run = () => {
     const scene = new Scene();
     const meshes = geometries.map((g) => {
@@ -87,25 +97,30 @@ function bakeGround(gl: WebGLRenderer, geometries: BufferGeometry[], half: numbe
       scene.add(m);
       return m;
     });
-    const camera = new Camera();
+    // WebGPURenderer gọi updateProjectionMatrix trên camera: `Camera` trần làm bước nướng ném lỗi. Vật liệu nướng tự đặt
+    // vị trí clip (vertexNode) nên ma trận của camera này không ảnh hưởng hình.
+    const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const prev = gl.getRenderTarget();
     const clear = gl.getClearColor(new Color());
     const clearAlpha = gl.getClearAlpha();
-    gl.setRenderTarget(color);
-    gl.setClearColor(0x000000, 0);
-    gl.clear();
-    gl.render(scene, camera);
-    meshes.forEach((m) => (m.material = heightMat));
-    gl.setRenderTarget(height);
-    gl.setClearColor(0x000000, 1);
-    gl.clear();
-    gl.render(scene, camera);
-    gl.setRenderTarget(prev);
-    gl.setClearColor(clear, clearAlpha);
+    try {
+      gl.setRenderTarget(color);
+      gl.setClearColor(0x000000, 0);
+      gl.clear();
+      gl.render(scene, camera);
+      meshes.forEach((m) => (m.material = heightMat));
+      gl.setRenderTarget(heightTarget);
+      gl.setClearColor(0x000000, 1);
+      gl.clear();
+      gl.render(scene, camera);
+    } finally {
+      gl.setRenderTarget(prev);
+      gl.setClearColor(clear, clearAlpha);
+    }
   };
   return {
     color,
-    height,
+    height: heightTarget,
     run: () => {
       run();
       colorMat.dispose();
@@ -160,73 +175,70 @@ function wrapped(u: number, cam: number, tile: number): number {
   return cam + (t - Math.floor(t) - 0.5) * tile;
 }
 
-const VERTEX_HEAD = /* glsl */ `
-  uniform sampler2D uGroundColor;
-  uniform sampler2D uGroundHeight;
-  uniform vec3 uCam;
-  uniform float uHalf;
-  uniform float uTile;
-  uniform float uRadius;
-  uniform float uWind;
-  uniform float uWindStrength;
-  uniform vec3 uClear[${CLEARINGS}];
-  attribute vec4 aSeed;
-  varying vec3 vGrassColor;
-  varying float vTip;
-  varying float vShade;
-  varying vec2 vTenCloudXZ;
-  ${TRAMPLE_GLSL}
-`;
+/** Ô lặp quanh camera (m) và bán kính phủ cỏ (m). */
+const TILE = 68;
+const RADIUS = 34;
 
-const VERTEX_PLACE = /* glsl */ `
+/**
+ * Toàn bộ chỗ đứng, hình dáng, gió, giẫm rạp và màu của từng lá cỏ, tính trên đỉnh (vẽ instance, mỗi instance một lá
+ * với số ngẫu nhiên `aSeed`). Trả node cho ô vị trí, màu và pháp tuyến.
+ */
+function placeGrass(uniforms: { uCam: { value: Vector3 } & V3; uClear: Vector3[] }, groundColor: Texture, groundHeight: Texture, half: number) {
+  const seed = attribute("aSeed", "vec4") as V4;
+  const cam = uniforms.uCam as unknown as V3;
+  const clear = uniformArray(uniforms.uClear, "vec3");
   // Chỗ đứng cố định trên thế giới, lặp theo ô quanh camera.
-  vec2 gRel = (fract((aSeed.xy * uTile - uCam.xz) / uTile + 0.5) - 0.5) * uTile;
-  vec2 gXZ = uCam.xz + gRel;
-  vec2 gUV = gXZ / (uHalf * 2.0) + 0.5;
-  vec4 gGround = texture2D(uGroundColor, gUV);
-  float gY = texture2D(uGroundHeight, gUV).r;
-  float gDist = length(gRel);
-  float gFade = 1.0 - smoothstep(uRadius * 0.55, uRadius, gDist);
+  const rel = fract(seed.xy.mul(TILE).sub(cam.xz).div(TILE).add(0.5)).sub(0.5).mul(TILE);
+  const xz: V2 = cam.xz.add(rel);
+  const uv = xz.div(half * 2).add(0.5);
+  // Đọc ảnh ở đỉnh: bắt buộc chỉ rõ mức mip (không có đạo hàm ở vertex stage).
+  const ground = texture(groundColor, uv).level(float(0)) as unknown as V4;
+  const gY: F = (texture(groundHeight, uv).level(float(0)) as unknown as V4).r;
+  const dist = length(rel);
+  const fade = smoothstep(RADIUS * 0.55, RADIUS, dist).oneMinus();
   // Mật độ cỏ theo ảnh: chỗ thưa thì bớt lá (so với số ngẫu nhiên riêng của lá).
-  float gKeep = step(aSeed.z, gGround.a * 1.15 - 0.08);
-  // Chỗ người qua lại (trại, điểm sự kiện, chỗ đào) thì cỏ bị giẫm thấp dần vào giữa.
-  for (int i = 0; i < ${CLEARINGS}; i++) {
-    vec3 c = uClear[i];
-    gKeep *= smoothstep(c.z * 0.6, c.z, length(gXZ - c.xy) + (aSeed.z - 0.5) * 0.8);
+  let keep: F = step(seed.z, ground.a.mul(1.15).sub(0.08));
+  // Chỗ người qua lại (trại, điểm sự kiện, chỗ đào) thì cỏ bị giẫm thấp dần vào giữa (ô trống bán kính 0: bỏ qua).
+  for (let i = 0; i < CLEARINGS; i++) {
+    const c = clear.element(i) as unknown as V3;
+    const near = smoothstep(c.z.mul(0.6), c.z, length(xz.sub(c.xy)).add(seed.z.sub(0.5).mul(0.8)));
+    keep = keep.mul(select(c.z.greaterThan(0), near, float(1)));
   }
-  float gHeight = (0.32 + aSeed.w * aSeed.w * 0.6) * gFade * gKeep * (0.6 + 0.4 * gGround.a);
-  float gAngle = fract(aSeed.z * 7.13 + aSeed.w * 3.7) * 6.28318;
-  vec2 gDir = vec2(cos(gAngle), sin(gAngle));
-  vec2 gPerp = vec2(-gDir.y, gDir.x);
-  float gT = position.y;
-  float gWidth = position.x * (0.05 + aSeed.w * 0.03) * (1.0 - gT * 0.8);
-  float gLean = (0.12 + fract(aSeed.w * 13.1) * 0.4) * gT * gT * gHeight;
+  const height: F = seed.w.mul(seed.w).mul(0.6).add(0.32).mul(fade).mul(keep).mul(ground.a.mul(0.4).add(0.6));
+  const angle = fract(seed.z.mul(7.13).add(seed.w.mul(3.7))).mul(6.28318);
+  const dir = vec2(cos(angle), sin(angle));
+  const perp = vec2(dir.y.negate(), dir.x);
+  const t: F = positionGeometry.y;
+  const width = positionGeometry.x.mul(seed.w.mul(0.03).add(0.05)).mul(t.mul(0.8).oneMinus());
+  const lean = fract(seed.w.mul(13.1)).mul(0.4).add(0.12).mul(t).mul(t).mul(height);
   // Gió: từng đợt gió lướt qua bãi cỏ thành sóng.
-  float gGust = sin(uWind * 2.2 + gXZ.x * 0.28 + gXZ.y * 0.17) * 0.6 + sin(uWind * 3.7 + gXZ.x * 0.9 - gXZ.y * 0.6) * 0.25;
-  vec2 gWindOff = vec2(0.85, 0.5) * (gGust + 0.4) * 0.22 * uWindStrength * gT * gT * gHeight;
+  const gust = sin(wind.mul(2.2).add(xz.x.mul(0.28)).add(xz.y.mul(0.17))).mul(0.6).add(sin(wind.mul(3.7).add(xz.x.mul(0.9)).sub(xz.y.mul(0.6))).mul(0.25));
+  const windOff = vec2(0.85, 0.5).mul(gust.add(0.4)).mul(0.22).mul(windStrength).mul(t).mul(t).mul(height);
   // Người, xe đi qua thì lá dạt ra hai bên và rạp xuống; vụ nổ quét một vòng rạp cỏ (trample.ts).
-  vec3 gTr = gHeight > 0.0 ? tenTrample(gXZ) : vec3(0.0);
-  gWindOff = gWindOff * (1.0 - gTr.z * 0.7) + gTr.xy * (0.55 + 0.4 * gTr.z) * gT * gHeight;
-  vec3 gPos = vec3(
-    gXZ.x + gPerp.x * gWidth + gDir.x * gLean + gWindOff.x,
-    gY - 0.02 + gT * gHeight * (1.0 - 0.62 * gTr.z),
-    gXZ.y + gPerp.y * gWidth + gDir.y * gLean + gWindOff.y
+  const tr = tenTrample(xz);
+  const off = windOff.mul(tr.z.mul(0.7).oneMinus()).add(tr.xy.mul(tr.z.mul(0.4).add(0.55)).mul(t).mul(height));
+  const position = vec3(
+    xz.x.add(perp.x.mul(width)).add(dir.x.mul(lean)).add(off.x),
+    gY.sub(0.02).add(t.mul(height).mul(tr.z.mul(0.62).oneMinus())),
+    xz.y.add(perp.y.mul(width)).add(dir.y.mul(lean)).add(off.y),
   );
-  vTenCloudXZ = gXZ;
   // Mỗi lá một sắc: lá non xanh tươi, lá già ngả vàng, lá khuất sẫm hơn.
-  float gHue = fract(aSeed.w * 71.3 + aSeed.z * 13.7);
-  vec3 gTint = mix(vec3(0.85, 1.12, 0.62), vec3(1.25, 1.1, 0.55), smoothstep(0.7, 1.0, gHue));
-  vGrassColor = gGround.rgb * gTint;
-  vShade = 0.7 + 0.6 * fract(aSeed.x * 91.7 + aSeed.y * 37.1);
-  vTip = gT;
-`;
+  const hue = fract(seed.w.mul(71.3).add(seed.z.mul(13.7)));
+  const tint = mix(vec3(0.85, 1.12, 0.62), vec3(1.25, 1.1, 0.55), smoothstep(0.7, 1, hue));
+  const base = (ground.rgb.mul(tint).toVarying("tenGrassColor") as V3).mul(seed.x.mul(91.7).add(seed.y.mul(37.1)).fract().mul(0.6).add(0.7).toVarying("tenGrassShade") as F);
+  const tip = t.toVarying("tenGrassTip");
+  // Gốc lá tối (bóng của chính bãi cỏ), ngọn sáng và ngả vàng nhạt; nền màu đất nơi lá mọc.
+  const color = vec4(mix(base.mul(0.3), base.mul(1.45).add(vec3(0.015, 0.02, 0)), tip.pow(0.8)), 1);
+  const normal = transformNormalToView(vec3(dir.x.mul(0.35), 1, dir.y.mul(0.35)).normalize()).mul(faceDirection);
+  return { colors: { position, color, normal } };
+}
 
 /**
  * `clearings(out)` ghi các khoảng trống [x, z, bán kính] vào mảng (gọi mỗi khung hình, trại dời được);
  * chỗ thừa để bán kính 0.
  */
 export function GrassField({ geometries, count, clearings, heightAt, half = MAP_HALF_SIZE }: { geometries: BufferGeometry[]; count: number; clearings: (out: Vector3[]) => void; heightAt: (x: number, z: number) => number; half?: number }) {
-  const gl = useThree((s) => s.gl);
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer;
   // Tạo và huỷ ảnh nướng trong cùng một effect (StrictMode, sửa nóng khi dev chạy effect hai lần).
   const [baked, setBaked] = useState<ReturnType<typeof bakeGround> | null>(null);
   useEffect(() => {
@@ -246,48 +258,26 @@ export function GrassField({ geometries, count, clearings, heightAt, half = MAP_
 
   const uniforms = useMemo(
     () => ({
-      uGroundColor: { value: baked?.color.texture ?? null },
-      uGroundHeight: { value: baked?.height.texture ?? null },
-      uCam: { value: new Vector3() },
-      uHalf: { value: half },
-      uTile: { value: 68 },
-      uRadius: { value: 34 },
-      uWind: wind,
-      uWindStrength: windStrength,
-      uClear: { value: Array.from({ length: CLEARINGS }, () => new Vector3()) },
+      uCam: uniform(new Vector3()),
+      uClear: Array.from({ length: CLEARINGS }, () => new Vector3()),
     }),
-    [baked, half],
+    [],
   );
 
   const material = useMemo(() => {
+    if (!baked) return null;
     const m = new MeshStandardMaterial({ roughness: 0.8, side: DoubleSide });
     m.userData.detail = "none";
-    m.customProgramCacheKey = () => "grass-field";
     cloudTexture();
-    m.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms, trampleUniforms, cloudUniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", `#include <common>\n${VERTEX_HEAD}`)
-        .replace(
-          "#include <beginnormal_vertex>",
-          `${VERTEX_PLACE}\n  // Pháp tuyến ngả lên trời: cả bãi cỏ sáng tối theo nắng như mặt đất, không lốm đốm từng lá.\n  vec3 objectNormal = normalize(vec3(gDir.x * 0.35, 1.0, gDir.y * 0.35));`,
-        )
-        .replace("#include <begin_vertex>", "vec3 transformed = gPos;");
-      shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", `#include <common>\nvarying vec3 vGrassColor;\nvarying float vTip;\nvarying float vShade;\nvarying vec2 vTenCloudXZ;\n${CLOUD_PARS_GLSL}`)
-        // Bóng mây trôi qua bãi cỏ cùng nhịp với mặt đất.
-        .replace("#include <lights_fragment_begin>", cloudLightsChunk("vTenCloudXZ"))
-        .replace(
-          "#include <color_fragment>",
-          /* glsl */ `#include <color_fragment>
-          // Gốc lá tối (bóng của chính bãi cỏ), ngọn sáng và ngả vàng nhạt; nền màu đất nơi lá mọc.
-          vec3 gBase = vGrassColor * vShade;
-          diffuseColor.rgb = mix(gBase * 0.3, gBase * 1.45 + vec3(0.015, 0.02, 0.0), pow(vTip, 0.8));`,
-        );
-    };
+    // Bóng mây tự đến qua đèn mặt trời (shadeLightWithClouds): vật liệu có ánh sáng nên khỏi vá riêng.
+    const { colors } = placeGrass(uniforms, baked.color.texture, baked.height.texture, half);
+    setSlot(m, "positionNode", colors.position);
+    setSlot(m, "colorNode", colors.color);
+    // Pháp tuyến ngả lên trời: cả bãi cỏ sáng tối theo nắng như mặt đất, không lốm đốm từng lá.
+    setSlot(m, "normalNode", colors.normal);
     return m;
-  }, [uniforms]);
-  useEffect(() => () => material.dispose(), [material]);
+  }, [uniforms, baked, half]);
+  useEffect(() => () => material?.dispose(), [material]);
   // Thảm cỏ không vẽ vào ảnh phản chiếu của mặt nước (nặng mà gần như không thấy).
   useEffect(() => {
     const list = meshes.current.slice();
@@ -301,12 +291,12 @@ export function GrassField({ geometries, count, clearings, heightAt, half = MAP_
       baked.run();
     }
     uniforms.uCam.value.copy(camera.position);
-    for (const v of uniforms.uClear.value) v.set(0, 0, 0);
-    clearings(uniforms.uClear.value);
+    for (const v of uniforms.uClear) v.set(0, 0, 0);
+    clearings(uniforms.uClear);
 
     // Đặt khung bao từng ô theo chỗ ô đang đứng quanh camera; three.js tự bỏ ô ngoài khung hình.
-    const tile = uniforms.uTile.value;
-    const radius = uniforms.uRadius.value;
+    const tile = TILE;
+    const radius = RADIUS;
     const cell = tile / CHUNKS;
     const cx = camera.position.x;
     const cz = camera.position.z;
@@ -344,7 +334,7 @@ export function GrassField({ geometries, count, clearings, heightAt, half = MAP_
     }
   });
 
-  if (!baked) return null;
+  if (!baked || !material) return null;
   return (
     <>
       {chunks.map((g, k) => (

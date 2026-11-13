@@ -17,7 +17,9 @@ Encoder.BUFFER_SIZE = 128 * 1024;
 await initDb();
 
 const server = defineServer({
-  transport: new WebSocketTransport(),
+  // PING_INTERVAL_MS=0 tắt việc ngắt client không đáp ping (mặc định 3 giây một lần): dùng khi kiểm tra bằng trình duyệt
+  // không màn hình vẽ bằng CPU, một khung hình có thể treo cả chục giây lúc dịch shader.
+  transport: new WebSocketTransport(process.env.PING_INTERVAL_MS !== undefined ? { pingInterval: Number(process.env.PING_INTERVAL_MS) } : {}),
   // API tài khoản, gacha (/api/...) chạy chung cổng với Colyseus.
   express: (app) => {
     app.use(apiMiddleware);

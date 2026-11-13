@@ -1,18 +1,19 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import type { WebGPURenderer } from "three/webgpu";
 import type { IslandRoom } from "../../net.ts";
 import { useRoomSnapshot } from "../useRoomSnapshot.ts";
 import { expandShadows, prepareScene } from "../shaderPrep.ts";
 
 // Biên dịch sẵn shader của mọi vật liệu đang có trong cảnh (kể cả vật đang ẩn: hiệu ứng súng, đồ rơi, xe...) ngay khi
-// vào bản đồ và lúc trận bắt đầu, bằng compileAsync (trình duyệt dịch song song, không chặn khung hình). Trước đây
+// vào bản đồ và lúc trận bắt đầu, bằng compileAsync (tạo pipeline bất đồng bộ, không chặn khung hình). Trước đây
 // shader chỉ được dịch lần đầu vật xuất hiện trên màn hình: phát bắn, vụ nổ, người mới lọt vào tầm nhìn đầu tiên
 // làm khung hình khựng lại vài chục đến vài trăm ms ("giật lag" giữa trận). Vân chi tiết được vá trước khi dịch (nếu
 // không, shader dịch sẵn là bản chưa vá, lúc vá xong lại phải dịch lại). Lần đầu dịch xong thì mở vùng bóng phủ cả
 // bản đồ một khung để dịch luôn shader bóng đổ (shaderPrep.ts).
 
 export function ShaderWarmup({ room }: { room: IslandRoom }) {
-  const gl = useThree((s) => s.gl);
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer;
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const phase = useRoomSnapshot(room, (s) => s.phase);

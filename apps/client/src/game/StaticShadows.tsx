@@ -1,47 +1,47 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
-import type { DirectionalLight, Group } from "three";
+import { DirectionalLight, type Group } from "three";
 import type { Profile } from "./graphics.ts";
-import { addStaticRoot, releaseStaticRoots, updateStaticShadow } from "./staticShadow.ts";
+import { addStaticRoot, bindStaticShadow, releaseStaticRoots, updateStaticShadow } from "./staticShadow.ts";
 
 /** Bản đồ bóng tĩnh phủ rộng gấp rưỡi vùng bóng động (cùng độ nét: cỡ bản đồ cũng gấp rưỡi). */
 const REACH = 1.5;
 
 /**
- * Đèn giữ bản đồ bóng tĩnh (cường độ 0, không chiếu sáng), đặt ngay sau đèn mặt trời trong cùng một nhóm: shader coi
- * đèn đổ bóng thứ hai là bóng tĩnh.
+ * Đèn giữ bản đồ bóng tĩnh (cường độ 0, không chiếu sáng, không nằm trong cảnh): chỉ là chủ của một bản đồ bóng thứ
+ * hai, được nhân vào bóng của mặt trời (xem staticShadow.ts). Đèn tạo lại khi đổi mức đồ hoạ (nhóm mặt trời đổi key).
  */
 export function StaticSun({ sun, profile }: { sun: RefObject<DirectionalLight | null>; profile: Profile }) {
-  const keep = useRef<DirectionalLight>(null);
   const e = profile.shadowExtent * REACH;
   const size = Math.min(4096, Math.round(profile.shadowMap * REACH));
+  const keep = useMemo(() => {
+    const k = new DirectionalLight(0xffffff, 0);
+    k.shadow.mapSize.set(size, size);
+    k.shadow.bias = -0.0003;
+    k.shadow.normalBias = 0.04;
+    k.shadow.radius = profile.shadowRadius;
+    const c = k.shadow.camera;
+    c.left = c.bottom = -e;
+    c.right = c.top = e;
+    c.far = 180;
+    c.updateProjectionMatrix();
+    return k;
+  }, [e, size, profile.shadowRadius]);
   useEffect(() => {
-    const k = keep.current;
-    if (k) k.shadow.autoUpdate = false;
-    return releaseStaticRoots;
-  }, []);
-  useFrame(({ gl, clock }) => {
     const s = sun.current;
-    const k = keep.current;
+    const unbind = s ? bindStaticShadow(s, keep) : undefined;
+    return () => {
+      unbind?.();
+      releaseStaticRoots();
+      keep.dispose();
+    };
+  }, [sun, keep]);
+  useFrame(({ clock }) => {
+    const s = sun.current;
     // Người chơi đi xa khỏi tâm quá phần dư (vùng tĩnh rộng hơn vùng động) thì vẽ lại, để vùng động luôn nằm gọn trong.
-    if (s && k) updateStaticShadow(gl, s, k, e - profile.shadowExtent, clock.elapsedTime);
+    if (s) updateStaticShadow(s, keep, e - profile.shadowExtent, clock.elapsedTime);
   });
-  return (
-    <directionalLight
-      ref={keep}
-      intensity={0}
-      castShadow
-      shadow-mapSize={[size, size]}
-      shadow-bias={-0.0003}
-      shadow-normalBias={0.04}
-      shadow-radius={profile.shadowRadius}
-      shadow-camera-left={-e}
-      shadow-camera-right={e}
-      shadow-camera-top={e}
-      shadow-camera-bottom={-e}
-      shadow-camera-far={180}
-    />
-  );
+  return null;
 }
 
 /** Nhánh cảnh đứng yên (địa hình, cây, nhà, đá): bóng vẽ vào bản đồ tĩnh, không vẽ lại theo từng khung. */

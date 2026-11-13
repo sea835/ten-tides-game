@@ -1,6 +1,10 @@
-import { Suspense, useEffect, useMemo, useRef, type RefObject } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { CanvasTexture, Color, DoubleSide, InstancedBufferAttribute, InstancedBufferGeometry, PlaneGeometry, SRGBColorSpace, ShaderMaterial, Vector3, type PerspectiveCamera } from "three";
+import { CanvasTexture, Color, DoubleSide, InstancedBufferAttribute, InstancedBufferGeometry, PlaneGeometry, SRGBColorSpace, Vector3, type PerspectiveCamera } from "three";
+import { NodeMaterial } from "three/webgpu";
+import { abs, attribute, cameraProjectionMatrix, cameraViewMatrix, cos, float, positionGeometry, sin, uniform, vec3, vec4 } from "three/tsl";
+import { makeRenderer } from "../game/gpu/renderer.ts";
+import type { F, V3, V4 } from "../game/gpu/slots.ts";
 import { Character, type Motion } from "../game/Character.tsx";
 import { pulseNeon } from "../game/skinMaterials.ts";
 import { getGraphics, targetDpr } from "../game/graphics.ts";
@@ -126,7 +130,7 @@ const CONFETTI = 220;
 
 /** Giấy kim tuyến rơi xoay: mọi chuyển động tính trong shader theo thời gian (CPU không phải làm gì mỗi khung). */
 function Confetti() {
-  const { geometry, material } = useMemo(() => {
+  const { geometry, material, time } = useMemo(() => {
     const base = new PlaneGeometry(0.05, 0.085);
     const geometry = new InstancedBufferGeometry();
     geometry.index = base.index;
@@ -142,25 +146,28 @@ function Confetti() {
     geometry.setAttribute("seed", new InstancedBufferAttribute(seed, 4));
     geometry.setAttribute("tint", new InstancedBufferAttribute(tint, 3));
     geometry.instanceCount = CONFETTI;
-    const material = new ShaderMaterial({
-      side: DoubleSide,
-      uniforms: { time: { value: 0 } },
-      vertexShader: `attribute vec4 seed; attribute vec3 tint; uniform float time; varying vec3 vC;
-        void main(){
-          float t = time * seed.w * 0.32 + seed.y * 6.0;
-          float y = 5.2 - mod(t, 6.0);
-          vec3 c = vec3(seed.x * 7.0 - 3.5 + sin(t * 1.3 + seed.z * 6.0) * 0.35, y, seed.z * 3.2 - 1.8);
-          float a = t * 4.0 + seed.x * 10.0;
-          vec3 p = position;
-          p.xy = mat2(cos(a), -sin(a), sin(a), cos(a)) * p.xy;
-          float b = a * 0.7;
-          p.yz = mat2(cos(b), -sin(b), sin(b), cos(b)) * p.yz;
-          vC = tint * (0.45 + 0.55 * abs(cos(b)));
-          gl_Position = projectionMatrix * viewMatrix * vec4(c + p, 1.0);
-        }`,
-      fragmentShader: "varying vec3 vC; void main(){ gl_FragColor = vec4(vC, 1.0); }",
-    });
-    return { geometry, material };
+    const time = uniform(0);
+    const material = new NodeMaterial();
+    material.side = DoubleSide;
+    material.fog = false;
+    const sd = attribute("seed", "vec4") as V4;
+    const tn = attribute("tint", "vec3") as V3;
+    const t = time.mul(sd.w).mul(0.32).add(sd.y.mul(6)) as F;
+    const y = float(5.2).sub(t.mod(6)) as F;
+    const c = vec3(sd.x.mul(7).sub(3.5).add(sin(t.mul(1.3).add(sd.z.mul(6))).mul(0.35)), y, sd.z.mul(3.2).sub(1.8)) as V3;
+    const a = t.mul(4).add(sd.x.mul(10)) as F;
+    const b = a.mul(0.7) as F;
+    const p = positionGeometry;
+    // Xoay như mat2(cos, -sin, sin, cos) của GLSL (xếp theo cột): (x', y') = (cos*x + sin*y, -sin*x + cos*y).
+    const x1 = cos(a).mul(p.x).add(sin(a).mul(p.y)) as F;
+    const y1 = sin(a).negate().mul(p.x).add(cos(a).mul(p.y)) as F;
+    const y2 = cos(b).mul(y1).add(sin(b).mul(p.z)) as F;
+    const z2 = sin(b).negate().mul(y1).add(cos(b).mul(p.z)) as F;
+    material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(c.add(vec3(x1, y2, z2)), 1));
+    // Màu theo mặt đang quay (nhấp nháy khi tờ giấy lật), tính ở đỉnh rồi nội suy như bản cũ.
+    const vC = (tn.mul(abs(cos(b)).mul(0.55).add(0.45)) as V3).toVarying();
+    material.fragmentNode = vec4(vC, 1);
+    return { geometry, material, time };
   }, []);
   useEffect(
     () => () => {
@@ -170,7 +177,7 @@ function Confetti() {
     [geometry, material],
   );
   useFrame(({ clock }) => {
-    material.uniforms.time!.value = clock.elapsedTime;
+    time.value = clock.elapsedTime;
   });
   return <mesh geometry={geometry} material={material} frustumCulled={false} />;
 }
@@ -222,8 +229,9 @@ function NeonPulse() {
 }
 
 export default function PodiumStage({ heroes, skip, labels }: { heroes: PodiumHero[]; skip: boolean; labels: RefObject<(HTMLDivElement | null)[]> }) {
+  const [glFactory] = useState(() => makeRenderer({ antialias: true, alpha: false, powerPreference: "low-power" }));
   return (
-    <Canvas frameloop="never" dpr={Math.min(1.25, targetDpr(getGraphics()))} camera={{ fov: 32, near: 0.1, far: 80, position: [0, 1.6, 9] }} gl={{ antialias: true, alpha: false, powerPreference: "low-power" }}>
+    <Canvas frameloop="never" dpr={Math.min(1.25, targetDpr(getGraphics()))} camera={{ fov: 32, near: 0.1, far: 80, position: [0, 1.6, 9] }} gl={glFactory}>
       {/* Máy quay lia liên tục: 60 khung cho mượt, nhưng không vẽ theo màn 144 Hz. */}
       <StageLoop fps={60} />
       <color attach="background" args={["#05080d"]} />
