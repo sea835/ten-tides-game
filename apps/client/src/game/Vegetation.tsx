@@ -235,7 +235,7 @@ function placer(world: World) {
 type Tint = (i: number, c: Color, spot: Spot) => void;
 
 /** Cây cỏ chia theo ô vuông cạnh chừng này mét: ô nào ngoài khung hình thì card đồ hoạ bỏ qua cả ô. */
-const CELL = 72;
+const CELL = 108;
 
 interface Chunk {
   key: string;
@@ -298,6 +298,7 @@ function ChunkMesh({ chunk, geometry, material, tint, heightScale, cast, meshRef
         meshRef(m);
       }}
       args={[geometry, material, chunk.spots.length]}
+      matrixAutoUpdate={false}
       castShadow={cast}
       receiveShadow
     />

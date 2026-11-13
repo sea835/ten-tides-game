@@ -23,13 +23,15 @@ import { StaticSun } from "./StaticShadows.tsx";
 import { installStaticShadows } from "./staticShadow.ts";
 import { Atmosphere } from "./Atmosphere.tsx";
 import { cloudUniforms, installAtmosphere, shadeLightWithClouds, wetUniforms } from "./atmosphere.ts";
+import { PartBatches, PartsOff, parts } from "./gpu/parts.tsx";
 import { makeRenderer } from "./gpu/renderer.ts";
+import { updateWorld } from "./gpu/world.ts";
 import { weatherUniforms } from "./textures.ts";
 import { trampleUniforms } from "./trample.ts";
 import { createPostFx, type PostFx } from "./postFx.ts";
 import { setPrepTargets } from "./shaderPrep.ts";
 import { RainGlass } from "./RainGlass.tsx";
-import { profileOf, cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
+import { profileOf, cycleQuality, getGraphics, perfStats, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
 import { platform } from "./platform.ts";
 import { FrameDriver, PerfOverlay } from "./FrameDriver.tsx";
 import { Hud } from "./hud/Hud.tsx";
@@ -118,9 +120,22 @@ function RenderDriver({ post, battle }: { post: Profile["post"]; battle: boolean
       f?.dispose();
     };
   }, [gl, scene, camera, post, battle]);
+  // Ma trận thế giới tính một lần mỗi khung ở đây thay vì ở đầu mỗi lượt vẽ (cảnh, bóng, phản chiếu, lớp súng): xem
+  // gpu/world.ts. Sau đó chép ma trận của các khối vẽ gộp (gpu/parts.tsx) rồi mới vẽ.
+  useEffect(() => {
+    scene.matrixWorldAutoUpdate = false;
+    return () => {
+      scene.matrixWorldAutoUpdate = true;
+    };
+  }, [scene]);
   useFrame(() => {
+    const t0 = performance.now();
+    updateWorld(scene);
+    parts.current?.sync();
     if (fx) fx.render();
     else gl.render(scene, camera);
+    // Bảng F3: tách riêng phần CPU dành cho việc vẽ (còn lại là logic trận, vật lý, React).
+    perfStats.drawMs += (performance.now() - t0 - perfStats.drawMs) * 0.05;
   }, 1);
   return null;
 }
@@ -254,6 +269,8 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
         {profile.ibl && <SkyEnvironment intensity={0.7} />}
         <Sun sun={sun} profile={profile} quality={quality} />
         <Suspense fallback={null}>
+          {/* Mọi <Part> bên trong (khối của lính, súng, xe) vẽ gộp theo (hình, vật liệu): gpu/parts.tsx. */}
+          <PartBatches>
           <SkyDome />
           {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
           {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
@@ -277,7 +294,11 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           {naval && <NavalFx room={room} />}
           {naval && <NavalSounds room={room} />}
           {naval && <NavalControl room={room} />}
-          {battle && <ViewModel room={room} />}
+          {battle && (
+            <PartsOff>
+              <ViewModel room={room} />
+            </PartsOff>
+          )}
           {battle && <Killcam room={room} />}
           {battle && <SpectatorCamera room={room} />}
           {battle && <VoiceHeads room={room} />}
@@ -290,6 +311,7 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
           <DebugHook room={room} />
           <RenderDriver post={profile.post} battle={battle} />
           {battle && <ViewPass post={post} />}
+          </PartBatches>
         </Suspense>
       </Canvas>
       <RainGlass />

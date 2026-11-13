@@ -14,6 +14,7 @@ import { bodies } from "./battle/runtime.ts";
 import { replay, replayPose } from "./battle/replay.ts";
 import { physicsProbe } from "./battle/surface.ts";
 import { muzzleOffset } from "./GunModel.tsx";
+import { parts } from "./gpu/parts.tsx";
 import { localPosition } from "./shared.ts";
 import { playFootstep, playLand } from "./sound/guns.ts";
 import { groundProbe } from "./character/motionFx.ts";
@@ -301,6 +302,12 @@ function BattleRemote({ room, id, player, root, avatar, alive }: { room: IslandR
           sh.on = want;
           sh.detail = detail;
           avatar.current.traverse((o) => {
+            // Khối vẽ gộp (gpu/parts.tsx) không phải Mesh: bật tắt bóng qua bảng gộp, chi tiết nhỏ thì ẩn chỗ giữ chỗ.
+            if (parts.current?.has(o)) {
+              if (o.userData.tiny) o.visible = detail;
+              else parts.current.setCast(o, want);
+              return;
+            }
             if (!(o as { isMesh?: boolean }).isMesh) return;
             // Chi tiết nhỏ trên mặt: ở xa thì ẩn hẳn (không thấy được mà mỗi cái một lệnh vẽ).
             if (o.userData.tiny) o.visible = detail;

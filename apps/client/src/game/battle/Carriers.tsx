@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Part } from "../gpu/parts.tsx";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { BoxGeometry, CylinderGeometry, Euler, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3, type Group, type PerspectiveCamera } from "three";
@@ -104,9 +105,9 @@ function MountedGun({ yaw, pitch, wreck }: { yaw: React.RefObject<Group | null>;
   return (
     <group ref={yaw}>
       <group ref={pitch}>
-        <mesh geometry={G.gunBody} material={m} position={[0, 0, 0.1]} castShadow />
-        <mesh geometry={G.gunBarrel} material={m} castShadow />
-        <mesh geometry={G.gunShield} material={wreck ? WRECK : OLIVE_DARK} position={[0, 0.05, 0.42]} castShadow />
+        <Part geometry={G.gunBody} material={m} position={[0, 0, 0.1]} castShadow />
+        <Part geometry={G.gunBarrel} material={m} castShadow />
+        <Part geometry={G.gunShield} material={wreck ? WRECK : OLIVE_DARK} position={[0, 0.05, 0.42]} castShadow />
       </group>
     </group>
   );
@@ -126,27 +127,27 @@ function JeepModel({ yaw, pitch, wheels, color, wreck }: { yaw: React.RefObject<
           [-0.95, -1.5],
         ].map(([x, z]) => (
           <group key={`${x}${z}`} position={[x!, 0.45, z!]}>
-            <mesh geometry={G.wheel} material={TIRE} castShadow />
-            <mesh geometry={G.hub} material={dark} />
+            <Part geometry={G.wheel} material={TIRE} castShadow />
+            <Part geometry={G.hub} material={dark} />
           </group>
         ))}
       </group>
-      <mesh geometry={G.jChassis} material={body} position={[0, 0.8, 0]} castShadow receiveShadow />
-      <mesh geometry={G.jHood} material={body} position={[0, 1.24, 1.45]} castShadow />
-      <mesh geometry={G.jWind} material={dark} position={[0, 1.36, 0.72]} castShadow />
-      <mesh geometry={B(1.5, 0.16, 0.13)} material={GLASS} position={[0, 1.42, 0.73]} />
+      <Part geometry={G.jChassis} material={body} position={[0, 0.8, 0]} castShadow receiveShadow />
+      <Part geometry={G.jHood} material={body} position={[0, 1.24, 1.45]} castShadow />
+      <Part geometry={G.jWind} material={dark} position={[0, 1.36, 0.72]} castShadow />
+      <Part geometry={B(1.5, 0.16, 0.13)} material={GLASS} position={[0, 1.42, 0.73]} />
       {[1, -1].map((s) => (
         <group key={s}>
-          <mesh geometry={G.jDoor} material={dark} position={[s * 0.98, 1.28, 0.05]} castShadow />
-          <mesh geometry={G.jBedSide} material={dark} position={[s * 0.98, 1.3, -1.3]} castShadow />
-          <mesh geometry={G.jPost} material={STEEL} position={[s * 0.9, 1.75, -0.35]} />
+          <Part geometry={G.jDoor} material={dark} position={[s * 0.98, 1.28, 0.05]} castShadow />
+          <Part geometry={G.jBedSide} material={dark} position={[s * 0.98, 1.3, -1.3]} castShadow />
+          <Part geometry={G.jPost} material={STEEL} position={[s * 0.9, 1.75, -0.35]} />
         </group>
       ))}
-      <mesh geometry={G.jRoll} material={STEEL} position={[0, 2.08, -0.35]} />
-      <mesh geometry={G.jGate} material={dark} position={[0, 1.3, -2.25]} castShadow />
-      <mesh geometry={G.jBumper} material={STEEL} position={[0, 0.72, 2.3]} />
-      {!wreck && <mesh geometry={G.jStripe} material={teamMat(color)} position={[0, 1.44, 1.45]} />}
-      <mesh geometry={G.pedestal} material={STEEL} position={[0, (mount[1] + 1.05) / 2, mount[2]]} scale={[1, mount[1] - 1.05, 1]} />
+      <Part geometry={G.jRoll} material={STEEL} position={[0, 2.08, -0.35]} />
+      <Part geometry={G.jGate} material={dark} position={[0, 1.3, -2.25]} castShadow />
+      <Part geometry={G.jBumper} material={STEEL} position={[0, 0.72, 2.3]} />
+      {!wreck && <Part geometry={G.jStripe} material={teamMat(color)} position={[0, 1.44, 1.45]} />}
+      <Part geometry={G.pedestal} material={STEEL} position={[0, (mount[1] + 1.05) / 2, mount[2]]} scale={[1, mount[1] - 1.05, 1]} />
       <group position={[mount[0], mount[1], mount[2]]}>
         <MountedGun yaw={yaw} pitch={pitch} wreck={wreck} />
       </group>
@@ -160,19 +161,19 @@ function BoatModel({ yaw, pitch, color, wreck }: { yaw: React.RefObject<Group | 
   const mount = SEATS.boat.mount;
   return (
     <group>
-      <mesh geometry={G.bHull} material={hull} position={[0, 0.15, -0.4]} castShadow receiveShadow />
-      <mesh geometry={G.bBow} material={hull} position={[0, 0.15, 2.9]} castShadow />
-      <mesh geometry={G.bDeck} material={wreck ? WRECK : DECK} position={[0, 0.65, -0.3]} receiveShadow />
+      <Part geometry={G.bHull} material={hull} position={[0, 0.15, -0.4]} castShadow receiveShadow />
+      <Part geometry={G.bBow} material={hull} position={[0, 0.15, 2.9]} castShadow />
+      <Part geometry={G.bDeck} material={wreck ? WRECK : DECK} position={[0, 0.65, -0.3]} receiveShadow />
       {[1, -1].map((s) => (
         <group key={s}>
-          <mesh geometry={G.bRail} material={dark} position={[s * 1.26, 0.82, -0.6]} castShadow />
-          <mesh geometry={G.bMotor} material={STEEL} position={[s * 0.5, 0.25, -3.85]} castShadow />
-          {!wreck && <mesh geometry={G.bStripe} material={teamMat(color)} position={[s * 0.64, 1.15, -1.8]} />}
+          <Part geometry={G.bRail} material={dark} position={[s * 1.26, 0.82, -0.6]} castShadow />
+          <Part geometry={G.bMotor} material={STEEL} position={[s * 0.5, 0.25, -3.85]} castShadow />
+          {!wreck && <Part geometry={G.bStripe} material={teamMat(color)} position={[s * 0.64, 1.15, -1.8]} />}
         </group>
       ))}
-      <mesh geometry={G.bCabin} material={dark} position={[0, 1.15, -1.8]} castShadow />
-      <mesh geometry={G.bWind} material={GLASS} position={[0, 1.78, -1.32]} rotation-x={-0.5} />
-      <mesh geometry={G.pedestal} material={STEEL} position={[0, (mount[1] + 0.7) / 2, mount[2]]} scale={[1, mount[1] - 0.7, 1]} />
+      <Part geometry={G.bCabin} material={dark} position={[0, 1.15, -1.8]} castShadow />
+      <Part geometry={G.bWind} material={GLASS} position={[0, 1.78, -1.32]} rotation-x={-0.5} />
+      <Part geometry={G.pedestal} material={STEEL} position={[0, (mount[1] + 0.7) / 2, mount[2]]} scale={[1, mount[1] - 0.7, 1]} />
       <group position={[mount[0], mount[1], mount[2]]}>
         <MountedGun yaw={yaw} pitch={pitch} wreck={wreck} />
       </group>
@@ -188,20 +189,20 @@ function RhibModel({ yaw, pitch, color, wreck }: { yaw: React.RefObject<Group | 
   const mount = SEATS.rhib.mount;
   return (
     <group>
-      <mesh geometry={G.rHull} material={hull} position={[0, 0.05, -0.1]} castShadow receiveShadow />
-      <mesh geometry={G.rDeck} material={wreck ? WRECK : DECK} position={[0, 0.36, -0.3]} receiveShadow />
+      <Part geometry={G.rHull} material={hull} position={[0, 0.05, -0.1]} castShadow receiveShadow />
+      <Part geometry={G.rDeck} material={wreck ? WRECK : DECK} position={[0, 0.36, -0.3]} receiveShadow />
       {[1, -1].map((s) => (
         <group key={s}>
           {/* Phao hơi chạy dọc mạn, mũi bo tròn khép vào nhau. */}
-          <mesh geometry={G.rTube} material={tube} position={[s * 0.95, 0.42, -0.4]} castShadow />
-          <mesh geometry={G.rTubeBow} material={tube} position={[s * 0.62, 0.48, 2.55]} scale={[1, 1, 1.6]} castShadow />
-          {!wreck && <mesh geometry={G.rStripe} material={teamMat(color)} position={[s * 1.32, 0.5, 0.4]} />}
+          <Part geometry={G.rTube} material={tube} position={[s * 0.95, 0.42, -0.4]} castShadow />
+          <Part geometry={G.rTubeBow} material={tube} position={[s * 0.62, 0.48, 2.55]} scale={[1, 1, 1.6]} castShadow />
+          {!wreck && <Part geometry={G.rStripe} material={teamMat(color)} position={[s * 1.32, 0.5, 0.4]} />}
         </group>
       ))}
-      <mesh geometry={G.rConsole} material={hull} position={[0, 0.8, -1.05]} castShadow />
-      <mesh geometry={G.rWind} material={GLASS} position={[0, 1.36, -0.78]} rotation-x={-0.45} />
-      <mesh geometry={G.rMotor} material={STEEL} position={[0, 0.35, -3.35]} castShadow />
-      <mesh geometry={G.pedestal} material={STEEL} position={[0, (mount[1] + 0.4) / 2, mount[2]]} scale={[1, mount[1] - 0.4, 1]} />
+      <Part geometry={G.rConsole} material={hull} position={[0, 0.8, -1.05]} castShadow />
+      <Part geometry={G.rWind} material={GLASS} position={[0, 1.36, -0.78]} rotation-x={-0.45} />
+      <Part geometry={G.rMotor} material={STEEL} position={[0, 0.35, -3.35]} castShadow />
+      <Part geometry={G.pedestal} material={STEEL} position={[0, (mount[1] + 0.4) / 2, mount[2]]} scale={[1, mount[1] - 0.4, 1]} />
       <group position={[mount[0], mount[1], mount[2]]}>
         <MountedGun yaw={yaw} pitch={pitch} wreck={wreck} />
       </group>
@@ -213,8 +214,8 @@ function RhibModel({ yaw, pitch, color, wreck }: { yaw: React.RefObject<Group | 
 function Rider({ at, color }: { at: readonly [number, number, number]; color: string }) {
   return (
     <group position={[at[0], at[1], at[2]]}>
-      <mesh geometry={G.torso} material={teamMat(color)} position={[0, 0.3, 0]} castShadow />
-      <mesh geometry={G.head} material={SKIN} position={[0, 0.76, 0]} castShadow />
+      <Part geometry={G.torso} material={teamMat(color)} position={[0, 0.3, 0]} castShadow />
+      <Part geometry={G.head} material={SKIN} position={[0, 0.76, 0]} castShadow />
     </group>
   );
 }

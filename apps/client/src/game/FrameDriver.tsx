@@ -182,7 +182,9 @@ export function PerfOverlay() {
     <div className="perf-overlay">
       <b>{s.fps.toFixed(0)} FPS</b> <span>/ {g.fpsCap || "∞"}</span>
       <div>khung {s.frameMs.toFixed(1)} ms · chậm nhất {s.worstMs.toFixed(0)} ms</div>
-      <div>CPU {s.cpuMs.toFixed(1)} ms/khung</div>
+      <div>
+        CPU {s.cpuMs.toFixed(1)} ms/khung · riêng vẽ {s.drawMs.toFixed(1)} ms
+      </div>
       <div>
         {fmt(s.calls)} lệnh vẽ · {fmt(s.triangles)} tam giác
       </div>

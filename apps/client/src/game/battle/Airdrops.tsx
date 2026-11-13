@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Part } from "../gpu/parts.tsx";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Callbacks } from "@colyseus/sdk";
@@ -131,25 +132,25 @@ function Crate({ room, id }: { room: IslandRoom; id: string }) {
   return (
     <group ref={group}>
       <group position-y={0.5}>
-        <mesh geometry={crateGeo} material={wood} castShadow receiveShadow />
-        <mesh geometry={edgeGeo} material={steel} position-y={0.46} />
-        <mesh geometry={edgeGeo} material={steel} position-y={-0.46} />
-        <mesh geometry={bandGeo} material={band} />
+        <Part geometry={crateGeo} material={wood} castShadow receiveShadow />
+        <Part geometry={edgeGeo} material={steel} position-y={0.46} />
+        <Part geometry={edgeGeo} material={steel} position-y={-0.46} />
+        <Part geometry={bandGeo} material={band} />
         {[
           [0.58, 0.58],
           [-0.58, 0.58],
           [0.58, -0.58],
           [-0.58, -0.58],
         ].map(([x, z], i) => (
-          <mesh key={i} geometry={postGeo} material={steel} position={[x!, 0, z!]} />
+          <Part key={i} geometry={postGeo} material={steel} position={[x!, 0, z!]} />
         ))}
       </group>
       <group ref={chute} position-y={CANOPY_Y}>
-        <mesh geometry={canopyGeo} material={canopyMat} castShadow />
-        <mesh geometry={stripeGeo} material={canopyStripe} rotation-y={Math.PI / 8} scale={[1, 1.01, 1]} />
+        <Part geometry={canopyGeo} material={canopyMat} castShadow />
+        <Part geometry={stripeGeo} material={canopyStripe} rotation-y={Math.PI / 8} scale={[1, 1.01, 1]} />
       </group>
       {!landed &&
-        lines.map((l, i) => <mesh key={i} geometry={lineGeo} material={lineMat} position={l.pos} rotation={[l.rx, 0, l.rz]} scale={[1, l.len, 1]} />)}
+        lines.map((l, i) => <Part key={i} geometry={lineGeo} material={lineMat} position={l.pos} rotation={[l.rx, 0, l.rz]} scale={[1, l.len, 1]} />)}
       {dist > 30 && (
         <Html position={[0, landed ? 4 : CANOPY_Y + 3, 0]} center zIndexRange={[3, 0]} className="b-drop-tag">
           📦 {dist} m

@@ -31,7 +31,7 @@ import { detailed, type DetailKind } from "../textures.ts";
 // component va chạm của React).
 
 /** Cạnh ô đất gom khối (mét). */
-const TILE = 64;
+const TILE = 128;
 
 const MAT: Record<BoxMat, { color: string; kind: DetailKind | "none"; roughness: number; metalness?: number; strength?: number }> = {
   concrete: { color: "#a19d95", kind: "rock", roughness: 0.95, strength: 0.18 },
@@ -223,7 +223,7 @@ function BoxGroup({ mat, boxes, ids, material, geometry }: { mat: BoxMat; boxes:
     m.computeBoundingSphere();
   }, [boxes, ids]);
   const solid = mat !== "road" && mat !== "sign" && mat !== "fence";
-  return <instancedMesh ref={mesh} args={[geometry, material, boxes.length]} castShadow={solid} receiveShadow />;
+  return <instancedMesh ref={mesh} args={[geometry, material, boxes.length]} matrixAutoUpdate={false} castShadow={solid} receiveShadow />;
 }
 
 /** Va chạm cho mọi khối đặc (một thân cố định, mỗi khối một hộp va chạm), dựng một lần cho mỗi bản đồ. */

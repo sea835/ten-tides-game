@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Euler, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type Group } from "three";
 import { hitStopScale } from "./battle/runtime.ts";
 import { ItemModel, LONG_ITEMS } from "./ItemModel.tsx";
+import { Part } from "./gpu/parts.tsx";
 import { GunModel, HelmetModel, KnifeModel, ThrowableModel, VestModel, aimLineHeight, stockLength, supportOffset } from "./GunModel.tsx";
 import { camoTexture, fabricTexture, type FabricKind } from "./camo.ts";
 import { mulberry32 } from "./nature.ts";
@@ -343,7 +344,8 @@ function P({ g, m, p, s, r, t }: { g: BufferGeometry; m: MeshStandardMaterial; p
   const size = s === undefined ? 1 : typeof s === "number" ? s : Math.max(s[0], s[1], s[2]);
   if (!g.boundingSphere) g.computeBoundingSphere();
   const tiny = t || (g.boundingSphere?.radius ?? 1) * size < 0.035;
-  return <mesh geometry={g} material={m} position={p} scale={s} rotation={r} castShadow={!tiny} receiveShadow={!tiny} userData={tiny ? TINY : undefined} />;
+  // Trong trận các khối này vẽ gộp theo (hình, vật liệu) cho mọi người lính: xem gpu/parts.tsx.
+  return <Part geometry={g} material={m} position={p} scale={s} rotation={r} castShadow={!tiny} receiveShadow={!tiny} userData={tiny ? TINY : undefined} />;
 }
 
 const TINY = { tiny: true };

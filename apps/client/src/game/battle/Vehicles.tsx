@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Part } from "../gpu/parts.tsx";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { Callbacks } from "@colyseus/sdk";
@@ -89,24 +90,24 @@ function TankModel({ turret, gun, recoil, color, wreck }: { turret: React.RefObj
     <group>
       {[-1, 1].map((sx) => (
         <group key={sx}>
-          <mesh geometry={G.track} material={TRACK} position={[sx * 1.35, 0.48, 0]} castShadow receiveShadow />
+          <Part geometry={G.track} material={TRACK} position={[sx * 1.35, 0.48, 0]} castShadow receiveShadow />
           {wheels.map((z) => (
-            <mesh key={z} geometry={G.wheel} material={WHEEL} position={[sx * 1.37, 0.42, z]} />
+            <Part key={z} geometry={G.wheel} material={WHEEL} position={[sx * 1.37, 0.42, z]} />
           ))}
         </group>
       ))}
-      <mesh geometry={G.hull} material={body} position={[0, 1.1, -0.1]} castShadow receiveShadow />
-      <mesh geometry={G.glacis} material={dark} position={[0, 1.0, 2.9]} rotation-x={-0.5} castShadow />
+      <Part geometry={G.hull} material={body} position={[0, 1.1, -0.1]} castShadow receiveShadow />
+      <Part geometry={G.glacis} material={dark} position={[0, 1.0, 2.9]} rotation-x={-0.5} castShadow />
       <group ref={turret} position={[0, 1.55, -0.3]}>
-        <mesh geometry={G.turret} material={body} position={[0, 0.36, 0]} castShadow />
-        <mesh geometry={G.turretTop} material={dark} position={[0, 0.8, -0.15]} castShadow />
-        <mesh geometry={G.hatch} material={dark} position={[0.45, 0.93, -0.5]} />
-        {!wreck && <mesh geometry={G.stripe} material={teamMat(color)} position={[0, 0.3, -0.4]} />}
+        <Part geometry={G.turret} material={body} position={[0, 0.36, 0]} castShadow />
+        <Part geometry={G.turretTop} material={dark} position={[0, 0.8, -0.15]} castShadow />
+        <Part geometry={G.hatch} material={dark} position={[0.45, 0.93, -0.5]} />
+        {!wreck && <Part geometry={G.stripe} material={teamMat(color)} position={[0, 0.3, -0.4]} />}
         <group ref={gun} position={[0, TANK.gunY - 1.55, 1.2]}>
-          <mesh geometry={G.mantlet} material={dark} castShadow />
+          <Part geometry={G.mantlet} material={dark} castShadow />
           <group ref={recoil}>
-            <mesh geometry={G.barrel} material={dark} castShadow />
-            <mesh geometry={G.brake} material={dark} position={[0, 0, TANK.barrel - 0.15]} />
+            <Part geometry={G.barrel} material={dark} castShadow />
+            <Part geometry={G.brake} material={dark} position={[0, 0, TANK.barrel - 0.15]} />
           </group>
         </group>
       </group>

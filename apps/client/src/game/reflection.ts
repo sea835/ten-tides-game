@@ -1,4 +1,4 @@
-import { Object3D, type LightShadow, type Light as BaseLight, type Scene } from "three";
+import { Object3D, type Camera, type LightShadow, type Light as BaseLight, type PerspectiveCamera, type Scene } from "three";
 
 type Light = BaseLight & { shadow?: LightShadow };
 import { reflector } from "three/tsl";
@@ -12,6 +12,7 @@ export const reflectionHidden = new Set<Object3D>();
 /** Phần của khung hình mà nút phản chiếu (ReflectorBaseNode) của three đọc: đủ cho chỗ ta cần. */
 interface ReflectorFrame {
   scene: Scene;
+  camera?: Camera;
   renderer: { getClearAlpha(): number; setClearAlpha(a: number): void };
 }
 
@@ -22,6 +23,9 @@ interface ReflectorFrame {
  * alpha 0 để shader nước giữ bầu trời tính sẵn), không vẽ lại bản đồ bóng (đèn đứng yên; cờ nằm trên `light.shadow`).
  * `target` phải nằm trong cảnh (con của lưới nước): nó cho vị trí và pháp tuyến mặt phẳng gương.
  */
+/** Tầm xa của ảnh phản chiếu (mét), như bản WebGL cũ. */
+const REFLECT_FAR = 150;
+
 export function createReflection(resolutionScale: number) {
   const target = new Object3D();
   // Mặt phẳng gương = trục z cục bộ của target; xoay -90° quanh x để nó hướng lên. Hạ thấp chút để chân người lội
@@ -35,8 +39,12 @@ export function createReflection(resolutionScale: number) {
   const state = { active: false };
   let lights: Light[] = [];
   let age = 1e9;
+  let turn = 0;
   base.updateBefore = (frame: ReflectorFrame) => {
     if (!state.active) return;
+    // Ảnh phản chiếu là một lượt vẽ lại cả cảnh (CPU duyệt và gửi lệnh vẽ thêm lần nữa): vẽ cách khung, khung giữa dùng
+    // lại ảnh cũ. Mặt nước gợn sóng làm méo ảnh nên chậm một khung hình không nhận ra.
+    if (turn++ & 1) return;
     const { scene, renderer } = frame;
     // Danh sách đèn có bóng: quét lại cảnh thi thoảng thôi (đèn hiếm khi thêm bớt).
     if (age++ > 120) {
@@ -62,9 +70,21 @@ export function createReflection(resolutionScale: number) {
     scene.background = null;
     const alpha = renderer.getClearAlpha();
     renderer.setClearAlpha(0);
+    // Chỉ soi vật trong tầm REFLECT_FAR (reflector() chép ma trận chiếu của camera chính, nên thu tầm xa của nó trong lúc
+    // vẽ): vật xa hơn trên mặt nước chỉ còn vài điểm ảnh mà vẫn tốn lệnh vẽ.
+    const camera = (frame.camera as PerspectiveCamera | undefined)?.isPerspectiveCamera ? (frame.camera as PerspectiveCamera) : null;
+    const far = camera ? camera.far : 0;
+    if (camera && far > REFLECT_FAR) {
+      camera.far = REFLECT_FAR;
+      camera.updateProjectionMatrix();
+    }
     try {
       original(frame);
     } finally {
+      if (camera && far > REFLECT_FAR) {
+        camera.far = far;
+        camera.updateProjectionMatrix();
+      }
       renderer.setClearAlpha(alpha);
       scene.background = background;
       lights.forEach((l, k) => {

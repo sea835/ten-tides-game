@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Frozen } from "./gpu/Frozen.tsx";
 import { useFrame } from "@react-three/fiber";
 import { CylinderCollider, RigidBody } from "@react-three/rapier";
 import {
@@ -283,9 +284,9 @@ function PalmForest({ trees, world }: { trees: Tree[]; world: World }) {
   if (trees.length === 0) return null;
   return (
     <group key={trees.length}>
-      <instancedMesh ref={trunks} args={[palm.trunk, mats.palmTrunk, trees.length]} castShadow receiveShadow />
-      <instancedMesh ref={crowns} args={[palm.leaves, mats.palmLeaves, trees.length]} castShadow />
-      <instancedMesh ref={nuts} args={[palm.nuts, mats.nuts, trees.length]} />
+      <instancedMesh matrixAutoUpdate={false} ref={trunks} args={[palm.trunk, mats.palmTrunk, trees.length]} castShadow receiveShadow />
+      <instancedMesh matrixAutoUpdate={false} ref={crowns} args={[palm.leaves, mats.palmLeaves, trees.length]} castShadow />
+      <instancedMesh matrixAutoUpdate={false} ref={nuts} args={[palm.nuts, mats.nuts, trees.length]} />
     </group>
   );
 }
@@ -338,9 +339,9 @@ function BroadleafForest({ trees, world, indices }: { trees: Tree[]; world: Worl
   if (trees.length === 0) return null;
   return (
     <group key={trees.length}>
-      <instancedMesh ref={trunks} args={[shared.trunk, mats.trunk, trees.length]} castShadow receiveShadow />
-      <instancedMesh ref={canopies} args={[shared.canopy, mats.canopy, trees.length]} castShadow receiveShadow />
-      <instancedMesh ref={cores} args={[shared.core, mats.core, trees.length]} receiveShadow />
+      <instancedMesh matrixAutoUpdate={false} ref={trunks} args={[shared.trunk, mats.trunk, trees.length]} castShadow receiveShadow />
+      <instancedMesh matrixAutoUpdate={false} ref={canopies} args={[shared.canopy, mats.canopy, trees.length]} castShadow receiveShadow />
+      <instancedMesh matrixAutoUpdate={false} ref={cores} args={[shared.core, mats.core, trees.length]} receiveShadow />
     </group>
   );
 }
@@ -427,8 +428,11 @@ function Falling({ tree, dir, onDone }: { tree: FallingTree; dir: number; onDone
   );
 }
 
-/** Cạnh ô chia rừng (mét): mỗi ô một bộ InstancedMesh, three.js bỏ qua ô ngoài khung hình và ngoài vùng bóng đổ. */
-const FOREST_CELL = 64;
+/**
+ * Cạnh ô chia rừng (mét): mỗi ô một bộ InstancedMesh, three.js bỏ qua ô ngoài khung hình và ngoài vùng bóng đổ. Ô to
+ * (128 m) thì ít lệnh vẽ: mỗi ô là ba lệnh vẽ CPU phải gửi, ô 64 m chỉ chứa vài cây nên cả rừng thành mấy trăm lệnh.
+ */
+const FOREST_CELL = 128;
 
 interface ForestChunk {
   key: string;
@@ -505,11 +509,14 @@ export function Trees({ room, world }: { room: IslandRoom; world: World }) {
       {falling.map((f) => (
         <Falling key={f.key} tree={f.tree} dir={f.dir} onDone={() => setFalling((list) => list.filter((x) => x.key !== f.key))} />
       ))}
-      <RigidBody type="fixed" colliders={false}>
-        {colliders.map((c) => (
-          <CylinderCollider key={c.id} args={[c.h / 2, c.r]} position={[c.x, c.y + c.h / 2, c.z]} />
-        ))}
-      </RigidBody>
+      {/* Cả nghìn vật va chạm cố định: không cần tính lại ma trận mỗi khung hình. */}
+      <Frozen stamp={colliders}>
+        <RigidBody type="fixed" colliders={false}>
+          {colliders.map((c) => (
+            <CylinderCollider key={c.id} args={[c.h / 2, c.r]} position={[c.x, c.y + c.h / 2, c.z]} />
+          ))}
+        </RigidBody>
+      </Frozen>
     </>
   );
 }
