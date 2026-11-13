@@ -1,3 +1,4 @@
+import { parts } from "./gpu/parts.tsx";
 import type { Object3D } from "three";
 
 // Cho một nhánh cảnh "ngủ" khi ở quá xa: ẩn đi VÀ thôi tính ma trận. three.js vẫn duyệt cả nhánh đang ẩn mỗi khung
@@ -22,5 +23,6 @@ export function setAwake(o: Object3D, awake: boolean) {
 export function setCastShadow(o: Object3D, on: boolean) {
   o.traverse((c) => {
     if ((c as { isMesh?: boolean }).isMesh) c.castShadow = on;
+    else parts.current?.setCast(c, on);
   });
 }

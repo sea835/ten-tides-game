@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { Part } from "../gpu/parts.tsx";
 import { useRapier } from "@react-three/rapier";
 import { BufferGeometry, Color, Euler, MeshStandardMaterial, Quaternion, SphereGeometry } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -79,7 +80,7 @@ function Sandbag({ it }: { it: Item }) {
       if (world.getRigidBody(body.handle)) world.removeRigidBody(body);
     };
   }, [world, rapier, it.x, it.y, it.z, it.rot]);
-  return <mesh geometry={sandbagWall()} material={sandbagMat(it.wear)} position={[it.x, it.y, it.z]} rotation-y={it.rot} castShadow receiveShadow />;
+  return <Part geometry={sandbagWall()} material={sandbagMat(it.wear)} position={[it.x, it.y, it.z]} rotation-y={it.rot} castShadow receiveShadow />;
 }
 
 /** Hộp tiếp đạn: thùng gỗ, cột cờ nhỏ màu phe để đồng đội nhận ra từ xa. */

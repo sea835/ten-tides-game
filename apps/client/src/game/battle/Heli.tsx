@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Part } from "../gpu/parts.tsx";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import {
@@ -150,8 +151,8 @@ function DoorGun({ yaw, pitch, wreck }: { yaw: React.RefObject<Group | null>; pi
   return (
     <group ref={yaw}>
       <group ref={pitch}>
-        <mesh geometry={G.gunBody} material={m} position={[0, 0, 0.08]} castShadow />
-        <mesh geometry={G.gunBarrel} material={m} castShadow />
+        <Part geometry={G.gunBody} material={m} position={[0, 0, 0.08]} castShadow />
+        <Part geometry={G.gunBarrel} material={m} castShadow />
       </group>
     </group>
   );
@@ -167,25 +168,25 @@ function HeliModel({ rotor, tail, discMat, gun1, gun1p, gun2, gun2p, color, wrec
       {/* Càng đáp. */}
       {[1, -1].map((s) => (
         <group key={s}>
-          <mesh geometry={G.skid} material={STEEL} position={[s * 0.95, 0.06, 0.3]} castShadow />
-          <mesh geometry={G.strut} material={STEEL} position={[s * 0.8, 0.42, 1.0]} rotation-z={s * 0.35} />
-          <mesh geometry={G.strut} material={STEEL} position={[s * 0.8, 0.42, -0.6]} rotation-z={s * 0.35} />
+          <Part geometry={G.skid} material={STEEL} position={[s * 0.95, 0.06, 0.3]} castShadow />
+          <Part geometry={G.strut} material={STEEL} position={[s * 0.8, 0.42, 1.0]} rotation-z={s * 0.35} />
+          <Part geometry={G.strut} material={STEEL} position={[s * 0.8, 0.42, -0.6]} rotation-z={s * 0.35} />
         </group>
       ))}
       {/* Thân trứng, kính mũi, gù động cơ, đuôi. */}
-      <mesh geometry={G.cabin} material={body} position={[0, 1.35, 0.2]} scale={[1.05, 0.92, 1.75]} castShadow receiveShadow />
-      <mesh geometry={G.nose} material={wreck ? WRECK : GLASS} position={[0, 1.35, 0.95]} scale={[0.98, 0.86, 1.05]} rotation-x={Math.PI / 2} />
-      <mesh geometry={G.hump} material={dark} position={[0, 2.15, -0.45]} castShadow />
-      <mesh geometry={G.boom} material={body} position={[0, 1.6, -3.1]} castShadow />
-      <mesh geometry={G.fin} material={dark} position={[0, 2.05, -4.95]} rotation-x={-0.35} castShadow />
-      <mesh geometry={G.stab} material={dark} position={[0, 1.62, -4.55]} />
-      {!wreck && [1, -1].map((s) => <mesh key={s} geometry={G.stripe} material={teamMat(color)} position={[s * 1.06, 1.4, -0.4]} />)}
+      <Part geometry={G.cabin} material={body} position={[0, 1.35, 0.2]} scale={[1.05, 0.92, 1.75]} castShadow receiveShadow />
+      <Part geometry={G.nose} material={wreck ? WRECK : GLASS} position={[0, 1.35, 0.95]} scale={[0.98, 0.86, 1.05]} rotation-x={Math.PI / 2} />
+      <Part geometry={G.hump} material={dark} position={[0, 2.15, -0.45]} castShadow />
+      <Part geometry={G.boom} material={body} position={[0, 1.6, -3.1]} castShadow />
+      <Part geometry={G.fin} material={dark} position={[0, 2.05, -4.95]} rotation-x={-0.35} castShadow />
+      <Part geometry={G.stab} material={dark} position={[0, 1.62, -4.55]} />
+      {!wreck && [1, -1].map((s) => <Part key={s} geometry={G.stripe} material={teamMat(color)} position={[s * 1.06, 1.4, -0.4]} />)}
       {/* Ống rocket hai bên. */}
       {HELI_PODS.map((p, i) => (
         <group key={i} position={[p[0], p[1], p[2]]}>
-          <mesh geometry={G.pod} material={dark} castShadow />
-          <mesh geometry={G.podFront} material={STEEL} position={[0, 0, 0.62]} />
-          <mesh geometry={G.arm} material={STEEL} position={[-Math.sign(p[0]) * 0.3, 0.12, 0]} />
+          <Part geometry={G.pod} material={dark} castShadow />
+          <Part geometry={G.podFront} material={STEEL} position={[0, 0, 0.62]} />
+          <Part geometry={G.arm} material={STEEL} position={[-Math.sign(p[0]) * 0.3, 0.12, 0]} />
         </group>
       ))}
       {/* Súng máy cửa hông. */}
@@ -196,18 +197,18 @@ function HeliModel({ rotor, tail, discMat, gun1, gun1p, gun2, gun2p, color, wrec
         <DoorGun yaw={gun2} pitch={gun2p} wreck={wreck} />
       </group>
       {/* Cánh quạt chính: bốn lá + đĩa mờ khi quay nhanh. */}
-      <mesh geometry={G.mast} material={STEEL} position={[0, 2.6, -0.15]} />
+      <Part geometry={G.mast} material={STEEL} position={[0, 2.6, -0.15]} />
       <group ref={rotor} position={[0, 2.85, -0.15]}>
-        <mesh geometry={G.hub} material={STEEL} />
+        <Part geometry={G.hub} material={STEEL} />
         {[0, 1, 2, 3].map((k) => (
-          <mesh key={k} geometry={G.blade} material={wreck ? WRECK : STEEL} rotation-y={(k * Math.PI) / 2} castShadow />
+          <Part key={k} geometry={G.blade} material={wreck ? WRECK : STEEL} rotation-y={(k * Math.PI) / 2} castShadow />
         ))}
       </group>
-      {!wreck && <mesh geometry={G.disc} material={discMat} position={[0, 2.86, -0.15]} />}
+      {!wreck && <Part geometry={G.disc} material={discMat} position={[0, 2.86, -0.15]} />}
       {/* Cánh đuôi (bên trái đuôi). */}
       <group ref={tail} position={[0.2, 2.0, -4.9]}>
-        <mesh geometry={G.tailBlade} material={STEEL} />
-        <mesh geometry={G.tailBlade} material={STEEL} rotation-x={Math.PI} />
+        <Part geometry={G.tailBlade} material={STEEL} />
+        <Part geometry={G.tailBlade} material={STEEL} rotation-x={Math.PI} />
       </group>
     </group>
   );
@@ -217,8 +218,8 @@ function HeliModel({ rotor, tail, discMat, gun1, gun1p, gun2, gun2p, color, wrec
 function Rider({ at, color }: { at: readonly [number, number, number]; color: string }) {
   return (
     <group position={[at[0], at[1], at[2]]}>
-      <mesh geometry={G.torso} material={teamMat(color)} position={[0, 0.3, 0]} castShadow />
-      <mesh geometry={G.head} material={SKIN} position={[0, 0.76, 0]} castShadow />
+      <Part geometry={G.torso} material={teamMat(color)} position={[0, 0.3, 0]} castShadow />
+      <Part geometry={G.head} material={SKIN} position={[0, 0.76, 0]} castShadow />
     </group>
   );
 }

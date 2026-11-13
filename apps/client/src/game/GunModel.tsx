@@ -14,6 +14,7 @@ import {
   Vector2,
   Vector3,
 } from "three";
+import { Part } from "./gpu/parts.tsx";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { skinMaterial, skinViewMaterial } from "./skinMaterials.ts";
 import { withRim } from "./character/rim.ts";
@@ -1087,7 +1088,8 @@ function Parts({ list, opacity = 1, view = false, skin = "" }: { list: { key: st
       {list.map(({ key, geo }) => {
         // Skin súng (gacha): thay vật liệu thân súng (kim loại, nhựa, gỗ); kính, ống ngắm giữ nguyên.
         const skinned = skin ? (view ? skinViewMaterial(key, skin) : skinMaterial(key, skin, opacity)) : null;
-        return <mesh key={key} geometry={geo} material={skinned ?? (view ? viewMaterial(key) : gearMaterial(key, opacity))} castShadow={!view} receiveShadow />;
+        // Súng của người khác vẽ gộp theo (hình, vật liệu); súng trước mặt (`view`) ở lớp vẽ riêng nên vẫn là Mesh.
+        return <Part key={key} solo={view} geometry={geo} material={skinned ?? (view ? viewMaterial(key) : gearMaterial(key, opacity))} castShadow={!view} receiveShadow />;
       })}
     </>
   );

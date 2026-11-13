@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Part } from "../gpu/parts.tsx";
 import { useFrame } from "@react-three/fiber";
 import { useRapier } from "@react-three/rapier";
 import { BoxGeometry, CylinderGeometry, Euler, MeshBasicMaterial, MeshStandardMaterial, Quaternion, RingGeometry, SphereGeometry, Vector3, type Group, type Mesh, type PerspectiveCamera } from "three";
@@ -87,7 +88,7 @@ function Sandbags({ r, rows, gap, wreck, front = 0 }: { r: number; rows: number;
   return (
     <StaticShadowRoot>
       {bags.map((b, i) => (
-        <mesh key={i} geometry={G.bag} material={wreck ? WRECK : b.dark ? SANDBAG_DARK : SANDBAG} position={[b.x, b.y, b.z]} rotation-y={b.ry + Math.PI / 2} castShadow receiveShadow />
+        <Part key={i} geometry={G.bag} material={wreck ? WRECK : b.dark ? SANDBAG_DARK : SANDBAG} position={[b.x, b.y, b.z]} rotation-y={b.ry + Math.PI / 2} castShadow receiveShadow />
       ))}
     </StaticShadowRoot>
   );
@@ -102,17 +103,17 @@ function NestModel({ yaw, pitch, wreck }: { yaw: React.RefObject<Group | null>; 
       <Sandbags r={1.2} rows={3} gap={1.1} front={1} wreck={wreck} />
       {/* Giá ba chân. */}
       {[0, (2 * Math.PI) / 3, (4 * Math.PI) / 3].map((a) => (
-        <mesh key={a} geometry={G.leg} material={m} position={[mx, my - 0.1, mz]} rotation={[Math.cos(a) * 0.45, 0, Math.sin(a) * 0.45]} scale={[1, my - 0.05, 1]} />
+        <Part key={a} geometry={G.leg} material={m} position={[mx, my - 0.1, mz]} rotation={[Math.cos(a) * 0.45, 0, Math.sin(a) * 0.45]} scale={[1, my - 0.05, 1]} />
       ))}
       <group position={[mx, my, mz]}>
         <group ref={yaw}>
           <group ref={pitch}>
-            <mesh geometry={G.receiver} material={m} position={[0, 0.02, 0.05]} castShadow />
-            <mesh geometry={G.jacket} material={m} castShadow />
-            <mesh geometry={G.barrel} material={m} castShadow />
-            <mesh geometry={G.ammo} material={wreck ? WRECK : OLIVE} position={[-0.17, -0.02, 0.05]} castShadow />
-            <mesh geometry={G.shield} material={wreck ? WRECK : OLIVE} position={[0, 0.06, 0.42]} castShadow />
-            <mesh geometry={G.grip} material={m} position={[0, -0.05, -0.28]} />
+            <Part geometry={G.receiver} material={m} position={[0, 0.02, 0.05]} castShadow />
+            <Part geometry={G.jacket} material={m} castShadow />
+            <Part geometry={G.barrel} material={m} castShadow />
+            <Part geometry={G.ammo} material={wreck ? WRECK : OLIVE} position={[-0.17, -0.02, 0.05]} castShadow />
+            <Part geometry={G.shield} material={wreck ? WRECK : OLIVE} position={[0, 0.06, 0.42]} castShadow />
+            <Part geometry={G.grip} material={m} position={[0, -0.05, -0.28]} />
           </group>
         </group>
       </group>
@@ -127,18 +128,18 @@ function MortarModel({ yaw, pitch, bipod, recoil, wreck }: { yaw: React.RefObjec
   return (
     <group>
       <Sandbags r={1.05} rows={2} gap={2.2} wreck={wreck} />
-      <mesh geometry={G.crate} material={wreck ? WRECK : OLIVE} position={[0.75, 0.13, -0.55]} rotation-y={0.4} castShadow />
-      <mesh geometry={G.plate} material={m} position={[0, 0.03, 0]} receiveShadow />
+      <Part geometry={G.crate} material={wreck ? WRECK : OLIVE} position={[0.75, 0.13, -0.55]} rotation-y={0.4} castShadow />
+      <Part geometry={G.plate} material={m} position={[0, 0.03, 0]} receiveShadow />
       <group ref={yaw} position={[0, my, 0]}>
         <group ref={pitch}>
           <group ref={recoil}>
-            <mesh geometry={G.tube} material={m} castShadow />
-            <mesh geometry={G.muzzle} material={m} />
+            <Part geometry={G.tube} material={m} castShadow />
+            <Part geometry={G.muzzle} material={m} />
           </group>
           {/* Giá hai chân gắn ở 2/3 ống, chân chống thẳng xuống đất (xoay ngược góc ngẩng mỗi khung). */}
           <group ref={bipod} position={[0, 0, MORTAR.tube * 0.62]}>
-            <mesh geometry={G.bipod} material={m} position={[0.02, 0, 0]} rotation-z={0.32} />
-            <mesh geometry={G.bipod} material={m} position={[-0.02, 0, 0]} rotation-z={-0.32} />
+            <Part geometry={G.bipod} material={m} position={[0.02, 0, 0]} rotation-z={0.32} />
+            <Part geometry={G.bipod} material={m} position={[-0.02, 0, 0]} rotation-z={-0.32} />
           </group>
         </group>
       </group>

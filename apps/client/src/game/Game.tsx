@@ -2,7 +2,12 @@ import { Suspense, useEffect, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
 import { ANCHORS } from "@tentides/content";
-import type { DirectionalLight, HemisphereLight, PointLight, Scene } from "three";
+import type {
+  DirectionalLight,
+  HemisphereLight,
+  PointLight,
+  Scene,
+} from "three";
 import type { WebGPURenderer } from "three/webgpu";
 import type { IslandRoom } from "../net.ts";
 import { Anchors } from "./Anchors.tsx";
@@ -22,14 +27,31 @@ import { DayCycle } from "./DayCycle.tsx";
 import { StaticSun } from "./StaticShadows.tsx";
 import { installStaticShadows } from "./staticShadow.ts";
 import { Atmosphere } from "./Atmosphere.tsx";
-import { cloudUniforms, installAtmosphere, shadeLightWithClouds, wetUniforms } from "./atmosphere.ts";
+import {
+  cloudUniforms,
+  installAtmosphere,
+  shadeLightWithClouds,
+  wetUniforms,
+} from "./atmosphere.ts";
+import { PartBatches, PartsOff, parts } from "./gpu/parts.tsx";
 import { makeRenderer } from "./gpu/renderer.ts";
+import { updateWorld } from "./gpu/world.ts";
 import { weatherUniforms } from "./textures.ts";
 import { trampleUniforms } from "./trample.ts";
 import { createPostFx, type PostFx } from "./postFx.ts";
 import { setPrepTargets } from "./shaderPrep.ts";
 import { RainGlass } from "./RainGlass.tsx";
-import { profileOf, cycleQuality, getGraphics, renderHints, targetDpr, toggleStats, useProfile, useQuality, type Profile } from "./graphics.ts";
+import {
+  profileOf,
+  cycleQuality,
+  getGraphics,
+  renderHints,
+  targetDpr,
+  toggleStats,
+  useProfile,
+  useQuality,
+  type Profile,
+} from "./graphics.ts";
 import { platform } from "./platform.ts";
 import { FrameDriver, PerfOverlay } from "./FrameDriver.tsx";
 import { Hud } from "./hud/Hud.tsx";
@@ -46,7 +68,12 @@ import { BattleIsland } from "./battle/BattleWorld.tsx";
 import { BattleEffects } from "./battle/Effects.tsx";
 import { BattleHud, SettingsButton } from "./battle/BattleHud.tsx";
 import { Shooter } from "./battle/Shooter.tsx";
-import { ViewModel, ViewPass, createViewLayer, viewCamera } from "./battle/ViewModel.tsx";
+import {
+  ViewModel,
+  ViewPass,
+  createViewLayer,
+  viewCamera,
+} from "./battle/ViewModel.tsx";
 import { Killcam } from "./battle/Killcam.tsx";
 import { SpectatorCamera } from "./battle/Spectator.tsx";
 import { Vehicles } from "./battle/Vehicles.tsx";
@@ -72,7 +99,26 @@ function DebugHook({ room }: { room: IslandRoom }) {
   useEffect(() => {
     if (import.meta.env.DEV) {
       const w = window as unknown as { __tentides?: Record<string, unknown> };
-      w.__tentides = { ...(w.__tentides ?? {}), room, look, localPosition, camera, scene, r3f, anchors: ANCHORS, world, debugCam, weatherFx, audio, atmosphere: { cloudUniforms, wetUniforms, weatherUniforms, trampleUniforms } };
+      w.__tentides = {
+        ...(w.__tentides ?? {}),
+        room,
+        look,
+        localPosition,
+        camera,
+        scene,
+        r3f,
+        anchors: ANCHORS,
+        world,
+        debugCam,
+        weatherFx,
+        audio,
+        atmosphere: {
+          cloudUniforms,
+          wetUniforms,
+          weatherUniforms,
+          trampleUniforms,
+        },
+      };
     }
   }, [room, camera, scene, r3f, world]);
   return null;
@@ -88,11 +134,22 @@ function PlayerLight() {
     const l = light.current;
     if (!l) return;
     l.position.set(localPosition.x, localPosition.y + 2, localPosition.z);
-    const flicker = 1 + Math.sin(clock.elapsedTime * 13) * 0.05 + Math.sin(clock.elapsedTime * 7.3) * 0.04;
+    const flicker =
+      1 +
+      Math.sin(clock.elapsedTime * 13) * 0.05 +
+      Math.sin(clock.elapsedTime * 7.3) * 0.04;
     l.intensity = localEnv.indoor * (localEnv.light ? 26 : 5) * flicker;
     l.distance = localEnv.light ? 16 : 7;
   });
-  return <pointLight ref={light} color="#ffb070" intensity={0} distance={10} decay={1.4} />;
+  return (
+    <pointLight
+      ref={light}
+      color="#ffb070"
+      intensity={0}
+      distance={10}
+      decay={1.4}
+    />
+  );
 }
 
 /**
@@ -102,23 +159,54 @@ function PlayerLight() {
  *   tối, súng trước mặt, khử răng cưa); bật tắt AO thì dựng lại cả chuỗi.
  * - Không hậu kỳ (Thấp): vẽ thẳng cảnh ra màn hình (canvas bật MSAA, tone map do renderer làm).
  */
-function RenderDriver({ post, battle }: { post: Profile["post"]; battle: boolean }) {
+function RenderDriver({
+  post,
+  battle,
+}: {
+  post: Profile["post"];
+  battle: boolean;
+}) {
   const gl = useThree((s) => s.gl) as unknown as WebGPURenderer;
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   // Tạo và huỷ trong cùng một effect (StrictMode chạy effect hai lần). Khung nào chưa có chuỗi thì vẽ thẳng.
   const [fx, setFx] = useState<PostFx | null>(null);
   useEffect(() => {
-    const f = post === "none" ? null : createPostFx(gl, scene, camera, post === "full", battle ? createViewLayer(scene, camera) : null);
+    const f =
+      post === "none"
+        ? null
+        : createPostFx(
+            gl,
+            scene,
+            camera,
+            post === "full",
+            battle ? createViewLayer(scene, camera) : null,
+          );
     // Dịch sẵn shader đúng đích vẽ thật (ảnh của pass khi có hậu kỳ, màn hình khi không), cả lớp súng trước mặt.
-    setPrepTargets(f ? f.targets : battle ? [{ target: null }, { target: null, camera: viewCamera }] : [{ target: null }]);
+    setPrepTargets(
+      f
+        ? f.targets
+        : battle
+          ? [{ target: null }, { target: null, camera: viewCamera }]
+          : [{ target: null }],
+    );
     setFx(f);
     return () => {
       setFx(null);
       f?.dispose();
     };
   }, [gl, scene, camera, post, battle]);
+  // Ma trận thế giới tính một lần mỗi khung ở đây thay vì ở đầu mỗi lượt vẽ (cảnh, bóng, phản chiếu, lớp súng): xem
+  // gpu/world.ts. Sau đó chép ma trận của các khối vẽ gộp (gpu/parts.tsx) rồi mới vẽ.
+  useEffect(() => {
+    scene.matrixWorldAutoUpdate = false;
+    return () => {
+      scene.matrixWorldAutoUpdate = true;
+    };
+  }, [scene]);
   useFrame(() => {
+    updateWorld(scene);
+    parts.current?.sync();
     if (fx) fx.render();
     else gl.render(scene, camera);
   }, 1);
@@ -130,7 +218,13 @@ function RenderDriver({ post, battle }: { post: Profile["post"]; battle: boolean
  * khớp lưới điểm ảnh nên bản đồ bóng cũ vẫn đúng chỗ, chỉ vật đang chuyển động là bóng trễ vài chục ms). `hz` = 0 thì
  * đèn tự vẽ lại mọi khung. Đèn mặt trời tạo lại khi đổi mức đồ hoạ nên áp lại cho đèn mới.
  */
-function ShadowScheduler({ sun, hz }: { sun: RefObject<DirectionalLight | null>; hz: number }) {
+function ShadowScheduler({
+  sun,
+  hz,
+}: {
+  sun: RefObject<DirectionalLight | null>;
+  hz: number;
+}) {
   const due = useRef(0);
   const bound = useRef<DirectionalLight | null>(null);
   useFrame(({ clock }) => {
@@ -150,7 +244,15 @@ function ShadowScheduler({ sun, hz }: { sun: RefObject<DirectionalLight | null>;
   return null;
 }
 
-function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null>; profile: Profile; quality: string }) {
+function Sun({
+  sun,
+  profile,
+  quality,
+}: {
+  sun: RefObject<DirectionalLight | null>;
+  profile: Profile;
+  quality: string;
+}) {
   const e = profile.shadowExtent;
   // Bóng mây che nắng: gắn một lần vào đèn (đổi mức đồ hoạ thì đèn tạo lại).
   useEffect(() => {
@@ -178,12 +280,19 @@ function Sun({ sun, profile, quality }: { sun: RefObject<DirectionalLight | null
   );
 }
 
-export function Game({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
+export function Game({
+  room,
+  onLeave,
+}: {
+  room: IslandRoom;
+  onLeave: () => void;
+}) {
   // Trình duyệt không có cả WebGPU lẫn WebGL 2 (bản quá cũ, card bị chặn): báo rõ thay vì màn hình trắng.
   if (!platform().webgl2 && !platform().webgpu) {
     return (
       <div className="game-loading">
-        Trình duyệt này không chạy được đồ hoạ 3D (cần WebGPU hoặc WebGL 2). Hãy cập nhật Chrome, Edge, Firefox hoặc Safari và bật tăng tốc phần cứng.
+        Trình duyệt này không chạy được đồ hoạ 3D (cần WebGPU hoặc WebGL 2). Hãy
+        cập nhật Chrome, Edge, Firefox hoặc Safari và bật tăng tốc phần cứng.
         <button onClick={onLeave}>Về sảnh</button>
       </div>
     );
@@ -201,7 +310,13 @@ function onCreated({ scene, gl }: { scene: Scene; gl: unknown }) {
   installAtmosphere(scene);
 }
 
-function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) {
+function GameView({
+  room,
+  onLeave,
+}: {
+  room: IslandRoom;
+  onLeave: () => void;
+}) {
   const sun = useRef<DirectionalLight>(null);
   const hemi = useRef<HemisphereLight>(null);
   const wrapper = useRef<HTMLDivElement>(null);
@@ -216,14 +331,24 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
   //   bật MSAA khi không có hậu kỳ.
   // - Canvas đục: trình duyệt khỏi phải trộn trong suốt với trang web mỗi khung.
   // - Xin card rời trên laptop hai card (Windows, Mac đời Intel).
-  const [glFactory] = useState(() => makeRenderer({ antialias: profileOf(getGraphics().quality).post === "none", alpha: false, stencil: false, powerPreference: "high-performance" }));
+  const [glFactory] = useState(() =>
+    makeRenderer({
+      antialias: profileOf(getGraphics().quality).post === "none",
+      alpha: false,
+      stencil: false,
+      powerPreference: "high-performance",
+    }),
+  );
   const mapKey = useMapKey(room);
   const world = useWorld(room);
   // Phòng Battleground: bản đồ, luật, điều khiển và giao diện riêng; đồ hoạ, nhân vật, vật lý dùng chung.
   const battle = useRoomSnapshot(room, (s) => s.mode) === "battle";
   cameraMode.battle = battle;
   // Hải chiến 3 vs 3: hai chiến hạm, biển rộng, nhìn xa hơn nhiều (đánh nhau ở tầm gần một cây số).
-  const naval = useRoomSnapshot(room, (s) => s.mode === "battle" && s.battleMode === "naval");
+  const naval = useRoomSnapshot(
+    room,
+    (s) => s.mode === "battle" && s.battleMode === "naval",
+  );
   viewReach.scale = naval ? 5.5 : 1;
   renderHints.idle = useRoomSnapshot(room, (s) => s.paused);
   useEffect(() => () => void (renderHints.idle = false), []);
@@ -245,7 +370,14 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
 
   return (
     <div className="game" ref={wrapper}>
-      <Canvas shadows="percentage" frameloop="never" dpr={initialDpr} gl={glFactory} camera={{ fov: 60, near: 0.1, far: 500 }} onCreated={onCreated}>
+      <Canvas
+        shadows="percentage"
+        frameloop="never"
+        dpr={initialDpr}
+        gl={glFactory}
+        camera={{ fov: 60, near: 0.1, far: 500 }}
+        onCreated={onCreated}
+      >
         <FrameDriver />
         <ShadowScheduler sun={sun} hz={profile.shadowHz} />
         <color attach="background" args={[HORIZON]} />
@@ -254,42 +386,52 @@ function GameView({ room, onLeave }: { room: IslandRoom; onLeave: () => void }) 
         {profile.ibl && <SkyEnvironment intensity={0.7} />}
         <Sun sun={sun} profile={profile} quality={quality} />
         <Suspense fallback={null}>
-          <SkyDome />
-          {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
-          {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
-          <Physics key={`${world.seed}:${mapKey}`} timeStep="vary">
-            {battle ? <BattleIsland room={room} world={world} /> : <Island room={room} world={world} />}
-            <LocalPlayer room={room} world={world} />
-            {battle && <Shooter room={room} />}
-            {battle && <Vehicles room={room} />}
-            {naval && <Ships room={room} />}
-          </Physics>
-          <PlayerLight />
-          {!battle && <FirstPersonHands room={room} />}
-          <RemotePlayers room={room} />
-          {!battle && <Anchors room={room} />}
-          <GroundItems room={room} />
-          {!battle && <Pages room={room} world={world} />}
-          <Weather room={room} world={world} />
-          {!battle && <Trails room={room} world={world} />}
-          {battle && <BattleEffects room={room} world={world} />}
-          {naval && <NavalUnits room={room} />}
-          {naval && <NavalFx room={room} />}
-          {naval && <NavalSounds room={room} />}
-          {naval && <NavalControl room={room} />}
-          {battle && <ViewModel room={room} />}
-          {battle && <Killcam room={room} />}
-          {battle && <SpectatorCamera room={room} />}
-          {battle && <VoiceHeads room={room} />}
-          <Soundscape room={room} world={world} />
-          <Fx />
-          <WaypointTracker />
-          <Texturize />
-          <DayCycle room={room} sun={sun} hemi={hemi} ibl={profile.ibl} />
-          <Atmosphere room={room} />
-          <DebugHook room={room} />
-          <RenderDriver post={profile.post} battle={battle} />
-          {battle && <ViewPass post={post} />}
+          <PartBatches>
+            <SkyDome />
+            {/* Đổi bản đồ (chủ phòng đổi seed ở sảnh chờ) thì dựng lại cả vật lý lẫn cảnh. */}
+            {/* Bước vật lý theo đúng từng khung hình: nhân vật và camera cùng nhịp, chạy nhanh không bị giật. */}
+            <Physics key={`${world.seed}:${mapKey}`} timeStep="vary">
+              {battle ? (
+                <BattleIsland room={room} world={world} />
+              ) : (
+                <Island room={room} world={world} />
+              )}
+              <LocalPlayer room={room} world={world} />
+              {battle && <Shooter room={room} />}
+              {battle && <Vehicles room={room} />}
+              {naval && <Ships room={room} />}
+            </Physics>
+            <PlayerLight />
+            {!battle && <FirstPersonHands room={room} />}
+            <RemotePlayers room={room} />
+            {!battle && <Anchors room={room} />}
+            <GroundItems room={room} />
+            {!battle && <Pages room={room} world={world} />}
+            <Weather room={room} world={world} />
+            {!battle && <Trails room={room} world={world} />}
+            {battle && <BattleEffects room={room} world={world} />}
+            {naval && <NavalUnits room={room} />}
+            {naval && <NavalFx room={room} />}
+            {naval && <NavalSounds room={room} />}
+            {naval && <NavalControl room={room} />}
+            {battle && (
+              <PartsOff>
+                <ViewModel room={room} />
+              </PartsOff>
+            )}
+            {battle && <Killcam room={room} />}
+            {battle && <SpectatorCamera room={room} />}
+            {battle && <VoiceHeads room={room} />}
+            <Soundscape room={room} world={world} />
+            <Fx />
+            <WaypointTracker />
+            <Texturize />
+            <DayCycle room={room} sun={sun} hemi={hemi} ibl={profile.ibl} />
+            <Atmosphere room={room} />
+            <DebugHook room={room} />
+            <RenderDriver post={profile.post} battle={battle} />
+            {battle && <ViewPass post={post} />}
+          </PartBatches>
         </Suspense>
       </Canvas>
       <RainGlass />
